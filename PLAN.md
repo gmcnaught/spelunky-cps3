@@ -21,6 +21,15 @@ sale. Game assets and the files converted from them are still never committed: c
 | Terrain as a grid, not instances: `oSolid` blocks (no Step event: `oBlock`, `oBrick`, `oSolid` have only Create / Destroy) live in a 42x34 cell array, and `collision_point(x, y, oSolid, ...)` becomes a cell lookup plus a short list of moving solids. Activation rules modelled where HD still uses them | 2026-10-03 | 495 `collision_point` calls (HD about the same), most of them against terrain; GameMaker tests every instance's mask |
 | Step at 30 Hz (`room_speed` 30) on a 59.6 Hz display: one game step every second frame, with the display list sent each frame | 2026-10-03 | Twice Maldita's budget per step: about 839,000 jtcps3 cycles a step |
 
+## 1b. Performance revert candidates
+
+HD behaviour kept for now that may be reverted to 1.1's if the jtcps3 budget needs it. Each entry is a gameplay change,
+so reverting one needs the user's decision and its own route check.
+
+| # | HD behaviour | 1.1 behaviour to revert to | Cost if kept | Tagged |
+|---|---|---|---|---|
+| R1 | No deactivation: every instance runs every step (`refs/hd/src/objects/oLevel/Step_0.gml:75` commented out) | `instance_deactivate_region` outside the view ±96 px, then the reactivation list (`build/gml/oLevel/Step.gml:64-100`) | Per-step cost scales with the whole level's instances instead of the view's; measured at P4 / P5 (CPU per route on jtcps3) | 2026-10-03, the user |
+
 ## 2. Measured (2026-10-03)
 
 HD 1.2.2 (`refs/hd/src`, research agent's counts at HEAD b4a3999, 12 commits after the tag; re-measure at the tag in P2):
