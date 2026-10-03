@@ -5,6 +5,8 @@
 #
 #   scripts/hd_trace.sh <route> <seed> [name]      route: tests/routes/<route>.txt
 #   -> build/trace/<name>.bin (+ .names, .log); name defaults to <route>_s<seed>
+#   TRACE_SHOT=r1,... also copies the frames shot_<r>.png / .txt to build/trace/<name>.shot_<r>.*
+#   scripts/hd_trace.sh --rng-probe    -> build/trace/rng_probe.bin (tools/tracer.py PROBE_GML; tools/gmrand.py)
 #
 # Each run uses a fresh copy of the game directory and an empty save area (the runner's SavePrePend
 # $HOME/.config/SpelunkyClassicHD/, mounted from build/run/<name>/config): no spelunky.ini / settings.json from
@@ -14,15 +16,21 @@
 # https://github.com/yancharkin/SpelunkyClassicHD/releases/download/1.2.2/, unzipped into refs/hd/linux-arm64.
 set -eu
 cd "$(dirname "$0")/.."
-ROUTE=$1; SEED=$2; NAME=${3:-${1}_s$2}; T=${TIMEOUT:-1800}
+if [ "$1" = --rng-probe ]; then PROBE=1; ROUTE=; SEED=; NAME=rng_probe; else
+  PROBE=; ROUTE=$1; SEED=$2; NAME=${3:-${1}_s$2}; fi
+T=${TIMEOUT:-1800}
 GAME=refs/hd/linux-arm64
 [ -f "$GAME/assets/game.unx" ] || { echo "missing $GAME/assets/game.unx"; exit 1; }
 docker image inspect spelunky-hd-runner >/dev/null 2>&1 || docker build -q -t spelunky-hd-runner docker/hd-runner
 RUN=build/run/$NAME
 rm -rf "$RUN"; mkdir -p "$RUN/config" build/trace
 cp -R "$GAME/." "$RUN/game"
-python3 tools/tracer.py build "$GAME/assets/game.unx" "tests/routes/$ROUTE.txt" "$RUN/game/assets/game.unx" --seed "$SEED"
-mv "$RUN/game/assets/game.unx.names" "build/trace/$NAME.names"
+if [ -n "$PROBE" ]; then
+  python3 tools/tracer.py rng-probe "$GAME/assets/game.unx" "$RUN/game/assets/game.unx"
+else
+  python3 tools/tracer.py build "$GAME/assets/game.unx" "tests/routes/$ROUTE.txt" "$RUN/game/assets/game.unx" --seed "$SEED"
+  mv "$RUN/game/assets/game.unx.names" "build/trace/$NAME.names"
+fi
 rm -f "$RUN/game/assets/game.unx.csx"
 start=$(date +%s)
 docker run --rm --platform linux/arm64 -v "$PWD/$RUN:/r" -w /r/game spelunky-hd-runner sh -c "
@@ -31,6 +39,11 @@ docker run --rm --platform linux/arm64 -v "$PWD/$RUN:/r" -w /r/game spelunky-hd-
   mkdir -p /tmp/.config && ln -s /r/config /tmp/.config/SpelunkyClassicHD
   timeout $T ./SpelunkyClassicHD > /r/run.log 2>&1; echo \"runner exit \$?\" >> /r/run.log" || true
 cp "$RUN/run.log" "build/trace/$NAME.log"
+if [ -n "$PROBE" ]; then
+  [ -f "$RUN/game/rng_probe.bin" ] || { echo "no rng_probe.bin"; tail -20 "build/trace/$NAME.log"; exit 1; }
+  cp "$RUN/game/rng_probe.bin" build/trace/rng_probe.bin; echo "build/trace/rng_probe.bin"; exit 0
+fi
+for f in "$RUN"/game/shot_*; do [ -e "$f" ] && cp "$f" "build/trace/$NAME.$(basename "$f")"; done
 n=$(ls "$RUN/game" | grep -c '^trc_.*\.bin$' || true)
 [ "$n" -gt 0 ] || { echo "no trc_*.bin (log: build/trace/$NAME.log)"; tail -20 "build/trace/$NAME.log"; exit 1; }
 k=0; : > "build/trace/$NAME.bin"

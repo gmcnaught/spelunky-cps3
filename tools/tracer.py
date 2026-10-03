@@ -3,6 +3,7 @@
 
     tools/tracer.py build <game.unx> <route.txt> <out.unx> [--seed N]
     tools/tracer.py decode <trace.bin> <names.txt> [--steps a-b] [--no-inst]
+    tools/tracer.py rng-probe <game.unx> <out.unx>      (scripts/hd_trace.sh --rng-probe; PROBE_GML below)
 
 The data file is the official Linux release's (refs/hd/linux-arm64/assets/game.unx: VM bytecode 17, the same
 game as the APK's game.droid except the desktop platform code: getPlatform sets global.mobileBuild = false,
@@ -24,6 +25,7 @@ Method from ../maldita.castilla-cps3/tools/tracer.py. Changes, all GML compiled 
   - oGamepad Begin Step (new): the trace starts at the first Begin Step in rLevel (route step t = 0 is the Step
     that follows). A phase-0 record is written at the first Begin Step in each room (the room's state after
     every Create / Room Start: in rLevel, the generated level, oGame Create -> scrInitLevel -> scrLevelGen).
+  - TRACE_SHOT=r1,r2,...: oGamepad Post-Draw (new) saves application_surface after record r (shot_gml).
   - oGamepad End Step (new): a phase-1 record each step. The buffer is saved every 50 records as
     trc_<k>.bin (buffer_save_ext; then rewound). After route steps + TAIL (default 30) or MAX_STEPS records:
     last chunk saved, game_end().
@@ -247,8 +249,32 @@ if (global.trc_rec mod {CHUNK} == 0)
     return create, step, begin, end
 
 
+def shot_gml():
+    """TRACE_SHOT=r1,r2,...: oGamepad Post-Draw (new) saves application_surface as shot_<r>.png in the frame
+    whose End Step wrote record r (phase 1), and shot_<r>.txt: view x, y, w, h and the surface's size"""
+    recs = [int(r) for r in os.environ.get('TRACE_SHOT', '').split(',') if r]
+    if not recs:
+        return ''
+    cond = ' || '.join(f'r == {r}' for r in recs)
+    return f'''
+if (!global.trc_on) exit;
+var r = global.trc_rec - 1;
+if ({cond})
+{{
+    surface_save(application_surface, "shot_" + string(r) + ".png");
+    var f = file_text_open_write("shot_" + string(r) + ".txt");
+    file_text_write_string(f, string(view_xview[0]) + " " + string(view_yview[0]) + " " + string(view_wview[0]) + " "
+        + string(view_hview[0]) + " " + string(surface_get_width(application_surface)) + " "
+        + string(surface_get_height(application_surface)));
+    file_text_close(f);
+}}
+'''
+
+
 def csx(create, step, begin, end, seed, names):
     q = lambda s: '@"' + s.replace('"', '""') + '"'
+    shot = shot_gml()
+    shots = f'g.QueueReplace("gml_Object_oGamepad_Draw_77", {q(shot)});\n' if shot else ''
     return f'''
 using System.IO;
 using System.Text;
@@ -264,7 +290,7 @@ g.QueueAppend("gml_Object_oGamepad_Create_0", {q(create)});
 g.QueueReplace("gml_Object_oGamepad_Step_0", {q(step)});
 g.QueueReplace("gml_Object_oGamepad_Step_1", {q(begin)});
 g.QueueReplace("gml_Object_oGamepad_Step_2", {q(end)});
-g.Import();
+{shots}g.Import();
 '''
 
 
@@ -286,6 +312,61 @@ def build(droid, route, out, seed):
     if r.returncode != 0 or not os.path.exists(out) or re.search(r'(?i)error|exception', r.stdout + r.stderr):
         sys.exit(r.stdout[-4000:] + r.stderr[-4000:])
     print(f'{out}: seed {seed}, {len(segs)} route segments, {sum(n for n, _ in segs)} steps (+{TAIL})')
+
+
+PROBE_SEEDS = [0, 1, 2, 12345, -1, 2147483647]
+PROBE_N = 2000
+PROBE_NS = [3, 7, 13, 0.7, 100.5, 1000000.3]
+PROBE_IS = [1, 10, 99, -5]
+# per seed: f64 seed, f64 random_get_seed(), then three blocks, each right after random_set_seed(seed):
+# A: PROBE_N x random(1); B: PROBE_N x random(4294967296); C: PROBE_N x irandom(2147483647);
+# D: PROBE_N x random(PROBE_NS[k % 6]); E: PROBE_N x irandom(PROBE_IS[k % 4])
+PROBE_GML = f'''
+var seeds = {PROBE_SEEDS};
+var ns = {PROBE_NS};
+var is = {PROBE_IS};
+var b = buffer_create(1048576, buffer_grow, 1);
+for (var s = 0; s < array_length(seeds); s++)
+{{
+    random_set_seed(seeds[s]);
+    buffer_write(b, buffer_f64, seeds[s]);
+    buffer_write(b, buffer_f64, random_get_seed());
+    for (var i = 0; i < {PROBE_N}; i++) buffer_write(b, buffer_f64, random(1));
+    random_set_seed(seeds[s]);
+    for (var i = 0; i < {PROBE_N}; i++) buffer_write(b, buffer_f64, random(4294967296));
+    random_set_seed(seeds[s]);
+    for (var i = 0; i < {PROBE_N}; i++) buffer_write(b, buffer_f64, irandom(2147483647));
+    random_set_seed(seeds[s]);
+    for (var i = 0; i < {PROBE_N}; i++) buffer_write(b, buffer_f64, random(ns[i mod 6]));
+    random_set_seed(seeds[s]);
+    for (var i = 0; i < {PROBE_N}; i++) buffer_write(b, buffer_f64, irandom(is[i mod 4]));
+}}
+buffer_save(b, "rng_probe.bin");
+game_end();
+'''
+
+
+def rng_probe(droid, out):
+    """build: a copy of the data file whose oGamepad Create writes rng_probe.bin (PROBE_GML) and ends"""
+    droid, out = map(os.path.abspath, (droid, out))
+    os.makedirs(os.path.dirname(out), exist_ok=True)
+    root = os.path.commonpath([droid, UTMT, out])
+    rel = lambda p: '/w/' + os.path.relpath(p, root)
+    q = lambda s: '@"' + s.replace('"', '""') + '"'
+    script = out + '.csx'
+    open(script, 'w').write(f'''
+using UndertaleModLib.Compiler;
+CodeImportGroup g = new(Data);
+g.QueueAppend("gml_Object_oGamepad_Create_0", {q(PROBE_GML)});
+g.Import();
+''')
+    if os.path.exists(out):
+        os.remove(out)
+    r = subprocess.run(['docker', 'run', '--rm', '-v', f'{root}:/w', DOTNET, 'dotnet', rel(UTMT), 'load', rel(droid),
+                        '-s', rel(script), '-o', rel(out), '-f'], capture_output=True, text=True)
+    if r.returncode != 0 or not os.path.exists(out) or re.search(r'(?i)error|exception', r.stdout + r.stderr):
+        sys.exit(r.stdout[-4000:] + r.stderr[-4000:])
+    print(f'{out}: RNG probe, seeds {PROBE_SEEDS}, {PROBE_N} draws x 5 blocks')
 
 
 def load_names(path):
@@ -358,6 +439,8 @@ def main():
     if a and a[0] == 'build' and len(a) >= 4:
         seed = int(a[a.index('--seed') + 1]) if '--seed' in a else 1
         build(a[1], a[2], a[3], seed)
+    elif a and a[0] == 'rng-probe' and len(a) >= 3:
+        rng_probe(a[1], a[2])
     elif a and a[0] == 'decode' and len(a) >= 3:
         decode(a[1], a[2], a[a.index('--steps') + 1] if '--steps' in a else None, '--no-inst' not in a)
     else:
