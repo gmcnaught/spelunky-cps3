@@ -1,0 +1,15 @@
+# P1 determinism route: from the first step in rLevel (level 1). 30 steps = 1 s.
+45 -       # the level's fade-in
+40 R       # walk right
+10 RJ      # jump right
+30 L       # walk left
+5  A       # whip
+20 -
+30 LN      # run left
+10 D       # crouch
+10 B       # bomb
+60 -
+20 RJ
+30 R
+5  O       # rope
+60 -
