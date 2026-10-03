@@ -79,6 +79,6 @@ sale. Game assets and the files converted from them are still never committed: c
 ## 5. Open questions
 
 - P1: whether OpenGMK runs Spelunky 1.1 (GM8.0 exe, `supersound.dll`) on Linux in Docker. Unknown until tried.
-- jtcps3 full-screen zoom: not implemented or not tested anywhere in these projects (SDK "Not in the SDK yet").
+- jtcps3 full-screen zoom: untested. MAME 0.289 (2026-10-03, `tests/zoom`, `scripts/zoom_check.sh`): X zoom 0x40, 0x35 and 0x36 pixel-exact against MAME's formula (0 of 86,016 px each). 0x36 shows 324 source px (x1.185), 0x35 318 (x1.208).
 - GM8's `random` at the bit level: OpenGMK documents the generator; confirm against the reference at P2.
 - Dark levels and `image_alpha` effects on hardware without blending (P7).
