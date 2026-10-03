@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """HD 1.2.2's sprites for the CPS3 (PLAN.md §2, P3): one 256-colour palette for all art, every frame cut into CPS3
 sprite pieces of 1, 2 or 4 x 1, 2 or 4 tiles (16x16, 8 bits a pixel, tiles column by column within a piece), all
-tiles resident in character RAM.
+tiles resident in character RAM. Default flash offsets: palette at 16 MB, tiles at 16 MB + 64 KB (the first 16 MB
+are the sound window, tools/hdsound.py).
 
     tools/hdsprites.py <hd src dir> <out dir> [--tiles-at N] [--pal-at N] [--first-tile N]
 
@@ -101,7 +102,7 @@ def main():
     src, out = sys.argv[1], sys.argv[2]
     args = sys.argv[3:]
     opt = {a: int(args[i + 1], 0) for i, a in enumerate(args) if a.startswith('--')}
-    tiles_at, pal_at, first_tile = opt.get('--tiles-at', 0x100000), opt.get('--pal-at', 0x0f0000), opt.get('--first-tile', 0x100)
+    tiles_at, pal_at, first_tile = opt.get('--tiles-at', 0x1010000), opt.get('--pal-at', 0x1000000), opt.get('--first-tile', 0x100)
     names = sorted(n for n in os.listdir(os.path.join(src, 'sprites'))
                    if not n.startswith('__') and 'scribble' not in n.lower()
                    and os.path.exists(os.path.join(src, 'sprites', n, n + '.yy')))
