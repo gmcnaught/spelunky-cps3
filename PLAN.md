@@ -39,6 +39,13 @@ music, 59 WAV effects, 9.2 MB); 38,773 GML lines without Scribble; `rand(` 933; 
 320x240 view. Darkness: one black rectangle at alpha `darkness` over the whole view (`objects/oLevel/Draw_0.gml`): a
 palette fade on CPS3, no per-pixel light needed.
 
+HD art for the CPS3 (2026-10-03, every `refs/hd/src/sprites` PNG but Scribble's): 840 sprites, 2,326 frames; 6,816 tiles
+of 16x16 without deduplication (1.7 MB, against 8 MB / 32,768 tiles of character RAM, `bg*` backgrounds included);
+**204 distinct 5-bit colours across all of them** (at most 28 in one sprite); 39 partially transparent pixels in all;
+largest frames 640x240, 480x200. So: one 256-colour palette for everything (8-bit tiles, one colour code), all art
+resident in character RAM, loaded once by character DMA at boot (no per-area loading, unlike Maldita); fades and the
+dark-level rectangle as colour-code copies of that palette, selected per main-list record or by palette DMA.
+
 1.1, for reference (`tools/gmk2gml.py build/gmk build/gml`):
 
 | Area | Value |
@@ -60,7 +67,7 @@ palette fade on CPS3, no per-pixel light needed.
 | Hot code placed together at the start of SIMM 1 (`.text.hot`); `struct` layout by 16-byte cache line; `-O3`; no libgcc variable shifts or 64-bit divides in hot paths; DIVU for division | From the first build |
 | Status and inputs read through the uncached mirror (the cached sprite-list-DMA wait cost about 69,000 cycles a frame) | SDK `cps3v_vblank` / `cps3io` already do it |
 | One prebuilt sublist per sprite frame (plain and mirrored); one 4-word main-list record per instance; the camera in a global scroll register; at most 511 list entries a frame on jtcps3; 8-bit tiles only; pieces up to 4x4 tiles | The sprite converter writes the sublists; terrain goes on tilemaps |
-| Tiles reach character RAM only by character DMA from SIMMs 3-6 (CPU writes with the display on are lost on jtcps3; reloading by CPU does not work); wait on IRQ 10, not the busy bit | Per-area tile sets (mines, lush, ice, temple, boss) loaded by DMA at level start |
+| Tiles reach character RAM only by character DMA from SIMMs 3-6 (CPU writes with the display on are lost on jtcps3; reloading by CPU does not work); wait on IRQ 10, not the busy bit | All art resident: one character DMA at boot (§2) |
 | Samples below 16 MB of sample flash (jtcps3 reads offsets mod 16 MB); music 16 kHz, effects 32 kHz, 8-bit | HD's audio is 9.2 MB at 44.1 kHz and fits easily |
 | Fixed-point motion formats and the route check / G-check gate (Maldita §10 F16) | §1 exactness decision; tools reused (`routecmp.py`, `tracecmp_eq.py` adapted) |
 | Reference traces from the original game, the host runner as the CPS3 build's reference, MAME traces bit-exact to the host, jtcps3 hashes equal to MAME's | §4 |
@@ -89,7 +96,7 @@ palette fade on CPS3, no per-pixel light needed.
 | P0 | Sources and tooling: 1.1 extracted (done), HD 1.2.2 source and APK in `refs/hd` (done); repository scaffold on the SDK (`../cps3-testgame/sdk`, `sdk.mk`) with a `hello` that boots in MAME | MAME boot |
 | P1 | **Reference runner.** HD 1.2.2's Linux build (official GameMaker runner, linux-arm64, native in Docker on Apple Silicon with Xvfb; x86_64 AppImage under emulation as fallback) with tracer GML injected into its data file by UndertaleModTool's CLI: fixed seed, inputs from a route file, a per-step dump (RNG state if readable, each instance's id, object, x, y, sprite, frame, alarms, `xVel` / `yVel`; globals: level, life, bombs, ropes, money). Not gmloader on the MiSTer (user, 2026-10-03) | Two runs with one seed and one input file give identical dumps; a dumped level matches the screen. **Done 2026-10-03:** `scripts/hd_trace.sh <route> <seed>`, `tools/tracer.py`, `docker/hd-runner`. UndertaleModTool's CLI re-saves `game.unx` and `game.droid` byte-identically (bytecode 17, 1,940 code entries). Inputs replace `oGamepad`'s Step (`checkX()` reads it). Records: one at each room start (the generated level) and one per End Step. Route `p1_walk`, seed 1: two runs byte-identical (406 records, md5 3e7bd4ef...); seed 2 a different level (762 vs 799 instances). About 20 s a run; the runner crashes after `game_end()` (exit 134 / 139) once the trace is written. The Linux `game.unx` differs from the APK's in 4 code entries (`getPlatform`, `characterStepEvent`'s run release, `getWorkingDirPath`, `oDebug`): the Linux data is the reference. Screen check (`TRACE_SHOT`, `tools/screencheck.py`): at records 1, 46 and 60 of `p1_walk` seed 1, all 169 visible terrain cells of the dump are terrain in the runner's frame and none of the other 236 cells is |
 | P2 | **RNG and generator on the host (C):** the 2024.14 runtime's `random` (model from the reference: seed, draw sequence), `scrLevelGen` / `scrRoomGen*` / `scrEntityGen` / `scrTreasureGen` / `scrShopItemsGen` translated; level as cell grid + instance list | §4 item 2 on 200 seeds x every area |
-| P3 | **Display bring-up:** full-screen X zoom (works on MAME and jtcps3, §5): X zoom 0x35, 318 of 320 px at x1.208. Then: area tile sets by DMA, the generated level on one 64x64 tilemap (672x544 fits: no streaming), the camera, the 8-line crop | MAME frames exact against host-composed frames; jtcps3 screenshots |
+| P3 | **Display bring-up:** full-screen X zoom (works on MAME and jtcps3, §5): X zoom 0x35, 318 of 320 px at x1.208. Then: all art by one DMA at boot (§2), the generated level on one 64x64 tilemap (672x544 fits: no streaming), the camera, the 8-line crop | MAME frames exact against host-composed frames; jtcps3 screenshots |
 | P4 | **Player and core physics:** `oCharacter` / `oPlayer1` movement, ladders, ropes, whip, hang, crouch, damage, bombs, items held / thrown; fixed point per §1 | Routes on the first mines levels: route check + G-check against P1 references |
 | P5 | Mines content (enemies, traps, items, shopkeeper, damsel, idols, arrow traps), activation region model, level transitions (`rTransition*`) | Routes through levels 1-4 |
 | P6 | Sound: HD's effects and music through the SDK's 16 voices | MAME key-on log equal to the trace's `playSound` calls |
