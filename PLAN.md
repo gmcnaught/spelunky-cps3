@@ -44,7 +44,9 @@ of 16x16 without deduplication (1.7 MB, against 8 MB / 32,768 tiles of character
 **204 distinct 5-bit colours across all of them** (at most 28 in one sprite); 39 partially transparent pixels in all;
 largest frames 640x240, 480x200. So: one 256-colour palette for everything (8-bit tiles, one colour code), all art
 resident in character RAM, loaded once by character DMA at boot (no per-area loading, unlike Maldita); fades and the
-dark-level rectangle as colour-code copies of that palette, selected per main-list record or by palette DMA.
+dark-level rectangle as colour-code copies of that palette, selected per main-list record or by palette DMA. Converter (`tools/hdsprites.py`, checked by `tools/sprcheck.py`: all 2,326 frames redrawn from pieces and tiles
+equal the source after colour mapping): 2,682 pieces (at most 50 in one frame), 5,012 tiles after deduplication
+(1.22 MB), 200 palette colours under jtcps3's expansion.
 
 1.1, for reference (`tools/gmk2gml.py build/gmk build/gml`):
 
