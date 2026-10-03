@@ -1,0 +1,7 @@
+build/
+refs/
+rom/
+snap/
+*.zip
+__pycache__/
+.remember/
