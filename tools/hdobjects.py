@@ -32,6 +32,11 @@ def main():
             objs[name] = load_yy(y)
     names = sorted(objs)
     idx = {n: i for i, n in enumerate(names)}
+    # GM8 object depths kept by the GMS import (instance_create -> object_get_depth -> global.__objectDepths)
+    depth = {}
+    dp = os.path.join(src, 'scripts', '__global_object_depths', '__global_object_depths.gml')
+    for m in re.finditer(r'__objectDepths\[\d+\]\s*=\s*(-?\d+)\s*;\s*//\s*(\w+)', open(dp).read()):
+        depth[m.group(2)] = int(m.group(1))
 
     def parent(n):
         p = objs[n].get('parentObjectId')
@@ -42,7 +47,7 @@ def main():
     lines += [f'    OBJ_{n},' for n in names]
     lines += ['    OBJ_COUNT', '};', '#define OBJ_NONE (-1)', '',
               'struct objdef {', '    const char *name;', '    int16_t parent;', '    const char *sprite;',
-              '    const char *mask;', '    uint8_t solid, visible, persistent;', '};', '']
+              '    const char *mask;', '    uint8_t solid, visible, persistent;', '    int32_t depth;', '};', '']
     c = [hdr, '#include "objects.h"', '', 'const struct objdef objdefs[OBJ_COUNT] = {']
     for n in names:
         o = objs[n]
@@ -52,7 +57,8 @@ def main():
         c.append(f'    {{ "{n}", {("OBJ_" + p) if p else "OBJ_NONE"}, '
                      f'{chr(34) + spr["name"] + chr(34) if spr else "0"}, '
                      f'{chr(34) + msk["name"] + chr(34) if msk else "0"}, '
-                     f'{int(o.get("solid", False))}, {int(o.get("visible", True))}, {int(o.get("persistent", False))} }},')
+                     f'{int(o.get("solid", False))}, {int(o.get("visible", True))}, {int(o.get("persistent", False))}, '
+                 f'{depth.get(n, 0)} }},')
     c += ['};', '']
     # ancestor table as bit rows: obj_is(a, b)
     words = (len(names) + 31) // 32
