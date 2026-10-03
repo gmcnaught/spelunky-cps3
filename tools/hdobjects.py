@@ -72,9 +72,13 @@ def main():
             bits[idx[a] // 32] |= 1 << (idx[a] % 32)
             a = parent(a)
         c.append('    { ' + ', '.join(f'0x{b:08x}u' for b in bits) + ' },')
+    c += ['};', '', 'const uint32_t obj_bit[32] = {']
+    c += ['    ' + ', '.join(f'0x{1 << k:08x}u' for k in range(j, j + 8)) + ',' for j in range(0, 32, 8)]
     c += ['};', '']
     lines += ['/* a is b or a descendant of b (GameMaker object matching) */',
-              'static inline int obj_is(int a, int b) { return (obj_anc[a][b >> 5] >> (b & 31)) & 1; }', '']
+              '/* bit k of a word without a variable shift (the SH-2 has none: libgcc ___ashlsi3 otherwise) */',
+              'extern const uint32_t obj_bit[32];',
+              'static inline int obj_is(int a, int b) { return (obj_anc[a][b >> 5] & obj_bit[b & 31]) != 0; }', '']
     # rooms
     rooms = sorted(os.listdir(os.path.join(src, 'rooms')))
     lines.append('struct roominst { int16_t obj; int16_t x, y; const char *code; };')

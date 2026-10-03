@@ -39,12 +39,21 @@ else
   mv "$RUN/game/assets/game.unx.names" "build/trace/$NAME.names"
 fi
 rm -f "$RUN/game/assets/game.unx.csx"
+# generator mode: the runner can hang in game_end() after the last case; it is stopped once the last file exists
+GENLAST=
+[ -n "$GEN" ] && GENLAST=gen_$(( $(grep -cv '^\s*\(#\|$\)' "$GEN") - 1 )).bin
 start=$(date +%s)
 docker run --rm --platform linux/arm64 -v "$PWD/$RUN:/r" -w /r/game spelunky-hd-runner sh -c "
   Xvfb :99 -screen 0 1280x720x24 -nolisten tcp >/dev/null 2>&1 &
   for i in 1 2 3 4 5 6 7 8 9 10; do [ -e /tmp/.X11-unix/X99 ] && break; sleep 0.5; done
   mkdir -p /tmp/.config && ln -s /r/config /tmp/.config/SpelunkyClassicHD
-  timeout $T ./SpelunkyClassicHD > /r/run.log 2>&1; echo \"runner exit \$?\" >> /r/run.log" || true
+  if [ -n \"$GENLAST\" ]; then
+    ./SpelunkyClassicHD > /r/run.log 2>&1 & p=\$!; t=0
+    while [ ! -e \"$GENLAST\" ] && [ \$t -lt $T ] && kill -0 \$p 2>/dev/null; do sleep 1; t=\$((t + 1)); done
+    sleep 1; kill -9 \$p 2>/dev/null; echo \"runner stopped after the last case (\$t s)\" >> /r/run.log
+  else
+    timeout $T ./SpelunkyClassicHD > /r/run.log 2>&1; echo \"runner exit \$?\" >> /r/run.log
+  fi" || true
 cp "$RUN/run.log" "build/trace/$NAME.log"
 if [ -n "$PROBE" ]; then
   [ -f "$RUN/game/rng_probe.bin" ] || { echo "no rng_probe.bin"; tail -20 "build/trace/$NAME.log"; exit 1; }

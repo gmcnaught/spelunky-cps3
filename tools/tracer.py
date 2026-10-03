@@ -438,7 +438,7 @@ def decode(path, names_path, steps=None, inst=True):
 # ---------------------------------------------------------------------------------------------------------------
 # Generator mode (P2): `build-gen <game.unx> <cases.txt> <out.unx>`, scripts/hd_trace.sh --gen <cases> [name].
 # One runner process generates every case of the cases file in turn: oGame Create's `scrInitLevel()` call is
-# wrapped so that, for case k, the starting globals are set (new game: scrClearGlobals() plus the variables it
+# wrapped (the decompiled text "scrInitLevel();" is replaced) so that, for case k, the starting globals are set (new game: scrClearGlobals() plus the variables it
 # leaves alone; or carried over from case k-1), random_set_seed(seed) is called, scrInitLevel() runs, and the
 # instance list is dumped right after it returns (before any Step), followed by 4 x random(2^32) (= the next 4 raw
 # WELL512a words) and the `with` iteration orders of a few objects. oGamepad Begin Step then restarts rLevel for
@@ -633,7 +633,7 @@ CodeImportGroup g = new(Data);
 g.QueueAppend("gml_Object_oGamepad_Create_0", {q(create)});
 g.QueueReplace("gml_Object_oGamepad_Step_0", {q(step)});
 g.QueueReplace("gml_Object_oGamepad_Step_1", {q(begin)});
-g.QueueFindReplace("gml_Object_oGame_Create_0", "if (global.gameStart) scrInitLevel();", {q("if (global.gameStart) {" + setup + "}")});
+g.QueueFindReplace("gml_Object_oGame_Create_0", "scrInitLevel();", {q("{" + setup + "}")});
 g.Import();
 ''')
     if os.path.exists(out):
