@@ -68,7 +68,7 @@ palette fade on CPS3, no per-pixel light needed.
 ## 4. Verification
 
 1. **Reference:** HD 1.2.2's `game.droid` with tracer GML injected by UndertaleModTool (Maldita's `tools/tracer.py`
-   method), run by gmloader-next on the MiSTer .81 (P1) with `random_set_seed` in place of `randomize` and recorded
+   method), run by the release's own GameMaker Linux runner (1.2.2 linux-arm64 build) in Docker on the Mac (P1; not gmloader on the MiSTer: the user, 2026-10-03, it is not a faithful runtime) with `random_set_seed` in place of `randomize` and recorded
    inputs, dumping the state at each step: the RNG seed, each instance's id, object, x, y, sprite, frame,
    alarms and the `xVel` / `yVel` variables, `global` score, life, bombs and ropes, the level number and the room.
 2. **Generator (bit-exact):** for seeds x every area (1-4 mines, 5-8 lush, 9-12 ice, 13-16 temple, the boss level,
@@ -86,7 +86,7 @@ palette fade on CPS3, no per-pixel light needed.
 | # | Result | Verified by |
 |---|---|---|
 | P0 | Sources and tooling: 1.1 extracted (done), HD 1.2.2 source and APK in `refs/hd` (done); repository scaffold on the SDK (`../cps3-testgame/sdk`, `sdk.mk`) with a `hello` that boots in MAME | MAME boot |
-| P1 | **Reference runner.** HD 1.2.2 `game.droid` under gmloader-next (supports 2024.14+ runners; Maldita's droid was bytecode 14, this one is 17) on the .81; tracer GML injected with UndertaleModTool's CLI: fixed seed, inputs from a route file, a per-step dump (RNG state if readable, each instance's id, object, x, y, sprite, frame, alarms, `xVel` / `yVel`; globals: level, life, bombs, ropes, money). Fallback runners: the release's Linux x86_64 AppImage in Docker (Xvfb), or a GameMaker IDE build of the tag | Two runs with one seed and one input file give identical dumps; a dumped level matches the screen |
+| P1 | **Reference runner.** HD 1.2.2's Linux build (official GameMaker runner, linux-arm64, native in Docker on Apple Silicon with Xvfb; x86_64 AppImage under emulation as fallback) with tracer GML injected into its data file by UndertaleModTool's CLI: fixed seed, inputs from a route file, a per-step dump (RNG state if readable, each instance's id, object, x, y, sprite, frame, alarms, `xVel` / `yVel`; globals: level, life, bombs, ropes, money). Not gmloader on the MiSTer (user, 2026-10-03) | Two runs with one seed and one input file give identical dumps; a dumped level matches the screen |
 | P2 | **RNG and generator on the host (C):** the 2024.14 runtime's `random` (model from the reference: seed, draw sequence), `scrLevelGen` / `scrRoomGen*` / `scrEntityGen` / `scrTreasureGen` / `scrShopItemsGen` translated; level as cell grid + instance list | §4 item 2 on 200 seeds x every area |
 | P3 | **Display bring-up:** full-screen X zoom (works on MAME and jtcps3, §5): X zoom 0x35, 318 of 320 px at x1.208. Then: area tile sets by DMA, the generated level on one 64x64 tilemap (672x544 fits: no streaming), the camera, the 8-line crop | MAME frames exact against host-composed frames; jtcps3 screenshots |
 | P4 | **Player and core physics:** `oCharacter` / `oPlayer1` movement, ladders, ropes, whip, hang, crouch, damage, bombs, items held / thrown; fixed point per §1 | Routes on the first mines levels: route check + G-check against P1 references |
@@ -97,7 +97,7 @@ palette fade on CPS3, no per-pixel light needed.
 
 ## 5. Open questions
 
-- P1: whether gmloader-next runs HD 1.2.2's bytecode-17 `game.droid` (2024.14 runtime, armeabi-v7a `libyoyo.so` in the APK) on the MiSTer, and whether UndertaleModTool's CLI rewrites it. Unknown until tried.
+- P1: whether the 1.2.2 Linux runner runs headless in Docker (Xvfb, no audio device) and whether UndertaleModTool's CLI rewrites its bytecode-17 data file. Unknown until tried.
 - CPU: HD runs every instance every step (no deactivation): per-step cost grows with the whole level's enemies, not the view's.
 - **Resolved 2026-10-03: full-screen X zoom works on jtcps3** (MiSTer .81, `jtcps3.rbf` 2026-10-02, `tests/zoom`). MAME 0.289: 0x40, 0x35 and 0x36 pixel-exact against MAME's formula. jtcps3: 0x40 exact (with the known 1-px screenshot offset); zoomed, screenshot column X shows source column `((X + 1) * fsz + o) >> 16` with o about 0x5600 (0 of the identifiable columns off for both zooms), i.e. MAME's stepping at a different sampling phase: 3,472-5,376 px differ from MAME's screen. Choice for P3: 0x35 (318 of 320 px, x1.208). Frame checks of zoomed screens compare MAME with MAME; jtcps3 screenshots are compared after the zoom is undone by the fitted rule.
 - The 2024.14 runtime's `random` at the bit level (GM8's was an LCG; the GMS 2 generator is not documented here): from reference draws at P2.
