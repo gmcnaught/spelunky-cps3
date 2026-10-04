@@ -39,7 +39,7 @@ k=0; S=
 for p in $PAIRS; do
   k=$((k + 1)); r=${p%:*}; s=${p#*:}; f=$O/jtcost_${r}_$s.txt
   if [ ! -s "$TD/t$k.tr" ]; then echo "jtcost.sh: no trace for $r $s (see $O/mame.log)" >&2; exit 1; fi
-  python3 tools/jtcost.py --route "$r" --step "$s" "$TD/t$k.tr" "$O/nm.txt" > "$f"
+  JTC_SIMM1=${JTC_SIMM1:-$E/simm1.bin} python3 tools/jtcost.py --route "$r" --step "$s" "$TD/t$k.tr" "$O/nm.txt" > "$f"
   rm -f "$TD/t$k.tr"
   S="$S$(grep '^JTCOST ' "$f")
 "

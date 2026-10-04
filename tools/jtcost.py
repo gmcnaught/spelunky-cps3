@@ -65,6 +65,7 @@ def fn(pc):
 PLAY = [a for a, n in syms if n == '_play_step'][0]
 PCHIST = os.getenv('JTC_PCHIST'); pch = collections.Counter()   # JTC_PCHIST=<symbol>: its instructions by address
 callers = collections.Counter()
+litmiss = collections.Counter()               # literal-pool line misses by the literal's address
 STARTS = set(SA)                                  # a function's first instruction: one entry (call) of it
 dm = collections.Counter(); dsto = collections.Counter()
 
@@ -183,6 +184,7 @@ for line in open(tr):
                     ev['dmiss_' + ('simm' if reg == 'simm' else 'ram')] += 1
                     st['dmiss_' + reg] += 1; c['dmiss'] += 1
                     dm[('lit:' + fn(a)) if (reg == 'simm' and fn(a) == f) else dname(a)] += 1
+                    if reg == 'simm' and m.group(3) == 'PC': litmiss[a] += 1
     if op in ('MUL.L', 'DMULS.L', 'DMULU.L'): ev['mull'] += 1; st['mul'] += 1
     if op in ('MULS.W', 'MULU.W', 'MULS', 'MULU'): ev['mulw'] += 1; st['mulw'] += 1
     if op in JUMPS: ev['jump'] += 1; st['jump'] += 1
@@ -241,6 +243,21 @@ for s in (0, 1):
 
 print('\nsoft-float / libgcc calls by caller')
 for (h, cf), v in callers.most_common(30): print('  %-16s <- %-24s %6d' % (h, cf, v))
+
+SIMM1 = os.getenv('JTC_SIMM1')                   # simm1.bin (.text at 0x06000000): what the missed literals hold
+if SIMM1:
+    img = open(SIMM1, 'rb').read(); kinds = collections.Counter()
+    for a, v in litmiss.items():
+        o = (a & 0x1fffffff) - 0x06000000
+        w = int.from_bytes(img[o:o + 4], 'big') if 0 <= o and o + 4 <= len(img) else -1
+        if 0x02000000 <= w < 0x02080000: k = 'RAM data address'
+        elif 0x04000000 <= w < 0x05000000: k = 'video / sprite RAM address'
+        elif 0x06000000 <= w < 0x06100000 and fn(w) != '?' and (w in STARTS): k = 'function address'
+        elif 0x06000000 <= w < 0x07000000: k = 'SIMM data address (tables)'
+        else: k = 'constant'
+        kinds[k] += v
+    print('\nliteral-pool line misses by what the literal holds (JTC_SIMM1)')
+    for k, v in kinds.most_common(): print('  %-30s %6d' % (k, v))
 
 if PCHIST:
     print('\n%s: executions by address (JTC_PCHIST)' % PCHIST)
