@@ -208,25 +208,24 @@ static void anim_check(void)
 }
 #endif
 
-/* the instances of the step's start in creation order (GameMaker's animation pass); the terrain off the list
+/* the instances in creation order (GameMaker's animation pass), those an Animation End event creates (appended)
+   included: they are animated in the same pass (Observed: c_ice_barrier_s111 record 102, the oSkeleton that
+   oFakeBones' Animation End creates has image_index 0.5 in that step's record). The terrain off the list
    pw_tahead does nothing there, so the walk is the non-terrain list merged with the terrain list by creation
-   number. Only an Animation End event creates instances (appended) or puts terrain back on the list, so the
-   creation number is looked at only after one ran, and the terrain position is found again then. play_cur_obj
-   ends as the full walk leaves it: the object of the last instance with a sprite it looked at */
+   number. Only an Animation End event creates instances or puts terrain back on the list, so the terrain position
+   is found again after one ran. play_cur_obj ends as the full walk leaves it: the object of the last instance with
+   a sprite it looked at */
 static void animate(void)
 {
-    int k, a = pw_nthead, t = pw_tahead, ev = 0;
+    int k, a = pw_nthead, t = pw_tahead;
     int16_t s0 = PW.seq, lastseq = -1;
     for (;;) {
         if (a >= 0 && (t < 0 || pw_seq[a] < pw_seq[t])) { k = a; a = pw_ntnext[k]; }
         else if (t >= 0) { k = t; t = pw_tanext[k]; }
         else break;
-        if (ev && pw_seq[k] >= s0) break;
         if (PW.in[k].alive && PW.in[k].spr >= 0) lastseq = pw_seq[k];
-        if (anim_one(k)) {
-            ev = 1;
+        if (anim_one(k))
             for (t = pw_tahead; t >= 0 && pw_seq[t] <= pw_seq[k]; t = pw_tanext[t]) {}
-        }
     }
     k = pw_last_with_sprite(s0);
     if (k >= 0 && pw_seq[k] > lastseq) play_cur_obj = PW.in[k].obj;
