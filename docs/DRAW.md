@@ -133,9 +133,9 @@ the word-2 format). `tests/game/sprbss.ld`: area A's test arrays must end below 
   runs (73 routes x HUD on/off, attract seeds 7 / 1 / 99 x 3,600 steps, rHighscores cycle).
 - MAME: snapshots byte-identical to the baseline's on p4_exit559 (14 records), p5_snakes (5), c_swamp_drain (5),
   p7_dark (2). Against `tools/drawmodel.py`: 0 px on p4_exit559 x14, p5_snakes x5, p5_spider x5, p5_shop x5,
-  p8_boot (attract) x7, p8_scores x5; c_swamp_drain rec 240 / 300 differ 53 / 172 px **in the baseline too**
-  (same snapshots). p7_dark differs from the model by 45-79 K px with the HEAD code as well in this harness
-  (driver without `scripts/game_check.sh`'s git snapshot; cause not investigated).
+  p8_boot (attract) x7, p8_scores x5; c_swamp_drain rec 240 / 300 differed 53 / 172 px **in the baseline too**
+  (same snapshots): a model error, fixed (section 5). p7_dark differs from the model by 45-79 K px at HEAD too:
+  the program does not play the traced level (section 5).
 - jtcps3: not run (the .81 is shared; ask the lead). The entry and record words are the SDK's, already 0 px on
   jtcps3 via `cps3v_object` in Maldita.
 
@@ -154,8 +154,49 @@ game 2 -13.7 K. DRAW_PROFILE, p4_exit559 rec 560: draw 159,872 -> 154,272 (list 
 9,472 -> 288.
 
 Cost: the room-start VBlank (already over one frame) writes every room cell instead of the on-screen ones:
-+47 K to +151 K on that one frame. If that matters, the queue can hold the off-screen cells and write them over
-the following frames.
++47 K to +151 K on that one frame. Not spread over later frames: a room start's step is 2.0-2.8 M clocks (level
+start) up to 30 M (generation) (docs/PERF.md), so the room start is a multi-frame stall either way and +0.15 M
+(under 8 % of the smallest) changes no budget. Spreading would only pay once room starts fit their frames.
+
+## 5. Frame differences that existed at HEAD
+
+### c_swamp_drain rec 240 / 300 (53 / 172 px): the model was wrong (fixed)
+
+The MAME frame shows the dead player lying on the floor; the model left it out. `tools/drawmodel.py`
+`blink_toggles` rebuilds oPlayer1.blinkToggle (not traced) from `invincible`: a record with invincible 30 or 60
+and `inv > prev - 1` counted as a new hit and re-armed 30 blink steps. oPlayer1 Step :1903 counts invincible
+down only while not dead, so a dead player keeps 30 and every record re-armed the blink: the model blinked the
+body forever, while the GML (and src/game) blink 30 steps after the death and then draw it (`else blinkToggle =
+-1`, :1911). Rule now `inv > prev`. Records whose blinkToggle changes, over all traces: c_swamp_drain 71,
+c_swamp_swim 76, p5_caveman 31. Host draw (every record, `tests/game/host.c`) against the model: c_swamp_drain
+71 -> 0 of 370 frames differ, c_swamp_swim 76 -> 0 of 418. Limit of the rule: a second hit on an already dead
+player (invincible set to 30 again, unchanged) would not be seen.
+
+p5_caveman still differs on 115 of 290 host frames (from rec 176, an object ~50 px wide at view x 38-89), with
+either rule: a separate difference, not investigated here.
+
+### p7_dark (45-79 K px): the program plays a different level; draw and model are right
+
+The model equals the runner's own frames (0 px on all 6 TRACE_SHOT frames). The MAME frames show another level:
+at rec 100 a lit level with the snake-pit message ("I hear snakes"), life 3, against the runner's dark level
+("I can't see a thing!"). The route has `# nodark 0` (TRACE_NODARK=0: global.noDarkLevel false), but
+`tests/game` (mkroute.py, game_cfg) has no nodark / globals / room setting and src/game's clear of the globals
+leaves noDarkLevel = 1 (gen.c:58), so level 2 is generated without darkness and the RNG goes another way. Only
+playhost has `--nodark` (test/host/playhost.c:220). Second gap, for when it plays the right level: src/game
+never sets `PLEV.darkness` (oLevel Create :16 darkness = 1 and the Step's darkness section :110-136 from the
+flare / light-source distance are not translated), so draw.c would fade by 0. Both are outside src/draw: a
+nodark / globals / room field in game_cfg and mkroute.py, and oLevel's darkness in src/game. The dark path
+itself was gated with DARK=a8 (forced alpha).
+
+### c_temple_olmec crashes the host build
+
+`tests/game/host.c` (and the same tests/game snapshot in MAME) dies with SIGBUS in `play_level_start`
+(prun.c:301, `PE(p)->alarm[a] = ...`) at game start. The route needs `# room rOlmec`, which tests/game cannot
+set, so the host generates a level-16 rLevel instead, and that level has more instances than the snapshot's
+`PIN_MAX 1000` (scripts/game_check.sh and gametime set it): `pin_add` returns PIN_DEAD and the copy loop writes
+through that slot's ext. With PIN_MAX 4096 (src/game's own value) the same run completes, ASan clean. So: a
+test-harness limit (PIN_MAX 1000, no room setting), plus a missing PIN_DEAD check in `play_level_start`
+(src/game).
 
 ## Observed / Inferred / Unknown
 
@@ -166,4 +207,4 @@ the following frames.
   scene sizes; the remaining draw cost is per-instance logic (scan 42 K, sort 18 K, Draw events in "list"), not
   video hardware use. On jtcps3 (~3.4x MAME for memory-bound code) the saving is ~45 K clocks a step pair.
 - **Unknown:** jtcps3 behaviour for wholly off-screen sprites and record flip (RTL not available); the
-  prototype on jtcps3; c_temple_olmec on the host stats build; p7_dark in this harness.
+  prototype on jtcps3; p5_caveman's remaining host-vs-model difference.

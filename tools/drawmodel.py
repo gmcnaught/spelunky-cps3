@@ -66,7 +66,9 @@ def blink_toggles(names, recs):
     (then blink -= 1; -1 when 0). blink is set only by the hits, with invincible to the same value (oEnemy /
     oCaveman / ... Collision_oCharacter: 30; the restart :1856: 60), after the Step: a record whose invincible is 30
     or 60 and not the previous one less 1 had a hit in its step. invincible = 999 (level exit :738, :876) sets no
-    blink. A room start creates the player again (characterCreateEvent: -1)."""
+    blink. A dead player's invincible is not counted down (:1903), so an unchanged 30 is no new hit
+    (c_swamp_drain, c_swamp_swim: the blink ended 30 records after the death). A room start creates the player
+    again (characterCreateEvent: -1)."""
     out, bt, blink, prev = {}, -1, 0, 0
     for hd, insts in recs:
         inv = player_inv(names, insts)
@@ -77,7 +79,7 @@ def blink_toggles(names, recs):
                 bt, blink = -bt, blink - 1
             else:
                 bt = -1
-            if inv in (30, 60) and inv > prev - 1:
+            if inv in (30, 60) and inv > prev:      # a dead player's invincible stays (Step :1903): no new hit
                 blink = inv
         prev = inv
         out[hd['rec']] = bt
