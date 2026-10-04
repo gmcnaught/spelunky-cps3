@@ -5,12 +5,13 @@
     tools/gencmp.py <ref.gen> <ref.names> <c.txt> [--max N] [--show K]
     tools/gencmp.py --dump <ref.gen> <ref.names> [--case K]
 
-Per case: the level's instances in creation order (the runner's `with (all)` list is newest first and ends with
-the persistent instances after oPlayer1, the room's first instance; that list up to oPlayer1, reversed), room
-instances by their room ids, generated ones by relative id (id - the first generated id). Compared: id, object,
-x, y, sprite, depth, alarms, and the variables GEN_VARS the instance has in the runner (missing there = not
-compared); the globals in both; the 4 RNG words after generation. The first difference of each failing case is
-reported with the instances around it.
+Per case: the level's instances in creation order (the runner's `with (all)` list reversed, persistent instances
+left out), room instances by their room ids (<= GROOM_MAXID, build/gen/gentables.h), generated ones by relative id
+(id - the first generated id). Compared: id, object, x, y, sprite, depth, alarms, and the variables CVARS the
+instance has in the runner (missing there = not compared; `type` only for the exit objects, `style` only for
+oShopkeeper); the globals the runner has set; global.roomPath; the tile_add tiles per depth in order (the runner
+lists a layer's tiles newest first: reversed here); the 4 RNG words after generation. The first difference of
+each failing case is reported with the instances around it; a C case that reached untranslated GML says so.
 """
 import os
 import sys
@@ -18,45 +19,72 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import tracer  # noqa: E402
 
-ROOM_IDS = set([104034] + list(range(104016, 104034)))
-CVARS = ['invincible', 'status', 'cost', 'forSale', 'shopWall', 'value', 'inDiceHouse', 'cleanDeath', 'xVel',
-         'yVel', 'facing', 'counter', 'style']
+def maxid():
+    """GROOM_MAXID from build/gen/gentables.h (tools/hdgentables.py): ids above it are created at run time"""
+    h = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'build', 'gen', 'gentables.h')
+    for line in open(h):
+        if line.startswith('#define GROOM_MAXID'):
+            return int(line.split()[2])
+    raise SystemExit('GROOM_MAXID not in ' + h)
+
+
+CVARS = ['invincible', 'status', 'cost', 'forSale', 'shopWall', 'value', 'inDiceHouse', 'cleanDeath', 'facing',
+         'counter', 'spurt', 'deathTimer', 'held', 'swimming', 'dir', 'spurtTime', 'shiftToggle', 'New', 'linkVal',
+         'style', 'treasure', 'type']
+TYPE_OBJS = ('oExit', 'oEntrance', 'oXMarket')      # `type` compared only here (elsewhere a per-object constant)
+
+
+def tiles_by_depth(tiles):
+    """tile lists compared per depth (layer), in order within a depth"""
+    d = {}
+    for t in tiles:
+        d.setdefault(t[-1], []).append(tuple(t))
+    return d
 
 
 def ref_cases(path, names_path):
     names = tracer.load_names(names_path)
+    top = maxid()
     for r in tracer.gen_records(open(path, 'rb').read()):
-        lst = r['insts']
-        k = next(i for i, x in enumerate(lst) if names['O'][x['obj']] == 'oPlayer1')
-        lvl = list(reversed(lst[:k + 1]))
-        gen = [x['id'] for x in lvl if x['id'] not in ROOM_IDS]
+        lvl = [x for x in reversed(r['insts']) if not x['persistent']]
+        gen = [x['id'] for x in lvl if x['id'] > top]
         base = min(gen) if gen else 0
         insts = []
         for x in lvl:
-            iid = x['id'] if x['id'] in ROOM_IDS else x['id'] - base
-            v = dict(x['vars'])
-            for q in ('xVel', 'yVel'):
-                if q in v:
-                    v[q] = v[q] * 256
-            if 'style' in v and names['O'][x['obj']] != 'oShopkeeper':
+            iid = x['id'] if x['id'] <= top else x['id'] - base
+            obj = names['O'][x['obj']]
+            v = {k: x['vars'][k] for k in CVARS if k in x['vars']}
+            if 'style' in v and obj != 'oShopkeeper':
                 del v['style']
-            insts.append(dict(id=iid, obj=names['O'][x['obj']], x=x['x'], y=x['y'],
-                              spr=names['S'].get(x['spr'], '-'), depth=x['depth'],
-                              alarms={k2: int(a) for k2, a in x['alarms'].items()}, vars=v))
+            if 'type' in v and obj not in TYPE_OBJS:
+                del v['type']
+            insts.append(dict(id=iid, obj=obj, x=x['x'], y=x['y'], spr=names['S'].get(x['spr'], '-'),
+                              depth=x['depth'], alarms={k2: int(a) for k2, a in x['alarms'].items()}, vars=v))
         yield dict(case=r['case'], seed=r['seed'], level=r['level'], globals=r['globals'], roomPath=r['roomPath'],
-                   insts=insts, draws=r['draws'])
+                   insts=insts, draws=r['draws'], tiles=tiles_by_depth(list(reversed(r['tiles']))))
+
+
+def num_or_str(t):
+    try:
+        return float(t)
+    except ValueError:
+        return t
 
 
 def c_cases(path):
     cur = None
     for line in open(path):
-        f = line.split()
-        if not f:
+        f = line.rstrip('\n').split(' ')
+        if not f or not f[0]:
             continue
         if f[0] == 'C':
             if cur:
+                cur['tiles'] = tiles_by_depth(cur['tiles'])
                 yield cur
-            cur = dict(case=int(f[1]), seed=int(f[2]), level=int(f[3]), status=int(f[4]), globals={}, insts=[])
+            cur = dict(case=int(f[1]), seed=int(f[2]), level=int(f[3]), status=int(f[4]), globals={}, insts=[],
+                       tiles=[], untranslated=0)
+        elif f[0] == 'U':
+            cur['untranslated'] = int(f[1])
         elif f[0] == 'G':
             cur['globals'][f[1]] = float(f[2])
         elif f[0] == 'R':
@@ -67,19 +95,26 @@ def c_cases(path):
                 for kv in f[7].split(','):
                     a, b = kv.split('=')
                     al[int(a)] = int(b)
-            v = dict(zip(CVARS, [float(t) for t in f[8:20]] + [f[20]]))
+            v = {}
+            for kv in f[8:]:
+                k, val = kv.split('=', 1)
+                v[k] = num_or_str(val.replace('~', ' '))
             cur['insts'].append(dict(id=int(f[1]), obj=f[2], x=float(f[3]), y=float(f[4]), spr=f[5],
                                      depth=float(f[6]), alarms=al, vars=v))
+        elif f[0] == 'T':
+            cur['tiles'].append((f[1],) + tuple(int(t) for t in f[2:9]))
         elif f[0] == 'D':
             cur['draws'] = [int(t) for t in f[1:5]]
     if cur:
+        cur['tiles'] = tiles_by_depth(cur['tiles'])
         yield cur
+    return
 
 
-def fmt(i):
+def fmt(i, keys=None):
     if i is None:
         return '(none)'
-    v = ' '.join(f'{k}={g}' for k, g in sorted(i['vars'].items()) if k in CVARS)
+    v = ' '.join(f'{k}={g}' for k, g in sorted(i['vars'].items()) if k in CVARS and (keys is None or k in keys))
     return f"{i['id']} {i['obj']} {i['x']:g},{i['y']:g} {i['spr']} d{i['depth']:g} al{i['alarms']} {v}"
 
 
@@ -96,8 +131,12 @@ def inst_diff(r, c):
 def compare(rc, cc, show):
     out = []
     for k in rc['globals']:
+        if rc['globals'][k] == tracer.BAD:
+            continue                                     # not set in the runner (yet)
         if k in cc['globals'] and cc['globals'][k] != rc['globals'][k]:
             out.append(f"global {k}: ref {rc['globals'][k]:g} C {cc['globals'][k]:g}")
+    if cc.get('status'):
+        out.append(f"C reached untranslated GML (code {cc.get('untranslated')})")
     if rc['roomPath'] != cc.get('roomPath'):
         out.append(f"roomPath: ref {[int(v) for v in rc['roomPath']]} C {[int(v) for v in cc.get('roomPath', [])]}")
     ri, ci = rc['insts'], cc['insts']
@@ -109,11 +148,19 @@ def compare(rc, cc, show):
             out.append(f'instance #{n} ({what}) of ref {len(ri)} / C {len(ci)}:')
             for m in range(max(0, n - show), n):
                 out.append(f'    same {fmt(ri[m])}')
+            keys = set(r['vars']) if r else None
             out.append(f'    ref  {fmt(r)}')
-            out.append(f'    C    {fmt(c)}')
+            out.append(f'    C    {fmt(c, keys)}')
             for m in range(n + 1, min(n + 1 + show, max(len(ri), len(ci)))):
                 out.append(f"    ref  {fmt(ri[m]) if m < len(ri) else '-'}")
                 out.append(f"    C    {fmt(ci[m]) if m < len(ci) else '-'}")
+            break
+    for dep in sorted(set(rc['tiles']) | set(cc['tiles'])):
+        a, b = rc['tiles'].get(dep, []), cc['tiles'].get(dep, [])
+        if a != b:
+            k = next((n for n, (p, q) in enumerate(zip(a, b)) if p != q), min(len(a), len(b)))
+            out.append(f"tiles at depth {dep}: ref {len(a)} C {len(b)}, first difference #{k}: "
+                       f"ref {a[k] if k < len(a) else '-'} C {b[k] if k < len(b) else '-'}")
             break
     if rc['draws'] != cc.get('draws'):
         out.append(f"RNG after generation: ref {rc['draws']} C {cc.get('draws')}")

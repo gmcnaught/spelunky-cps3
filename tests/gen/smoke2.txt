@@ -1,0 +1,7 @@
+1 1 0 1
+5 6 0 1 lake=1
+7 10 0 1
+8 16 0 1
+9 3 0 1 pickupItem=s:Mattock kaliPunish=2
+10 14 0 1 murderer=1
+11 5 0 1 genBlackMarket=1

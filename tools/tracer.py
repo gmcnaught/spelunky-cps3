@@ -29,7 +29,8 @@ Method from ../maldita.castilla-cps3/tools/tracer.py. Changes, all GML compiled 
   - TRACE_SHOT=r1,r2,...: oGamepad Post-Draw (new) saves application_surface after record r (shot_gml).
   - oGamepad End Step (new): a phase-1 record each step. The buffer is saved every 50 records as
     trc_<k>.bin (buffer_save_ext; then rewound). After route steps + TAIL (default 30) or MAX_STEPS records:
-    last chunk saved, game_end().
+    last chunk saved, then trc_done.txt (scripts/hd_trace.sh stops the runner once it exists: game_end() can
+    hang in this runner), game_end().
 
 oGamepad (created by scrInit in rScreenInit, persistent) is the second instance after oScreen, so its Begin Step
 runs before every other instance's Begin Step except oScreen's (surfaces, pause), its Step before every
@@ -56,10 +57,19 @@ Trace format (little-endian; the chunks concatenated in order, scripts/hd_trace.
     f64  x, y
     s16  sprite_index    (-1 none; names file S lines)
     f64  image_index
+    f64  image_xscale, image_yscale, image_angle
+    u32  image_blend     (BGR colour)
+    f64  image_alpha, depth
+    u8   visible
     u16  alarm mask      bit k: alarm[k] != -1
     f64  alarm[k]        for each set bit, k ascending
     u8   vel flags       bit 0: the instance has xVel, bit 1: yVel (variable_instance_exists)
     f64  xVel, yVel      when present (-1e9 if not a number)
+  phase-0 records only, after the instances: the room's tile_add tiles (tiles_gml: legacy tile elements of
+  every layer, layer_get_all() order then element order)
+    u32  count
+    per tile: string background name (NUL-terminated), f64 left, top, w, h, x, y, depth (the layer's depth)
+  (Magic "SPT1" traces, before 2026-10-03 P3: no image_xscale..visible fields and no tiles; decode reads both.)
 Names file (<out.droid>.names): one line per resource, "O <index> <name>", "S ...", "R ...".
 """
 import os
@@ -75,7 +85,8 @@ DOTNET = 'mcr.microsoft.com/dotnet/sdk:10.0'
 KEYS = {'R': (1, 'right'), 'L': (2, 'left'), 'U': (4, 'up'), 'D': (8, 'down'), 'J': (16, 'jump'),
         'A': (32, 'attack'), 'I': (64, 'item'), 'N': (128, 'run'), 'B': (256, 'bomb'), 'O': (512, 'rope'),
         'F': (1024, 'flare'), 'P': (2048, 'pay'), 'S': (4096, 'start')}
-MAGIC = 0x31545053
+MAGIC = 0x32545053   # "SPT2" (SPT1: without the drawing fields and tiles; still decoded)
+MAGIC1 = 0x31545053
 CHUNK = 50
 TAIL = int(os.environ.get('TRACE_TAIL', 30))
 MAX_STEPS = int(os.environ.get('TRACE_MAX', 20000))
@@ -130,6 +141,13 @@ def record(phase):
         buffer_write(b, buffer_f64, y);
         buffer_write(b, buffer_s16, real(sprite_index));
         buffer_write(b, buffer_f64, image_index);
+        buffer_write(b, buffer_f64, image_xscale);
+        buffer_write(b, buffer_f64, image_yscale);
+        buffer_write(b, buffer_f64, image_angle);
+        buffer_write(b, buffer_u32, image_blend);
+        buffer_write(b, buffer_f64, image_alpha);
+        buffer_write(b, buffer_f64, depth);
+        buffer_write(b, buffer_u8, visible ? 1 : 0);
         var am = 0;
         for (var k = 0; k < 12; k++)
         {{
@@ -148,8 +166,45 @@ def record(phase):
         if (vf & 2) buffer_write(b, buffer_f64, {num('yVel')});
     }}
     buffer_poke(b, npos, buffer_u32, n);
+    {tiles_gml() if phase == 0 else ''}
     global.trc_rec += 1;
 }}
+'''
+
+
+def tiles_gml():
+    """GML appending the room's tile_add tiles (legacy tile elements: scripts/tile_add -> layer_tile_create) to
+    buffer b: u32 count; per tile: string background name, f64 left, top, w, h, x, y, depth (layer depth).
+    Order: layer_get_all(), then layer_get_all_elements() per layer"""
+    return '''
+    {
+        var tpos = buffer_tell(b);
+        buffer_write(b, buffer_u32, 0);
+        var tn = 0;
+        var lays = layer_get_all();
+        for (var li = 0; li < array_length(lays); li++)
+        {
+            var els = layer_get_all_elements(lays[li]);
+            for (var ei = 0; ei < array_length(els); ei++)
+            {
+                if (layer_get_element_type(els[ei]) == layerelementtype_tile)
+                {
+                    var el = els[ei];
+                    var reg = layer_tile_get_region(el);
+                    tn += 1;
+                    buffer_write(b, buffer_string, sprite_get_name(layer_tile_get_sprite(el)));
+                    buffer_write(b, buffer_f64, reg[0]);
+                    buffer_write(b, buffer_f64, reg[1]);
+                    buffer_write(b, buffer_f64, reg[2]);
+                    buffer_write(b, buffer_f64, reg[3]);
+                    buffer_write(b, buffer_f64, layer_tile_get_x(el));
+                    buffer_write(b, buffer_f64, layer_tile_get_y(el));
+                    buffer_write(b, buffer_f64, layer_get_depth(lays[li]));
+                }
+            }
+        }
+        buffer_poke(b, tpos, buffer_u32, tn);
+    }
 '''
 
 
@@ -237,6 +292,9 @@ if (global.trc_done || !global.trc_on) exit;
 if (global.trc_t >= {total + TAIL} || global.trc_rec >= {MAX_STEPS})
 {{
     {save_chunk(False)}
+    var df = file_text_open_write("trc_done.txt");
+    file_text_write_string(df, string(global.trc_chunk));
+    file_text_close(df);
     global.trc_done = 1;
     global.trc_on = 0;
     game_end();
@@ -385,14 +443,22 @@ def records(data):
     while o < len(data):
         h = H.unpack_from(data, o)
         o += H.size
-        if h[0] != MAGIC:
+        if h[0] not in (MAGIC, MAGIC1):
             raise ValueError(f'bad magic at {o - H.size}')
+        v2 = h[0] == MAGIC
         hd = dict(zip(['magic', 'phase', 'rec', 't', 'input', 'room', 'currLevel', 'seed', 'plife', 'bombs',
                        'rope', 'money', 'n'], h))
         insts = []
         for _ in range(hd['n']):
-            iid, obj, x, y, spr, img, am = struct.unpack_from('<ihddhdH', data, o)
-            o += 34
+            iid, obj, x, y, spr, img = struct.unpack_from('<ihddhd', data, o)
+            o += 32
+            draw = None
+            if v2:
+                xs, ys, ang, blend, alpha, depth, vis = struct.unpack_from('<dddIddB', data, o)
+                o += 45
+                draw = dict(xscale=xs, yscale=ys, angle=ang, blend=blend, alpha=alpha, depth=depth, visible=vis)
+            (am,) = struct.unpack_from('<H', data, o)
+            o += 2
             alarms = {}
             for k in range(12):
                 if am & (1 << k):
@@ -407,7 +473,18 @@ def records(data):
                     o += 8
                 else:
                     vel.append(None)
-            insts.append(dict(id=iid, obj=obj, x=x, y=y, spr=spr, img=img, alarms=alarms, xVel=vel[0], yVel=vel[1]))
+            insts.append(dict(id=iid, obj=obj, x=x, y=y, spr=spr, img=img, alarms=alarms, xVel=vel[0], yVel=vel[1],
+                              draw=draw))
+        hd['tiles'] = []
+        if v2 and hd['phase'] == 0:
+            (tn,) = struct.unpack_from('<I', data, o)
+            o += 4
+            for _ in range(tn):
+                e = data.index(b'\0', o)
+                bg = data[o:e].decode('utf-8', 'replace')
+                o = e + 1
+                hd['tiles'].append((bg,) + struct.unpack_from('<7d', data, o))
+                o += 56
         yield hd, insts
 
 
@@ -431,61 +508,121 @@ def decode(path, names_path, steps=None, inst=True):
         for i in insts:
             al = ' '.join(f'a{k}={g(v)}' for k, v in i['alarms'].items())
             vel = '' if i['xVel'] is None and i['yVel'] is None else f" vel {g(i['xVel'])} {g(i['yVel'])}"
+            d = i['draw']
+            dr = '' if d is None else (f" sc {g(d['xscale'])} {g(d['yscale'])} ang {g(d['angle'])} "
+                                       f"blend {d['blend']:06x} alpha {g(d['alpha'])} depth {g(d['depth'])} "
+                                       f"vis {d['visible']}")
             print(f"  {i['id']} {names['O'].get(i['obj'], i['obj'])} {g(i['x'])} {g(i['y'])} "
-                  f"{names['S'].get(i['spr'], i['spr'])} {g(i['img'])}{(' ' + al) if al else ''}{vel}")
+                  f"{names['S'].get(i['spr'], i['spr'])} {g(i['img'])}{dr}{(' ' + al) if al else ''}{vel}")
+        for t in hd['tiles']:
+            print(f"  tile {t[0]} {' '.join(g(v) for v in t[1:])}")
 
 
 # ---------------------------------------------------------------------------------------------------------------
 # Generator mode (P2): `build-gen <game.unx> <cases.txt> <out.unx>`, scripts/hd_trace.sh --gen <cases> [name].
-# One runner process generates every case of the cases file in turn: oGame Create's `scrInitLevel()` call is
-# wrapped (the decompiled text "scrInitLevel();" is replaced) so that, for case k, the starting globals are set (new game: scrClearGlobals() plus the variables it
-# leaves alone; or carried over from case k-1), random_set_seed(seed) is called, scrInitLevel() runs, and the
-# instance list is dumped right after it returns (before any Step), followed by 4 x random(2^32) (= the next 4 raw
-# WELL512a words) and the `with` iteration orders of a few objects. oGamepad Begin Step then restarts rLevel for
-# case k + 1 (room_restart) or ends the game. The rest of the run is the normal flow (rIntro -> rTitle -> rLevel,
-# no keys pressed).
+# One runner process generates every case of the cases file in turn. oGame Create's `scrInitLevel()` call is
+# wrapped (the decompiled text "scrInitLevel();" is replaced): for case k the starting globals are set (new game:
+# scrClearGlobals() plus the variables it leaves alone; or carried over from case k-1; then the case's overrides)
+# and random_set_seed(seed) is called at the start of the Create event of the room's first instance (oPlayer1 in
+# rLevel / rLevel3, oBlackBG in rLevel2, oEntrance in rOlmec): the room's own instances (rOlmec's temple blocks and
+# lava draw from the RNG before oGame) and oLevel Create (held item, Kali ball) see the case's state. Then
+# scrInitLevel() runs (oGame Create) and the room's instances and tiles are dumped right after it returns (before
+# any Step), followed by 4 x random(2^32) (= the next 4 raw WELL512a words) and the `with` iteration orders of a
+# few objects. The case's room is the one the game uses for that level (gen_room: rLevel; rLevel2 for levels 9-12;
+# rLevel3 when global.lake; rOlmec for level 16).
+# oGamepad Begin Step then goes to case k + 1's room (room_restart if it is the same room) or ends the game. The
+# rest of the run is the normal flow (rIntro -> rTitle -> the first case's room, no keys pressed).
 #
-# cases.txt: lines "<seed> <level> <cont> <noDarkLevel>"; cont 0 = new-game globals, 1 = globals as left by the
-# previous case (a level chain: only currLevel and noDarkLevel are set).
+# cases.txt: lines "<seed> <level> <cont> <noDarkLevel> [name=value ...]"; cont 0 = new-game globals, 1 = globals as
+# left by the previous case (a level chain); name=value sets global.<name> (a number, or s:<text> for a string,
+# "~" standing for a space).
 # Output gen_<k>.bin per case (little-endian):
-#   u32 magic 0x4e454753 ("SGEN"), s32 case, f64 seed, f64 level
+#   u32 magic 0x324e4753 ("SGN2"), s32 case, f64 seed, f64 level
 #   f64 GEN_GLOBALS[...], then oGame.GEN_OGAME[...] (after scrInitLevel; -1e9 if not a number)
-#   f64 roomPath[i, j] for i = 0..3 (room column), j = 0..3 (room row)
+#   f64 roomPath[i, j] for i = 0..3 (room column), j = 0..4 (room row; row 4 is the lake row)
 #   u32 n; per instance (with (all) order):
 #     s32 id, s16 object_index, f64 x, f64 y, s16 sprite_index, f64 depth, f64 image_speed, u8 visible,
-#     u16 alarm mask, f64 alarm[k] for each set bit,
-#     u16 var mask (bit v: GEN_VARS[v] exists and is numeric), f64 value for each set bit,
+#     u8 persistent, u16 alarm mask, f64 alarm[k] for each set bit,
+#     u32 var mask (bit v: GEN_VARS[v] exists and is numeric), f64 value for each set bit,
 #     u8 string mask (bit s: GEN_SVARS[s] exists and is a string), string (buffer_string) for each set bit
+#   tiles: u32 count, per tile: string background, f64 left, top, w, h, x, y, depth (tiles_gml)
 #   f64 x 4: random(4294967296) x 4
+#   TRACE_GEN_ORDER=all only: u32 0xFFFFFFFF, then for every object with an instance: s32 object, u32 count,
+#   s32 id x count (with (obj) order); s32 -1
 #   per object in GEN_ORDER: u32 count, s32 id x count (with (obj) order)
-GEN_MAGIC = 0x4e454753
+GEN_MAGIC = 0x324e4753
 GEN_GLOBALS = ['darkLevel', 'hadDarkLevel', 'genUdjatEye', 'madeUdjatEye', 'genMarketEntrance', 'snakePit',
                'shop', 'startRoomX', 'startRoomY', 'endRoomX', 'endRoomY', 'exitX', 'exitY', 'cemetary',
                'giantSpider', 'genGiantSpider', 'LockedChest', 'Key', 'lockedChestChance', 'blackMarket',
-               'sacrificePit', 'alienCraft', 'yetiLair', 'levelType', 'noDarkLevel', 'lake', 'marketChance']
-GEN_OGAME = ['damsel', 'idol', 'altar']
+               'sacrificePit', 'alienCraft', 'yetiLair', 'levelType', 'noDarkLevel', 'lake', 'marketChance',
+               'madeMarketEntrance', 'madeBlackMarket', 'madeMoai', 'ashGrave', 'TombLord', 'genTombLord',
+               'genGoldEntrance', 'madeGoldEntrance', 'goldChance', 'cityOfGold', 'thiefLevel', 'murderer',
+               'checkWater', 'cleanSolids']
+GEN_OGAME = ['damsel', 'idol', 'altar', 'genSupplyShop', 'genBombShop', 'genWeaponShop', 'genRareShop',
+             'genClothingShop']
 GEN_VARS = ['invincible', 'status', 'cost', 'forSale', 'shopWall', 'value', 'inDiceHouse', 'cleanDeath',
-            'linkVal', 'trigger', 'xVel', 'yVel', 'facing', 'counter', 'spurt']
-GEN_SVARS = ['type', 'style']
+            'linkVal', 'trigger', 'xVel', 'yVel', 'facing', 'counter', 'spurt', 'deathTimer', 'held', 'swimming',
+            'dir', 'spurtTime', 'shiftToggle', 'New']
+GEN_SVARS = ['type', 'style', 'treasure']
 GEN_ORDER = ['all', 'oSolid', 'oBlock', 'oBrick', 'oTreasure', 'oExit', 'oEntrance', 'oItem', 'oEnemy']
 
 
 def parse_cases(path):
+    """[(seed, level, cont, noDarkLevel, {name: value})], value an int or a str"""
     cs = []
     for line in open(path):
-        line = line.split('#')[0].split()
-        if line:
-            seed, level, cont, nodark = (line + ['0', '1'])[:4]
-            cs.append((int(seed), int(level), int(cont), int(nodark)))
+        f = line.split('#')[0].split()
+        if not f:
+            continue
+        pos = [t for t in f if '=' not in t]
+        seed, level, cont, nodark = (pos + ['0', '1'])[:4]
+        ov = {}
+        for t in f:
+            if '=' in t:
+                k, v = t.split('=', 1)
+                ov[k] = v[2:].replace('~', ' ') if v.startswith('s:') else int(v)
+        cs.append((int(seed), int(level), int(cont), int(nodark), ov))
     return cs
 
 
+def case_room(level, ov, lake):
+    if level == 16:
+        return 'rOlmec'
+    if 9 <= level <= 12:
+        return 'rLevel2'
+    if lake:
+        return 'rLevel3'
+    return 'rLevel'
+
+
+def gml_value(v):
+    return '"' + v.replace('"', '') + '"' if isinstance(v, str) else str(v)
+
+
 def gen_dump_gml():
-    gl = '\n'.join(f'    buffer_write(b, buffer_f64, {num("global." + g)});' for g in GEN_GLOBALS)
+    gl = '\n'.join(f'    buffer_write(b, buffer_f64, (variable_global_exists("{g}") && is_numeric(global.{g})) ? '
+                   f'global.{g} : {BAD});' for g in GEN_GLOBALS)
     og = '\n'.join(f'    buffer_write(b, buffer_f64, {num("oGame." + g)});' for g in GEN_OGAME)
     vars_ = ', '.join(f'"{v}"' for v in GEN_VARS)
     svars = ', '.join(f'"{v}"' for v in GEN_SVARS)
-    order = ''.join(f'''
+    if os.environ.get('TRACE_GEN_ORDER') == 'all':
+        # every object with an instance (parents included): u32 0xFFFFFFFF, then per object: s32 object, u32 n, ids
+        return_all = '''
+    buffer_write(b, buffer_u32, 4294967295);
+    for (var oi = 0; object_exists(oi); oi++)
+    {
+        if (!instance_exists(oi)) continue;
+        buffer_write(b, buffer_s32, oi);
+        npos = buffer_tell(b);
+        buffer_write(b, buffer_u32, 0);
+        n = 0;
+        with (oi) { n += 1; buffer_write(b, buffer_s32, real(id)); }
+        buffer_poke(b, npos, buffer_u32, n);
+    }
+    buffer_write(b, buffer_s32, -1);'''
+    else:
+        return_all = ''
+    order = return_all + ''.join(f'''
     npos = buffer_tell(b);
     buffer_write(b, buffer_u32, 0);
     n = 0;
@@ -501,7 +638,12 @@ def gen_dump_gml():
     buffer_write(b, buffer_f64, global.currLevel);
 {gl}
 {og}
-    for (var i = 0; i < 4; i++) for (var j = 0; j < 4; j++) buffer_write(b, buffer_f64, {num("global.roomPath[i, j]")});
+    for (var i = 0; i < 4; i++) for (var j = 0; j < 5; j++)
+    {{
+        var rp = -1000000000;
+        if (i < array_length(global.roomPath) && j < array_length(global.roomPath[i])) rp = global.roomPath[i, j];
+        buffer_write(b, buffer_f64, {num("rp")});
+    }}
     var vn = [{vars_}];
     var sn = [{svars}];
     var npos = buffer_tell(b);
@@ -518,6 +660,7 @@ def gen_dump_gml():
         buffer_write(b, buffer_f64, depth);
         buffer_write(b, buffer_f64, image_speed);
         buffer_write(b, buffer_u8, visible ? 1 : 0);
+        buffer_write(b, buffer_u8, persistent ? 1 : 0);
         var am = 0;
         for (var k = 0; k < 12; k++) if (alarm[k] != -1) am |= (1 << k);
         buffer_write(b, buffer_u16, am);
@@ -525,7 +668,7 @@ def gen_dump_gml():
         var vm = 0;
         for (var k = 0; k < array_length(vn); k++)
             if (variable_instance_exists(id, vn[k]) && is_numeric(variable_instance_get(id, vn[k]))) vm |= (1 << k);
-        buffer_write(b, buffer_u16, vm);
+        buffer_write(b, buffer_u32, vm);
         for (var k = 0; k < array_length(vn); k++) if (vm & (1 << k)) buffer_write(b, buffer_f64, real(variable_instance_get(id, vn[k])));
         var sm = 0;
         for (var k = 0; k < array_length(sn); k++)
@@ -534,6 +677,7 @@ def gen_dump_gml():
         for (var k = 0; k < array_length(sn); k++) if (sm & (1 << k)) buffer_write(b, buffer_string, variable_instance_get(id, sn[k]));
     }}
     buffer_poke(b, npos, buffer_u32, n);
+{tiles_gml()}
     for (var k = 0; k < 4; k++) buffer_write(b, buffer_f64, random(4294967296));
 {order}
     buffer_save_ext(b, "gen_" + string(global.gen_k) + ".bin", 0, buffer_tell(b));
@@ -543,7 +687,25 @@ def gen_dump_gml():
 
 def gml_gen(cases):
     arr = lambda k: '[' + ', '.join(str(c[k]) for c in cases) + ']'
+    rooms = []
+    lake = 0
+    for c in cases:
+        if not c[2]:
+            lake = 0
+        lake = c[4].get('lake', lake)
+        rooms.append(case_room(c[1], c[4], lake))
+
+    def ovs():
+        return '[' + ', '.join('[' + ', '.join(f'["{k}", {gml_value(v)}]' for k, v in c[4].items()) + ']'
+                               for c in cases) + ']'
     create = f'''
+exception_unhandled_handler(function(e) {{
+    var ef = file_text_open_write("gml_error.txt");
+    file_text_write_string(ef, e.longMessage);
+    file_text_close(ef);
+    game_end();
+    return 0;
+}});
 global.trc_phase = 0;
 global.gen_on = 0;
 global.gen_k = 0;
@@ -552,6 +714,9 @@ global.gen_seed = {arr(0)};
 global.gen_level = {arr(1)};
 global.gen_cont = {arr(2)};
 global.gen_nodark = {arr(3)};
+global.gen_room = [{', '.join(rooms)}];
+global.gen_ov = {ovs()};
+global.gen_seeded = 0;
 global.gen_buf = buffer_create(262144, buffer_grow, 1);
 '''
     keys = ''.join(f'{f}Released = false;\n{f}Pressed = false;\n{f} = false;\n' for _, f in KEYS.values())
@@ -568,26 +733,29 @@ else if (global.trc_phase == 1 && room == rTitle)
     global.usedShortcut = false;
     global.gameStart = true;
     global.gen_on = 1;
-    room_goto(rLevel);
+    room_goto(global.gen_room[0]);
 }}
 {keys}
 '''
-    begin = '''
-if (global.gen_on && room == rLevel)
-{
+    begin = f'''
+if (global.gen_on && (room == rLevel || room == rLevel2 || room == rLevel3 || room == rOlmec))
+{{
     global.gen_k += 1;
     if (global.gen_k >= global.gen_n)
-    {
+    {{
         global.gen_on = 0;
         game_end();
         exit;
-    }
-    room_restart();
-}
+    }}
+    global.gen_seeded = 0;
+    if (global.gen_room[global.gen_k] == room) room_restart();
+    else room_goto(global.gen_room[global.gen_k]);
+}}
 '''
     setup = '''
-if (global.gen_on)
+if (global.gen_on && !global.gen_seeded && room == global.gen_room[global.gen_k])
 {
+    global.gen_seeded = 1;
     var k = global.gen_k;
     if (!global.gen_cont[k])
     {
@@ -601,13 +769,17 @@ if (global.gen_on)
     }
     global.currLevel = global.gen_level[k];
     global.noDarkLevel = global.gen_nodark[k];
+    var ov = global.gen_ov[k];
+    for (var q = 0; q < array_length(ov); q++) variable_global_set(ov[q][0], ov[q][1]);
     global.gameStart = true;
     random_set_seed(global.gen_seed[k]);
 }
+'''
+    initlevel = '''
 scrInitLevel();
 if (global.gen_on)
 ''' + gen_dump_gml()
-    return create, step, begin, setup
+    return create, step, begin, setup, initlevel
 
 
 def build_gen(droid, cases_path, out):
@@ -617,7 +789,7 @@ def build_gen(droid, cases_path, out):
     root = os.path.commonpath([droid, UTMT, out])
     rel = lambda p: '/w/' + os.path.relpath(p, root)
     q = lambda s: '@"' + s.replace('"', '""') + '"'
-    create, step, begin, setup = gml_gen(cases)
+    create, step, begin, setup, initlevel = gml_gen(cases)
     names = out + '.names'
     script = out + '.csx'
     open(script, 'w').write(f'''
@@ -633,7 +805,10 @@ CodeImportGroup g = new(Data);
 g.QueueAppend("gml_Object_oGamepad_Create_0", {q(create)});
 g.QueueReplace("gml_Object_oGamepad_Step_0", {q(step)});
 g.QueueReplace("gml_Object_oGamepad_Step_1", {q(begin)});
-g.QueueFindReplace("gml_Object_oGame_Create_0", "scrInitLevel();", {q("{" + setup + "}")});
+g.QueueFindReplace("gml_Object_oGame_Create_0", "scrInitLevel();", {q("{" + initlevel + "}")});
+g.QueuePrepend("gml_Object_oPlayer1_Create_0", {q(setup)});
+g.QueuePrepend("gml_Object_oEntrance_Create_0", {q(setup)});
+g.QueueReplace("gml_Object_oBlackBG_Create_0", {q(setup)});
 g.Import();
 ''')
     if os.path.exists(out):
@@ -657,22 +832,22 @@ def gen_records(data):
         ng = len(GEN_GLOBALS) + len(GEN_OGAME)
         r['globals'] = dict(zip(GEN_GLOBALS + ['oGame.' + g for g in GEN_OGAME], struct.unpack_from(f'<{ng}d', data, o)))
         o += 8 * ng
-        r['roomPath'] = list(struct.unpack_from('<16d', data, o))
-        o += 128
+        r['roomPath'] = list(struct.unpack_from('<20d', data, o))
+        o += 160
         (n,) = struct.unpack_from('<I', data, o)
         o += 4
         insts = []
-        H = struct.Struct('<ihddhddBH')
+        H = struct.Struct('<ihddhddBBH')
         for _ in range(n):
-            iid, obj, x, y, spr, depth, ispd, vis, am = H.unpack_from(data, o)
+            iid, obj, x, y, spr, depth, ispd, vis, pers, am = H.unpack_from(data, o)
             o += H.size
             al = {}
             for b in range(12):
                 if am & (1 << b):
                     al[b] = struct.unpack_from('<d', data, o)[0]
                     o += 8
-            (vm,) = struct.unpack_from('<H', data, o)
-            o += 2
+            (vm,) = struct.unpack_from('<I', data, o)
+            o += 4
             vs = {}
             for b, v in enumerate(GEN_VARS):
                 if vm & (1 << b):
@@ -686,11 +861,32 @@ def gen_records(data):
                     vs[v] = data[o:e].decode('utf-8', 'replace')
                     o = e + 1
             insts.append(dict(id=iid, obj=obj, x=x, y=y, spr=spr, depth=depth, image_speed=ispd, visible=vis,
-                              alarms=al, vars=vs))
+                              persistent=pers, alarms=al, vars=vs))
         r['insts'] = insts
+        (tn,) = struct.unpack_from('<I', data, o)
+        o += 4
+        r['tiles'] = []
+        for _ in range(tn):
+            e = data.index(b'\0', o)
+            bg = data[o:e].decode('utf-8', 'replace')
+            o = e + 1
+            r['tiles'].append((bg,) + tuple(int(v) for v in struct.unpack_from('<7d', data, o)))
+            o += 56
         r['draws'] = [int(v) for v in struct.unpack_from('<4d', data, o)]
         o += 32
         r['order'] = {}
+        if struct.unpack_from('<I', data, o)[0] == 0xFFFFFFFF:
+            o += 4
+            r['order_all'] = {}
+            while True:
+                (oi,) = struct.unpack_from('<i', data, o)
+                o += 4
+                if oi < 0:
+                    break
+                (c,) = struct.unpack_from('<I', data, o)
+                o += 4
+                r['order_all'][oi] = list(struct.unpack_from(f'<{c}i', data, o))
+                o += 4 * c
         for name in GEN_ORDER:
             (c,) = struct.unpack_from('<I', data, o)
             o += 4

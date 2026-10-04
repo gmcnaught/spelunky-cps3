@@ -15,6 +15,7 @@
 #include "inst.h"
 
 struct world W;
+int gen_untranslated;
 
 static int is_solid_family(int obj) { return obj_is(obj, OBJ_oSolid); }
 
@@ -81,14 +82,20 @@ void inst_reset(int32_t next_id)
 
 int inst_add(int obj, int x, int y, int32_t id)
 {
-    int i = W.n++, k;
-    struct inst *p = &W.in[i];
+    int i, k;
+    struct inst *p;
+    if (W.n >= INST_MAX) {                  /* never in the references; the level is then not comparable */
+        UNTRANSLATED(7002);
+        W.n = INST_MAX - 1;
+    }
+    i = W.n++;
+    p = &W.in[i];
     p->id = id;
     p->obj = (int16_t)obj;
     p->spr = gobjspr[obj];
     p->x = (int16_t)x;
     p->y = (int16_t)y;
-    p->depth = (int16_t)objdefs[obj].depth;
+    p->depth = objdefs[obj].depth;
     p->alive = 1;
     p->flags = 0;
     p->status = 0;
@@ -96,6 +103,13 @@ int inst_add(int obj, int x, int y, int32_t id)
     p->style = 0;
     p->ingrid = 0;
     p->counter = 0;
+    p->treasure = TR_NONE;
+    p->etype = EX_EXIT;
+    p->linkval = 0;
+    p->shifttoggle = 0;
+    p->dir = 0;
+    p->spurttime = 0;
+    p->deathtimer = 0;
     p->xvel = p->yvel = 0;
     p->cost = 0;
     p->value = 0;
@@ -127,7 +141,7 @@ static int point_in(int i, int px, int py)
 static int collision_point_scan(int px, int py, int obj)
 {
     int k;
-    for (k = W.n - 1; k >= 0; k--)
+    for (k = 0; k < W.n; k++)
         if (inst_is(k, obj) && point_in(k, px, py))
             return k;
     return INST_NONE;
@@ -135,19 +149,19 @@ static int collision_point_scan(int px, int py, int obj)
 
 int collision_point(int px, int py, int obj)
 {
-    int best = INST_NONE, k;
+    int best = INST_MAX, k;
     if (!is_solid_family(obj))
         return collision_point_scan(px, py, obj);
     if (px >= 0 && py >= 0 && (px >> 4) < GRID_W && (py >> 4) < GRID_H)
         for (k = W.cell[py >> 4][px >> 4]; k != INST_NONE; k = W.cnext[k])
-            if (k > best && obj_is(W.in[k].obj, obj))
+            if (k < best && obj_is(W.in[k].obj, obj))
                 best = k;
     for (k = 0; k < W.nirr; k++) {
         int j = W.irr[k];
-        if (j > best && obj_is(W.in[j].obj, obj) && point_in(j, px, py))
+        if (j < best && obj_is(W.in[j].obj, obj) && point_in(j, px, py))
             best = j;
     }
-    return best;
+    return best == INST_MAX ? INST_NONE : best;
 }
 
 int collision_rectangle(int x1, int y1, int x2, int y2, int obj, int self, int notme)
@@ -155,7 +169,7 @@ int collision_rectangle(int x1, int y1, int x2, int y2, int obj, int self, int n
     int k;
     int32_t bl = x1 < x2 ? x1 : x2, br = x1 < x2 ? x2 : x1;
     int32_t bt = y1 < y2 ? y1 : y2, bb = y1 < y2 ? y2 : y1;
-    for (k = W.n - 1; k >= 0; k--) {
+    for (k = 0; k < W.n; k++) {
         int32_t l, t, r, b;
         if (!inst_is(k, obj) || (notme && k == self) || !inst_bbox(k, &l, &t, &r, &b))
             continue;
@@ -178,7 +192,7 @@ int instance_place(int self, int px, int py, int obj)
     r += px - W.in[self].x;
     t += py - W.in[self].y;
     b += py - W.in[self].y;
-    for (k = W.n - 1; k >= 0; k--) {
+    for (k = 0; k < W.n; k++) {
         int32_t l2, t2, r2, b2;
         if (k == self || !inst_is(k, obj) || !inst_bbox(k, &l2, &t2, &r2, &b2))
             continue;
@@ -195,7 +209,7 @@ int32_t distance2_to_object(int self, int obj)
     int32_t best = -1, sl, st, sr, sb;
     if (!inst_bbox(self, &sl, &st, &sr, &sb))
         sl = sr = W.in[self].x, st = sb = W.in[self].y;
-    for (k = W.n - 1; k >= 0; k--) {
+    for (k = 0; k < W.n; k++) {
         int32_t l, t, r, b, xd = 0, yd = 0, d;
         if (!inst_is(k, obj))
             continue;
@@ -220,10 +234,58 @@ int instance_exists(int obj)
 int instance_first(int obj)
 {
     int k;
-    for (k = W.n - 1; k >= 0; k--)
+    for (k = 0; k < W.n; k++)
         if (inst_is(k, obj))
             return k;
     return INST_NONE;
+}
+
+int16_t with_pool[WITH_POOL];
+int with_top;
+
+int with_collect(int obj)
+{
+    int k, n = 0, base = with_top;
+    for (k = W.n - 1; k >= 0; k--)
+        if (inst_is(k, obj)) {
+            if (with_top >= WITH_POOL) { UNTRANSLATED(7001); break; }
+            with_pool[with_top++] = (int16_t)k;
+            n++;
+        }
+    if (n == 2) {                       /* the runner visits exactly two instances oldest first */
+        int16_t t = with_pool[base];
+        with_pool[base] = with_pool[base + 1];
+        with_pool[base + 1] = t;
+    }
+    return n;
+}
+
+int instance_number(int obj)
+{
+    int k, n = 0;
+    for (k = 0; k < W.n; k++)
+        if (inst_is(k, obj))
+            n++;
+    return n;
+}
+
+int instance_nearest(int px, int py, int obj)
+{
+    int k, best = INST_NONE;
+    int32_t bd = 0;
+    for (k = 0; k < W.n; k++) {
+        int32_t dx, dy, d;
+        if (!inst_is(k, obj))
+            continue;
+        dx = px - W.in[k].x;
+        dy = py - W.in[k].y;
+        d = dx * dx + dy * dy;
+        if (best == INST_NONE || d < bd) {
+            best = k;
+            bd = d;
+        }
+    }
+    return best;
 }
 
 int inst_selftest(void)

@@ -5,9 +5,10 @@
  * bytecode (UndertaleModTool disassembly) and the GameMaker HTML5 runner's collision code):
  *   - ids: room instances keep the ids stored in the room (rLevel: INST_RLEVEL_IDS); every instance_create takes
  *     the next id of one global counter (+1 each).
- *   - with (obj) and every instance search (collision_*, instance_place, obj.var) visit the instances newest
- *     first (reverse creation order), children of obj included, destroyed ones skipped. `with` visits the
- *     instances that existed when it started.
+ *   - with (obj) visits the instances (children of obj included) that existed when it started, newest first,
+ *     except exactly two instances: oldest first; destroyed ones are skipped. Instance searches (collision_*,
+ *     instance_place, instance_nearest ties, obj.var) take the oldest match.
+ *   - room start: all of the room's instances exist before the first Create event runs (rooms in gen.c).
  *   - instance_create runs the Create event (with its event_inherited chain) before returning.
  *   - instance_destroy runs the Destroy event at once; the instance is gone for every later test.
  *   - collisions use GameMaker 2's non-compatibility bounding boxes (option_collision_compatibility false):
@@ -19,7 +20,7 @@
 #include "objects.h"
 #include "gentables.h"
 
-#define INST_MAX 4096
+#define INST_MAX 2048            /* the largest level seen: 1,404 instances (P2 references) */
 #define INST_NONE (-1)
 
 /* flags */
@@ -28,6 +29,15 @@
 #define IF_CLEANDEATH  0x04
 #define IF_FORSALE     0x08
 #define IF_INDICEHOUSE 0x10
+#define IF_SPURT       0x20
+#define IF_HELD        0x40
+#define IF_SWIMMING    0x80
+#define IF_NEW         0x100
+
+/* oSolid.treasure / oXocBlock.treasure */
+enum treasure { TR_NONE, TR_BIGRUBY, TR_DIAMOND, TR_SAPPHIRE, TR_EMERALD, TR_RUBY };
+/* oExit-family type (oEntrance / oExit / oXMarket: "Exit", "Moai Exit", "Market Exit") */
+enum exittype { EX_EXIT, EX_MOAI, EX_MARKET };
 
 #define ALARMS 12
 
@@ -36,21 +46,29 @@
 #define GRID_H 40
 
 /* shop styles (oShopkeeper.style, scrRoomGen shopType) */
-enum shoptype { SHOP_GENERAL, SHOP_BOMB, SHOP_WEAPON, SHOP_RARE, SHOP_CLOTHING, SHOP_CRAPS, SHOP_KISSING };
+enum shoptype { SHOP_GENERAL, SHOP_BOMB, SHOP_WEAPON, SHOP_RARE, SHOP_CLOTHING, SHOP_CRAPS, SHOP_KISSING,
+                SHOP_ANKH, SHOP_EMPTY };
 
 struct inst {
     int32_t id;
     int16_t obj;
     int16_t spr;            /* sprite_index (GSPR_*, -1 none) */
     int16_t x, y;
-    int16_t depth;
+    int32_t depth;
     uint8_t alive;
-    uint8_t flags;          /* IF_* */
+    uint16_t flags;         /* IF_* */
     int8_t status;
     int8_t facing;
     uint8_t style;          /* enum shoptype */
     uint8_t ingrid;         /* on the grid (1) or the irregular list (2) */
+    uint8_t treasure;       /* enum treasure */
+    uint8_t etype;          /* enum exittype */
+    int8_t linkval;         /* oChain.linkVal */
+    int8_t shifttoggle;     /* oUFO.shiftToggle */
     int16_t counter;
+    int16_t dir;            /* dir (oPiranha, oDeadFish, oJaws, oSmashTrap) */
+    int16_t spurttime;      /* oLava.spurtTime */
+    int16_t deathtimer;     /* oTrapBlock.deathTimer */
     int16_t xvel, yvel;     /* xVel / yVel in 1/256 */
     int32_t cost;
     int32_t value;
@@ -83,7 +101,9 @@ static inline int inst_is(int i, int obj) { return W.in[i].alive && obj_is(W.in[
 /* bounding box, half-open [l, r) x [t, b); returns 0 if the instance has no sprite (no collisions) */
 int inst_bbox(int i, int32_t *l, int32_t *t, int32_t *r, int32_t *b);
 
-/* collision_point(px, py, obj, prec = 0, notme = 0): the newest matching instance or INST_NONE */
+/* instance searches (collision_point, collision_rectangle, instance_place, instance_nearest ties, instance_find(obj,
+   0) = obj.var) return the oldest matching instance (Observed: build/p2/probe, overlapping instances) */
+/* collision_point(px, py, obj, prec = 0, notme = 0): the matching instance or INST_NONE */
 int collision_point(int px, int py, int obj);
 /* collision_rectangle(x1, y1, x2, y2, obj, prec = 0, notme): notme excludes self */
 int collision_rectangle(int x1, int y1, int x2, int y2, int obj, int self, int notme);
@@ -92,12 +112,26 @@ int instance_place(int self, int px, int py, int obj);
 /* distance_to_object(obj) from self, squared (exact in integers); -1 if there is no instance */
 int32_t distance2_to_object(int self, int obj);
 int instance_exists(int obj);
-int instance_first(int obj);           /* obj.var: the instance GameMaker reads (newest first) */
+int instance_first(int obj);           /* obj.var / instance_find(obj, 0): the oldest instance */
+int instance_number(int obj);
+/* instance_nearest(px, py, obj): smallest point distance to (x, y); ties: the first in search order */
+int instance_nearest(int px, int py, int obj);
+/* set when the generator reaches GML it does not translate (the level is then not comparable) */
+extern int gen_untranslated;
+#define UNTRANSLATED(code) (gen_untranslated = (code))
 
-/* iteration as `with (obj)`: snapshot the count, then for (k = n0 - 1; k >= 0; k--) if (inst_is(k, obj)) */
-#define WITH_BEGIN(var, obj) { int with_n0_ = W.n, var; \
-    for (var = with_n0_ - 1; var >= 0; var--) { if (!inst_is(var, (obj))) continue;
-#define WITH_END } }
+/* `with (obj)`: the instances that match when it starts (instances created in the loop are not visited,
+   destroyed ones are skipped), newest first, except that exactly two instances are visited oldest first
+   (Observed in the runner: build/p2/probe, n = 1..9 instances, with destroys). with_collect pushes the visit
+   order on with_pool and returns the count; WITH_END pops it. */
+#define WITH_POOL 4096
+extern int16_t with_pool[WITH_POOL];
+extern int with_top;
+int with_collect(int obj);
+#define WITH_BEGIN(var, obj) { int with_b_ = with_top, with_n_ = with_collect(obj), with_k_, var; \
+    for (with_k_ = 0; with_k_ < with_n_; with_k_++) { var = with_pool[with_b_ + with_k_]; \
+        if (!W.in[var].alive) continue;
+#define WITH_END } with_top = with_b_; }
 
 int inst_selftest(void);       /* grid answers == instance answers for every cell; 0 = ok */
 

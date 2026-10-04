@@ -1,16 +1,25 @@
-/* Level generator: Spelunky Classic HD 1.2.2's oGame Create -> scrInitLevel (scrLevelGen, scrRoomGen per oRoom,
- * scrEntityGen, scrTreasureGen, scrSetupWalls, scrGenerateItem, scrShopItemsGen and the Create / Destroy events
- * of every object they create), translated statement for statement (GML file:line in comments). Mines only
- * (levelType 0, levels 1-4) so far; other areas stop at gen_level() with an error code.
+/* Level generator: Spelunky Classic HD 1.2.2's level rooms (rLevel, rLevel2, rLevel3, rOlmec): the room's instances
+ * in creation order with their Create events, oLevel Create (held item, Kali ball and chain), then oGame Create ->
+ * scrInitLevel (scrLevelGen, scrRoomGen* per oRoom, scrEntityGen, scrTreasureGen, scrSetupWalls, scrGenerateItem,
+ * scrShopItemsGen and the Create / Destroy events of every object they create or destroy), translated statement
+ * for statement (GML file:line in comments). All areas: mines 1-4, lush 5-8 (black market, cemetery, lake), ice
+ * 9-12 (yeti lair, alien craft, moai), temple 13-15 (sacrifice pit, city of gold), the Olmec level 16.
  *
  * GML evaluation rules used (HD's runtime, VM bytecode 17; checked in the bytecode, build/p2/disasm.txt):
- * `and` / `or` short-circuit; function arguments are evaluated right to left (last argument first), operands of
- * one expression left to right; `with` and instance searches as inst.h.
+ * `and` / `or` short-circuit; `or` binds looser than `and`; function arguments are evaluated right to left (last
+ * argument first), operands of one expression left to right; `with` and instance searches as inst.h.
  */
 #ifndef GEN_H
 #define GEN_H
 #include <stdint.h>
 #include "inst.h"
+
+/* global.pickupItem: the item carried into the level (scrHoldItem's types; PICK_OTHER: a type it does not
+   create, e.g. a gold idol) */
+enum pickup { PICK_NONE, PICK_ROCK, PICK_JAR, PICK_SKULL, PICK_FISHBONE, PICK_ARROW, PICK_MACHETE, PICK_MATTOCK,
+              PICK_MATTOCKHEAD, PICK_PISTOL, PICK_WEBCANNON, PICK_TELEPORTER, PICK_SHOTGUN, PICK_BOW, PICK_FLARE,
+              PICK_SCEPTRE, PICK_KEY, PICK_OTHER, PICK_COUNT };
+extern const char *const pickup_names[PICK_COUNT];
 
 /* the globals (global.*) the generator reads or writes */
 struct gglobals {
@@ -19,20 +28,23 @@ struct gglobals {
     uint8_t hadDarkLevel, darkLevel, noDarkLevel, lake, cityOfGold, cemetary;
     uint8_t blackMarket, madeBlackMarket, genBlackMarket, sacrificePit, snakePit, alienCraft, yetiLair;
     uint8_t madeMoai, shop, madeUdjatEye, genUdjatEye, madeMarketEntrance, genMarketEntrance;
-    uint8_t giantSpider, genGiantSpider, LockedChest, Key, cleanSolids, murderer;
+    uint8_t giantSpider, genGiantSpider, LockedChest, Key, cleanSolids, murderer, checkWater;
+    uint8_t ashGrave, TombLord, genTombLord, genGoldEntrance, madeGoldEntrance, olmecDead, doorOpen;
+    uint8_t pickupItem;         /* enum pickup */
     int16_t thiefLevel, kaliPunish;
     int16_t probDarkLevel, probSnakePit, probCemetary, probSacPit, probAlien, probYetiLair;
-    int16_t lockedChestChance, marketChance;
+    int16_t lockedChestChance, marketChance, goldChance;
     int16_t startRoomX, startRoomY, endRoomX, endRoomY, exitX, exitY;
+    int16_t roomW, roomH;       /* room_width, room_height */
     int8_t roomPath[4][5];      /* global.roomPath[x, y] */
     int8_t roomPoss[4][4];
-    uint8_t pickupItemNone;     /* global.pickupItem == "" (no held item carried into the level) */
 };
 
 /* oGame's instance variables used by generation */
-struct ggame { uint8_t damsel, idol, altar, levelGen; };
+struct ggame { uint8_t damsel, idol, altar, levelGen;
+               uint8_t genClothingShop, genBombShop, genSupplyShop, genRareShop, genWeaponShop; };
 
-/* background tiles added by tile_add / tile_add2 (not instances; kept for the display) */
+/* background tiles added by tile_add / tile_add2 (not instances; kept for the display). bg: GSPR_bg* */
 struct gtile { int16_t bg, left, top, w, h, x, y; int16_t depth; };
 #define GTILES_MAX 1024
 
@@ -41,23 +53,33 @@ extern struct ggame GAME;
 extern struct gtile gtiles[GTILES_MAX];
 extern int gntiles;
 
-/* tile_add background ids (not sprites) */
-enum gbg { BG_bgExtras, BG_bgCaveTop, BG_bgKaliBody, BG_bgTiki, BG_bgTikiArms, BG_bgDiceSign, BG_bgWanted };
-
 /* scrClearGlobals() plus the other new-game values (oGlobals / scrInit / oTitle Create) the generator reads */
 void gen_new_game(void);
 
-/* rLevel: the room's instances in creation order (oPlayer1, 16 oRoom, oLevel, oGame: their Create events, oGame's
-   ending in scrInitLevel when global.gameStart). next_id: the runtime's instance id counter at room start.
-   The RNG (g_rng) is used as it stands. Returns 0, or -1 for an area not translated yet. */
+/* the room for global.currLevel / global.lake (oTransition's choice): 0 rLevel, 1 rLevel2, 2 rLevel3, 3 rOlmec */
+int gen_room_for_level(void);
+
+/* create the level room's instances and run their Create events (oGame's ending in scrInitLevel when
+   global.gameStart). next_id: the runtime's instance id counter at room start. The RNG (g_rng) is used as it
+   stands. Returns 0, or -1 when gen_untranslated was set (GML not translated was reached). */
 int gen_level(int32_t next_id);
 
 /* object Create / Destroy events (genobj.c) */
 int instance_create(int x, int y, int obj);
+void gen_create_event(int i);   /* run instance i's Create event (room instances) */
 void instance_destroy(int i);
 
-/* scripts (gen.c, genroom.c) */
+/* scripts (gen.c, genent.c, genroom.c) */
 void scrRoomGen(int room);
+void scrRoomGen2(int room);
+void scrRoomGen3(int room);
+void scrRoomGen4(int room);
+void scrRoomGen5(int room);
+void scrRoomGenMarket(int room);
+void scrRoomGenYeti(int room);
+void scrEntityGen(void);
+void scrSetupWalls(int bottom);
+void scrCheckWaterTop(int self);
 void scrGenerateItem(int self, int x, int y, int setType, int *obj);
 void scrShopItemsGen(int room, int xpos, int ypos, int shopType, int *obj);
 int scrGetRoomX(int x);
