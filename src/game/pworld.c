@@ -707,10 +707,10 @@ static int dunit(double d)
 
 /* the cache kind of instance i's box (computed when a setter cleared it): with scales of exactly +-1 and whole x, y
    the double formula's results are the integers below */
-static int bbkind(int i)
+static __attribute__((noinline)) int bbkind_set(int i)
 {
     struct pin *p = &PW.in[i];
-    if (p->bbk == 0) {
+    {
         int s = spr_of(p);
         int32_t x, y;
         if (s < 0)
@@ -732,6 +732,11 @@ static int bbkind(int i)
         }
     }
     return p->bbk;
+}
+static inline int bbkind(int i)
+{
+    int k = PW.in[i].bbk;
+    return k ? k : bbkind_set(i);
 }
 
 int pin_bbox(int i, double *l, double *t, double *r, double *b)
