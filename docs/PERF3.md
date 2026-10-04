@@ -153,3 +153,19 @@ on the hardware run (0.3's method) for all playsh2 routes, not on the model alon
 | batch 1 (merged, 63fe5c2..57dd34a) | A, D, E, F, gver 16-bit, rst 128 | 143.4 K / 173.5 K (SOFTFP=1; route mean of means 186.6 K) | 608 K / 563 K | JT run in MAME: PASS 23/23 | tests/game 64,560 B, JT 60,288 B |
 
 Batch 1 gates on 57dd34a (2026-10-04): gates.sh all equal (19/19 both playhosts, P4 5/5, gen 9/9, colprobe 0, snd 19/19), ctall 48/48, EQUIV 72/72, FULLREG 640/640, playsh2 6,851/6,851 (grid, EXACT=1, SOFTFP=1), JT PASS 23/23, game_check p4_exit559 0 px at 30/150/300, SH-2 0 warnings.
+
+| Batch | Commit(s) | MAME p4 / p5 mean (SOFTFP=1) | jtcost p4 301 / p5 956 (review) | jtcps3 measured | Stack margin |
+|---|---|---|---|---|---|
+| batch 2 (merged 4050e1b) | 1dd99c3 1.1, bcec614 1.2, 5fc9ae3 renames, 19859e4 pin 64 B, b90f6e9 pin field order, f7b5ebd 0.2 jtcost, 75a0852 0.4, df52042 3.1 unity (7 files), PCST counters + pg_overlap, 4e64196 bbkind, 14fb59a solid_[vh]line_any + query_e / flush inline | 130.2 K / 154.0 K (route mean of means 166.5 K, -10.8 %) | **527.2 K / 504.9 K** | (0.3 pending) | tests/game 78,892 B, JT 74,620 B |
+
+Batch 2 gates on 14fb59a: gates.sh all equal, ctall 48/48, EQUIV 72/72 (output identical to batch 1), FULLREG 640/640,
+playsh2 6,851/6,851 (grid, EXACT=1, SOFTFP=1), JT PASS 23/23, game_check p4_exit559 0 px at 30/150/300, SH-2 0
+warnings. .text 1,007,504 (SOFTFP playsh2). Per commit (jtcost review, p4 / p5): batch 1 607.6 / 563.4; 1.1 + 1.2 +
+pin 64 B + field order 579.9 / 546.3; unity 557.7 / 523.7 (13 files: 563.5 / 526.9, rejected); PCST + pg_overlap +
+bbkind 543.6 / 512.1; solid lines + query_e / flush 527.2 / 504.9.
+
+Next (batch 3, perf3-b2): c329716 PE(p) by a shift (exto in struct pin's pad): 510.6 / 491.0. Profile after it
+(p4): play_step 48.8 K (alarm pass ~14 K, anim_one ~13.6 K inside it: 2.5), pgrid_search 46.7 K, bbkind_set 17.2 K,
+solid_hline_any 14.4 K, mark_e + cupdate_at 24.7 K, pin_ibox 10.3 K (546 stack stores: 1.1).
+The modelled goal (≤ 525 K) is met on both steps; the review constants read ~10 % under the measured ratio
+(EQUIV 4.21 vs model 3.84), so the goal is not declared until 0.3's hardware run.
