@@ -156,7 +156,7 @@ static int set_global(const char *kv)
         return 0;
     }
 #define GI(name, dst) if (!strcmp(k, name)) { dst = x; return 1; }
-    GI("madeMoai", G.madeMoai) GI("arrows", PG.arrows) GI("bombs", PG.bombs) GI("rope", PG.rope)
+    GI("madeMoai", G.madeMoai) GI("kaliPunish", G.kaliPunish)GI("arrows", PG.arrows) GI("bombs", PG.bombs) GI("rope", PG.rope)
     GI("plife", PG.plife) GI("money", PG.money) GI("hasJetpack", PG.hasJetpack) GI("hasCape", PG.hasCape)
     GI("hasParachute", PG.hasParachute) GI("hasMitt", PG.hasMitt) GI("hasGloves", PG.hasGloves)
     GI("hasSpringShoes", PG.hasSpringShoes) GI("hasSpikeShoes", PG.hasSpikeShoes) GI("hasKapala", PG.hasKapala)
