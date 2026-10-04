@@ -105,7 +105,7 @@ static void frog_create(int i, int fromgen)
     PE(p)->myGrav = N(0.2);
     PEN(p)->myGravNorm = N(0.2);
     p->ispd = (img_t)0.4;
-    p->type = T_OTHER;
+    p->type = p->obj == OBJ_oFireFrog ? T_FIREFROG : T_FROG;         /* "Frog" / "Fire Frog" */
     PE(p)->hp = 1;
     p->invincible = 0;
     PE(p)->facing = (int16_t)gen_facing(fromgen);
@@ -122,7 +122,7 @@ static void mantrap_create(int i)                                    /* objects/
     setCollisionBounds(i, 2, 0, sprw(i) - 2, sprh(i));
     PE(p)->xVel = N(2.5);
     p->ispd = (img_t)0.5;
-    p->type = T_OTHER;
+    p->type = T_MANTRAP;                                              /* "ManTrap" */
     PE(p)->hp = 3;
     p->invincible = 0;
     PE(p)->status = MT_IDLE;
@@ -139,7 +139,7 @@ static void monkey_create(int i, int fromgen)                        /* objects/
     struct pin *p = &PX(i);
     struct jx *j;
     pen_enemy_create(i);
-    p->type = T_OTHER;
+    p->type = T_MONKEY;                                               /* "Monkey" */
     make_active(p);
     setCollisionBounds(i, 4, 6, 12, 16);
     PE(p)->xVel = 0;
@@ -164,7 +164,7 @@ static void scarab_create(int i, int fromgen)                        /* objects/
 {
     struct pin *p = &PX(i);
     pen_enemy_create(i);
-    p->type = T_SCARAB;
+    p->type = T_ENONE;                                                /* no type: oEnemy's "NONE" */
     p->ispd = (img_t)0.5;
     setCollisionBounds(i, 4, 4, 12, 12);
     PE(p)->xVel = 0;
@@ -238,8 +238,8 @@ static void enemy_spears(int i)
     int trap = instance_nearest_p(X(i), Y(i), OBJ_oSpearsLeft);
     struct pin *p = &PX(i);
     if (DGE(PX(trap).img, 20) && DLT(PX(trap).img, 24)) {
-        if (p->type == T_CAVEMAN || p->obj == OBJ_oManTrap || p->obj == OBJ_oYeti || p->obj == OBJ_oHawkman ||
-            p->type == T_SHOPKEEPER) {
+        if (p->type == T_CAVEMAN || p->type == T_MANTRAP || p->type == T_YETI || p->type == T_SHOPKEEPER) {
+            /* "Hawkman": no Create sets it (oHawkman's type is "Yeti") */
             if (PE(p)->hp > 0) {
                 PE(p)->hp -= 2;
                 PEN(p)->countsAsKill = 0;
@@ -258,21 +258,6 @@ static void enemy_spears(int i)
             snd_play(SND_xhit);                                                        /* :102 */
             scrCreateBlood(i, P(X(i) + sprw(i) / 2.0), P(Y(i) + sprh(i) / 2.0), 1);
         }
-    }
-}
-
-/* oItem Step :244 (kind 0: status != STUNNED) and oEnemy Step :182 (kind 1: status < STUNNED), the man trap */
-static void mantrap_hit(int e, int kind)
-{
-    struct pin *o = &PX(e);
-    if (kind == 0 ? PE(o)->status != E_STUNNED : PE(o)->status < E_STUNNED) {
-        leaf_at(e);
-        o = &PX(e);
-        PE(o)->hp -= 1;
-        PE(o)->status = E_STUNNED;
-        PE(o)->counter = PEN(o)->stunTime;
-        PE(o)->yVel = N(-6);
-        snd_play(SND_xhit);                                                            /* oItem :263, oEnemy :198 */
     }
 }
 
@@ -1208,7 +1193,6 @@ int pjungle_world(int site, int i, int arg)
 int pjungle_enemy(int site, int e, int arg)
 {
     switch (site) {
-    case 5010: if (PX(e).obj != OBJ_oManTrap) return 0; mantrap_hit(e, arg); return 1;
     case 5011: firefrog_water(e); return 1;
     case 5013: enemy_spears(e); return 1;
     }
