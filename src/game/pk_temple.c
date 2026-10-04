@@ -18,6 +18,7 @@
 #include "inst.h"                                    /* play_gen_inst (struct inst, IF_*) */
 #include "../snd/sndgame.h"
 #include "pmath.h"
+#include "pmsg.h"
 
 enum { E_IDLE = 0, E_WALK = 1, E_STUNNED = 98, E_DEAD = 99, E_LEFT = 0, E_RIGHT = 1 };
 
@@ -562,6 +563,606 @@ static void magmaman_bomb(int i, int b)
     if (PE(o)->held && instance_exists_p(OBJ_oCharacter)) PL.holdItem = NOONE;
 }
 
+/* ==== oTombLord, oFly, oSceptre, oGoldDoor ======================================================================= */
+#define attackTimer firing                     /* oTombLord.attackTimer: PEN firing */
+enum { TL_TURN = 2, TL_ATTACK = 3 };
+
+static int bloodless_of(int i) { return PX(i).obj == OBJ_oSkeleton || PX(i).obj == OBJ_oTombLord; }
+
+/* objects/oTombLord/Create_0.gml (oEnemy Create first) */
+static void tomblord_create(int i)
+{
+    struct pin *p;
+    pen_enemy_create(i);
+    p = &PX(i);
+    PE(p)->xVel = PE(p)->yVel = PE(p)->xAcc = PE(p)->yAcc = 0;
+    setCollisionBounds(i, 6, 0, 26, 32);
+    PE(p)->xVel = N(2.5);
+    p->ispd = (img_t)0.25;
+    p->type = T_OTHER;                                                     /* "Tomb Lord" */
+    PE(p)->hp = 20;
+    p->invincible = 0;
+    PE(p)->heavy = 1;
+    PE(p)->status = E_IDLE;
+    PE(p)->canPickUp = 0;
+    PEN(p)->bounced = 0;
+    PEN(p)->edead = 0;
+    PEN(p)->whipped = 0;
+    PE(p)->counter = 0;
+    PEN(p)->attackTimer = 0;
+    PE(p)->facing = E_RIGHT;
+}
+
+/* objects/oTombLord/Step_0.gml */
+static void tomblord_step(int i)
+{
+    struct pin *p;
+    int c;
+    pen_parent_step(i);
+    p = &PX(i);
+    if (!vw(i, 36, 0)) return;
+    moveTo(i, PE(p)->xVel, PE(p)->yVel, 0, 0);
+    PE(p)->yVel += PE(p)->myGrav;
+    if (NGT(PE(p)->yVel, PEN(p)->yVelLimit)) PE(p)->yVel = PEN(p)->yVelLimit;
+    if (CP(X(i) + 16, Y(i) + 16, OBJ_oSolid)) PE(p)->hp = 0;
+    if (PE(p)->hp < 1) {                                                   /* :15 */
+        int k;
+        {   /* scrCreateBlood(x+14+rand(0,4), y+14+rand(0,4), 4): bloodless, but the arguments draw */
+            int yy = RAND(0, 4), xx = RAND(0, 4);
+            (void)yy; (void)xx;
+        }
+        for (k = 0; k < 4; k++) {
+            int yy = RAND(0, 6), xx = RAND(0, 4);
+            pin_create(PX(i).x + PI(14 + xx), PX(i).y + PI(12 + yy), OBJ_oBone);
+        }
+        if (G.currLevel == 13) pin_create(PX(i).x + PI(16), PX(i).y + PI(16), OBJ_oSceptre);
+        if (PEN(&PX(i))->countsAsKill) PG.kills += 1;  /* global.tomblords: no PG field yet */
+        pin_destroy(i);
+    }
+    p = &PX(i);
+    if (isCollisionBottom(i, 1) && PE(p)->status != E_STUNNED) PE(p)->yVel = 0;
+    if (PEN(p)->attackTimer > 0) PEN(p)->attackTimer -= 1;
+    if (PEN(p)->whipped > 0) PEN(p)->whipped -= 1;
+    c = pl();
+    if (PE(p)->status == E_IDLE) {
+        if (PE(p)->counter > 0) PE(p)->counter -= 1;
+        if (PE(p)->counter <= 0) PE(p)->status = E_WALK;
+    } else if (PE(p)->status == E_WALK) {                                  /* :46 */
+        double px = X(c), py = Y(c), x = X(i), y = Y(i);
+        if (PE(p)->counter > 0) PE(p)->counter -= 1;
+        if (PE(p)->facing == E_LEFT) {
+            if (isCollisionLeft(i, 1) || (DGT(px, x + 16) && DLT(dabs(py - (y + 32)), 16) && PE(p)->counter == 0)) {
+                pin_set_sprite(i, GSPR_sTombLordTurnR);
+                PE(p)->status = TL_TURN;
+                PE(p)->counter = 30;
+            } else if (DLT(px, x + 16) && DLT(dabs(py - (y + 16)), 32) && PEN(p)->attackTimer == 0) {
+                PE(p)->status = TL_ATTACK;
+                pin_set_sprite(i, GSPR_sTombLordAttackL);
+                pin_setimg(p, 0);
+                PE(p)->xVel = 0;
+            } else
+                PE(p)->xVel = N(-1);
+        } else if (PE(p)->facing == E_RIGHT) {
+            if (isCollisionRight(i, 1) || (DLT(px, x + 16) && DLT(dabs(py - (y + 32)), 16) && PE(p)->counter == 0)) {
+                pin_set_sprite(i, GSPR_sTombLordTurnL);
+                PE(p)->status = TL_TURN;
+                PE(p)->counter = 30;
+            } else if (DGT(px, x + 16) && DLT(dabs(py - (y + 16)), 32) && PEN(p)->attackTimer == 0) {
+                PE(p)->status = TL_ATTACK;
+                pin_set_sprite(i, GSPR_sTombLordAttackR);
+                pin_setimg(p, 0);
+                PE(p)->xVel = 0;
+            } else
+                PE(p)->xVel = N(1);
+        }
+    } else if (PE(p)->status == TL_TURN) {
+        PE(p)->xVel = 0;
+    } else if (PE(p)->status == TL_ATTACK) {                               /* :91 */
+        PE(p)->xVel = 0;
+        p->ispd = (img_t)0.5;
+        PEN(p)->attackTimer = 100;
+        if (DGE(p->img, 7) && DLE(p->img, 12)) {
+            int f;
+            if (PE(p)->facing == E_LEFT) {
+                f = pin_create(p->x + PI(8), p->y + PI(12 + RAND(0, 4)), OBJ_oFly);
+                PE(&PX(f))->xVel = NI(-RAND(3, 5));
+            } else {
+                f = pin_create(p->x + PI(24), p->y + PI(12 + RAND(0, 4)), OBJ_oFly);
+                PE(&PX(f))->xVel = NI(RAND(3, 5));
+            }
+            p = &PX(i);
+        }
+    } else if (PE(p)->status >= E_STUNNED)
+        PE(p)->status = E_WALK;
+    if (isCollisionSolid(i)) pin_sety(p, p->y - PI(2));
+    if (PE(p)->facing == E_LEFT) {
+        if (PE(p)->status == E_WALK) pin_set_sprite(i, GSPR_sTombLordWalkL);
+        else if (PE(p)->status == E_IDLE) pin_set_sprite(i, GSPR_sTombLordLeft);
+    }
+    if (PE(p)->facing == E_RIGHT) {
+        if (PE(p)->status == E_WALK) pin_set_sprite(i, GSPR_sTombLordWalkR);
+        else if (PE(p)->status == E_IDLE) pin_set_sprite(i, GSPR_sTombLordRight);
+    }
+}
+
+/* objects/oTombLord/Collision_oCharacter.gml */
+static void tomblord_hit_player(int i, int c)
+{
+    struct pin *p = &PX(i), *o = &PX(c);
+    double dx = PTOD(o->x) - (X(i) + 16);
+    if (DGT(dabs(dx), 16)) {
+    } else if (!PL.dead && (PL.state == JUMPING || PL.state == FALLING) && DLT(PTOD(o->y), Y(i) + 8) && !PL.swimming) {
+        PE(o)->yVel = N(-6) - NMUL(N(0.2), PE(o)->yVel);
+        if (PG.hasSpikeShoes) PE(p)->hp -= (int16_t)(3 * (PL.fallTimer / 16 + 1));
+        else PE(p)->hp -= (int16_t)(1 * (PL.fallTimer / 16 + 1));
+        PL.fallTimer = 0;
+        PEN(p)->countsAsKill = 1;
+        pin_create(p->x + PI(16), p->y, OBJ_oBone);
+        snd_play(SND_xhit);                                                    /* :17 */
+    } else if (PL.invincible == 0) {
+        PL.blink = 30;
+        PL.invincible = 30;
+        if (DLT(PTOD(o->y), Y(i))) PE(o)->yVel = N(-6);
+        PE(o)->xVel = DLT(PTOD(o->x), X(i)) ? N(-6) : N(6);
+        if (PG.plife > 0) PG.plife -= 2;
+        snd_play(SND_xhurt);                                                   /* :35 */
+    }
+}
+
+/* objects/oTombLord/Collision_oWhip.gml; oWhipPre: oEnemy's (bloodless: no blood) */
+static void tomblord_whipped(int i, int w)
+{
+    struct pin *p = &PX(i);
+    if (PX(w).obj == OBJ_oWhipPre) {                                   /* objects/oEnemy/Collision_oWhipPre.gml */
+        PE(p)->hp -= 1;
+        PEN(p)->countsAsKill = 1;
+        snd_play(SND_xhit);                                                    /* :8 */
+        return;
+    }
+    if (PEN(p)->whipped == 0 && DLT(Y(w), Y(i) + 12)) {
+        PE(p)->hp -= 1;
+        PEN(p)->countsAsKill = 1;
+        pin_create(p->x + PI(16), p->y + PI(24), OBJ_oBlood);
+        snd_play(SND_xhit);                                                    /* :6 */
+        PEN(&PX(i))->whipped = 10;
+    }
+}
+
+static int tomblord_animend(int i)
+{
+    struct pin *p = &PX(i);                                            /* objects/oTombLord/Other_7.gml */
+    if (p->spr == GSPR_sTombLordTurnR) {
+        PE(p)->facing = E_RIGHT;
+        PE(p)->status = E_WALK;
+    }
+    if (p->spr == GSPR_sTombLordTurnL) {
+        PE(p)->facing = E_LEFT;
+        PE(p)->status = E_WALK;
+    }
+    if (p->spr == GSPR_sTombLordAttackL || p->spr == GSPR_sTombLordAttackR) {
+        PE(p)->status = E_IDLE;
+        PE(p)->counter = 30;
+        p->ispd = (img_t)0.25;
+    }
+    return 1;
+}
+
+/* oFly collisions */
+static void fly_hit(int i, int o)
+{
+    struct pin *f = &PX(i), *q = &PX(o);
+    int oo = q->obj;
+    if (obj_is(oo, OBJ_oCharacter)) {                                  /* objects/oFly/Collision_oCharacter.gml */
+        if (q->spr == GSPR_sPExit || q->spr == GSPR_sDamselExit || q->spr == GSPR_sTunnelExit) return;
+        if (PG.plife > 0) PG.plife -= 2;
+        PE(q)->xVel = PE(f)->xVel;
+        PE(q)->yVel = N(-4);
+        pin_create(q->x, q->y, OBJ_oBlood);
+        PL.stunned = 1;
+        PL.stunTimer = 20;
+        snd_play(SND_xhurt);                                                   /* :18 */
+        pin_destroy(i);
+    } else if (obj_is(oo, OBJ_oDamsel)) {                              /* objects/oFly/Collision_oDamsel.gml */
+        if (q->invincible) return;
+        if (PEN(q)->bloodLeft > 0) {
+            scrCreateBlood(o, (pos)(X(o) + sprw(o) / 2.0), (pos)(Y(o) + sprh(o) / 2.0), 1);
+            q = &PX(o);
+            if (PE(q)->hp < 0) PEN(q)->bloodLeft -= 1;
+        }
+        if (PE(q)->held) {
+            PE(q)->held = 0;
+            PL.holdItem = NOONE;
+        }
+        PE(q)->hp -= 2;
+        PE(q)->yVel = N(-6);
+        PE(q)->status = 2;
+        PE(q)->counter = 120;
+        PE(q)->xVel = NMUL(PE(&PX(i))->xVel, N(0.3));
+        snd_play(SND_xdamsel);                                                 /* :24 */
+        pin_destroy(i);
+    } else if (obj_is(oo, OBJ_oEnemy)) {                               /* objects/oFly/Collision_oEnemy.gml */
+        if (oo == OBJ_oTombLord) return;
+        if (PE(q)->heavy) {
+            PE(q)->xVel = NMUL(PE(f)->xVel, N(0.5));
+            PE(q)->yVel = N(-2);
+        } else {
+            PE(q)->xVel = PE(f)->xVel;
+            PE(q)->yVel = N(-4);
+        }
+        PE(q)->xVel = PE(f)->xVel;
+        PE(q)->yVel = N(-4);
+        PE(q)->hp -= 2;
+        if (PEN(q)->bloodLeft > 0) {
+            if (!bloodless_of(o)) scrCreateBlood(o, (pos)(X(o) + sprw(o) / 2.0), (pos)(Y(o) + sprh(o) / 2.0), 1);
+            q = &PX(o);
+            if (PE(q)->hp < 0) PEN(q)->bloodLeft -= 1;
+        }
+        PE(q)->status = 98;
+        PE(q)->counter = 20;
+        snd_play(SND_xhit);                                                    /* :28 */
+        pin_destroy(i);
+    } else if (obj_is(oo, OBJ_oSolid)) {                               /* objects/oFly/Collision_oSolid.gml */
+        pin_create(f->x, f->y, OBJ_oSmokePuff);
+        snd_play(SND_xhit);                                                    /* :2 */
+        pin_destroy(i);
+    }
+}
+
+/* objects/oGoldDoor/Collision_oSceptre.gml */
+static void golddoor_sceptre(int self, int s)
+{
+    if (!PE(&PX(s))->held) return;
+    if (PG.hasCrown) {
+        PE(&PX(s))->held = 0;
+        PL.holdItem = NOONE;
+        PL.pickupItemType = T_NONE;
+        pin_destroy(s);
+        snd_play(SND_xchestopen);                                              /* :13 */
+        pin_create(PX(self).x, PX(self).y, OBJ_oXGold);
+        pin_destroy(self);
+    } else
+        pmsg_str("THE SCEPTRE FITS...", "BUT NOTHING IS HAPPENING!", 100);
+}
+
+/* ==== oSmashTrap / oSmashTrapLit, oCeilingTrap, oDoor ============================================================= */
+/* oSmashTrap's xv, yv, xa, ya, dir, hit */
+#define xv px
+#define yv py
+#define xa bounceFactor
+#define ya frictionFactor
+#define sdir state
+#define hit trigger
+enum { SM_RIGHT = 0, SM_DOWN = 1, SM_LEFT = 2, SM_UP = 3 };
+
+/* objects/oSmashTrap/Create_0.gml (oMovingSolid / oSolid Create: create_solid ran) */
+static void smashtrap_create(int i, int fromgen)
+{
+    struct pin *p = &PX(i);
+    PE(p)->xVel = PE(p)->yVel = PE(p)->xAcc = PE(p)->yAcc = 0;
+    setCollisionBounds(i, 1, 1, 15, 15);
+    p->invincible = 0;
+    PE(p)->xv = PE(p)->yv = PE(p)->xa = PE(p)->ya = 0;
+    PE(p)->status = 0;
+    PE(p)->hit = 0;
+    PE(p)->counter = 0;
+    PE(p)->sdir = fromgen ? play_gen_inst->dir : (int16_t)RAND(0, 3);
+    PE(p)->colLeft = PE(p)->colRight = PE(p)->colTop = PE(p)->colBot = 0;
+}
+
+/* objects/oSmashTrap/Step_0.gml */
+static void smashtrap_step(int i)
+{
+    struct pin *p = &PX(i);
+    if (!vw(i, 16, 16)) return;
+    if (PE(p)->status == 0) {                                              /* IDLE */
+        int c = instance_first_p(OBJ_oCharacter);
+        double cx = X(c), cy = Y(c), x = X(i), y = Y(i);
+        double dist = point_distance_d(x, y, cx, cy);
+        if (PE(p)->counter > 0) PE(p)->counter -= 1;
+        if (DLT(dist, 90) && PE(p)->counter < 1) {
+            if (DLT(dabs(cy - (y + 8)), 8) && DGT(cx, x + 8) && !isCollisionRight(i, 2)) {
+                PE(p)->status = 1;
+                PE(p)->sdir = SM_RIGHT;
+                PE(p)->xa = N(0.5);
+            } else if (DLT(dabs(cx - (x + 8)), 8) && DGT(cy, y + 8) && !isCollisionBottom(i, 2)) {
+                PE(p)->status = 1;
+                PE(p)->sdir = SM_DOWN;
+                PE(p)->ya = N(0.5);
+            } else if (DLT(dabs(cy - (y + 8)), 8) && DLT(cx, x + 8) && !isCollisionLeft(i, 2)) {
+                PE(p)->status = 1;
+                PE(p)->sdir = SM_LEFT;
+                PE(p)->xa = N(-0.5);
+            } else if (DLT(dabs(cx - (x + 8)), 8) && DLT(cy, y + 8) && !isCollisionTop(i, 2)) {
+                PE(p)->status = 1;
+                PE(p)->sdir = SM_UP;
+                PE(p)->ya = N(-0.5);
+            }
+        }
+    } else if (PE(p)->status == 1) {                                       /* ATTACK :37 */
+        PE(p)->colLeft = PE(p)->colRight = PE(p)->colTop = PE(p)->colBot = 0;
+        if (isCollisionLeft(i, 1)) PE(p)->colLeft = 1;
+        if (isCollisionRight(i, 1)) PE(p)->colRight = 1;
+        if (isCollisionTop(i, 1)) PE(p)->colTop = 1;
+        if (isCollisionBottom(i, 1)) PE(p)->colBot = 1;
+        if (NLT(NABS(PE(p)->xv), N(4))) PE(p)->xv += PE(p)->xa;
+        if (NLT(NABS(PE(p)->yv), N(4))) PE(p)->yv += PE(p)->ya;
+        pin_setx(p, PADDV(p->x, PE(p)->xv));
+        pin_sety(p, PADDV(p->y, PE(p)->yv));
+        if (PE(p)->sdir == SM_RIGHT) {
+            if (isCollisionRight(i, 2) && PE(p)->colRight) { pin_setx(p, p->x - PI(2)); PE(p)->hit = 1; }
+            if (PE(p)->colRight) { pin_setx(p, p->x - PI(1)); PE(p)->hit = 1; }
+        } else if (PE(p)->sdir == SM_DOWN) {
+            if (isCollisionBottom(i, 2) && PE(p)->colBot) { pin_sety(p, p->y - PI(2)); PE(p)->hit = 1; }
+            if (PE(p)->colBot) { pin_sety(p, p->y - PI(1)); PE(p)->hit = 1; }
+        } else if (PE(p)->sdir == SM_LEFT) {
+            if (isCollisionLeft(i, 2) && PE(p)->colLeft) { pin_setx(p, p->x + PI(2)); PE(p)->hit = 1; }
+            if (PE(p)->colLeft) { pin_setx(p, p->x + PI(1)); PE(p)->hit = 1; }
+        } else if (PE(p)->sdir == SM_UP) {
+            if (isCollisionTop(i, 2) && PE(p)->colTop) { pin_sety(p, p->y + PI(2)); PE(p)->hit = 1; }
+            if (PE(p)->colTop) { pin_sety(p, p->y + PI(1)); PE(p)->hit = 1; }
+        }
+        if (collision_rect_p(X(i) - 1, Y(i) - 1, X(i) + 17, Y(i) + 17, OBJ_oTombLord, 0, NOONE) != NOONE) PE(p)->hit = 1;
+        if (PE(p)->hit) PE(p)->xv = PE(p)->yv = PE(p)->xa = PE(p)->ya = 0;
+        if (PE(p)->hit && !PE(p)->colRight && !PE(p)->colLeft && !PE(p)->colTop && !PE(p)->colBot) {
+            PE(p)->status = 0;
+            PE(p)->hit = 0;
+            PE(p)->counter = 50;
+        }
+    } else if (PE(p)->status == 99) {                                      /* :124 */
+        PE(p)->xv = PE(p)->yv = PE(p)->xa = PE(p)->ya = 0;
+        pin_sety(p, PADDV(p->y, N(0.05)));
+        if (CP(X(i), Y(i) - 1, OBJ_oLava)) pin_destroy(i);
+    }
+    if (collision_rect_p(X(i) + 1, Y(i) + 1, X(i) + 15, Y(i) + 15, OBJ_oLava, 0, NOONE) != NOONE) PE(p)->status = 99;
+}
+
+/* the rubble of oSmashTrap / oCeilingTrap Destroy (sRubbleTan) and oDoor Destroy (k = 4, small only) */
+static void rubble_tan(int i, int obj, int kx, int spr)
+{
+    struct pin *p = &PX(i);
+    int ya = RAND(0, 8), yb = RAND(0, 8);
+    int xa_ = RAND(0, kx), xb = RAND(0, kx);
+    int r = pin_create(p->x + PI(8 + xa_ - xb), p->y + PI(8 + ya - yb), obj);
+    pin_set_sprite(r, spr);
+}
+
+/* objects/oCeilingTrap/Create_0.gml, oDoor/Create_0.gml */
+static void ceiling_create(int i, int door)
+{
+    struct pin *p = &PX(i);
+    PE(p)->xVel = PE(p)->yVel = PE(p)->xAcc = PE(p)->yAcc = 0;
+    if (door) setCollisionBounds(i, 1, 0, 15, 32);
+    else setCollisionBounds(i, 0, 0, 16, 16);
+    p->invincible = 0;
+    if (!door) p->ispd = (img_t)0.4;
+    PE(p)->xVel = 0;
+    PE(p)->yVel = 0;
+    PE(p)->myGrav = N(1);
+    PE(p)->counter = door ? 0 : 3;
+    PE(p)->status = 0;
+}
+
+/* objects/oCeilingTrap/Step_0.gml */
+static void ceiling_step(int i)
+{
+    struct pin *p = &PX(i);
+    if (PE(p)->status == 1) {                                              /* DROP */
+        if (PE(p)->counter > 0) PE(p)->counter -= 1;
+        else {
+            PE(p)->counter = 3;
+            pin_sety(p, p->y + PI(1));
+        }
+        PE(p)->yVel = 0;
+        if (CP(X(i) + 8, Y(i) + 17, OBJ_oSolid)) PE(p)->status = 2;
+        if (p->spr == GSPR_sBlock) pin_set_sprite(i, GSPR_sCeilingTrapS);
+    } else if (PE(p)->status == 2) {                                       /* WAIT */
+        PE(p)->yVel = 0;
+        if (isCollisionBottom(i, 1)) pin_sety(p, p->y - PI(1));
+    }
+}
+
+/* objects/oDoor/Step_0.gml (dist = distance_to_object(oCharacter): unused) */
+static void door_step(int i)
+{
+    struct pin *p = &PX(i);
+    if (PE(p)->status == 1) {                                              /* DROP */
+        PE(p)->yVel += PE(p)->myGrav;
+        if (NGT(PE(p)->yVel, N(6))) PE(p)->yVel = N(6);
+        if (isCollisionBottom(i, 1)) {
+            PE(p)->status = 2;
+            PE(p)->yVel = 0;
+            PE(p)->counter = 100;
+            pin_setdepth(p, 100);
+        }
+    } else if (PE(p)->status == 2) {
+        if (isCollisionBottom(i, 1)) pin_sety(p, p->y - PI(1));
+    }
+}
+
+/* ==== oTemple, oTempleFake ======================================================================================== */
+/* objects/oTemple/Create_0.gml in play (oTempleFake, Olmec's room): the generator's block_gems in play */
+static void temple_create(int i)
+{
+    struct pin *p = &PX(i);
+    int n, x = PFLOOR(p->x), y = PFLOOR(p->y);
+    p->cleanDeath = 0;
+    n = RAND(1, 100);
+    if (G.cityOfGold) pin_set_sprite(i, GSPR_sGTemple);
+    else if (n < 20) pin_set_sprite(i, GSPR_sTempleGold);
+    else if (n < 30) pin_set_sprite(i, GSPR_sTempleGoldBig);
+    else if (isLevel() && x > 1 && x < PW.room_w - 16 && y > 1 && y < PW.room_h - 16) {
+        if (RAND(1, 60) == 1) pin_create(p->x + PI(8), p->y + PI(8), OBJ_oSapphireBig);
+        else if (RAND(1, 80) == 1) pin_create(p->x + PI(8), p->y + PI(8), OBJ_oEmeraldBig);
+        else if (RAND(1, 100) == 1) pin_create(p->x + PI(8), p->y + PI(8), OBJ_oRubyBig);
+        else if (RAND(1, 1200) == 1) PUNTR(7001);                     /* scrGenerateItem in play */
+    }
+}
+
+/* objects/oTemple/Destroy_0.gml (oSolid's Destroy first: pobj.c) */
+static void gold_piece(int i, int obj)
+{
+    struct pin *p = &PX(i);
+    int ya = RAND(0, 4), yb = RAND(0, 4);
+    int xa_ = RAND(0, 4), xb = RAND(0, 4);
+    int g = pin_create(p->x + PI(8 + xa_ - xb), p->y + PI(8 + ya - yb), obj);
+    int a = RAND(0, 3), b = RAND(0, 3);
+    PE(&PX(g))->xVel = NI(a - b);
+    PE(&PX(g))->yVel = NI(RAND(2, 4) * 1);
+}
+
+static void temple_destroy(int i)
+{
+    struct pin *p = &PX(i);
+    int k;
+    destroy_solid(i);                                                  /* action_inherited: oSolid's Destroy */
+    p = &PX(i);
+    if (p->cleanDeath || G.cleanSolids) return;
+    rubble_tan(i, OBJ_oRubble, 8, GSPR_sRubbleLush);
+    rubble_tan(i, OBJ_oRubbleSmall, 8, GSPR_sRubbleLushSmall);
+    rubble_tan(i, OBJ_oRubbleSmall, 8, GSPR_sRubbleLushSmall);
+    p = &PX(i);
+    if (p->spr == GSPR_sTempleGold) {
+        for (k = 0; k < 3; k++) gold_piece(i, OBJ_oGoldChunk);
+    } else if (p->spr == GSPR_sTempleGoldBig || G.cityOfGold) {
+        for (k = 0; k < 3; k++) gold_piece(i, OBJ_oGoldChunk);
+        gold_piece(i, OBJ_oGoldNugget);
+    }
+    if (PX(i).treasure == TR_BIGRUBY) pin_create(PX(i).x + PI(8), PX(i).y + PI(8), OBJ_oRubyBig);
+}
+
+/* ==== the player's temple sites (oPlayer1 Step) =================================================================== */
+static void player_smashtrap(int i)
+{
+    struct pin *p = &PX(i);                                            /* :1623 */
+    int obj = instance_nearest_p(X(i), Y(i), OBJ_oSmashTrap);
+    PG.plife -= 10;
+    if (DLT(X(obj) + 8, X(i))) PE(p)->xVel = NI(-RAND(4, 6));
+    else PE(p)->xVel = NI(RAND(4, 6));
+    PE(p)->yVel = N(-6);
+    if (obj != NOONE && PE(&PX(obj))->sdir == SM_DOWN) PE(p)->yVel = N(4);
+    scrCreateBlood(i, p->x, p->y, 1);
+    if (PL.holdItem != NOONE) {
+        PE(&PX(PL.holdItem))->held = 0;
+        PL.holdItem = NOONE;
+    }
+}
+
+static void player_lava(int i)
+{
+    struct pin *p = &PX(i);                                            /* :195 */
+    if (!PL.dead) snd_play(SND_xflame);                                        /* :200 */
+    PG.plife -= 99;
+    PE(p)->xVel = 0;
+    PE(p)->yVel = N(0.1);
+    PE(p)->grav = 0;
+    PE(p)->myGrav = 0;
+    PL.bounced = 1;
+    PL.burning = 100;
+    pin_setdepth(p, 999);
+}
+
+/* :1228 the gold idol's trap outside the mines (levelType 0 is pplayer.c's) */
+static void player_idoltrap(int i)
+{
+    int h = PL.holdItem;
+    int16_t w[256];
+    int n, k;
+    if (G.levelType == 1) {
+        if (G.cemetary && !PG.ghostExists) {
+            view_read();
+            if (DGT(X(i), PW.room_w / 2.0)) pin_create(PI(PW.xview + 320 + 8), PI(PW.yview + 120), OBJ_oGhost);
+            else pin_create(PI(PW.xview - 32), PI(PW.yview + 120), OBJ_oGhost);
+            PG.ghostExists = 1;
+        }
+        n = pw_with(OBJ_oTrapBlock, w, 256);
+        for (k = 0; k < n; k++)
+            if (PX(w[k]).alive && DLT(distance_to_object_p(w[k], OBJ_oCharacter), 90)) PE(&PX(w[k]))->dying = 1;
+    } else if (G.levelType == 3) {
+        if (instance_exists_p(OBJ_oCeilingTrap)) {
+            int t;
+            n = pw_with(OBJ_oCeilingTrap, w, 256);
+            for (k = 0; k < n; k++) {
+                if (!PX(w[k]).alive) continue;
+                PE(&PX(w[k]))->status = 1;
+                PE(&PX(w[k]))->yVel = N(0.5);
+            }
+            scrShake(20);
+            t = instance_nearest_p(X(i) - 64, Y(i) - 64, OBJ_oDoor);
+            PE(&PX(t))->status = 1;
+            PE(&PX(t))->yVel = N(1);
+            t = instance_nearest_p(X(i) + 64, Y(i) - 64, OBJ_oDoor);
+            PE(&PX(t))->status = 1;
+            PE(&PX(t))->yVel = N(1);
+        } else {
+            n = pw_with(OBJ_oTrapBlock, w, 256);
+            for (k = 0; k < n; k++) {
+                if (!PX(w[k]).alive) continue;
+                if (DLT(distance_to_object_p(w[k], OBJ_oCharacter), 90)) pin_destroy(w[k]);
+                snd_play(SND_xthump);                                          /* :1282 */
+                scrShake(10);
+            }
+        }
+    }
+    PE(&PX(h))->trigger = 0;
+}
+
+/* ==== items, ropes and detritus in lava =========================================================================== */
+/* oItem Step :160-185 (sites 1032: the rectangle (:160) then the point (:173); see struct mark), oJar / oSkull
+   Step :79-100 (1036), oTreasure Step :70-80 (1039) */
+static struct mark mk_item;
+static void lava_sink(struct pin *p)
+{
+    PE(p)->myGrav = 0;
+    PE(p)->xVel = 0;
+    PE(p)->yVel = 0;
+    pin_sety(p, PADDV(p->y, N(0.05)));
+}
+static int lava_rect(int i) { return collision_rect_p(X(i) - 3, Y(i) - 3, X(i) + 3, Y(i) + 3, OBJ_oLava, 0, NOONE) != NOONE; }
+static int lava_point(int i) { return CP(X(i), Y(i) - 5, OBJ_oLava); }
+static void lava_melt(int i)
+{
+    struct pin *p = &PX(i);
+    if (p->type == T_BOMB) {
+        int k;
+        pin_create(p->x, p->y, OBJ_oExplosion);
+        for (k = 0; k < 3; k++) pin_create(PX(i).x, PX(i).y, OBJ_oFlame);
+        snd_play(SND_xexplosion);                                              /* oItem :181, oJar :98 */
+    }
+    pin_destroy(i);
+}
+static void lava_item(int i)
+{
+    if (!marked(&mk_item, i) && lava_rect(i)) {
+        mark_set(&mk_item, i);
+        lava_sink(&PX(i));
+        return;
+    }
+    lava_melt(i);
+}
+static void lava_jar(int i)
+{
+    if (lava_rect(i)) lava_sink(&PX(i));
+    if (lava_point(i)) lava_melt(i);
+}
+static void lava_treasure(int i)
+{
+    if (lava_rect(i)) lava_sink(&PX(i));
+    if (lava_point(i)) pin_destroy(i);
+}
+
+/* objects/oRope/Step_0.gml (1056: the burn starts, or burnTimer reached 1) */
+static void lava_rope(int i)
+{
+    struct pin *p = &PX(i);
+    if (PE(p)->burnTimer == 1) {                                       /* :7 */
+        if (PL.state == CLIMBING && collision_point_p(X(i) + 12, Y(i) + 4, OBJ_oPlayer1, 0, NOONE) != NOONE)
+            PUNTR(7002);                                               /* the rope burns under the player */
+        PUNTR(7003);
+        return;
+    }
+    PUNTR(7004);                                                       /* oRopeBurn */
+}
+
 /* ==== dispatch ==================================================================================================== */
 static int create_ev(int i, int fromgen)
 {
@@ -578,6 +1179,15 @@ static int create_ev(int i, int fromgen)
         PX(i).ispd = (img_t)0.4;
         return 1;
     case OBJ_oMagmaMan: magmaman_create(i); return 1;
+    case OBJ_oTombLord: tomblord_create(i); return 1;
+    case OBJ_oFly:                                                     /* objects/oFly/Create_0.gml */
+        PE(&PX(i))->xVel = 0;
+        PE(&PX(i))->yVel = ND(-prandom(3) + 0.5);
+        return 1;
+    case OBJ_oSmashTrap: case OBJ_oSmashTrapLit: smashtrap_create(i, fromgen); return 1;
+    case OBJ_oCeilingTrap: ceiling_create(i, 0); return 1;
+    case OBJ_oDoor: ceiling_create(i, 1); return 1;
+    case OBJ_oTemple: if (!fromgen) temple_create(i); return 1;
     }
     return 0;
 }
@@ -590,6 +1200,27 @@ static int step_ev(int i)
     case OBJ_oMagma: magma_step(i); return 1;
     case OBJ_oLavaDrip: rubblepiece_step(i); return 1;
     case OBJ_oMagmaMan: magmaman_step(i); return 1;
+    case OBJ_oTombLord: tomblord_step(i); return 1;
+    case OBJ_oFly: {                                                   /* objects/oFly/Step_0.gml */
+        struct pin *p = &PX(i);
+        pin_setx(p, PADDV(p->x, PE(p)->xVel));
+        pin_sety(p, PADDV(p->y, PE(p)->yVel));
+        pin_set_sprite(i, NLT(PE(p)->xVel, N(0)) ? GSPR_sFlyLeft : GSPR_sFlyRight);
+        return 1;
+    }
+    case OBJ_oSceptre:                                                 /* objects/oSceptre/Step_0.gml */
+        item_step(i);
+        if (PE(&PX(i))->held) pin_set_sprite(i, PL.facing == LEFT ? GSPR_sSceptreLeft : GSPR_sSceptreRight);
+        return 1;
+    case OBJ_oSmashTrap: case OBJ_oSmashTrapLit: smashtrap_step(i); return 1;
+    case OBJ_oCeilingTrap: ceiling_step(i); return 1;
+    case OBJ_oDoor: door_step(i); return 1;
+    case OBJ_oTempleFake:                                              /* objects/oTempleFake/Step_0.gml */
+        if (!CP(X(i) + 8, Y(i) + 8, OBJ_oDoor)) {
+            pin_create(PX(i).x, PX(i).y, OBJ_oTemple);
+            pin_destroy(i);
+        }
+        return 1;
     }
     return 0;
 }
@@ -627,6 +1258,10 @@ static int animend_ev(int i)
         }
         return 1;
     case OBJ_oMagmaTrail: case OBJ_oLavaDrip: pin_destroy(i); return 1;
+    case OBJ_oTombLord: return tomblord_animend(i);
+    case OBJ_oCeilingTrap:                                             /* objects/oCeilingTrap/Other_7.gml */
+        if (p->spr == GSPR_sCeilingTrapS) pin_set_sprite(i, GSPR_sCeilingTrap);
+        return 1;
     case OBJ_oMagmaMan:                                                /* objects/oMagmaMan/Other_7.gml */
         if (p->spr == GSPR_sMagmaManDie) pin_destroy(i);
         return 1;
@@ -660,6 +1295,12 @@ static int collision_ev(int self, int other)
             PE(&PX(self))->alarm[0] = 10;
         }
         return 1;
+    case OBJ_oTombLord:
+        if (obj_is(oo, OBJ_oCharacter)) tomblord_hit_player(self, other);
+        else tomblord_whipped(self, other);
+        return 1;
+    case OBJ_oFly: fly_hit(self, other); return 1;
+    case OBJ_oGoldDoor: golddoor_sceptre(self, other); return 1;
     case OBJ_oFlame:                                                   /* objects/oFlame/Collision_oWater.gml */
         if (!obj_is(oo, OBJ_oLava)) return 0;                          /* water: package B */
         pin_create(PX(self).x, PX(self).y, OBJ_oSmokePuff);
@@ -673,6 +1314,18 @@ static int destroy_ev(int i)
 {
     switch (PX(i).obj) {
     case OBJ_oLava: lava_destroy(i); return 1;
+    case OBJ_oTemple: temple_destroy(i); return 1;
+    case OBJ_oSmashTrap: case OBJ_oSmashTrapLit: case OBJ_oCeilingTrap:   /* Destroy_0.gml (no inherit) */
+        if (!PX(i).cleanDeath && !G.cleanSolids) {
+            rubble_tan(i, OBJ_oRubble, 8, GSPR_sRubbleTan);
+            rubble_tan(i, OBJ_oRubbleSmall, 8, GSPR_sRubbleTanSmall);
+            rubble_tan(i, OBJ_oRubbleSmall, 8, GSPR_sRubbleTanSmall);
+        }
+        return 1;
+    case OBJ_oDoor:                                                    /* objects/oDoor/Destroy_0.gml */
+        rubble_tan(i, OBJ_oRubbleSmall, 4, GSPR_sRubbleTanSmall);
+        rubble_tan(i, OBJ_oRubbleSmall, 4, GSPR_sRubbleTanSmall);
+        return 1;
     }
     return 0;
 }
@@ -694,9 +1347,15 @@ int ptemple_player(int site, int i, int arg)
 {
     (void)arg;
     switch (site) {
+    case 2021: player_smashtrap(i); return 0;
+    case 2022:                                                         /* oPlayer1 Step :1643 the ceiling trap */
+        PG.plife -= 10;
+        scrCreateBlood(i, PX(i).x, PX(i).y, 1);
+        return 0;
+    case 2033: player_lava(i); return 0;
+    case 2046: player_idoltrap(i); return 0;
     }
     PUNTR(site);
-    (void)i;
     return 0;
 }
 
@@ -704,6 +1363,11 @@ int ptemple_world(int site, int i, int arg)
 {
     (void)arg;
     switch (site) {
+    case 1032: lava_item(i); return 0;
+    case 1036: lava_jar(i); return 0;
+    case 1039: lava_treasure(i); return 0;
+    case 1040: pin_destroy(i); return 0;                               /* oDetritus Step :14 */
+    case 1056: lava_rope(i); return 0;
     case 5012: lava_enemy(i); return 0;
     case 5030: {                                    /* oEnemySight/Collision_oCharacter.gml :10 with oHawkman */
         int16_t w[256];
