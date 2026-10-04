@@ -6,6 +6,15 @@
 #include "pint.h"
 #include "core.h"
 
+/* the GML instance variables: in struct pin_ext (PE(p)) since 18aca5f, in struct pin before */
+#ifdef PE
+#define XT struct pin_ext
+#define XP(p) PE(p)
+#else
+#define XT struct pin
+#define XP(p) (p)
+#endif
+
 /* FNV-1a over 32-bit words (byte order independent: the words are mixed as values) */
 static uint32_t H;
 static void hw(uint32_t v)
@@ -54,13 +63,14 @@ uint32_t sum_play(void)
     for (i = 0; i < PW.n; i++) {
         const struct pin *p = &PW.in[i];
         if (!p->alive) continue;
+        const XT *e = XP(p);
         hw((uint32_t)p->id); hw((uint32_t)p->obj); hw((uint32_t)p->spr);
         hf(p->x); hf(p->y); hf(p->img); hf(p->ispd); hf(p->depth);
         hd(p->xscale); hd(p->yscale); hd(p->angle); hd(p->alpha);
-        hd(p->xVel); hd(p->yVel); hd(p->xAcc); hd(p->yAcc); hd(p->myGrav); hd(p->grav); hd(p->life);
-        hd(p->px); hd(p->py); hd(p->direction);
-        hw(p->visible); hw(p->held); hw((uint32_t)p->state); hw((uint32_t)p->counter);
-        for (a = 0; a < 12; a++) hw((uint32_t)p->alarm[a]);
+        hd(e->xVel); hd(e->yVel); hd(e->xAcc); hd(e->yAcc); hd(e->myGrav); hd(e->grav); hd(e->life);
+        hd(e->px); hd(e->py); hd(e->direction);
+        hw(p->visible); hw(e->held); hw((uint32_t)e->state); hw((uint32_t)e->counter);
+        for (a = 0; a < 12; a++) hw((uint32_t)e->alarm[a]);
     }
     if (PL.idx != NOONE) {
         hw((uint32_t)PL.state); hw((uint32_t)PL.facing); hw((uint32_t)PL.fallTimer); hw((uint32_t)PL.jumpTime);
