@@ -731,9 +731,36 @@ int pin_box_outside(int i, int w, int h)
     return r < 0 || l > w || b < 0 || t > h;
 }
 
+/* v as an int when it is a whole number with |v| < 30000, from the double's bits (no soft-float): exponent p =
+   e - 1023 in 0 .. 14 puts the integer part in the high word's mantissa bits (21 with the hidden one); their product
+   with 2^(p + 12) has the integer part in its high word and the fraction bits in its low word */
+static const uint32_t dw_mul[15] = { 1u << 12, 1u << 13, 1u << 14, 1u << 15, 1u << 16, 1u << 17, 1u << 18, 1u << 19,
+                                     1u << 20, 1u << 21, 1u << 22, 1u << 23, 1u << 24, 1u << 25, 1u << 26 };
+static int dwhole(double v, int32_t *o)
+{
+    union { double d; uint64_t u; } c;
+    uint32_t hi, lo, e, m;
+    uint64_t pr;
+    c.d = v;
+    hi = (uint32_t)(c.u >> 32);
+    lo = (uint32_t)c.u;
+    e = (hi >> 20) & 0x7ffu;
+    if (e < 1023) {
+        if ((hi & 0x7fffffffu) == 0 && lo == 0) { *o = 0; return 1; }     /* +-0 */
+        return 0;
+    }
+    if (e > 1023 + 14 || lo != 0) return 0;
+    m = (hi & 0xfffffu) | 0x100000u;
+    pr = (uint64_t)m * dw_mul[e - 1023];
+    if ((uint32_t)pr != 0 || (uint32_t)(pr >> 32) >= 30000u) return 0;
+    *o = (hi & 0x80000000u) ? -(int32_t)(uint32_t)(pr >> 32) : (int32_t)(uint32_t)(pr >> 32);
+    return 1;
+}
+
 /* floor(v) as an int when |v| < 30000 */
 static int dfloor_int(double v, int32_t *o)
 {
+    if (dwhole(v, o)) return 1;
     if (!(v > -30000 && v < 30000)) return 0;
     *o = dfloor(v);
     return 1;
@@ -1025,6 +1052,12 @@ struct pq { double px, py; int32_t ix, iy; int iok; };
 
 static void pq_init(struct pq *q, double px, double py)
 {
+    if (dwhole(px, &q->ix) && dwhole(py, &q->iy)) {   /* (float) of a whole number below 2^24 is itself */
+        q->px = px;
+        q->py = py;
+        q->iok = 1;
+        return;
+    }
     px = (float)px;                                  /* CInstance::Collision_Point takes floats */
     py = (float)py;
     q->px = px;
@@ -1199,6 +1232,7 @@ struct lq { int iok, axis; int32_t lx, ly, hx, hy; };
 
 static int whole(double v, int32_t *o)
 {
+    if (dwhole(v, o)) return 1;
     if (!dfloor_int(v, o)) return 0;
     return (double)*o == v;
 }
@@ -1378,6 +1412,7 @@ int (collision_line_p)(double x1, double y1, double x2, double y2, int obj, int 
     lq_init(&c.lq, x1, y1, x2, y2);
     c.obj = obj; c.notme = notme_self; c.prec = prec;
     c.x1 = x1; c.y1 = y1; c.x2 = x2; c.y2 = y2; c.dbl = 1;
+    if (c.lq.iok) return line_run(&c, q, 0);   /* whole ends: qrect's are the ints +-1 (pcol_search_i) */
     if (q == 1) qrect(x1, y1, x2, y2, r);
     return line_run(&c, q, r);
 }
@@ -1438,10 +1473,28 @@ int collision_line_any_i(int32_t x1, int32_t y1, int32_t x2, int32_t y2, int obj
 
 /* a rectangle query: its sides rounded (floor(v + 0.5)) once */
 /* f*: the corners as the runner's floats (CInstance::Collision_Rectangle takes floats) */
-struct rq { double lx, hx, ly, hy; int32_t ilx, ihx, ily, ihy; int iok; float flx, fhx, fly, fhy; };
+/* with whole-number corners (fok 0) the float corners are the ints', made when first needed (rq_floats) */
+struct rq { double lx, hx, ly, hy; int32_t ilx, ihx, ily, ihy; int iok; float flx, fhx, fly, fhy; int fok; };
+
+static void rq_floats(struct rq *q)
+{
+    q->flx = (float)q->ilx; q->fhx = (float)q->ihx; q->fly = (float)q->ily; q->fhy = (float)q->ihy;
+    q->fok = 1;
+}
 
 static void rq_init(struct rq *q, double x1, double y1, double x2, double y2)
 {
+    int32_t a, b, c, d;
+    if (dwhole(x1, &a) && dwhole(y1, &b) && dwhole(x2, &c) && dwhole(y2, &d)) {
+        /* floor(v + 0.5) of a whole v is v; (float)v is v */
+        q->ilx = a < c ? a : c; q->ihx = a < c ? c : a;
+        q->ily = b < d ? b : d; q->ihy = b < d ? d : b;
+        q->iok = 1;
+        q->fok = 0;
+        return;
+    }
+    q->fok = 1;
+    {
     double lx = x1 < x2 ? x1 : x2, hx = x1 < x2 ? x2 : x1, ly = y1 < y2 ? y1 : y2, hy = y1 < y2 ? y2 : y1;
     float f1 = (float)x1, f2 = (float)x2, g1 = (float)y1, g2 = (float)y2;
     q->flx = f1 < f2 ? f1 : f2; q->fhx = f1 < f2 ? f2 : f1;
@@ -1455,6 +1508,7 @@ static void rq_init(struct rq *q, double x1, double y1, double x2, double y2)
         q->hx = dfloor(hx + 0.5);
         q->ly = dfloor(ly + 0.5);
         q->hy = dfloor(hy + 0.5);
+    }
     }
 }
 
@@ -1514,7 +1568,7 @@ static int precise_rect(int k, float ql, float qt, float qr, float qb)
     }
 }
 
-static int rect_hit(int k, const struct rq *q, int prec)
+static int rect_hit(int k, struct rq *q, int prec)
 {
     double l, t, r, b;
     int32_t ib[4];
@@ -1526,6 +1580,7 @@ static int rect_hit(int k, const struct rq *q, int prec)
     }
     if (!pin_bbox(k, &l, &t, &r, &b))
         return 0;
+    if (!q->fok) rq_floats(q);
     if (!prec || !precise(k)) {
         /* CInstance::Collision_Rectangle, the bounding box (floats): outside when xmin >= right, left > xmax (and
            in y); else a miss when the overlap's ends round (floor(v + 0.5)) to the same column, or row */
@@ -1566,6 +1621,7 @@ int (collision_rect_p)(double x1, double y1, double x2, double y2, int obj, int 
     PWST(rect, 1);
     if (q < 0) return NOONE;
     rq_init(&rq, x1, y1, x2, y2);
+    if (!rq.fok) return rect_run(&rq, q, 0, obj, prec, notme_self);   /* whole corners: qrect's are the ints +-1 */
     if (q == 1) qrect(x1, y1, x2, y2, r);
     return rect_run(&rq, q, r, obj, prec, notme_self);
 }
@@ -1581,7 +1637,7 @@ int collision_rect_i(int32_t x1, int32_t y1, int32_t x2, int32_t y2, int obj, in
     rq.iok = 1;
     rq.ilx = x1 < x2 ? x1 : x2; rq.ihx = x1 < x2 ? x2 : x1;
     rq.ily = y1 < y2 ? y1 : y2; rq.ihy = y1 < y2 ? y2 : y1;
-    rq.lx = rq.ilx; rq.hx = rq.ihx; rq.ly = rq.ily; rq.hy = rq.ihy;
+    rq.fok = 0;                                 /* (the float corners were left unset before 2026-10-04) */
     (void)r;
     return rect_run(&rq, q, 0, obj, prec, notme_self);
 }

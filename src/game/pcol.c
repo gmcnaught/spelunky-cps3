@@ -1430,12 +1430,16 @@ void pcol_handle(void)
         int s = thead;
         tlist_remove(s);
         if (edead(s) || !PW.in[s].alive) continue;
-        {
-            float r[4];
-            ebbox(s, 0, 0, r);
-            hc_self = s;
-            pcol_search(r[0], r[1], r[2], r[3], collision_result, 0);
-        }
+        /* the search rectangle of its box: as pcol_search with ebbox's floats (rset_f takes whole ones as ints) */
+        ebbox_rect(s, 0, 0, &s_r);
+        s_kv = 0;
+        hc_self = s;
+        s_cb = collision_result;
+        s_ctx = 0;
+        rlock = 1;
+        pcol_st.searches++;
+        search_rec(rroot);
+        rlock = 0;
         if (keeps_testing(s)) {                   /* pushed on the front of a local list */
             for (k = nkeep; k > 0; k--) keep[k] = keep[k - 1];
             keep[0] = (int16_t)s;
