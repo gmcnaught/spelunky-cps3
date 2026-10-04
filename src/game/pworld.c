@@ -14,6 +14,7 @@
 /* struct pin is 64 bytes (a shift indexes PW.in, not a mul.l) and struct inst 72: play slot i ends at byte 64 i + 64 <=
    72 (i + 1), inside the generator instances 0 .. i, which the loaders have read (play.h) */
 typedef char pin_size_is_64[sizeof(struct pin) == 64 ? 1 : -1];
+typedef char pin_ext_size_8[sizeof(struct pin_ext) % 8 == 0 && EXT_MAX * (sizeof(struct pin_ext) / 8) < 32768 ? 1 : -1];   /* exto */
 typedef char pin_size_le_inst_size[sizeof(struct pin) <= sizeof(struct inst) ? 1 : -1];
 #define INST_MEM_PIN ((PIN_MAX * sizeof(struct pin) + sizeof(struct inst) - 1) / sizeof(struct inst))
 #define INST_MEM_N (INST_MEM_PIN > INST_MAX ? INST_MEM_PIN : INST_MAX)
@@ -432,7 +433,7 @@ void pw_removed(int i)
 #ifdef PIN_EXT_CHECK
     p->ext = -1;                                     /* a later PE(p) is an error */
 #else
-    p->ext = 0;
+    pin_set_ext(p, 0);
 #endif
 }
 
@@ -453,7 +454,7 @@ static void dead_init(void)
 #ifdef PIN_EXT_CHECK
     d->ext = -1;                                     /* PE(PIN_DEAD) is an error */
 #else
-    d->ext = EXT_SCRATCH;
+    pin_set_ext(d, EXT_SCRATCH);
 #endif
     dead_ok = 1;
 }
@@ -611,7 +612,7 @@ int pin_add(int obj, pos x, pos y, int32_t id)
     p->ispd = 1;
     PIN_WR(float, p->xscale) = PIN_WR(float, p->yscale) = 1;
     PIN_WR(float, p->angle) = 0;
-    p->ext = (int16_t)(pin_needs_ext(obj) ? ext_alloc() : 0);   /* with pin_add's defaults (ext_defaults) */
+    pin_set_ext(p, pin_needs_ext(obj) ? ext_alloc() : 0);         /* with pin_add's defaults (ext_defaults) */
     if (obj == OBJ_oPlayer1 && p->ext) PE(p)->xprev = x;
     if (p->ext && pin_needs_en(obj)) pin_ext[p->ext].en = (int16_t)en_alloc();
     pw_draw_mark(i);                                 /* (a reused slot may still be on the list: marked once) */

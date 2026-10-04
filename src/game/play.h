@@ -123,6 +123,7 @@ struct pin {
     PIN_RO int16_t mask;    /* mask_index (-1: the sprite) */
     int16_t bl, bt, br, bb;
     int16_t type;           /* enum ptype */
+    int16_t exto;           /* ext x sizeof(struct pin_ext) / 8 (pin_set_ext): PE(p) by a shift, not a multiply */
     int32_t id;
     PIN_RO pos x, y;
     PIN_RO float depth;     /* a float in the runner (-99999991 reads -99999992) */
@@ -186,9 +187,15 @@ struct pin_en *pin_en_checked(const struct pin *p);
 #define PE(p) pin_ext_checked(p)
 #define PEN(p) pin_en_checked(p)
 #else
-#define PE(p) (&pin_ext[(p)->ext])
-#define PEN(p) (&pin_en[pin_ext[(p)->ext].en])
+#define PE(p) ((struct pin_ext *)((char *)pin_ext + ((int32_t)(p)->exto << 3)))
+#define PEN(p) (&pin_en[PE(p)->en])
 #endif
+/* p->ext = e, and the byte offset of its record / 8 (struct pin_ext's size is a multiple of 8: pworld.c checks it) */
+static inline void pin_set_ext(struct pin *p, int e)
+{
+    p->ext = (int16_t)e;
+    p->exto = (int16_t)(e * (int)(sizeof(struct pin_ext) / 8));
+}
 static inline int pin_is(int i, int obj) { return i >= 0 && PW.in[i].alive && obj_is(PW.in[i].obj, obj); }
 
 /* the setters of the collision-relevant fields: store, and on a real change (!=; the scales and the angle as the
