@@ -105,7 +105,16 @@ static inline int scale_is_pm1(double d) { uint32_t h = dr_hi(d); return dr_lo(d
 static inline int dr_neg(double d) { return (dr_hi(d) & 0x80000000u) != 0; }
 static inline int dr_zero(double d) { return (dr_hi(d) & 0x7fffffffu) == 0 && dr_lo(d) == 0; }
 /* a float that holds a whole number: its integer (truncation otherwise; the soft-float conversion) */
-static inline int32_t ftoi(float f) { return (int32_t)f; }
+/* (int32_t)f, truncation toward 0, by integer operations (no soft-float call) */
+static int32_t ftoi(float f)
+{
+    uint32_t u = fbits(f), m = (u & 0x7fffffu) | 0x800000u;
+    int e = (int)((u >> 23) & 255) - 127;
+    int32_t v;
+    if (e < 0) return 0;
+    v = e >= 23 ? (int32_t)(m << (e - 23 > 7 ? 7 : e - 23)) : (int32_t)(m >> (23 - e));
+    return (u & 0x80000000u) ? -v : v;
+}
 /* the pixel a sprite at float coordinate f starts on: GameMaker's quad covers the pixels whose centre is at or after
    f, i.e. ceil(f - 0.5) (round half down; build/trace/g_p7_dark_s18: oFlareSpark at y 112.8 on row 113). Integer
    operations only */
@@ -178,6 +187,7 @@ static uint8_t tiles_dirty;
 /* the frame's drawables: instances (i >= 0) and tile sprites (i = -1 - k) */
 struct ent { uint32_t dkey; int32_t id; int16_t i; };
 static struct ent ents[ENT_MAX];
+static uint16_t ord[ENT_MAX];                     /* ents in drawing order */
 
 /* ---- display list helpers --------------------------------------------------------------------------------- */
 static void piece_out(int px, int py, const struct piecedef *pc, int flip)
@@ -321,19 +331,34 @@ static uint16_t terrain_cell(int pi, int *c)
 
 /* terrain_cell and map_of_depth of an instance, remembered per slot with the fields they read (x, y, sprite,
    image, depth, scales, angle as bit patterns): a solid that did not change costs a few compares */
-struct tcache { uint32_t xb, yb, ib, db, sx, sy, an; int16_t spr, cx, cy, c; uint16_t tile; int8_t m; };
+/* the transform terrain cells and the cached draws need: image_xscale, image_yscale 1 (xscale -1 allowed for draws,
+   *flip), image_angle 0, by bit patterns */
+static inline __attribute__((always_inline)) int plain_transform(int pi, int *flip)
+{
+    uint32_t xh = dr_hi(I_XSCALE(pi));
+    if (dr_lo(I_XSCALE(pi)) || (xh != D_ONE_HI && xh != D_MONE_HI) || dr_hi(I_YSCALE(pi)) != D_ONE_HI ||
+        dr_lo(I_YSCALE(pi)) || !dr_zero(I_ANGLE(pi)))
+        return 0;
+    *flip = xh == D_MONE_HI;
+    return 1;
+}
+
+/* per slot, the result of a computation from fields that rarely change, with those fields as bit patterns
+   (x, y, image_index, depth, sprite; the transform checked as plain_transform each time):
+   kind 1: terrain_cell + map_of_depth (cx, cy, c, tile, m);  kind 2: a draw_self frame (cx, cy = room position,
+   c = framedefs index, m = flip, tile = 1 when the sprite has art) */
+struct tcache { uint32_t xb, yb, ib, db; int16_t spr, cx, cy, c; uint16_t tile; int8_t m; };
 static struct tcache tcache[PIN_MAX] DRAW_CACHE_SECTION;
-static uint8_t tcache_ok[PIN_MAX];
+static uint8_t tcache_ok[PIN_MAX];                /* the kind cached (0 none) */
 static uint16_t terrain_cached(int pi, int *c, int *m)
 {
     struct tcache *e = &tcache[pi];
     uint32_t xb = fbits(I_X(pi)), yb = fbits(I_Y(pi)), ib = fbits(I_IMG(pi)), db = fbits(I_DEPTH(pi));
-    uint32_t sx = dr_hi(I_XSCALE(pi)) ^ dr_lo(I_XSCALE(pi)), sy = dr_hi(I_YSCALE(pi)) ^ dr_lo(I_YSCALE(pi));
-    uint32_t an = dr_hi(I_ANGLE(pi)) | dr_lo(I_ANGLE(pi));
-    if (!tcache_ok[pi] || e->xb != xb || e->yb != yb || e->spr != I_SPR(pi) || e->ib != ib || e->db != db ||
-        e->sx != sx || e->sy != sy || e->an != an) {
+    int flip;
+    if (!plain_transform(pi, &flip) || flip) return 0;
+    if (tcache_ok[pi] != 1 || e->xb != xb || e->yb != yb || e->spr != I_SPR(pi) || e->ib != ib || e->db != db) {
         int cc = 0;
-        e->xb = xb; e->yb = yb; e->ib = ib; e->db = db; e->sx = sx; e->sy = sy; e->an = an;
+        e->xb = xb; e->yb = yb; e->ib = ib; e->db = db;
         e->spr = I_SPR(pi);
         e->tile = terrain_cell(pi, &cc);
         e->m = (int8_t)(e->tile ? map_of_depth(I_DEPTH(pi)) : -1);
@@ -477,6 +502,43 @@ static int32_t img_of(int pi) { return ftoi(I_IMG(pi)); }
 static int is_exit_spr(int s) { return s == GSPR_sPExit || s == GSPR_sDamselExit || s == GSPR_sTunnelExit; }
 
 /* draw_self: image_xscale mirrors; other transforms counted */
+/* draw_self (flip = image_xscale -1) or draw_sprite(sprite_index, -1, x, y) (flip 0) of instance pi, through the
+   slot cache (kind 2) when the transform is plain */
+static void cached_out(int pi, int mirror)
+{
+    struct tcache *e = &tcache[pi];
+    uint32_t xb = fbits(I_X(pi)), yb = fbits(I_Y(pi)), ib = fbits(I_IMG(pi));
+    int flip, s;
+    if (!plain_transform(pi, &flip)) {
+        if (mirror) draw_st.unsup++;
+        s = draw_spr[I_SPR(pi)];
+        spr_out(s, img_of(pi), fpix(I_X(pi)), fpix(I_Y(pi)), mirror && dr_neg(I_XSCALE(pi)));
+        return;
+    }
+    flip &= mirror;
+    if (tcache_ok[pi] != 2 || e->xb != xb || e->yb != yb || e->ib != ib || e->spr != I_SPR(pi) || e->m != flip) {
+        int32_t img = img_of(pi);
+        e->xb = xb; e->yb = yb; e->ib = ib;
+        e->spr = I_SPR(pi);
+        e->m = (int8_t)flip;
+        e->cx = (int16_t)fpix(I_X(pi));
+        e->cy = (int16_t)fpix(I_Y(pi));
+        s = draw_spr[I_SPR(pi)];
+        e->tile = s >= 0;
+        if (s >= 0) {
+            const struct sprdef *sd = &sprdefs[s];
+            if (img < 0) img = 0;
+            if ((uint32_t)img >= sd->nframes) img = (int32_t)((uint32_t)img % sd->nframes);
+            e->c = (int16_t)(sd->frame + img);
+        }
+        tcache_ok[pi] = 2;
+    }
+    if (!e->tile) {
+        draw_st.noart++;
+        return;
+    }
+    frame_out(e->c, e->cx - ox, e->cy - oy, e->m);
+}
 static void self_out(int pi, int x, int y)
 {
     if (I_SPR(pi) < 0) return;
@@ -555,19 +617,22 @@ static void jaws_out(int pi, int x, int y)
 
 static void inst_out(int i)
 {
-    int pi = i;
-    int x = fpix(I_X(pi)), y = fpix(I_Y(pi));
-    switch (draw_kind[I_OBJ(pi)] & ~DK_SOLID) {
+    int pi = i, dk = draw_kind[I_OBJ(pi)] & ~DK_SOLID, x = 0, y = 0;
+    if (dk != DK_SELF && dk != DK_PLAIN && dk != DK_ITEM && dk != DK_NONE) {
+        x = fpix(I_X(pi));
+        y = fpix(I_Y(pi));
+    }
+    switch (dk) {
     case DK_NONE: break;
     case DK_TODO: draw_st.todo++; self_out(pi, x, y); break;
-    case DK_SELF: self_out(pi, x, y); break;
+    case DK_SELF: if (I_SPR(pi) >= 0) cached_out(pi, 1); break;
     case DK_DAMSEL:                               /* objects/oDamsel/Draw_0.gml: the price tag at cimg, which */
         self_out(pi, x, y);                        /* the play code's ev_draw has counted on already */
         if (I_COST(pi) > 0) collect_out(I_CIMG(pi) ? I_CIMG(pi) - 1 : 9, x, y - 12);
         break;
     case DK_ITEM:                                 /* objects/oItem/Draw_0.gml (cimg counted in draw_frame) */
-        plain_out(pi, x, y);
-        if (I_COST(pi) > 0) collect_out(icimg[i] ? icimg[i] - 1 : 9, x, y - 12);
+        if (I_SPR(pi) >= 0) cached_out(pi, 0);
+        if (I_COST(pi) > 0) collect_out(icimg[i] ? icimg[i] - 1 : 9, fpix(I_X(pi)), fpix(I_Y(pi)) - 12);
         break;
     case DK_ENEMY:                                /* objects/oEnemy/Draw_0.gml (oEnemy: LEFT 0, RIGHT 1) */
         if (I_SPR(pi) < 0) break;
@@ -584,7 +649,7 @@ static void inst_out(int i)
             else spr_out(SPR_sShotgunRight, 0, x + 10, y + 10, 0);
         }
         break;
-    case DK_PLAIN: plain_out(pi, x, y); break;
+    case DK_PLAIN: if (I_SPR(pi) >= 0) cached_out(pi, 0); break;
     case DK_DICE:                                 /* objects/oDice/Draw_0.gml */
         self_out(pi, x, y);
         if (!I_ROLLED(pi) && PL.bet > 0) spr_out(SPR_sRedArrowDown, 0, x, y - 12, 0);
@@ -777,6 +842,16 @@ void draw_frame(void)
        (vx - 16, vx + 336), y in (vy + 8 - 16, vy + 248) */
     uint32_t sxlo = fkey((float)(vx - 16)), sxhi = fkey((float)(vx + VIEW_W + 16));
     uint32_t sylo = fkey((float)(vy + DRAW_CROP - 16)), syhi = fkey((float)(vy + DRAW_CROP + SCREEN_H + 16));
+    for (k = 0; k < ntspr; k++) {                 /* tile sprites in view (first: their ids are the largest) */
+        const struct tspr *t = &tspr[k];
+        if (t->x <= vx - 16 || t->x >= vx + VIEW_W || t->y <= vy - 16 || t->y >= vy + VIEW_H) continue;
+        if (n < ENT_MAX) {
+            ents[n].dkey = t->dkey;
+            ents[n].id = 0x70000000 - (int32_t)t->seq;   /* before every instance of the depth */
+            ents[n].i = (int16_t)(-1 - k);
+            n++;
+        }
+    }
     for (k = PW.n - 1; k >= 0; k--) {             /* newest first: the sort below then moves little */
         int pi = k;
         uint32_t kx, ky;
@@ -830,26 +905,46 @@ void draw_frame(void)
         }
     }
     }
-    for (k = 0; k < ntspr; k++) {                 /* tile sprites in view */
-        const struct tspr *t = &tspr[k];
-        if (t->x <= vx - 16 || t->x >= vx + VIEW_W || t->y <= vy - 16 || t->y >= vy + VIEW_H) continue;
-        if (n < ENT_MAX) {
-            ents[n].dkey = t->dkey;
-            ents[n].id = 0x70000000 - (int32_t)t->seq;   /* before every instance of the depth */
-            ents[n].i = (int16_t)(-1 - k);
-            n++;
-        }
-    }
     PROF(1);
-    /* insertion sort: depth descending, then id descending */
-    for (k = 1; k < n; k++) {
-        struct ent e = ents[k];
+    /* sort: depth descending, then id descending. The drawables arrive in id order (tile sprites, then instances
+       newest first), so a stable counting sort on the depth keys (few distinct depths) leaves only the rare
+       displaced terrain owners out of place, which the insertion pass after it puts back */
+    {
+        static uint32_t keys[32];
+        static uint16_t cnt[33];
+        static uint8_t kx[ENT_MAX];
+        int nk = 0, j;
+        for (k = 0; k < n; k++) {
+            uint32_t d = ents[k].dkey;
+            for (j = 0; j < nk && keys[j] != d; j++) ;
+            if (j == nk) {
+                if (nk == 32) { nk = -1; break; }     /* more than 32 depths: insertion sort alone */
+                keys[nk++] = d;
+            }
+            kx[k] = (uint8_t)j;
+        }
+        if (nk > 0) {
+            uint8_t rank[32];
+            for (j = 0; j < nk; j++) {           /* rank of each key, deepest (largest) first */
+                int r = 0, q;
+                for (q = 0; q < nk; q++) r += keys[q] > keys[j];
+                rank[j] = (uint8_t)r;
+            }
+            for (j = 0; j <= nk; j++) cnt[j] = 0;
+            for (k = 0; k < n; k++) cnt[rank[kx[k]] + 1]++;
+            for (j = 1; j <= nk; j++) cnt[j] += cnt[j - 1];
+            for (k = 0; k < n; k++) ord[cnt[rank[kx[k]]]++] = (uint16_t)k;
+        } else
+            for (k = 0; k < n; k++) ord[k] = (uint16_t)k;
+    }
+    for (k = 1; k < n; k++) {                     /* insertion pass (nearly sorted: about n compares) */
+        uint16_t o = ord[k];
         int j = k - 1;
-        while (j >= 0 && ent_before(&e, &ents[j])) {
-            ents[j + 1] = ents[j];
+        while (j >= 0 && ent_before(&ents[o], &ents[ord[j]])) {
+            ord[j + 1] = ord[j];
             j--;
         }
-        ents[j + 1] = e;
+        ord[j + 1] = o;
     }
     draw_st.sprites = (uint32_t)n;
     PROF(2);
@@ -873,7 +968,7 @@ void draw_frame(void)
     /* the list: background, then bands and drawables by depth */
     band_out(0);
     for (k = 0; k < n; k++) {
-        const struct ent *e = &ents[k];
+        const struct ent *e = &ents[ord[k]];
         if (dark && cur_pal == DRAW_PAL && (e->dkey < lkey || (e->dkey == lkey && e->id < lid)))
             cur_pal = DRAW_PAL_LIT;               /* after oLevel's rectangle */
         while (band < nmaps && mdepth_key[band] >= e->dkey) band_out(1 + band++);
