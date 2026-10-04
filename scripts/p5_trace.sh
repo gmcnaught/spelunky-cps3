@@ -4,6 +4,7 @@
 # TRACE_MONEY; default 1 and 0). Run names start p5_.
 #   scripts/p5_trace.sh <route> <seed> [--no-run]   route: tests/routes/<route>.txt
 #   -> build/trace/<route>_s<seed>.bin, build/p5/<route>_s<seed>.c.txt, tools/playcmp.py's result
+#   PLAYHOST=<binary>: another host build (as scripts/p4_trace.sh)
 set -eu
 cd "$(dirname "$0")/.."
 R=$1; S=$2; N=${R}_s$S
@@ -15,5 +16,5 @@ if [ "${3:-}" != --no-run ]; then
 fi
 make -s -C test/host build/host/playhost >/dev/null 2>&1 || make -s -C test/host >/dev/null
 mkdir -p build/p5
-build/host/playhost "tests/routes/$R.txt" "$S" --enemies --level "$L" --money "$M" > "build/p5/$N.c.txt" 2> "build/p5/$N.c.err" || true
+${PLAYHOST:-build/host/playhost} "tests/routes/$R.txt" "$S" --enemies --level "$L" --money "$M" > "build/p5/$N.c.txt" 2> "build/p5/$N.c.err" || true
 python3 tools/playcmp.py "build/trace/$N.bin" "build/trace/$N.names" "build/p5/$N.c.txt" --max ${MAX:-2}

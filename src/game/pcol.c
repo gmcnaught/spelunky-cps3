@@ -33,6 +33,11 @@
  *     puts it in; the room's own instances are put in at room start and marked dirty (tools/tracer.py
  *     TRACE_GENPROBE: the order during level generation equal at three points);
  *   - TRACE_TREE / TRACE_TREEAT (the search order of every oDrawnSprite at records and inside events) equal on p1_walk.
+ * Probes kept: build/host/playhost with PCOL_TREE=r1,r2,... [PCOL_TREE_OBJ=<object>, default oSolid] prints
+ * "TREE <r> <n> <ids>" on stderr after record r, the tree's search order as tools/tracer.py TRACE_TREE writes it
+ * (pcol_probe); build/host/treeprobe with tools/treeprobe.py; playhost's "PCOL" cost lines (pcol_st). The C side
+ * of TRACE_TREEAT / TRACE_GENPROBE and the PCOL_DEBUG logs (PCOL_LOG, PCOL_WATCH, PCOL_DIRTY, PCOL_TREEAT,
+ * PCOL_GENPROBE, PCOL_V) were removed after 6e359da (git show 6e359da:src/game/pcol.c to restore them).
  * Not modelled: the C code writes x / y / sprite fields directly, so a change is seen when pcol.c next looks (an
  * event's end, a collision function, pin_set_sprite); a write undone before that (y += 1 then y -= 1) is not a
  * mark here although the runner marks it. The 8 routes do not depend on it; exact in general needs a sync after
@@ -48,21 +53,24 @@
 #include "pint.h"
 #include "pcol.h"
 #include "inst.h"
+#if defined(__has_include)
+#if __has_include(<math.h>)
+#include <math.h>                       /* the host: libm's fmaf (arm64 / x86-64 FMA: one rounding) */
+#define PCOL_HAVE_MATH_H
+#endif
+#endif
+#ifndef PCOL_HAVE_MATH_H
+float fmaf(float x, float y, float z);  /* the SH-2 (no libm): src/sh2/fma.c, correctly rounded */
+#endif
 
+/* The runner's fused operations are fmaf calls; every other expression is rounded as written (no contraction:
+   clang contracts a * b + c by default; test/host builds playhost_nc with -ffp-contract=off for every file to
+   show the routes do not depend on it) */
 #ifdef __clang__
 #pragma STDC FP_CONTRACT OFF
 #endif
 
 struct pcol_stats pcol_st;
-#ifdef PCOL_DEBUG
-#include <stdlib.h>
-#include <string.h>
-static int dbgv = -1;
-static int dbg_v(void) { if (dbgv < 0) { const char *e = getenv("PCOL_V"); dbgv = e ? atoi(e) : 0; } return dbgv; }
-#define DBGV dbg_v()
-#else
-#define DBGV 0
-#endif
 
 /* ---- the R-tree ----------------------------------------------------------------------------------------------- */
 #define RMAX 6
@@ -115,11 +123,11 @@ static float rarea(const float *r)
 
 static void rcomb(float *o, const float *a, const float *b);
 
-/* w * h - a with one rounding (the arm64 runner's fnmsub; the product of two floats is exact in double and the
-   difference of these magnitudes too) */
+/* w * h - a with one rounding: the arm64 runner's fnmsub (s registers). fmaf, not (float)((double)w * h - a):
+   the product is exact in double but the difference is rounded twice (to double, then to float) */
 static float fms(float w, float h, float a)
 {
-    return (float)((double)w * (double)h - (double)a);
+    return fmaf(w, h, -a);
 }
 
 /* the area of the combined rectangle less a (fused) */
@@ -574,13 +582,13 @@ static void ebbox(int e, float dx, float dy, float *o)
     c = &gsprcol[s];
     if (ang == 0) {
         float l, r, t, b;
-        /* fmadd in the runner: one rounding each */
+        /* fmadd in the runner (s registers): one rounding each */
         w = (float)(c->r - c->l) + 1.0f;
         h = (float)(c->b - c->t) + 1.0f;
-        l = (float)((double)(float)(c->l - c->xo) * xs + x);
-        r = (float)((double)w * xs + l);
-        t = (float)((double)(float)(c->t - c->yo) * ys + y);
-        b = (float)((double)h * ys + t);
+        l = fmaf((float)(c->l - c->xo), xs, x);
+        r = fmaf(w, xs, l);
+        t = fmaf((float)(c->t - c->yo), ys, y);
+        b = fmaf(h, ys, t);
         (void)t0; (void)t1;
         if (l > r) { float q = l; l = r; r = q; }
         if (t > b) { float q = t; t = b; b = q; }
@@ -621,12 +629,6 @@ static void cupdate_at(int e, float dx, float dy)
     if (rlock) return;
     if (!emember(e)) return;
     ebbox(e, dx, dy, b.r);
-#ifdef PCOL_DEBUG
-    if (getenv("PCOL_LOG") && atoi(getenv("PCOL_LOG")) == (int)PW.step + 1 && e < PIN_MAX) {
-        extern int printf(const char *, ...);
-        printf("UPD %ld %s %g %g %g %g cur=%d\n", (long)PW.in[e].id, objdefs[PW.in[e].obj].name, b.r[0], b.r[1], b.r[2], b.r[3], play_cur_obj);
-    }
-#endif
     if (ef[e] & EF_TREE) {
         pcol_st.removes++;
         if (remove_rect(er[e], e)) {
@@ -673,13 +675,6 @@ static int snap_changed(int i)
 
 static void sync1(int i)
 {
-#ifdef PCOL_DEBUG
-    if (getenv("PCOL_WATCH") && PW.in[i].id == atol(getenv("PCOL_WATCH"))) {
-        extern int printf(const char *, ...);
-        printf("WATCH step %d sync1 nosnap=%d snap(%g,%g) cur(%g,%g) changed=%d stale=%d\n", (int)PW.step, (ef[i] & EF_NOSNAP) != 0,
-               (double)sn[i].x, (double)sn[i].y, (double)PW.in[i].x, (double)PW.in[i].y, snap_changed(i), (ef[i] & EF_STALE) != 0);
-    }
-#endif
     if (ef[i] & EF_NOSNAP) { snap_take(i); return; }
     if (snap_changed(i)) {
         snap_take(i);
@@ -700,12 +695,6 @@ static void flush(void)
 {
     sync_all();
     pcol_st.flushes++;
-#ifdef PCOL_DEBUG
-    if (getenv("PCOL_LOG") && atoi(getenv("PCOL_LOG")) == (int)PW.step + 1 && dhead >= 0) {
-        extern int printf(const char *, ...);
-        printf("FLUSH cur=%s\n", play_cur_obj >= 0 ? objdefs[play_cur_obj].name : "-");
-    }
-#endif
     while (dhead >= 0) {
         int e = dhead;
         dlist_remove(e);
@@ -836,9 +825,6 @@ static void gen_load(void)
 {
     static int16_t map[INST_MAX];
     int w, n = 0, k;
-#ifdef PCOL_DEBUG
-    { extern int printf(const char *, ...); printf("DEBUG gen_load: %d created, %d destroyed, root level %d, nodes %d\n", W.n, npend, rn[rroot].level, rnused); }
-#endif
     remove_marked();
     for (w = 0; w < W.n; w++) map[w] = (int16_t)(W.in[w].alive ? n++ : -1);
     /* tree leaves */
@@ -999,18 +985,6 @@ void pcol_handle(void)
     int k, nkeep = 0;
     static int16_t keep[PIN_MAX];
     npairs = 0;
-#ifdef PCOL_DEBUG
-    if (getenv("PCOL_DIRTY") && atoi(getenv("PCOL_DIRTY")) == (int)PW.step + 1) {
-        extern int printf(const char *, ...);
-        int e;
-        sync_all();
-        printf("DIRTY %d:", (int)PW.step + 1);
-        for (e = dhead; e >= 0; e = dn[e]) printf(" %ld:%s", (long)PW.in[e].id, objdefs[PW.in[e].obj].name);
-        printf("\nTEST:");
-        for (e = thead; e >= 0; e = tn[e]) printf(" %ld:%s", (long)PW.in[e].id, objdefs[PW.in[e].obj].name);
-        printf("\n");
-    }
-#endif
     flush();
     while (thead >= 0) {
         int s = thead;
@@ -1065,53 +1039,12 @@ int pcol_probe(int obj, int32_t *ids, int max)
     return pr_n;
 }
 
-#ifdef PCOL_DEBUG
-static int gprobe_cb(int e, void *ctx)
-{
-    (void)ctx;
-    if (e >= PIN_MAX && W.in[e - PIN_MAX].alive && obj_is(W.in[e - PIN_MAX].obj, pr_obj) && pr_n < pr_max)
-        pr_ids[pr_n++] = W.in[e - PIN_MAX].id;
-    return 1;
-}
-#endif
 
-#ifdef PCOL_DEBUG
-/* playhost_dbg: PCOL_TREEAT=r prints "TREEAT <r> <k> ids" where prun.c calls this in the step that writes record r */
-void pcol_dbg_probe(int k, int who)
-{
-    extern int printf(const char *, ...);
-    const char *e = getenv("PCOL_TREEAT");
-    static int32_t ids[PIN_MAX];
-    int n, j;
-    {
-        int hit = 0;
-        while (e && *e) {
-            if (atoi(e) == (int)PW.step + 1) hit = 1;
-            while (*e && *e != ',') e++;
-            if (*e == ',') e++;
-        }
-        if (!hit) return;
-    }
-    {
-        const char *on = getenv("PCOL_TREE_OBJ");
-        int o = OBJ_oSolid, j2;
-        for (j2 = 0; on && j2 < OBJ_COUNT; j2++)
-            if (!strcmp(objdefs[j2].name, on)) o = j2;
-        n = pcol_probe(o, ids, PIN_MAX);
-    }
-    printf("TREEAT %d %d_%ld %d", (int)PW.step + 1, k, who >= 0 ? (long)PW.in[who].id : 0L, n);
-    for (j = 0; j < n; j++) printf(" %ld", (long)ids[j]);
-    printf("\n");
-}
-#endif
 
 /* ---- the generator (inst.c's hook) --------------------------------------------------------------------------- */
 void pcol_gen_hook(int op, int w, int a, int b, int c)
 {
     int e = PIN_MAX + w, k;
-#ifdef PCOL_DEBUG
-    if (DBGV & 16) { extern int printf(const char *, ...); printf("OP %d w %d id %ld obj %s a %d b %d c %d x %d y %d spr %d\n", op, w, w >= 0 && w < W.n ? (long)W.in[w].id : -1L, w >= 0 && w < W.n ? objdefs[W.in[w].obj].name : "-", a, b, c, w >= 0 && w < W.n ? W.in[w].x : 0, w >= 0 && w < W.n ? W.in[w].y : 0, w >= 0 && w < W.n ? W.in[w].spr : 0); }
-#endif
     switch (op) {
     case IH_RESET:                                /* StartRoom: RebuildTree(true) */
         room_reset();
@@ -1179,25 +1112,6 @@ void pcol_gen_hook(int op, int w, int a, int b, int c)
         }
         break;
     }
-#ifdef PCOL_DEBUG
-    case 99: {                                    /* tools/tracer.py TRACE_GENPROBE */
-        extern int printf(const char *, ...);
-        int n = 0;
-        static int32_t ids[INST_MAX];
-        if (!getenv("PCOL_GENPROBE")) break;
-        pr_ids = ids; pr_n = 0; pr_max = INST_MAX; pr_obj = OBJ_oSolid;
-        if (query_e(OBJ_oSolid, 1) == 1) {
-            int k2;
-            s_r[0] = s_r[1] = -100000.0f; s_r[2] = s_r[3] = 100000.0f;
-            s_cb = gprobe_cb; s_ctx = 0; rlock = 1; search_rec(rroot); rlock = 0;
-            n = pr_n;
-            printf("GPROBE %d", n);
-            for (k2 = 0; k2 < n; k2++) printf(" %ld", (long)ids[k2]);
-            printf("\n");
-        }
-        break;
-    }
-#endif
     default:
         break;
     }

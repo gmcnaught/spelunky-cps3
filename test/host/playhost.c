@@ -124,7 +124,7 @@ static void rec_cb(int phase)
 #endif
 }
 
-static uint32_t cmax[3], csteps;
+static uint32_t cmax[6], csteps;
 
 int main(int argc, char **argv)
 {
@@ -183,9 +183,14 @@ int main(int argc, char **argv)
             {
                 uint32_t ir = (pcol_st.inserts - b.inserts) + (pcol_st.removes - b.removes);
                 uint32_t v = pcol_st.visits - b.visits, sy = pcol_st.syncs - b.syncs;
+                uint32_t in = pcol_st.inserts - b.inserts, rm = pcol_st.removes - b.removes;
+                uint32_t se = pcol_st.searches - b.searches;
                 if (ir > cmax[0]) cmax[0] = ir;
                 if (v > cmax[1]) cmax[1] = v;
                 if (sy > cmax[2]) cmax[2] = sy;
+                if (in > cmax[3]) cmax[3] = in;
+                if (rm > cmax[4]) cmax[4] = rm;
+                if (se > cmax[5]) cmax[5] = se;
                 csteps++;
             }
         }
@@ -203,5 +208,7 @@ int main(int argc, char **argv)
             (unsigned long)pcol_st.inserts, (unsigned long)pcol_st.removes, (unsigned long)pcol_st.searches,
             (unsigned long)pcol_st.visits, (unsigned long)pcol_st.syncs, (unsigned long)pcol_st.flushes,
             (unsigned long)pcol_st.nodes_max, (unsigned long)cmax[0], (unsigned long)cmax[1], (unsigned long)cmax[2]);
+    fprintf(stderr, "PCOL per-step max: inserts %lu removes %lu searches %lu\n", (unsigned long)cmax[3],
+            (unsigned long)cmax[4], (unsigned long)cmax[5]);
     return 0;
 }

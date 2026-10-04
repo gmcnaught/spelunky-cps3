@@ -3,6 +3,7 @@
 # XVFB_SCREEN=1280x960x24), then the host play loop and the comparison.
 #   scripts/p4_trace.sh <route> <seed> [--no-run]   route: tests/routes/<route>.txt
 #   -> build/trace/<route>_s<seed>.bin, build/p4/<route>_s<seed>.c.txt, tools/playcmp.py's result
+#   PLAYHOST=<binary>: another host build (build/host/playhost_nc: no fp contraction)
 set -eu
 cd "$(dirname "$0")/.."
 R=$1; S=$2; N=${R}_s$S
@@ -11,5 +12,5 @@ if [ "${3:-}" != --no-run ]; then
 fi
 make -s -C test/host build/host/playhost >/dev/null 2>&1 || make -s -C test/host >/dev/null
 mkdir -p build/p4
-build/host/playhost "tests/routes/$R.txt" "$S" > "build/p4/$N.c.txt" 2> "build/p4/$N.c.err" || true
+${PLAYHOST:-build/host/playhost} "tests/routes/$R.txt" "$S" > "build/p4/$N.c.txt" 2> "build/p4/$N.c.err" || true
 python3 tools/playcmp.py "build/trace/$N.bin" "build/trace/$N.names" "build/p4/$N.c.txt" --max ${MAX:-2}

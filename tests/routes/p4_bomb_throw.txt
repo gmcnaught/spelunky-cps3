@@ -1,5 +1,6 @@
-# P4 (pcol.c): throw bombs both ways from the start, backing off each time; blasts with several blocks (and the
-# start's items) in one collision pass. Seed 3: scripts/p4_trace.sh p4_bomb_throw 3
+# P4 (pcol.c): throw bombs both ways from the start, backing off each time, then drop one. Seed 7: the bomb thrown
+# left blows up at record 168 and removes 4 oBrick and an oJar in one blast (the one thrown right: oBlock and 3 oBrick
+# at record 292). scripts/p4_trace.sh p4_bomb_throw 7
 45 -       # the level's fade-in
 3  L       # face left
 1  B       # throw a bomb
