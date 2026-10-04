@@ -2,7 +2,8 @@
  * tools/tracer.py's runner writes one (phase 0: the room's first Begin Step; phase 1: oGamepad's End Step), for
  * tools/playcmp.py.
  *
- *   build/host/playhost <route.txt> <seed> [--nextid N] [--tail N] > out.txt
+ *   build/host/playhost <route.txt> <seed> [--nextid N] [--tail N] [--level N] [--money M] [--enemies] > out.txt
+ *   --enemies: keep the enemies (P5 references, no TRACE_NOENEMY); --level: start on level N (TRACE_LEVEL)
  *
  * Output per record:
  *   R <rec> <phase> <t> <room> <level> <life> <bombs> <rope> <money> <xview> <yview> <time> <untranslated> <dops>
@@ -14,6 +15,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "pint.h"
+#include "pcol.h"
 
 static int rec, t_done;
 
@@ -35,7 +37,8 @@ static void record(int phase)
         printf("I %ld %s", (long)p->id, objdefs[p->obj].name);
         pd(PTOD(p->x));
         pd(PTOD(p->y));
-        printf(" %s", p->spr >= 0 ? gsprname[p->spr] : "-");
+        /* oYellHelp's sprite is sprite_add'ed at run time (global.sYellHelpNew): no name in the trace */
+        printf(" %s", p->spr >= 0 && p->obj != OBJ_oYellHelp ? gsprname[p->spr] : "-");
         pd((double)p->img);
         pd(p->xscale);
         pd(p->yscale);
@@ -64,6 +67,13 @@ static void record(int phase)
         } else if (obj_is(p->obj, OBJ_oItem)) {
             printf(" held=%d armed=%d safe=%d cost=%ld trigger=%d myGrav=%.17g", p->held, p->armed, p->safe,
                    (long)p->cost, p->trigger, NTOD(p->myGrav));
+            if (p->obj == OBJ_oDamsel)                     /* P5 */
+                printf(" status=%d counter=%d facing=%d bounced=%d dead=%d", p->status, p->counter, p->facing,
+                       p->bounced, p->edead);
+        } else if (obj_is(p->obj, OBJ_oEnemy)) {           /* P5: the variables the trace has (when they exist) */
+            printf(" status=%d counter=%d facing=%d held=%d invincible=%d myGrav=%.17g bounced=%d dead=%d"
+                   " xAcc=%.17g yAcc=%.17g cost=%ld", p->status, p->counter, p->facing, p->held, p->invincible,
+                   NTOD(p->myGrav), p->bounced, p->edead, NTOD(p->xAcc), NTOD(p->yAcc), (long)p->cost);
         } else if (obj_is(p->obj, OBJ_oTreasure)) {
             printf(" held=%d state=%d value=%ld trigger=%d myGrav=%.17g", p->held, p->state, (long)p->value,
                    p->trigger, NTOD(p->myGrav));
@@ -76,9 +86,34 @@ static void record(int phase)
     }
 }
 
+/* PCOL_TREE=r1,r2,...: after record r, "TREE <r> <n> <id> ..." on stderr: the oSolid instances in the collision
+   tree's search order, as tools/tracer.py TRACE_TREE writes them (the query flushes the dirty list as there) */
+static void tree_probe(int r)
+{
+    const char *s = getenv("PCOL_TREE");
+    static int32_t ids[PIN_MAX];
+    int n, k;
+    while (s && *s) {
+        if (atoi(s) == r) {
+            const char *on = getenv("PCOL_TREE_OBJ");
+            int o = OBJ_oSolid, j;
+            for (j = 0; on && j < OBJ_COUNT; j++)
+                if (!strcmp(objdefs[j].name, on)) o = j;
+            n = pcol_probe(o, ids, PIN_MAX);
+            fprintf(stderr, "TREE %d %d", r, n);
+            for (k = 0; k < n; k++) fprintf(stderr, " %ld", (long)ids[k]);
+            fprintf(stderr, "\n");
+            return;
+        }
+        while (*s && *s != ',') s++;
+        if (*s == ',') s++;
+    }
+}
+
 static void rec_cb(int phase)
 {
     record(phase);
+    tree_probe(rec - 1);
 #ifdef NUM_IS_CLASS
     {   /* binary64 operations since the previous record (playhost_count) */
         static struct dcount last;
@@ -89,6 +124,8 @@ static void rec_cb(int phase)
 #endif
 }
 
+static uint32_t cmax[3], csteps;
+
 int main(int argc, char **argv)
 {
     FILE *f;
@@ -97,6 +134,7 @@ int main(int argc, char **argv)
     int nsteps = 0, k, tail = 30, r;
     long seed;
     int32_t nextid = 110325;
+    int level = 1, money = 0;
     if (argc < 3) {
         fprintf(stderr, "usage: playhost <route.txt> <seed> [--nextid N] [--tail N]\n");
         return 2;
@@ -105,7 +143,11 @@ int main(int argc, char **argv)
     for (k = 3; k + 1 < argc; k++) {
         if (!strcmp(argv[k], "--nextid")) nextid = atol(argv[++k]);
         else if (!strcmp(argv[k], "--tail")) tail = atoi(argv[++k]);
+        else if (!strcmp(argv[k], "--level")) level = atoi(argv[++k]);
+        else if (!strcmp(argv[k], "--money")) money = atoi(argv[++k]);
     }
+    for (k = 3; k < argc; k++)
+        if (!strcmp(argv[k], "--enemies")) play_noenemy = 0;
     f = fopen(argv[1], "r");
     if (!f) { perror(argv[1]); return 2; }
     while (fgets(line, sizeof line, f)) {
@@ -126,16 +168,27 @@ int main(int argc, char **argv)
     }
     fclose(f);
     gen_new_game();
-    G.currLevel = 1;
+    G.currLevel = level;
     PG.plife = 4;
     PG.bombs = 4;
     PG.rope = 4;
-    PG.money = 0;
+    PG.money = money;
     rng_seed(&g_rng, (uint32_t)seed);
     play_level_start(nextid);
     for (k = 0; k < nsteps + tail; k++) {
         t_done = k;                                /* the phase-0 record comes before the step's input */
-        r = play_step(k < nsteps ? masks[k] : 0, rec_cb);
+        {   /* collision tree cost (pcol.c): per-step totals and maxima, printed at the end */
+            struct pcol_stats b = pcol_st;
+            r = play_step(k < nsteps ? masks[k] : 0, rec_cb);
+            {
+                uint32_t ir = (pcol_st.inserts - b.inserts) + (pcol_st.removes - b.removes);
+                uint32_t v = pcol_st.visits - b.visits, sy = pcol_st.syncs - b.syncs;
+                if (ir > cmax[0]) cmax[0] = ir;
+                if (v > cmax[1]) cmax[1] = v;
+                if (sy > cmax[2]) cmax[2] = sy;
+                csteps++;
+            }
+        }
         if (r == PLAY_ROOM_EARLY) {                /* the frame ended before oGamepad's Step: same input again */
             k--;
             continue;
@@ -145,5 +198,10 @@ int main(int argc, char **argv)
             break;
         }
     }
+    fprintf(stderr, "PCOL steps %lu inserts %lu removes %lu searches %lu node_visits %lu full_syncs %lu flushes %lu "
+            "nodes_max %lu | per-step max: inserts+removes %lu node_visits %lu full_syncs %lu\n", (unsigned long)csteps,
+            (unsigned long)pcol_st.inserts, (unsigned long)pcol_st.removes, (unsigned long)pcol_st.searches,
+            (unsigned long)pcol_st.visits, (unsigned long)pcol_st.syncs, (unsigned long)pcol_st.flushes,
+            (unsigned long)pcol_st.nodes_max, (unsigned long)cmax[0], (unsigned long)cmax[1], (unsigned long)cmax[2]);
     return 0;
 }

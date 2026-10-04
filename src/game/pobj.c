@@ -5,6 +5,7 @@
  * Objects or branches P4 does not reach set play_untranslated (codes 1xxx).
  */
 #include "pint.h"
+#include "penemy.h"                  /* P5 hooks: enemies, damsel, shop (each marked "P5 hook") */
 
 struct pgame PGAME;
 struct plevel PLEV;
@@ -18,13 +19,14 @@ const char *const ptype_names[T_COUNT] = {
     "Udjat Eye", "Ankh", "Crown", "Kapala", "Flare Crate", "Dice", "Bones",
     "Gold Chunk", "Gold Nugget", "Gold Bar", "Gold Bars", "Emerald", "Big Emerald", "Sapphire", "Big Sapphire",
     "Ruby", "Big Ruby", "Diamond", "Whip", "Arrow Trap", "(other)",
+    "NONE", "Snake", "Spider", "Giant Spider", "Caveman", "Skeleton", "Shopkeeper", "Scarab",
 };
 
 /* ---- Create events ------------------------------------------------------------------------------------- */
 static void make_active(struct pin *p) { p->xVel = p->yVel = p->xAcc = p->yAcc = 0; }
 
 /* objects/oItem/Create_0.gml */
-static void create_item(struct pin *p)
+void create_item(struct pin *p)
 {
     p->type = T_NONE;
     p->active = 1;
@@ -91,7 +93,7 @@ static void item(int i, int type, int l, int t, int r, int b, int32_t cost)
 }
 
 /* objects/oDetritus/Create_0.gml (returns 0 if it destroyed itself) */
-static int create_detritus(int i)
+int create_detritus(int i)
 {
     struct pin *p = &PX(i);
     p->type = T_NONE;
@@ -120,6 +122,9 @@ static void create_solid(struct pin *p)
 void ev_create(int i)
 {
     struct pin *p = &PX(i);
+    if (pen_create(i, play_in_gen_init) || pdam_create(i, play_in_gen_init) || pshop_create(i, play_in_gen_init) ||
+        pitem_create(i, play_in_gen_init))
+        return;                                                                /* P5 hook */
     switch (p->obj) {
     /* items */
     case OBJ_oRock: item(i, T_ROCK, -4, -4, 4, 4, -1); break;
@@ -293,6 +298,7 @@ void pobj_init_from_gen(int i)
     play_cur_obj = p->obj;
     const struct inst *g = 0;
     (void)g;
+    if (pen_create(i, 1) || pdam_create(i, 1) || pshop_create(i, 1) || pitem_create(i, 1)) return;   /* P5 hook */
     switch (p->obj) {
     case OBJ_oArrowTrapLeft: case OBJ_oArrowTrapLeftLit: case OBJ_oArrowTrapRight: case OBJ_oArrowTrapRightLit:
         create_solid(p);
@@ -424,6 +430,7 @@ void ev_destroy(int i)
 {
     struct pin *p = &PX(i);
     int o = p->obj;
+    if (pen_destroy(i) || pdam_destroy(i)) return;                             /* P5 hook */
     if (obj_is(o, OBJ_oItem)) {
         if (o == OBJ_oJar || o == OBJ_oSkull) {                                /* oJar / oSkull Destroy */
             if (p->held) PL.holdItem = NOONE;                                  /* action_inherited: oItem */
@@ -499,7 +506,7 @@ void ev_destroy(int i)
 
 /* ---- Step events ---------------------------------------------------------------------------------------- */
 /* objects/oItem/Step_0.gml */
-static void item_step(int i)
+void item_step(int i)
 {
     struct pin *p = &PX(i);
     if (!(inview(i, 16) || p->type == T_ROPE))
@@ -510,9 +517,9 @@ static void item_step(int i)
         p->forSale = 0;
     }
     if (isRealLevel()) {                                                       /* :18 */
-        if (p->cost > 0 && p->forSale && !isInShop(PFLOOR(p->x), PFLOOR(p->y))) PUNTR(1030);
+        if (p->cost > 0 && p->forSale && !isInShop(PFLOOR(p->x), PFLOOR(p->y))) pshop_item_left_shop(i);   /* P5 hook */
     } else if (isLevel()) {
-        if (p->cost > 0 && p->forSale && !isInShop(PFLOOR(p->x), PFLOOR(p->y))) PUNTR(1030);
+        if (p->cost > 0 && p->forSale && !isInShop(PFLOOR(p->x), PFLOOR(p->y))) pshop_item_left_shop(i);   /* P5 hook */
     } else
         p->cost = 0;
     if (p->held) {                                                             /* :37 */
@@ -609,8 +616,9 @@ static void item_step(int i)
         PUNTR(1033);
     } else if (NGT(NABS(p->xVel), N(2)) || NGT(NABS(p->yVel), N(2))) {
         double x = PTOD(p->x), y = PTOD(p->y);
-        if (collision_rect_p(x - 2, y - 2, x + 2, y + 2, OBJ_oEnemy, 0, NOONE) != NOONE) PUNTR(1034);
-        if (collision_rect_p(x - 2, y - 2, x + 2, y + 2, OBJ_oDamsel, 0, i) != NOONE) PUNTR(1035);
+        pen_item_hit_enemy(i);                                                 /* P5 hook (:233) */
+        if (PX(i).alive && collision_rect_p(x - 2, y - 2, x + 2, y + 2, OBJ_oDamsel, 0, i) != NOONE)
+            pen_item_hit_damsel(i);                                            /* P5 hook (:340) */
     }
 }
 
@@ -669,12 +677,10 @@ static void jar_step(int i, int skull)
     }
     {
         double x = PTOD(p->x), y = PTOD(p->y);
-        if (collision_rect_p(x - 3, y - 3, x + 3, y + 3, OBJ_oEnemy, 0, NOONE) != NOONE &&
-            (NGT(NABS(p->xVel), N(2)) || NGT(NABS(p->yVel), N(2))))
-            PUNTR(1037);
-        if (collision_rect_p(x - 3, y - 3, x + 3, y + 3, OBJ_oDamsel, 0, NOONE) != NOONE &&
-            (NGT(NABS(p->xVel), N(2)) || NGT(NABS(p->yVel), N(2))))
-            PUNTR(1038);
+        if (pen_jar_hit(i, skull)) destroy = 1;                                /* P5 hook (:104) */
+        p = &PX(i);
+        if (pdam_jar_hit(i)) destroy = 1;                                      /* P5 hook (:148) */
+        (void)x; (void)y;
     }
     if (destroy) {
         if (p->held) {
@@ -726,7 +732,7 @@ static void treasure_step(int i)
 }
 
 /* objects/oDetritus/Step_0.gml (returns 0 if it destroyed itself) */
-static void detritus_step(int i)
+void detritus_step(int i)
 {
     struct pin *p = &PX(i);
     double x = PTOD(p->x), y = PTOD(p->y);
@@ -872,7 +878,7 @@ static void gameStepEvent(void)
 {
     play_time += 1;                                                            /* oGame.time += 1 */
     if (play_time > 100000000) play_time = 0;
-    if (instance_exists_p(OBJ_oMovingSolid)) PUNTR(1050);
+    pen_moving_solids();                                                       /* P5 hook (:37-206) */
     {   /* with oMoveableSolid: fall inside the view */
         int16_t w[256];
         int n = pw_with(OBJ_oMoveableSolid, w, 256), k;
@@ -966,6 +972,7 @@ static void level_step(int i)
 void ev_step(int i)
 {
     struct pin *p = &PX(i);
+    if (pen_step(i) || pdam_step(i) || pshop_step(i) || pitem_step(i)) return; /* P5 hook */
     switch (p->obj) {
     case OBJ_oPlayer1: pl_step(i); break;
     case OBJ_oGame: game_step(i); break;
@@ -1078,6 +1085,7 @@ void ev_alarm(int i, int a)
     struct pin *p = &PX(i);
     int o = p->obj;
     if (o == OBJ_oPlayer1) { pl_alarm(i, a); return; }
+    if (pen_alarm(i, a) || pshop_alarm(i, a) || pdam_alarm(i, a)) return;     /* P5 hook */
     if (obj_is(o, OBJ_oTreasure) && a == 0) { p->canCollect = 1; return; }     /* gems' Alarm_0 */
     switch (o) {
     case OBJ_oBomb:
@@ -1174,8 +1182,10 @@ void ev_animend(int i)
 {
     /* the room's first frame animates the enemies before TRACE_NOENEMY removes them at its Begin Step: their
        Animation End events only change their own status / sprite (oShopkeeper, oDamsel, oFakeBones, ...) */
-    if (PW.room_new && (obj_is(PX(i).obj, OBJ_oEnemy) || PX(i).obj == OBJ_oDamsel || PX(i).obj == OBJ_oFakeBones))
+    if (play_noenemy && PW.room_new &&
+        (obj_is(PX(i).obj, OBJ_oEnemy) || PX(i).obj == OBJ_oDamsel || PX(i).obj == OBJ_oFakeBones))
         return;
+    if (pen_animend(i) || pdam_animend(i) || pshop_animend(i)) return;         /* P5 hook */
     switch (PX(i).obj) {
     case OBJ_oPlayer1: pl_animend(i); break;
     case OBJ_oExplosion: case OBJ_oPoof: case OBJ_oSmokePuff: case OBJ_oBurn: case OBJ_oFlameTrail:
@@ -1271,6 +1281,9 @@ static void explosion_item(int self, int other)
 void ev_collision(int self, int other)
 {
     int so = PX(self).obj, oo = PX(other).obj;
+    if (pen_collision(self, other) || pdam_collision(self, other) || pshop_collision(self, other) ||
+        pitem_collision(self, other))
+        return;                                                                /* P5 hook */
     switch (so) {
     case OBJ_oPlayer1: pl_collision(self, other); break;
     case OBJ_oArrowTrapTest:
@@ -1281,8 +1294,7 @@ void ev_collision(int self, int other)
                      (pl->spr == GSPR_sDuckToHangL && DGT(pl->img, 6)) || (pl->spr == GSPR_sDamselDtHL && DGT(pl->img, 6)) ||
                      (pl->spr == GSPR_sTunnelDtHL && DGT(pl->img, 6)))
                 trap_fire(self, other);
-        } else if (obj_is(oo, OBJ_oBoulder)) PUNTR(1090);
-        else {
+        } else {                                                               /* P5: oBoulder as the others */
             if (PX(self).trapID == NOONE) pin_destroy(self);
             else if (NGT(NABS(PX(other).xVel), N(0)) || NGT(NABS(PX(other).yVel), N(0)))
                 trap_fire(self, other);
@@ -1328,8 +1340,8 @@ void ev_collision(int self, int other)
             else if (RAND(1, 12) == 1) pin_create(p->x, p->y, OBJ_oEmeraldBig);
             else if (RAND(1, 12) == 1) pin_create(p->x, p->y, OBJ_oSapphireBig);
             else if (RAND(1, 12) == 1) pin_create(p->x, p->y, OBJ_oRubyBig);
-            else if (RAND(1, 6) == 1) PUNTR(1016);
-            else if (RAND(1, 12) == 1) PUNTR(1017);
+            else if (RAND(1, 6) == 1) pin_create(p->x - PI(8), p->y - PI(8), OBJ_oSpider);   /* P5 */
+            else if (RAND(1, 12) == 1) pin_create(p->x - PI(8), p->y - PI(8), OBJ_oSnake);
             if (PX(self).held) {
                 PL.holdItem = NOONE;
                 PL.pickupItemType = T_NONE;
@@ -1346,11 +1358,13 @@ void ev_collision(int self, int other)
 void ev_draw(int i)
 {
     if (PX(i).obj == OBJ_oPlayer1) pl_draw(i);
+    else if (pen_draw(i) || pdam_draw(i) || pshop_draw(i)) return;             /* P5 hook */
     else ptrans_draw(i);
 }
 
 void ev_outside(int i)
 {
     if (PX(i).obj == OBJ_oPushBlock) pin_destroy(i);                           /* objects/oPushBlock/Other_0.gml */
+    else if (pen_outside(i)) return;                                           /* P5 hook */
     else PUNTR(1097);
 }

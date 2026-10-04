@@ -1,0 +1,16 @@
+# seed 52
+# level 1
+# P5: snake bite, whip the snake, take the idol, outrun the boulder
+61 R
+6 R
+6 RJ
+12 R
+2 -
+1 A
+16 -
+15 R
+4 -
+1 DA
+6 -
+40 LN
+100 -

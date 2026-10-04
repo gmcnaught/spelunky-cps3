@@ -5,6 +5,7 @@
  * Untranslated GML that P4's routes do not reach (items and rooms of later milestones) sets play_untranslated.
  */
 #include "pint.h"
+#include "penemy.h"
 
 struct player PL;
 
@@ -21,6 +22,7 @@ void pl_init_from_gen(int i)
 {
     struct pin *p = &PX(i);
     PL.idx = i;
+    PL.bet = 0;                                                                /* oPlayer1 Create :38 (P5) */
     /* characterCreateEvent :7-117 */
     PL.hangCount = 0;
     PL.runHeld = 0;
@@ -853,8 +855,27 @@ static void exit_level(int i)
             pin_create(p->x, p->y - PI(8), OBJ_oBigCollect);
             pin_destroy(h);
             PL.holdItem = NOONE;
-        } else if (PX(h).type == T_DAMSEL) {
-            PUNTR(2015);
+        } else if (PX(h).type == T_DAMSEL) {                                   /* :786 (P5) */
+            if (PX(h).hp > 0) {
+                door = instance_place_p(i, PTOD(p->x), PTOD(p->y), OBJ_oExit);
+                PG.damsels += 1;
+                PG.xdamsels += 1;
+                PX(h).x = PX(door).x + PI(8);
+                PX(h).y = PX(door).y + PI(8);
+                pin_set_sprite(h, GSPR_sDamselExit);
+                PX(h).status = 4;
+                PX(h).held = 0;
+                PX(h).xVel = 0;
+                PX(h).yVel = 0;
+                PX(h).depth = 1000;
+                PX(h).active = 0;
+                PL.holdItem = NOONE;
+            } else {
+                PX(h).status = 2;
+                PX(h).held = 0;
+                PL.holdItem = NOONE;
+                PL.pickupItemType = T_NONE;
+            }
         } else if (PX(h).heavy) {
             PX(h).held = 0;
             PL.holdItem = NOONE;
@@ -1174,9 +1195,12 @@ void pl_step(int i)
     if (PL.holdItem != NOONE) {                                                /* :543 */
         if (PX(PL.holdItem).cost > 0 && isLevel()) {
             int rp = G.roomPath[scrGetRoomX(PFLOOR(p->x))][scrGetRoomY(PFLOOR(p->y))];
-            if (rp != 4 && rp != 5) PUNTR(2041);
+            if (rp != 4 && rp != 5) {                                          /* P5 */
+                scrStealItem();
+                if (instance_exists_p(OBJ_oShopkeeper)) scrShopkeeperAnger(i, 0);
+            }
         } else if (PX(PL.holdItem).cost > 0)
-            PUNTR(2041);
+            scrStealItem();
     }
     {
         double x = PTOD(p->x), y = PTOD(p->y);
@@ -1354,13 +1378,16 @@ void pl_step(int i)
                             PX(h).trigger = 0;
                         } else
                             PUNTR(2046);
-                    } else if (PX(h).type == T_DAMSEL) {
-                        PUNTR(2047);
+                    } else if (PX(h).type == T_DAMSEL) {                       /* :1290 (P5) */
+                        if (PX(h).status == 4) {
+                            PL.holdItem = NOONE;                       /* holdItem = 0; holdItem.held = false */
+                        } else
+                            pin_set_sprite(h, GSPR_sDamselHoldL);
                     } else if (PX(h).cost == 0)
                         scrStealItem();
                 }
             } else if (collision_rect_p(x - 8, y, x + 8, y + 8, OBJ_oEnemy, 0, NOONE) != NOONE)
-                PUNTR(2048);
+                pen_player_pickup_enemy(i);                                    /* P5 hook (:1306) */
         }
     } else if (PL.kAttackPressed) {                                            /* :1319 */
         if (PL.holdItem != NOONE) {
@@ -1369,7 +1396,7 @@ void pl_step(int i)
         }
     }
     if (isLevel() && PL.active && PL.kPayPressed && !PL.dead && !PL.stunned) { /* :1327 */
-        if (isInShop(PFLOOR(p->x), PFLOOR(p->y)) && instance_exists_p(OBJ_oShopkeeper)) PUNTR(2049);
+        pshop_pay(i);                                                          /* P5 hook (:1329) */
     }
     if (PL.kAttack && PL.bowArmed && NLT(PL.bowStrength, N(12))) PUNTR(2050);      /* :1431 */
     if (PL.kAttackReleased && PL.bowArmed) scrFireBow();
@@ -1380,7 +1407,7 @@ void pl_step(int i)
         PX(h).xVel = p->xVel;
         PX(h).yVel = N(-6);
         PX(h).armed = 1;
-        if (PX(h).type == T_DAMSEL) PUNTR(2051);
+        if (PX(h).type == T_DAMSEL) PX(h).status = 2;                          /* :1691 (P5) */
         else if (PX(h).type == T_BOW) scrFireBow();
         drop_or_switch();
     }
@@ -1523,8 +1550,24 @@ void pl_step(int i)
                     pin_create(p->x, p->y - PI(8), OBJ_oBigCollect);
                     pin_destroy(h);
                     PL.holdItem = NOONE;
-                } else if (PX(h).type == T_DAMSEL)
-                    PUNTR(2056);
+                } else if (PX(h).type == T_DAMSEL) {                           /* :2060 (P5) */
+                    if (PX(h).active && PX(h).hp > 0) {
+                        int door = instance_place_p(i, PTOD(p->x), PTOD(p->y), OBJ_oExit);
+                        PG.damsels += 1;
+                        PG.xdamsels += 1;
+                        PX(h).x = PX(door).x + PI(8);
+                        PX(h).y = PX(door).y + PI(8);
+                        pin_set_sprite(h, GSPR_sDamselExit2);
+                        PX(h).status = 4;
+                        PX(h).held = 0;
+                        PX(h).xVel = 0;
+                        PX(h).yVel = 0;
+                        PX(h).depth = 1000;
+                        PX(h).active = 0;
+                        PX(h).canPickUp = 0;
+                        PL.holdItem = NOONE;
+                    }
+                }
             }
         }
     }
@@ -1723,7 +1766,11 @@ void scrUseItem(void)
         PUNTR(2070);
         return;
     } else {                                                                   /* :594 throw */
-        if (o->type == T_DAMSEL) PUNTR(2071);
+        if (o->type == T_DAMSEL) {                                             /* scrUseItem :596 (P5) */
+            o->status = 2;
+            o->counter = o->stunMax;
+            o->y -= PI(4);
+        }
         o->held = 0;
         o->safe = 1;
         o->alarm[2] = 10;

@@ -40,7 +40,7 @@ static void transition_create(int i)
     if (G.kaliPunish >= 2) PUNTR(4003);
     p->alarm[0] = 10;                                                          /* :48 */
     p->alarm[1] = 30;
-    if (PG.xdamsels > 0) PUNTR(4004);
+    if (PG.xdamsels > 0) pin_create(PI(176 + 8), PI(176 + 8), OBJ_oDamselKiss);   /* :52 (P5) */
     if (isRoomIs(R_rTransition1x) || isRoomIs(R_rTransition2x) || isRoomIs(R_rTransition3x)) PUNTR(4005);
 }
 
@@ -87,7 +87,9 @@ void play_transition_start(int room)
         if (obj_is(g->obj, OBJ_oSolid)) PX(i).invincible = (g->flags & IF_INVINCIBLE) != 0;
     }
     pin_add(OBJ_oGamepad, 0, 0, 110219);
-    for (k = 0; k < PW.n; k++) {                                               /* the other Create events, in order */
+    {
+    int n0 = PW.n;                                     /* instances the Creates make ran their Create already */
+    for (k = 0; k < n0; k++) {                                                 /* the other Create events, in order */
         struct pin *p = &PX(k);
         switch (p->obj) {
         case OBJ_oTransition: transition_create(k); break;
@@ -107,6 +109,7 @@ void play_transition_start(int room)
                 PUNTR(4008);
             break;
         }
+    }
     }
 }
 
@@ -140,7 +143,7 @@ static void transition_alarm0(int i)
         else if (PG.bigsapphires > 0) { cnt = &PG.bigsapphires; spr = GSPR_sSapphireBig; }
         else if (PG.bigrubies > 0) { cnt = &PG.bigrubies; spr = GSPR_sRubyBig; }
         else if (PG.diamonds > 0) { cnt = &PG.diamonds; spr = GSPR_sDiamond; }
-        else if (PG.xdamsels > 0) { PUNTR(4010); }
+        else if (PG.xdamsels > 0) { cnt = &PG.xdamsels; spr = GSPR_sDamselLeft; }               /* P5 */
         else if (PG.scarabs > 0) { cnt = &PG.scarabs; spr = GSPR_sScarabDisp; }
         else if (PG.idols > 0) { cnt = &PG.idols; spr = GSPR_sGoldIdolIco; }
         else if (PG.skulls > 0) { cnt = &PG.skulls; spr = GSPR_sCrystalSkullIco; }
@@ -156,9 +159,23 @@ static void transition_alarm0(int i)
                 PX(sp).y = PI(91);
                 TR.drawLoot = 1;
             }
-            /* the kill counts (global.bats ... shopkeepers): 0 without enemies */
-            TR.drawLoot = 2;
-            pin_destroy(sp);
+            /* the kill counts (P5: the Mines' kinds; the other areas' are 0 here) */
+            if (PG.bats > 0) { cnt = &PG.bats; spr = GSPR_sBatLeft; }
+            else if (PG.snakes > 0) { cnt = &PG.snakes; spr = GSPR_sSnakeLeft; }
+            else if (PG.spiders > 0) { cnt = &PG.spiders; spr = GSPR_sSpider; }
+            else if (PG.skeletons > 0) { cnt = &PG.skeletons; spr = GSPR_sSkeletonLeft; }
+            else if (PG.cavemen > 0) { cnt = &PG.cavemen; spr = GSPR_sCavemanLeft; }
+            else if (PG.giantspiders > 0) { cnt = &PG.giantspiders; spr = GSPR_sGiantSpiderDisp; }
+            else if (PG.damselsKilled > 0) { cnt = &PG.damselsKilled; spr = GSPR_sDamselLeftIco; }
+            else if (PG.shopkeepers > 0) { cnt = &PG.shopkeepers; spr = GSPR_sShopLeftIco; }
+            if (cnt) {
+                pin_set_sprite(sp, spr);
+                *cnt -= 1;
+                TR.isKills = 1;
+            } else {
+                TR.drawLoot = 2;
+                pin_destroy(sp);
+            }
         }
     }
     if (TR.drawLoot < 0) {
@@ -211,14 +228,25 @@ static void pdummy_step(int i)
 {
     struct pin *p = &PX(i);
     PADDN(p->y, p->yVel);
-    if (instance_exists_p(OBJ_oDamselKiss) || instance_exists_p(OBJ_oTunnelMan)) PUNTR(4020);
+    if (p->status != 99 && collision_point_p(PTOD(p->x) + 8, PTOD(p->y), OBJ_oDamselKiss, 0, NOONE) != NOONE) {   /* P5 */
+        int person = instance_nearest_p(PTOD(p->x) + 8, PTOD(p->y), OBJ_oDamselKiss);
+        if (!PX(person).trigger) {                                             /* not kissed */
+            p->status = 99;                                                    /* STOPPED */
+            p->xVel = 0;
+            p->yVel = 0;
+            pin_set_sprite(i, GSPR_sStandLeft);
+            pin_set_sprite(person, GSPR_sDamselKissL);
+            p->alarm[5] = 30;
+        }
+    }
+    if (instance_exists_p(OBJ_oTunnelMan)) PUNTR(4020);
     if (p->status == 0) {                                                      /* TRANSITION */
         if (PTOD(p->x) >= 280) {
             if (p->spr != GSPR_sPExit && p->spr != GSPR_sDamselExit && p->spr != GSPR_sTunnelExit)
                 pin_set_sprite(i, GSPR_sPExit);
         } else
             p->x += PI(2);
-    } else
+    } else if (p->status != 99)                                                /* STOPPED: nothing */
         PUNTR(4021);
 }
 
@@ -241,7 +269,13 @@ int ptrans_alarm(int i, int a)
             if (TR.drawLoot < 0) PX(i).alarm[1] = TR.hurryup ? 1 : 30;
         }
         return 1;
-    case OBJ_oPDummy: PUNTR(4022); return 1;
+    case OBJ_oPDummy:
+        if (a == 5) {                                                          /* objects/oPDummy/Alarm_5.gml */
+            PX(i).status = 0;
+            pin_set_sprite(i, GSPR_sRunLeft);
+        } else
+            PUNTR(4022);
+        return 1;
     }
     return 0;
 }

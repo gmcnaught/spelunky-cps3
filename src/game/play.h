@@ -46,7 +46,9 @@ enum ptype {
     /* treasures */
     T_GOLDCHUNK, T_GOLDNUGGET, T_GOLDBAR, T_GOLDBARS, T_EMERALD, T_BIGEMERALD, T_SAPPHIRE, T_BIGSAPPHIRE,
     T_RUBY, T_BIGRUBY, T_DIAMOND,
-    T_WHIP, T_ARROWTRAP, T_OTHER, T_COUNT
+    T_WHIP, T_ARROWTRAP, T_OTHER,
+    /* enemies' type (penemy.c; "NONE": oEnemy's default, the bat's) */
+    T_ENONE, T_SNAKE, T_SPIDER, T_GIANTSPIDER, T_CAVEMAN, T_SKELETON, T_SHOPKEEPER, T_SCARAB, T_COUNT
 };
 extern const char *const ptype_names[T_COUNT];
 
@@ -77,6 +79,13 @@ struct pin {
     double direction;       /* oArrow */
     int8_t lbo, tbo, rbo, bbo; /* setCollisionBounds offsets */
     uint8_t treasure, etype, style;
+    /* enemies, damsel, shopkeeper (penemy.c, pdamsel.c, pshop.c): oEnemy / oDamsel Create's variables */
+    uint8_t countsAsKill, swimming, edead, bounced, startled, angered, pickedUp;
+    int16_t bloodLeft, sacCount, burning, stunTime, sightCounter, squirtTimer, whipped, hit, stunMax;
+    int16_t bombID, owner, firing, turnTimer, throwCount;
+    uint8_t hasGun, welcomed;
+    num myGravNorm, myGravWater, yVelLimit;
+    double hspeed, vspeed;  /* built-in motion (speed, direction): oEnemySight; applied after the Step events */
 };
 
 struct pworld {
@@ -143,6 +152,7 @@ extern int play_cur_obj;                          /* the object whose event runs
 #define PUNTR(code) do { if (!play_untranslated) { play_untranslated = (code); play_untr_obj = play_cur_obj; } } while (0)
 extern uint32_t play_time;                        /* oGame.time */
 extern int32_t play_rooms_entered;
+extern int play_noenemy;                          /* 1: remove the enemies at level start (TRACE_NOENEMY) */
 
 /* event entry points (pobj.c, pplayer.c) */
 void ev_create(int i);
@@ -169,6 +179,8 @@ struct pglobals {
     /* loot of the level (the transition room shows and counts it down): global.gold ... skulls */
     int16_t gold, nuggets, goldbar, goldbars, emeralds, bigemeralds, sapphires, bigsapphires, rubies, bigrubies;
     int16_t diamonds, xdamsels, scarabs, idols, skulls;
+    /* P5: the level's kills the transition room shows (global.bats ... shopkeepers), damsels saved / killed */
+    int16_t bats, snakes, spiders, giantspiders, cavemen, skeletons, damselsKilled, shopkeepers, damsels;
 };
 extern struct pglobals PG;
 

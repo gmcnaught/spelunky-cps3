@@ -91,6 +91,12 @@ struct world {
 extern struct world W;
 
 void inst_reset(int32_t next_id);
+/* the play loop's collision tree follows the generator (src/game/pcol.c pcol_gen_hook; NULL in genhost):
+   IH_RESET (a = first id), IH_CREATE, IH_SPRITE (before; a = new sprite), IH_MOVE, IH_DESTROY, and the searches
+   that compute bounding boxes or use the tree: IH_POINT (i = hit, a = obj), IH_RECT (i = hit, a = obj),
+   IH_PLACE (i = self, a = obj, b = hit, c = dx + 2048 + 4096 * (dy + 2048)), IH_DIST (i = self, a = obj) */
+enum { IH_RESET, IH_CREATE, IH_SPRITE, IH_MOVE, IH_DESTROY, IH_POINT, IH_RECT, IH_PLACE, IH_DIST };
+extern void (*inst_hook)(int op, int i, int a, int b, int c);
 /* a new instance without running any event (room instances use inst_add with their room id) */
 int inst_add(int obj, int x, int y, int32_t id);
 void inst_set_sprite(int i, int spr);

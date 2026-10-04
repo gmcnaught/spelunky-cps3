@@ -1,0 +1,17 @@
+# seed 253
+# level 1
+# P5: giant spider: it drops, the player whips it, it kills the player (2 a bite), squirts a web ball
+10 R
+50 -
+24 R
+20 -
+1 L
+50 -
+1 A
+14 -
+1 A
+14 -
+1 A
+14 -
+1 A
+200 -

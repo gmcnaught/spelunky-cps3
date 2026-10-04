@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 """Print a generated level as a 16-px cell map (for writing routes), from build/host/genhost.
 
-    tools/levelmap.py <seed> [level] [--find]
+    tools/levelmap.py <seed> [level] [--find] [--enemies]
 
 Cells: # terrain  P push block  H ladder  = ladder top  ^ spikes  < > arrow traps  E entrance  X exit
        $ treasure  i item  c chest/crate  w web  m enemy (removed with TRACE_NOENEMY)  d damsel  @ the player
 Columns are numbered every 5 cells (x = 16 * column), rows (y = 16 * row).
+--enemies (P5): enemies by kind instead of m: s snake  b bat  x spider  G giant spider  C caveman  K shopkeeper
+       B fake bones  I gold idol  T giant tiki head (the boulder trap)  r scarab
 --find: list seeds 1..400 with the exit in the entrance's room column and at most 2 rooms below.
 """
 import os
@@ -35,12 +37,18 @@ SOLIDS = ('oBrick', 'oBlock', 'oBrickSmooth', 'oSolid', 'oAltarLeft', 'oAltarRig
           'oSacAltarRight', 'oArrowTrapLeftLit', 'oArrowTrapRightLit')
 
 
-def cellmap(insts):
+EKIND = {'oSnake': 's', 'oBat': 'b', 'oSpiderHang': 'x', 'oSpider': 'x', 'oGiantSpiderHang': 'G', 'oCaveman': 'C',
+         'oShopkeeper': 'K', 'oFakeBones': 'B', 'oGoldIdol': 'I', 'oGiantTikiHead': 'T', 'oScarab': 'r'}
+
+
+def cellmap(insts, kinds=False):
     g = [['.'] * 42 for _ in range(34)]
     for f in insts:
         o, x, y = f[2], int(f[3]), int(f[4])
         c = None
-        if o in SOLIDS:
+        if kinds and o in EKIND:
+            c = EKIND[o]
+        elif o in SOLIDS:
             c = '#'
         elif o in TREAS:
             c = '$'
@@ -56,7 +64,7 @@ def cellmap(insts):
             continue
         cx, cy = x // 16, y // 16
         if 0 <= cx < 42 and 0 <= cy < 34:
-            if g[cy][cx] in '.$im' or c in '@EX':
+            if g[cy][cx] in '.$im' or c in '@EX' or (kinds and o in EKIND):
                 g[cy][cx] = c
     return g
 
@@ -72,9 +80,10 @@ def main():
             if (ex - 16) // 160 == (xx - 16) // 160 and (xy - ey) <= 256:
                 print(s, 'entrance', ex, ey, 'exit', xx, xy)
         return
+    a = [x for x in a if x != '--enemies'] + (['--enemies'] if '--enemies' in a else [])
     seed = int(a[0])
-    level = int(a[1]) if len(a) > 1 else 1
-    g = cellmap(gen(seed, level))
+    level = int(a[1]) if len(a) > 1 and a[1].isdigit() else 1
+    g = cellmap(gen(seed, level), '--enemies' in a)
     print('    ' + ''.join(f'{c:<5d}' for c in range(0, 42, 5)))
     for r, row in enumerate(g):
         print(f'{r:3d} ' + ''.join(row))

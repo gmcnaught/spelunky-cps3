@@ -1,0 +1,9 @@
+# seed 863
+# level 2
+# P5: caveman: fall in a pit, the caveman hits, chase it, hit again until death
+12 R
+90 -
+38 RN
+4 RNJ
+36 RN
+80 -

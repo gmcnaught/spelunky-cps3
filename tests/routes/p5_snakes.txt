@@ -1,0 +1,10 @@
+# seed 101
+# level 1
+# P5: snakes: whip one, stomp the other
+140 -
+1 R
+15 -
+1 A
+20 -
+6 J
+30 -

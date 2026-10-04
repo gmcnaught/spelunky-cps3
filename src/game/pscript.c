@@ -373,8 +373,11 @@ void scrStealItem(void)
             PX(h).forSale = 0;
         }
         break;
-    case T_DAMSEL:
-        if (PX(h).cost > 0) PUNTR(3003);
+    case T_DAMSEL:                                /* P5: bought (global.damselsBought: statistics) */
+        if (PX(h).cost > 0) {
+            PX(h).cost = 0;
+            PX(h).forSale = 0;
+        }
         break;
     default:                                      /* :304 messages only */
         break;
@@ -392,7 +395,7 @@ static const double aT[] = { 3.33333333333329318027e-01, -1.99999999998764832476
                              6.66107313738753120669e-02, -5.83357013379057348645e-02, 4.97687799461593236017e-02,
                              -3.65315727442169155270e-02, 1.62858201153657823623e-02 };
 
-static double patan(double x)
+double patan(double x)
 {
     double w, s1, s2, z, ax = x < 0 ? -x : x;
     int id;

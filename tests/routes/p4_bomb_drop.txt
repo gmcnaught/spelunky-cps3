@@ -1,0 +1,12 @@
+# P4 (pcol.c): seed 1: drop a bomb in the floor, run away; then throw a second one at the left wall. Each blast
+# removes several blocks in one collision pass (the order is the runner's collision tree's)
+45 -       # the level's fade-in
+20 R
+5  -
+5  D
+1  DB      # drop a bomb (crouching)
+5  D
+30 LN      # run left
+80 -
+1  B       # throw a bomb
+100 -

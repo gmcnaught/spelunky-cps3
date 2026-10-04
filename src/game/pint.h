@@ -31,6 +31,7 @@ struct player {
     int holdItem;                             /* instance index or NOONE (GML 0) */
     int16_t pickupItemType;                   /* enum ptype (T_NONE = "") */
     int32_t money;
+    int32_t bet;                              /* the dice house's bet (P5) */
 };
 extern struct player PL;
 
@@ -73,7 +74,11 @@ int isRoomIs(int r);
 void move_snap(int i, int hs, int vs);
 int ptype_of_pickup(int pickup);              /* gen's enum pickup -> enum ptype */
 int pickup_of_ptype(int t);
-int inview(int i, int m);                     /* x, y inside the view +/- m (the GML's view checks) */
+int inview(int i, int m);
+int create_detritus(int i);                   /* pobj.c: oDetritus Create / Step (oBone, P5) */
+void detritus_step(int i);
+void create_item(struct pin *p);              /* pobj.c: oItem Create / Step (oDamsel's inherited, P5) */
+void item_step(int i);                     /* x, y inside the view +/- m (the GML's view checks) */
 
 /* room indices (names file R lines) */
 enum { R_rTitle = 4, R_rHighscores = 5, R_rSun = 6, R_rMoon = 7, R_rStars = 8, R_rTutorial = 9, R_rLevelEditor = 10,

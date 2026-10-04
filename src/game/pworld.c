@@ -1,6 +1,7 @@
 /* Play world: instances and GameMaker 2024.14's collision functions (rules and evidence: play.h).
  * Searches return the oldest matching instance (P2: collision_point, instance_place, instance_find, obj.var). */
 #include "play.h"
+#include "pcol.h"
 
 struct pworld PW;
 
@@ -9,6 +10,7 @@ static int spr_of(const struct pin *p) { return p->mask >= 0 ? p->mask : p->spr;
 void pw_reset(void)
 {
     PW.n = 0;
+    pcol_after_reset();
 }
 
 int pin_add(int obj, pos x, pos y, int32_t id)
@@ -46,12 +48,14 @@ int pin_add(int obj, pos x, pos y, int32_t id)
     for (k = 0; k < 12; k++)
         p->alarm[k] = -1;
     p->trapID = p->enemyID = NOONE;
+    pcol_added(i);
     return i;
 }
 
 int pin_create(pos x, pos y, int obj)
 {
     int i = pin_add(obj, x, y, PW.next_id++);
+    pcol_create(i);                                  /* CollisionInsert, before the Create event */
     ev_create(i);
     return i;
 }
@@ -62,12 +66,15 @@ void pin_destroy(int i)
         return;
     PW.in[i].alive = 0;          /* GameMaker marks it first: a search inside its Destroy event skips it */
     ev_destroy(i);
+    pcol_destroyed(i);           /* in the collision tree until the next RemoveMarked */
 }
 
 void pin_kill(int i)
 {
-    if (i >= 0)
+    if (i >= 0) {
         PW.in[i].alive = 0;
+        pcol_destroyed(i);
+    }
 }
 
 /* sprite_index = spr: image_index is kept unless it is past the new sprite's frames, then 0 (Observed in
@@ -80,6 +87,7 @@ void pin_set_sprite(int i, int spr)
         p->spr = (int16_t)spr;
         if (spr >= 0 && (p->img >= (img_t)psprite[spr].frames || p->img < 0))
             p->img = 0;
+        pcol_mark(i);                                /* SetSpriteIndex: CollisionMarkDirty */
     }
 }
 
@@ -156,12 +164,17 @@ static int point_hit(int k, double px, double py, int prec)
     return !prec || !precise(k) || mask_at(k, px, py);
 }
 
+/* Command_CollisionPoint tests the object's instances in creation order (Collision_Point computes each stale box:
+   pcol_touch) */
 int collision_point_p(double px, double py, int obj, int prec, int notme_self)
 {
     int k;
     for (k = 0; k < PW.n; k++)
-        if (match(k, obj, notme_self) && point_hit(k, px, py, prec))
-            return k;
+        if (match(k, obj, notme_self)) {
+            pcol_touch(k);
+            if (point_hit(k, px, py, prec))
+                return k;
+        }
     return NOONE;
 }
 
@@ -214,12 +227,46 @@ static int line_hit(int k, double x1, double y1, double x2, double y2, int prec)
     }
 }
 
+/* collision_line / collision_rectangle / instance_place: ShouldUseFastCollision; with the tree (pcol_query 1),
+   the first hit in the tree's search order (the search callbacks return false at the first hit); otherwise the
+   object's instances in creation order */
+struct qctx { int obj, notme, prec, self, hit; double x1, y1, x2, y2, dx, dy; };
+
+static int line_cb(int k, void *v)
+{
+    struct qctx *q = (struct qctx *)v;
+    if (k >= PIN_MAX || !match(k, q->obj, q->notme) || !line_hit(k, q->x1, q->y1, q->x2, q->y2, q->prec)) return 1;
+    q->hit = k;
+    return 0;
+}
+
+static void qrect(double x1, double y1, double x2, double y2, float *r)
+{
+    r[0] = (float)(x1 < x2 ? x1 : x2) - 1.0f;
+    r[1] = (float)(y1 < y2 ? y1 : y2) - 1.0f;
+    r[2] = (float)(x1 < x2 ? x2 : x1) + 1.0f;
+    r[3] = (float)(y1 < y2 ? y2 : y1) + 1.0f;
+}
+
 int collision_line_p(double x1, double y1, double x2, double y2, int obj, int prec, int notme_self)
 {
-    int k;
+    int k, q = pcol_query(obj);
+    if (q < 0) return NOONE;
+    if (q == 1) {
+        struct qctx c;
+        float r[4];
+        c.obj = obj; c.notme = notme_self; c.prec = prec; c.hit = NOONE;
+        c.x1 = x1; c.y1 = y1; c.x2 = x2; c.y2 = y2;
+        qrect(x1, y1, x2, y2, r);
+        pcol_search(r[0], r[1], r[2], r[3], line_cb, &c);
+        return c.hit;
+    }
     for (k = 0; k < PW.n; k++)
-        if (match(k, obj, notme_self) && line_hit(k, x1, y1, x2, y2, prec))
-            return k;
+        if (match(k, obj, notme_self)) {
+            pcol_touch(k);
+            if (line_hit(k, x1, y1, x2, y2, prec))
+                return k;
+        }
     return NOONE;
 }
 
@@ -251,12 +298,33 @@ static int rect_hit(int k, double x1, double y1, double x2, double y2, int prec)
     }
 }
 
+static int rect_cb(int k, void *v)
+{
+    struct qctx *q = (struct qctx *)v;
+    if (k >= PIN_MAX || !match(k, q->obj, q->notme) || !rect_hit(k, q->x1, q->y1, q->x2, q->y2, q->prec)) return 1;
+    q->hit = k;
+    return 0;
+}
+
 int collision_rect_p(double x1, double y1, double x2, double y2, int obj, int prec, int notme_self)
 {
-    int k;
+    int k, q = pcol_query(obj);
+    if (q < 0) return NOONE;
+    if (q == 1) {
+        struct qctx c;
+        float r[4];
+        c.obj = obj; c.notme = notme_self; c.prec = prec; c.hit = NOONE;
+        c.x1 = x1; c.y1 = y1; c.x2 = x2; c.y2 = y2;
+        qrect(x1, y1, x2, y2, r);
+        pcol_search(r[0], r[1], r[2], r[3], rect_cb, &c);
+        return c.hit;
+    }
     for (k = 0; k < PW.n; k++)
-        if (match(k, obj, notme_self) && rect_hit(k, x1, y1, x2, y2, prec))
-            return k;
+        if (match(k, obj, notme_self)) {
+            pcol_touch(k);
+            if (rect_hit(k, x1, y1, x2, y2, prec))
+                return k;
+        }
     return NOONE;
 }
 
@@ -274,10 +342,15 @@ static int overlap_at(int a, double dx, double dy, int b)
     {
         double x0 = l > l2 ? l : l2, x1 = r < r2 ? r : r2, y0 = t > t2 ? t : t2, y1 = bb < b2 ? bb : b2;
         int px, py;
-        for (py = dfloor(y0); py < y1; py++)
+        /* pixel centres: a pixel counts when its centre is inside both boxes (Observed: build/trace/p5_shop_s96
+           record 211, a pellet whose box ends at y 256.4 does not hit the block whose top is y 256) (P5) */
+        for (py = dfloor(y0); py < y1; py++) {
+            if (!(py + 0.5 >= y0 && py + 0.5 < y1)) continue;
             for (px = dfloor(x0); px < x1; px++)
-                if (mask_at(a, px - dx, py - dy) && mask_at(b, px, py))
+                if (px + 0.5 >= x0 && px + 0.5 < x1 && mask_at(a, px + 0.5 - dx, py + 0.5 - dy) &&
+                    mask_at(b, px + 0.5, py + 0.5))
                     return 1;
+        }
         return 0;
     }
 }
@@ -287,13 +360,44 @@ int pin_overlap(int a, int b)
     return overlap_at(a, 0, 0, b);
 }
 
+static int place_cb(int k, void *v)
+{
+    struct qctx *q = (struct qctx *)v;
+    if (k >= PIN_MAX || !match(k, q->obj, q->self) || !overlap_at(q->self, q->dx, q->dy, k)) return 1;
+    q->hit = k;
+    return 0;
+}
+
+/* Command_InstancePlace: SetPosition(px, py) (a real move marks self dirty), the search, SetPosition back */
 int instance_place_p(int self, double px, double py, int obj)
 {
-    int k;
+    int k, q = pcol_query(obj);
     double dx = px - PTOD(PW.in[self].x), dy = py - PTOD(PW.in[self].y);
+    int moved = (float)px != (float)PTOD(PW.in[self].x) || (float)py != (float)PTOD(PW.in[self].y);
+    if (q < 0) return NOONE;
+    if (q == 1) {
+        struct qctx c;
+        double l, t, r, b;
+        pcol_touch(self);
+        if (moved) pcol_place_marks(self);
+        c.obj = obj; c.self = self; c.hit = NOONE; c.dx = dx; c.dy = dy;
+        if (pin_bbox(self, &l, &t, &r, &b))
+            pcol_search((float)(l + dx), (float)(t + dy), (float)(r + dx), (float)(b + dy), place_cb, &c);
+        else
+            pcol_search((float)px, (float)py, (float)px, (float)py, place_cb, &c);
+        return c.hit;
+    }
+    if (moved) pcol_place_marks(self);
     for (k = 0; k < PW.n; k++)
-        if (match(k, obj, self) && overlap_at(self, dx, dy, k))
-            return k;
+        if (match(k, obj, self)) {
+            pcol_touch(k);
+            pcol_touch_at(self, dx, dy);
+            if (overlap_at(self, dx, dy, k)) {
+                if (moved) pcol_place_marks(self);
+                return k;
+            }
+        }
+    if (moved) pcol_place_marks(self);
     return NOONE;
 }
 
@@ -364,8 +468,10 @@ double distance_to_object_p(int self, int obj)
 {
     int k;
     double best = 1000000;
+    pcol_touch(self);                                /* F_DistanceToObject computes the boxes */
     for (k = 0; k < PW.n; k++)
         if (match(k, obj, NOONE)) {
+            pcol_touch(k);
             double d = distance_to_instance_p(self, k);
             if (d < best) best = d;
         }

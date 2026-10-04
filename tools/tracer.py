@@ -30,10 +30,16 @@ Method from ../maldita.castilla-cps3/tools/tracer.py. Changes, all GML compiled 
     phase-0 record, `with (o) instance_destroy(id, false)` for o in NOENEMY_OBJS (oEnemy and its children, which
     include the shopkeepers; oDamsel; oFakeBones): no Destroy events run. tests/routes/p4_*.txt and
     scripts/p4_trace.sh use it; the C play loop (src/game/prun.c enemies_out) removes the same objects.
+  - TRACE_LEVEL=N (P5): the title flow sets global.currLevel = N before room_goto(rLevel) (as the generator mode
+    does per case; oDebug's level keys do the same): the route starts on level N. playhost --level N.
+    TRACE_MONEY=M (P5) likewise sets global.money = M (shop routes). playhost --money M.
   - TRACE_EVLOG=1 (probe runs only): every object event except Draw and oGamepad / oScreen / oIntro's appends
     id * 4096 + k to global.trc_evl (k: the names file's "C k <object> <event>" lines); the record writes the
     list since the last record. Used to determine the runner's event and instance order.
   - TRACE_SHOT=r1,r2,...: oGamepad Post-Draw (new) saves application_surface after record r (shot_gml).
+  - TRACE_TREE=r1,r2,... (probe runs only): after record r, tree_<r>.txt lists collision_rectangle_list over the
+    whole room (unordered) for each object of TRACE_TREE_OBJS (default oSolid): the runner's collision-tree
+    search order (src/game/pcol.c). The query flushes the tree's dirty list (UpdateTree): playhost --tree-probe.
   - oGamepad End Step (new): a phase-1 record each step. The buffer is saved every 50 records as
     trc_<k>.bin (buffer_save_ext; then rewound). After route steps + TAIL (default 30) or MAX_STEPS records:
     last chunk saved, then trc_done.txt (scripts/hd_trace.sh stops the runner once it exists: game_end() can
@@ -271,6 +277,10 @@ def gml(segs, seed):
         ends.append(str(t))
         masks.append(str(m))
     reseed = '' if os.environ.get('TRACE_RESEED') == '0' else f'random_set_seed({seed});'
+    if os.environ.get('TRACE_LEVEL'):
+        reseed = f'global.currLevel = {int(os.environ["TRACE_LEVEL"])};\n    ' + reseed
+    if os.environ.get('TRACE_MONEY'):
+        reseed = f'global.money = {int(os.environ["TRACE_MONEY"])};\n    ' + reseed
     noenemy = ''
     if os.environ.get('TRACE_NOENEMY') == '1':
         noenemy = ('if (room == rLevel || room == rLevel2 || room == rLevel3 || room == rOlmec)\n{\n' +
@@ -338,11 +348,13 @@ if (room != global.trc_lastroom)
     global.trc_lastroom = room;
     {noenemy}
     {record(0)}
+    {tree_gml()}
 }}
 '''
     end = f'''
 if (global.trc_done || !global.trc_on) exit;
 {record(1)}
+{tree_gml()}
 if (global.trc_t >= {total + TAIL} || global.trc_rec >= {MAX_STEPS})
 {{
     {save_chunk(False)}
@@ -360,6 +372,35 @@ if (global.trc_rec mod {CHUNK} == 0)
 }}
 '''
     return create, step, begin, end
+
+
+def tree_gml():
+    """TRACE_TREE=r1,r2,...: after record r, tree_<r>.txt: per object of TRACE_TREE_OBJS a line
+    "<object> <n> <id> ..." from collision_rectangle_list(-100000, -100000, 100000, 100000, obj, 0, 0, l, false)"""
+    recs = [int(r) for r in os.environ.get('TRACE_TREE', '').split(',') if r]
+    if not recs:
+        return ''
+    objs = os.environ.get('TRACE_TREE_OBJS', 'oSolid').split(',')
+    cond = ' || '.join(f'trr == {r}' for r in recs)
+    body = ''.join(f'''
+    ds_list_clear(trl);
+    trn = collision_rectangle_list(-100000, -100000, 100000, 100000, {o}, false, false, trl, false);
+    file_text_write_string(trf, "{o} " + string(trn));
+    for (var trk = 0; trk < ds_list_size(trl); trk++) file_text_write_string(trf, " " + string(real(ds_list_find_value(trl, trk))));
+    file_text_writeln(trf);''' for o in objs)
+    return f'''
+{{
+var trr = global.trc_rec - 1;
+if ({cond})
+{{
+    var trf = file_text_open_write("tree_" + string(trr) + ".txt");
+    var trl = ds_list_create();
+    var trn = 0;{body}
+    ds_list_destroy(trl);
+    file_text_close(trf);
+}}
+}}
+'''
 
 
 def shot_gml():
@@ -403,11 +444,49 @@ g.QueueAppend("gml_Object_oGamepad_Create_0", {q(create)});
 g.QueueReplace("gml_Object_oGamepad_Step_0", {q(step)});
 g.QueueReplace("gml_Object_oGamepad_Step_1", {q(begin)});
 g.QueueReplace("gml_Object_oGamepad_Step_2", {q(end)});
-{shots}{evlog_csx() if os.environ.get('TRACE_EVLOG') == '1' else ''}
+{shots}{evlog_csx() if os.environ.get('TRACE_EVLOG') == '1' else ''}{genprobe_csx(q)}{treeat_csx(q)}
 File.WriteAllText({q(names)}, sb.ToString());
 g.Import();
 '''
 
+
+def genprobe_csx(q):
+    """TRACE_GENPROBE=1 or "a1|a2|..." (probe runs only): in scrInitLevel, before the first occurrence of each anchor
+    (decompiled text; 1 = "scrEntityGen();"), gprobe_<k>.txt: the oSolid instances in the collision tree's search
+    order (collision_rectangle_list, which flushes the dirty list)"""
+    v = os.environ.get('TRACE_GENPROBE')
+    if not v:
+        return ''
+    anchors = ['scrEntityGen();'] if v == '1' else v.split('|')
+    out = ''
+    for k, a in enumerate(anchors):
+        probe = ('{ var gl = ds_list_create(); var gn = collision_rectangle_list(-100000, -100000, 100000, 100000, oSolid, '
+                 'false, false, gl, false); var gf = file_text_open_write("gprobe_' + str(k) + '.txt"); var gs = string(gn); '
+                 'for (var gk = 0; gk < ds_list_size(gl); gk++) gs += " " + string(real(ds_list_find_value(gl, gk))); '
+                 'file_text_write_string(gf, gs); file_text_close(gf); ds_list_destroy(gl); }\n')
+        out += f'g.QueueFindReplace("gml_GlobalScript_scrInitLevel", {q(a)}, {q("{ " + probe + a + " }")});\n'
+    return out
+
+def treeat_csx(q):
+    """TRACE_TREEAT=<code entry>:<prepend|append>,... with TRACE_TREE=r1,...: those events also write
+    treeat_<r>_<k>.txt (the oSolid search order, as TRACE_TREE) while the step that writes record r runs (probe runs)"""
+    v = os.environ.get('TRACE_TREEAT')
+    recs = [int(r) for r in os.environ.get('TRACE_TREE', '').split(',') if r]
+    if not v or not recs:
+        return ''
+    cond = ' || '.join(f'global.trc_rec == {r}' for r in recs)
+    out = ''
+    for k, e in enumerate(v.split(',')):
+        code, where, *only = e.split(':')
+        idc = f' && real(id) == {only[0]}' if only else ''
+        probe = ('if (variable_global_exists("trc_on") && global.trc_on && (' + cond + ')' + idc + ') { var tal = ds_list_create(); '
+                 'var tan = collision_rectangle_list(-100000, -100000, 100000, 100000, ' + os.environ.get('TRACE_TREE_OBJS', 'oSolid').split(',')[0] + ', false, false, tal, false); '
+                 'var taf = file_text_open_write("treeat_" + string(global.trc_rec) + "_' + str(k) + '_" + string(real(id)) + ".txt"); '
+                 'var tas = string(tan); for (var tak = 0; tak < ds_list_size(tal); tak++) tas += " " + '
+                 'string(real(ds_list_find_value(tal, tak))); file_text_write_string(taf, tas); file_text_close(taf); '
+                 'ds_list_destroy(tal); }\n')
+        out += f'g.Queue{"Prepend" if where == "prepend" else "Append"}({q(code)}, {q(probe)});\n'
+    return out
 
 def evlog_csx():
     """TRACE_EVLOG=1 (probe runs only: every logged entry is decompiled and recompiled): every object event

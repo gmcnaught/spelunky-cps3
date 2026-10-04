@@ -1,0 +1,21 @@
+# seed 66
+# level 3
+# P5: level 3: climb a block, drop down beside it, a spider drops and bites, gold collected
+8 R
+6 RJ
+40 R
+6 -
+3 R
+6 RJ
+1 -
+3 RJ
+10 R
+9 -
+3 R
+6 RJ
+5 R
+10 -
+3 L
+6 LJ
+6 L
+60 -

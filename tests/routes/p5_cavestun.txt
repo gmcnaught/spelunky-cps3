@@ -1,0 +1,7 @@
+# seed 863
+# level 2
+# P5: caveman: whip it as it runs at the player (stunned 200 steps), it recovers, attacks again and falls into the pit
+6 R
+2 -
+1 A
+260 -

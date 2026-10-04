@@ -11,7 +11,9 @@ CFLAGS ?= -std=c99 -O2 -Wall -Wextra -Wno-unused-parameter
 INC := -I$(ROOT)/src/game -I$(GEN)
 
 PSRC := $(ROOT)/src/game/pworld.c $(ROOT)/src/game/pscript.c $(ROOT)/src/game/pobj.c $(ROOT)/src/game/pplayer.c \
-        $(ROOT)/src/game/prun.c $(ROOT)/src/game/pcol.c $(ROOT)/src/game/ptrans.c $(GEN)/playtables.c
+        $(ROOT)/src/game/prun.c $(ROOT)/src/game/pcol.c $(ROOT)/src/game/ptrans.c $(GEN)/playtables.c \
+        $(ROOT)/src/game/penemy.c $(ROOT)/src/game/pdamsel.c $(ROOT)/src/game/pshop.c $(ROOT)/src/game/pmath.c \
+        $(ROOT)/src/game/pitem.c
 
 all: $(OUT)/genhost $(OUT)/playhost $(OUT)/playhost_fx
 

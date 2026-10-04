@@ -16,6 +16,7 @@
 
 struct world W;
 int gen_untranslated;
+void (*inst_hook)(int op, int i, int a, int b, int c);
 
 static int is_solid_family(int obj) { return obj_is(obj, OBJ_oSolid); }
 
@@ -75,6 +76,7 @@ void inst_reset(int32_t next_id)
     W.n = 0;
     W.next_id = next_id;
     W.nirr = 0;
+    if (inst_hook) inst_hook(IH_RESET, 0, next_id, 0, 0);
     for (y = 0; y < GRID_H; y++)
         for (x = 0; x < GRID_W; x++)
             W.cell[y][x] = INST_NONE;
@@ -116,11 +118,13 @@ int inst_add(int obj, int x, int y, int32_t id)
     for (k = 0; k < ALARMS; k++)
         p->alarm[k] = -1;
     grid_add(i);
+    if (inst_hook) inst_hook(IH_CREATE, i, 0, 0, 0);
     return i;
 }
 
 void inst_set_sprite(int i, int spr)
 {
+    if (inst_hook) inst_hook(IH_SPRITE, i, spr, 0, 0);
     grid_remove(i);
     W.in[i].spr = (int16_t)spr;
     grid_add(i);
@@ -130,6 +134,7 @@ void inst_destroyed(int i)
 {
     grid_remove(i);
     W.in[i].alive = 0;
+    if (inst_hook) inst_hook(IH_DESTROY, i, 0, 0, 0);
 }
 
 static int point_in(int i, int px, int py)
@@ -147,7 +152,15 @@ static int collision_point_scan(int px, int py, int obj)
     return INST_NONE;
 }
 
+static int collision_point_(int px, int py, int obj);
 int collision_point(int px, int py, int obj)
+{
+    int r = collision_point_(px, py, obj);
+    if (inst_hook) inst_hook(IH_POINT, r, obj, 0, 0);
+    return r;
+}
+
+static int collision_point_(int px, int py, int obj)
 {
     int best = INST_MAX, k;
     if (!is_solid_family(obj))
@@ -164,7 +177,15 @@ int collision_point(int px, int py, int obj)
     return best == INST_MAX ? INST_NONE : best;
 }
 
+static int collision_rectangle_(int x1, int y1, int x2, int y2, int obj, int self, int notme);
 int collision_rectangle(int x1, int y1, int x2, int y2, int obj, int self, int notme)
+{
+    int r = collision_rectangle_(x1, y1, x2, y2, obj, self, notme);
+    if (inst_hook) inst_hook(IH_RECT, r, obj, 0, 0);
+    return r;
+}
+
+static int collision_rectangle_(int x1, int y1, int x2, int y2, int obj, int self, int notme)
 {
     int k;
     int32_t bl = x1 < x2 ? x1 : x2, br = x1 < x2 ? x2 : x1;
@@ -182,7 +203,16 @@ int collision_rectangle(int x1, int y1, int x2, int y2, int obj, int self, int n
     return INST_NONE;
 }
 
+static int instance_place_(int self, int px, int py, int obj);
 int instance_place(int self, int px, int py, int obj)
+{
+    int r = instance_place_(self, px, py, obj);
+    if (inst_hook)
+        inst_hook(IH_PLACE, self, obj, r, (px - W.in[self].x + 2048) + 4096 * (py - W.in[self].y + 2048));
+    return r;
+}
+
+static int instance_place_(int self, int px, int py, int obj)
 {
     int k;
     int32_t l, t, r, b;
@@ -206,6 +236,7 @@ int instance_place(int self, int px, int py, int obj)
 int32_t distance2_to_object(int self, int obj)
 {
     int k;
+    if (inst_hook) inst_hook(IH_DIST, self, obj, 0, 0);
     int32_t best = -1, sl, st, sr, sb;
     if (!inst_bbox(self, &sl, &st, &sr, &sb))
         sl = sr = W.in[self].x, st = sb = W.in[self].y;

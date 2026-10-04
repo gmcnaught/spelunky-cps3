@@ -1,6 +1,8 @@
 /* The step loop of GameMaker 2024.14 as the HD runner runs it (rules and evidence: play.h), the level start, the
  * route inputs (tools/tracer.py's oGamepad replacement), the view and the room changes. */
 #include "pint.h"
+#include "penemy.h"
+#include "pcol.h"
 
 struct gamepad GP;
 struct pglobals PG;
@@ -10,6 +12,7 @@ int play_cur_obj = -1;
 uint32_t play_time;
 int play_goto_room = -1;
 int32_t play_rooms_entered;
+int play_noenemy = 1;                    /* P4 references: TRACE_NOENEMY (playhost --enemies clears it) */
 uint32_t play_dops;
 #ifdef NUM_IS_CLASS
 struct dcount play_dcount;
@@ -61,9 +64,10 @@ static void view_update(void);
    set the view's position (oLevel's screen shake, oPlayer1 looking up / down): then every later read in the step
    sees the target-following applied to the player's current position (the shake steps' records follow the player
    of the same step; once the shake ends they trail again) */
+static uint8_t view_in_step;                 /* Begin Step .. collision events: reads see the last drawn view */
 void view_read(void)
 {
-    if (PW.vdirty)
+    if (PW.vdirty && !view_in_step)
         view_update();
 }
 
@@ -107,7 +111,7 @@ static void draw_and_view(void)
     int k;
     for (k = 0; k < PW.n; k++)
         if (PW.in[k].alive && PW.in[k].visible && (pobj[PW.in[k].obj].ev & EV_DRAW))
-            ev_draw(k);
+            { ev_draw(k); pcol_event_done(k); }
     view_update();
     PW.vdirty = 0;
 }
@@ -130,10 +134,10 @@ static void animate(void)
             play_cur_obj = p->obj;
             if (p->img >= fr) {
                 p->img = p->img - fr;
-                if (pobj[p->obj].ev & EV_ANIMEND) ev_animend(k);
+                if (pobj[p->obj].ev & EV_ANIMEND) { ev_animend(k); pcol_event_done(k); }
             } else if (p->img < 0) {
                 p->img = p->img + fr;
-                if (pobj[p->obj].ev & EV_ANIMEND) ev_animend(k);
+                if (pobj[p->obj].ev & EV_ANIMEND) { ev_animend(k); pcol_event_done(k); }
             }
         }
     }
@@ -157,6 +161,7 @@ void play_level_start(int32_t next_id)
     int k;
     static const int16_t rooms[4] = { R_rLevel, R_rLevel2, R_rLevel3, R_rOlmec };
     G.gameStart = 1;
+    inst_hook = pcol_gen_hook;                                                 /* the collision tree follows */
     if (gen_level(next_id) != 0) PUNTR(9002);
     pw_reset();
     PW.room = rooms[gen_room_for_level()];
@@ -239,6 +244,7 @@ static int room_change(void)
 {
     int r = play_goto_room;
     play_goto_room = -1;
+    pdam_room_end();                                                           /* P5 hook: Room End events */
     if (r >= R_rTransition1 && r <= R_rTransition4)
         play_transition_start(r);
     else if (r == R_rLevel || r == R_rLevel2 || r == R_rLevel3 || r == R_rOlmec)
@@ -253,6 +259,7 @@ int play_step(uint16_t keys, void (*record_cb)(int phase))
 {
     int k, n, a;
     play_dops = 0;
+    view_in_step = 0;
     animate();                                                                 /* 1 */
     if (play_goto_room >= 0) {
         int r = room_change();
@@ -265,10 +272,11 @@ int play_step(uint16_t keys, void (*record_cb)(int phase))
     /* Begin Step: oScreen (drawing surfaces), oGamepad: in a new level room the tracer removes the enemies
        (TRACE_NOENEMY) and writes the phase-0 record */
     if (PW.room_new) {
-        if (isRealLevel()) enemies_out();
+        if (play_noenemy && isRealLevel()) enemies_out();
         if (record_cb) record_cb(0);
         PW.room_new = 0;
     }
+    view_in_step = 1;
     for (a = 0; a < 12; a++) {                                                 /* alarms */
         n = snapshot(0, (uint16_t)(1u << a));
         for (k = 0; k < n; k++) {
@@ -278,7 +286,7 @@ int play_step(uint16_t keys, void (*record_cb)(int phase))
             if (p->alarm[a] >= 0) {
                 p->alarm[a] -= 1;
                 play_cur_obj = p->obj;
-                if (p->alarm[a] == 0) ev_alarm(i, a);
+                if (p->alarm[a] == 0) { ev_alarm(i, a); pcol_event_done(i); }
             }
         }
     }
@@ -292,18 +300,25 @@ int play_step(uint16_t keys, void (*record_cb)(int phase))
         if (!PX(i).alive) continue;
         play_cur_obj = PX(i).obj;
         if (PX(i).obj == OBJ_oGamepad) gamepad_step(keys);
-        else ev_step(i);
+        else {
+            ev_step(i);
+            pcol_event_done(i);
+        }
     }
     if (play_goto_room >= 0)
         return room_change();
+    pen_motion();                                                              /* P5 hook: speed / direction */
     n = snapshot(EV_OUTSIDE, 0);                                               /* Outside Room */
     for (k = 0; k < n; k++) {
         int i = order[k];
         double l, t, r, b;
-        if (!PX(i).alive || !pin_bbox(i, &l, &t, &r, &b)) continue;
-        if (r < 0 || l > PW.room_w || b < 0 || t > PW.room_h) ev_outside(i);
+        if (!PX(i).alive) continue;
+        pcol_touch(i);                                                         /* HandleOther computes the box */
+        if (!pin_bbox(i, &l, &t, &r, &b)) continue;
+        if (r < 0 || l > PW.room_w || b < 0 || t > PW.room_h) { ev_outside(i); pcol_event_done(i); }
     }
     pcol_handle();                                                             /* collision events */
+    view_in_step = 0;
     if (play_goto_room >= 0)
         return room_change();
     n = snapshot(EV_END, 0);                                                   /* End Step */
@@ -314,11 +329,12 @@ int play_step(uint16_t keys, void (*record_cb)(int phase))
         if (PX(i).obj == OBJ_oGamepad) {
             if (record_cb) record_cb(1);
         } else
-            ev_end_step(i);
+            { ev_end_step(i); pcol_event_done(i); }
     }
     PW.step++;
     if (play_goto_room >= 0)                                                   /* 3 */
         return room_change();
+    pcol_remove_marked();                                                      /* DoAStep_Draw: RemoveMarked */
     draw_and_view();                                                           /* 4 */
     return 0;
 }

@@ -1,0 +1,30 @@
+# seed 28
+# level 2
+# money 20000
+# P5: weapon shop: walk in past a bat, pick up the machete, pay for it, walk out
+13 R
+6 RJ
+13 R
+6 RJ
+30 R
+6 RJ
+14 R
+6 RJ
+7 L
+25 -
+3 L
+6 LJ
+8 L
+30 -
+3 L
+6 LJ
+7 L
+6 LJ
+13 L
+4 -
+1 DA
+10 -
+1 P
+20 -
+40 R
+30 -

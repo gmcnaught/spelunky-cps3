@@ -1,0 +1,25 @@
+# seed 96
+# level 2
+# money 40000
+# P5: kissing parlour: pay a kiss, carry the damsel out, the shopkeeper follows, is angered and shoots
+34 R
+20 -
+3 L
+6 LJ
+5 L
+30 -
+3 L
+6 LJ
+3 L
+6 LJ
+2 L
+6 LJ
+7 L
+2 -
+1 P
+40 -
+1 L
+1 DA
+10 -
+40 R
+60 -

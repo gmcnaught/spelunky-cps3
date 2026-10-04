@@ -1,0 +1,5 @@
+# seed 275
+# level 4
+# P5: level 4: a caveman bounces against a wall, the damsel yells for help, the player waits
+20 R
+200 -
