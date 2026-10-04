@@ -16,7 +16,9 @@
 #define DRAW_H
 #include <stdint.h>
 
-#define DRAW_PAL     1u          /* colour code of tools/hdsprites.py's palette */
+#define DRAW_PAL     1u          /* colour code of tools/hdsprites.py's palette (faded on dark levels) */
+#define DRAW_PAL_LIT 4u          /* the same palette, never faded: what is drawn after oLevel's rectangle, the HUD */
+#define DRAW_PAL_HUDDARK 5u      /* the HUD palette faded as DRAW_PAL (the price tag before oLevel's rectangle) */
 #define DRAW_CROP    8
 #define DRAW_ZOOM_X  0x35
 
@@ -36,6 +38,7 @@ struct draw_stats {
                                     copy, instance scan, sort, list, HUD */
 };
 extern struct draw_stats draw_st;
+extern int16_t draw_dark_force;  /* tests: >= 0 draws as a dark level at that alpha byte (a8) */
 extern uint8_t draw_hud_on;      /* 1: the HUD is drawn (tests clear it to compare with the runner's
                                     application_surface, which has no GUI) */
 

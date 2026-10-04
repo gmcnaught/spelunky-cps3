@@ -3,9 +3,11 @@
  * composed as the CPS3 shows it (tilemaps by their scroll, sprites with flips, colour code per entry) into the
  * 320 x 240 view (screen line s = view line s + 8). tools/drawmodel.py hostcmp compares those views with its model
  * of the runner's trace records (scripts/game_check.sh --host).
- *   host <route.txt> <seed> <level> <money> <enemies> <tail> <gen dir> <out dir> [rec,rec,... | all] [nohud]
+ *   host <route.txt> <seed> <level> <money> <enemies> <tail> <gen dir> <out dir> [rec,rec,... | all] [nohud|hud]
+ *        [dark a8]
  * Output: <out dir>/v_<rec>.bin, 320 x 240 little-endian u16 per pixel: colour code << 8 | colour index (0: nothing
- * drawn); out dir "-": the frames on stdout, each a little-endian s32 record number then the 320 x 240 words (for
+ * drawn); out dir "-": the frames on stdout, each a little-endian s32 record number, s32 alpha byte a8 of colour
+ * code DRAW_PAL's fade (tools/darkfade.py; 0 but on dark levels), then the 320 x 240 words (for
  * tools/drawmodel.py hostcmp - : no files); stderr: "D <rec> <entries> <drawables>" per frame. */
 #include <stdio.h>
 #include <stdlib.h>
@@ -17,6 +19,7 @@
 #include "pint.h"
 #include "draw.h"
 #include "game.h"
+#include "fade.h"
 
 struct shell SH;
 volatile uint32_t vbl_count;
@@ -39,6 +42,14 @@ void cps3v_tilemap(int t, int map_x, int map_y, uint32_t unit, int enable)
     tm[t].y = map_y;
     tm[t].unit = unit;
     tm[t].on = enable;
+}
+static int host_a8;                              /* the faded palette code DRAW_PAL holds (draw.c's palette DMA) */
+uint32_t cps3dma_palette(uint32_t src, uint32_t first, uint32_t n, uint32_t fade)
+{
+    (void)n; (void)fade;
+    if (first == DRAW_PAL * 256 && src >= DARK_FADE_AT) host_a8 = (int)((src - DARK_FADE_AT) / 512);
+    /* DRAW_PAL_HUDDARK follows the same a8 (draw.c writes both) */
+    return 0;
 }
 void cps3v_begin(void) { nlist = 0; }
 void cps3v_group(void) {}
@@ -148,6 +159,7 @@ int main(int argc, char **argv)
     }
     fclose(f);
     if (argc > 10 && !strcmp(argv[10], "nohud")) draw_hud_on = 0;
+    if (argc > 11) draw_dark_force = (int16_t)atoi(argv[11]);   /* a8: the fade path on any level */
     if (argc > 9 && !strcmp(argv[9], "all")) all = 1;
     else if (argc > 9) {
         char *s = argv[9];
@@ -180,8 +192,9 @@ int main(int argc, char **argv)
             FILE *o;
             compose();
             if (!strcmp(argv[8], "-")) {
-                int32_t r = game_rec1;
+                int32_t r = game_rec1, a = host_a8;
                 fwrite(&r, 4, 1, stdout);         /* host byte order: little-endian */
+                fwrite(&a, 4, 1, stdout);         /* the fade of colour code DRAW_PAL this frame (dark levels) */
                 fwrite(view, 2, 320 * 240, stdout);
             } else {
                 snprintf(path, sizeof path, "%s/v_%d.bin", argv[8], game_rec1);

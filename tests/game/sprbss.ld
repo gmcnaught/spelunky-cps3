@@ -6,7 +6,7 @@ SECTIONS
 {
     .sprbss_a 0x0400a000 (NOLOAD) : {
         __sprbss_a_start = .;
-        *(.bss.W) *(.bss.gtiles)
+        *(.bss.W) *(.bss.gtiles) *(.bss.drawcache)
         . = ALIGN(4);
         __sprbss_a_end = .;
     }

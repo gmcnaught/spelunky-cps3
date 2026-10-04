@@ -18,6 +18,7 @@
 #include "draw.h"
 #include "hud.h"
 #include "hudart.h"
+#include "fade.h"
 #include "pint.h"
 
 #define UNIT(m)      CPS3V_MAP_UNIT(m)
@@ -48,11 +49,37 @@ static uint32_t prof_t;
 #endif
 uint8_t draw_hud_on = 1;
 
+/* ---- the play state's instance fields: every read of struct pin goes through these (src/game splits the struct:
+   the GML variables of struct pin_ext, through pin's ext; only this block follows such changes) ---------------- */
+#define I_ALIVE(i)   (PW.in[i].alive)
+#define I_VISIBLE(i) (PW.in[i].visible)
+#define I_OBJ(i)     (PW.in[i].obj)
+#define I_ID(i)      (PW.in[i].id)
+#define I_SPR(i)     (PW.in[i].spr)
+#define I_IMG(i)     (PW.in[i].img)
+#define I_X(i)       (PW.in[i].x)
+#define I_Y(i)       (PW.in[i].y)
+#define I_DEPTH(i)   (PW.in[i].depth)
+#define I_XSCALE(i)  (PW.in[i].xscale)
+#define I_YSCALE(i)  (PW.in[i].yscale)
+#define I_ANGLE(i)   (PW.in[i].angle)
+#define I_FACING(i)  (pin_ext[PW.in[i].ext].facing)
+#define I_COST(i)    (pin_ext[PW.in[i].ext].cost)
+#define I_CIMG(i)    (pin_ext[PW.in[i].ext].cimg)
+#define I_STATUS(i)  (pin_ext[PW.in[i].ext].status)
+#define I_HASGUN(i)  (pin_ext[PW.in[i].ext].hasGun)
+#define I_ROLLED(i)  ((void)(i), 0)                  /* oDice.rolled: not in the play state (dice house not translated) */
+#define I_HP(i)      (pin_ext[PW.in[i].ext].hp)
+#define I_TRIGGER(i) (pin_ext[PW.in[i].ext].trigger)          /* oDamselKiss: kissed (pdamsel.c) */
+/* globals and other play state read here */
+#define S_DARKLEVEL  (G.darkLevel)
+#define S_DARKNESS   (PLEV.darkness)              /* oLevel.darkness: src/game does not compute it yet (0) */
+
 /* ---- float helpers (no soft-float) ------------------------------------------------------------------------ */
 static inline uint32_t fbits(float f) { union { float f; uint32_t u; } c; c.f = f; return c.u; }
 /* a key that orders as the float does (NaN aside) */
 static inline uint32_t fkey(float f) { uint32_t u = fbits(f); return (u & 0x80000000u) ? ~u : (u | 0x80000000u); }
-static inline uint32_t dhi(double d)
+static inline uint32_t dr_hi(double d)
 {
     union { double d; uint32_t w[2]; } c;
     c.d = d;
@@ -62,7 +89,7 @@ static inline uint32_t dhi(double d)
     return c.w[0];
 #endif
 }
-static inline uint32_t dlo(double d)
+static inline uint32_t dr_lo(double d)
 {
     union { double d; uint32_t w[2]; } c;
     c.d = d;
@@ -74,22 +101,51 @@ static inline uint32_t dlo(double d)
 }
 #define D_ONE_HI  0x3ff00000u
 #define D_MONE_HI 0xbff00000u
-static inline int scale_is_pm1(double d) { uint32_t h = dhi(d); return dlo(d) == 0 && (h == D_ONE_HI || h == D_MONE_HI); }
-static inline int dneg(double d) { return (dhi(d) & 0x80000000u) != 0; }
-static inline int dzero(double d) { return (dhi(d) & 0x7fffffffu) == 0 && dlo(d) == 0; }
+static inline int scale_is_pm1(double d) { uint32_t h = dr_hi(d); return dr_lo(d) == 0 && (h == D_ONE_HI || h == D_MONE_HI); }
+static inline int dr_neg(double d) { return (dr_hi(d) & 0x80000000u) != 0; }
+static inline int dr_zero(double d) { return (dr_hi(d) & 0x7fffffffu) == 0 && dr_lo(d) == 0; }
 /* a float that holds a whole number: its integer (truncation otherwise; the soft-float conversion) */
 static inline int32_t ftoi(float f) { return (int32_t)f; }
+/* the pixel a sprite at float coordinate f starts on: GameMaker's quad covers the pixels whose centre is at or after
+   f, i.e. ceil(f - 0.5) (round half down; build/trace/g_p7_dark_s18: oFlareSpark at y 112.8 on row 113). Integer
+   operations only */
+static int32_t fpix(float f)
+{
+    uint32_t u = fbits(f), m = (u & 0x7fffffu) | 0x800000u, frac, half;
+    int e = (int)((u >> 23) & 255) - 127, sh;
+    int32_t ip;
+    if (e < -1) return 0;                         /* |f| < 0.5 */
+    if (e >= 23) ip = (int32_t)(m << (e - 23 > 7 ? 7 : e - 23));
+    else {
+        sh = 23 - e;                              /* 1 .. 24 */
+        ip = (int32_t)(m >> sh);
+        frac = m & ((1u << sh) - 1);
+        half = 1u << (sh - 1);
+        if (u & 0x80000000u) return -(ip + (frac >= half));
+        return ip + (frac > half);
+    }
+    return (u & 0x80000000u) ? -ip : ip;
+}
 
 /* ---- the frame's state ------------------------------------------------------------------------------------ */
 static int vx, vy;                                /* the view's top-left (room pixels) */
 static int ox, oy;                                /* screen offset: sprite at room (x, y) is at (x - ox, y - oy) */
 static uint32_t ent_n;                            /* sublist entries this frame */
+/* dark levels: oLevel's black rectangle at alpha oLevel.darkness (objects/oLevel/Draw_0.gml) as a fade of colour
+   code DRAW_PAL (tools/darkfade.py: the palette faded at alpha byte a8, by palette DMA at VBlank); what is drawn
+   after oLevel (depth below -2, and the HUD) uses DRAW_PAL_LIT, an unfaded copy */
+static uint32_t cur_pal = DRAW_PAL;
+static int frame_a8, shown_a8;
+int16_t draw_dark_force = -1;
 
 /* tilemaps: one depth each; base: the tile_add cells, want: base + terrain this frame, shown: what the tilemap
    holds (written by draw_vblank). Values: tile number, 0 = empty (BLANK). Kept outside main RAM in MAME builds
    (DRAW_MAPS_SECTION, see tests/game/sprbss.ld) */
 #ifndef DRAW_MAPS_SECTION
 #define DRAW_MAPS_SECTION
+#endif
+#ifndef DRAW_CACHE_SECTION
+#define DRAW_CACHE_SECTION
 #endif
 static uint16_t mbase[NMAPS][MAPC_MAX] DRAW_MAPS_SECTION;
 static uint16_t mwant[NMAPS][MAPC_MAX] DRAW_MAPS_SECTION;
@@ -114,7 +170,7 @@ static int built_room = -1;
 
 /* tile_add tiles not on a tilemap: single-tile sprites */
 struct tspr { uint32_t dkey; int16_t seq; uint16_t tile; int16_t x, y; };
-static struct tspr tspr[TSPR_MAX];
+static struct tspr tspr[TSPR_MAX] DRAW_MAPS_SECTION;
 static int ntspr;
 static uint32_t tdel[GTILES_MAX / 32 + 1];        /* tile_delete'd gtiles */
 static uint8_t tiles_dirty;
@@ -130,7 +186,7 @@ static void piece_out(int px, int py, const struct piecedef *pc, int flip)
         draw_st.dropped++;
         return;
     }
-    cps3v_sprite(px, py, pc->w, pc->h, pc->tile, DRAW_PAL, flip ? CPS3V_FLIPX : 0);
+    cps3v_sprite(px, py, pc->w, pc->h, pc->tile, cur_pal, flip ? CPS3V_FLIPX : 0);
     ent_n++;
 }
 
@@ -170,7 +226,7 @@ static void collect_out(int k, int x, int y)
         draw_st.dropped++;
         return;
     }
-    cps3v_sprite(px, py, 1, 1, HUD_TILE_COLLECT(k), HUD_PAL, 0);
+    cps3v_sprite(px, py, 1, 1, HUD_TILE_COLLECT(k), cur_pal == DRAW_PAL ? DRAW_PAL_HUDDARK : HUD_PAL, 0);
     ent_n++;
 }
 
@@ -231,28 +287,28 @@ static int f16(uint32_t u)
 /* the single 16 x 16 tile of instance p's frame when it is a terrain cell: returns the tile, the cell in *c (column
    and row in t_cx, t_cy) */
 static int t_cx, t_cy;
-static uint16_t terrain_cell(const struct pin *p, int *c)
+static uint16_t terrain_cell(int pi, int *c)
 {
     int s, cx, cy;
     const struct sprdef *sd;
     const struct framedef *fd;
     const struct piecedef *pc;
     uint32_t f = 0;
-    if (!(draw_kind[p->obj] & DK_SOLID) || p->spr < 0 || (s = draw_spr[p->spr]) < 0) return 0;
-    if (dhi(p->xscale) != D_ONE_HI || dlo(p->xscale) || dhi(p->yscale) != D_ONE_HI || dlo(p->yscale) ||
-        !dzero(p->angle))
+    if (!(draw_kind[I_OBJ(pi)] & DK_SOLID) || I_SPR(pi) < 0 || (s = draw_spr[I_SPR(pi)]) < 0) return 0;
+    if (dr_hi(I_XSCALE(pi)) != D_ONE_HI || dr_lo(I_XSCALE(pi)) || dr_hi(I_YSCALE(pi)) != D_ONE_HI || dr_lo(I_YSCALE(pi)) ||
+        !dr_zero(I_ANGLE(pi)))
         return 0;
     sd = &sprdefs[s];
     if (sd->nframes > 1) {
-        int32_t i = ftoi(p->img);
+        int32_t i = ftoi(I_IMG(pi));
         f = i < 0 ? 0 : (uint32_t)i % sd->nframes;
     }
     fd = &framedefs[sd->frame + f];
     if (fd->npieces != 1) return 0;
     pc = &piecedefs[fd->piece];
     if (pc->w != 1 || pc->h != 1 || (pc->dx & 15) || (pc->dy & 15)) return 0;
-    cx = f16(fbits(p->x));
-    cy = f16(fbits(p->y));
+    cx = f16(fbits(I_X(pi)));
+    cy = f16(fbits(I_Y(pi)));
     if (cx < 0 || cy < 0) return 0;
     cx += pc->dx >> 4;
     cy += pc->dy >> 4;
@@ -261,6 +317,37 @@ static uint16_t terrain_cell(const struct pin *p, int *c)
     t_cx = cx;
     t_cy = cy;
     return pc->tile;
+}
+
+/* terrain_cell and map_of_depth of an instance, remembered per slot with the fields they read (x, y, sprite,
+   image, depth, scales, angle as bit patterns): a solid that did not change costs a few compares */
+struct tcache { uint32_t xb, yb, ib, db, sx, sy, an; int16_t spr, cx, cy, c; uint16_t tile; int8_t m; };
+static struct tcache tcache[PIN_MAX] DRAW_CACHE_SECTION;
+static uint8_t tcache_ok[PIN_MAX];
+static uint16_t terrain_cached(int pi, int *c, int *m)
+{
+    struct tcache *e = &tcache[pi];
+    uint32_t xb = fbits(I_X(pi)), yb = fbits(I_Y(pi)), ib = fbits(I_IMG(pi)), db = fbits(I_DEPTH(pi));
+    uint32_t sx = dr_hi(I_XSCALE(pi)) ^ dr_lo(I_XSCALE(pi)), sy = dr_hi(I_YSCALE(pi)) ^ dr_lo(I_YSCALE(pi));
+    uint32_t an = dr_hi(I_ANGLE(pi)) | dr_lo(I_ANGLE(pi));
+    if (!tcache_ok[pi] || e->xb != xb || e->yb != yb || e->spr != I_SPR(pi) || e->ib != ib || e->db != db ||
+        e->sx != sx || e->sy != sy || e->an != an) {
+        int cc = 0;
+        e->xb = xb; e->yb = yb; e->ib = ib; e->db = db; e->sx = sx; e->sy = sy; e->an = an;
+        e->spr = I_SPR(pi);
+        e->tile = terrain_cell(pi, &cc);
+        e->m = (int8_t)(e->tile ? map_of_depth(I_DEPTH(pi)) : -1);
+        e->c = (int16_t)cc;
+        e->cx = (int16_t)t_cx;
+        e->cy = (int16_t)t_cy;
+        tcache_ok[pi] = 1;
+    }
+    if (!e->tile || e->m < 0) return 0;
+    *c = e->c;
+    *m = e->m;
+    t_cx = e->cx;
+    t_cy = e->cy;
+    return e->tile;
 }
 
 /* the tile_add layers into mbase / tspr (gtiles less the deleted ones). A layer draws its tiles in element order,
@@ -325,13 +412,13 @@ static void build_room(void)
     }
     nmaps = 0;                                    /* terrain_cell needs cols / rows only */
     for (k = 0; k < PW.n; k++) {
-        const struct pin *p = &PW.in[k];
+        int pi = k;
         int c, j;
-        if (!p->alive || !p->visible || !terrain_cell(p, &c)) continue;
-        for (j = 0; j < nd && dep[j] != p->depth; j++) ;
+        if (!I_ALIVE(pi) || !I_VISIBLE(pi) || !terrain_cell(pi, &c)) continue;
+        for (j = 0; j < nd && dep[j] != I_DEPTH(pi); j++) ;
         if (j == nd) {
             if (nd == 24) continue;
-            dep[nd] = p->depth;
+            dep[nd] = I_DEPTH(pi);
             cnt[nd++] = 0;
         }
         cnt[j]++;
@@ -361,6 +448,7 @@ static void build_room(void)
     maps_cleared = 0;
     built_rooms = play_rooms_entered;
     built_room = PW.room;
+    for (k = 0; k < PIN_MAX; k++) tcache_ok[k] = 0;
     draw_st.room_builds++;
 }
 
@@ -379,37 +467,36 @@ void draw_tile_delete(int depth, int x, int y)
 }
 
 /* ---- instances --------------------------------------------------------------------------------------------- */
-/* the sprite draws within 16 px of its origin (any frame, mirrored or not) */
-static int small_spr(int s)
-{
-    const struct sprdef *sd = &sprdefs[s];
-    return sd->w <= 16 && sd->h <= 16 && sd->xorig >= 0 && sd->xorig <= 16 && sd->yorig >= 0 && sd->yorig <= 16;
-}
+/* spr_local[GSPR_*]: the sprite has art and draws within 16 px of its origin (any frame, mirrored or not);
+   dk_local[kind]: the Draw event draws only the sprite about its origin (and the price tag at y - 16 .. y - 7) */
+static uint8_t spr_local[GSPR_COUNT];
+static const uint8_t dk_local[DK_TODO + 1] = { [DK_SELF] = 1, [DK_DAMSEL] = 1, [DK_ITEM] = 1, [DK_PLAIN] = 1,
+                                               [DK_TODO] = 1 };
 
-static int32_t img_of(const struct pin *p) { return ftoi(p->img); }
+static int32_t img_of(int pi) { return ftoi(I_IMG(pi)); }
 static int is_exit_spr(int s) { return s == GSPR_sPExit || s == GSPR_sDamselExit || s == GSPR_sTunnelExit; }
 
 /* draw_self: image_xscale mirrors; other transforms counted */
-static void self_out(const struct pin *p, int x, int y)
+static void self_out(int pi, int x, int y)
 {
-    if (p->spr < 0) return;
-    if (!scale_is_pm1(p->xscale) || dhi(p->yscale) != D_ONE_HI || dlo(p->yscale) || !dzero(p->angle))
+    if (I_SPR(pi) < 0) return;
+    if (!scale_is_pm1(I_XSCALE(pi)) || dr_hi(I_YSCALE(pi)) != D_ONE_HI || dr_lo(I_YSCALE(pi)) || !dr_zero(I_ANGLE(pi)))
         draw_st.unsup++;
-    spr_out(draw_spr[p->spr], img_of(p), x, y, dneg(p->xscale));
+    spr_out(draw_spr[I_SPR(pi)], img_of(pi), x, y, dr_neg(I_XSCALE(pi)));
 }
-static void plain_out(const struct pin *p, int x, int y)
+static void plain_out(int pi, int x, int y)
 {
-    if (p->spr >= 0) spr_out(draw_spr[p->spr], img_of(p), x, y, 0);
+    if (I_SPR(pi) >= 0) spr_out(draw_spr[I_SPR(pi)], img_of(pi), x, y, 0);
 }
 
 /* scripts/characterDrawEvent (oPlayer1's Draw); image_xscale was set by the play code's ev_draw */
-static void player_out(const struct pin *p, int x, int y)
+static void player_out(int pi, int x, int y)
 {
-    int32_t a = img_of(p);
+    int32_t a = img_of(pi);
     int drawn = 1;
     if (PL.blinkToggle == 1) return;
-    if ((PL.state == CLIMBING || is_exit_spr(p->spr)) && PG.hasJetpack && !PL.whipping) {
-        self_out(p, x, y);
+    if ((PL.state == CLIMBING || is_exit_spr(I_SPR(pi))) && PG.hasJetpack && !PL.whipping) {
+        self_out(pi, x, y);
         spr_out(SPR_sJetpackBack, a, x, y, 0);
         drawn = 0;
     } else if (PG.hasJetpack && PL.facing == RIGHT)
@@ -418,7 +505,7 @@ static void player_out(const struct pin *p, int x, int y)
         spr_out(SPR_sJetpackLeft, a, x + 4, y - 1, 0);
     if (drawn) {
         if (PL.redColor > 0) draw_st.unsup++;     /* make_color_rgb(200 + redColor, 0, 0) blend: not drawn */
-        self_out(p, x, y);
+        self_out(pi, x, y);
     }
     if (PL.facing == RIGHT) {
         if (PL.holdArrow == ARROW_NORM) spr_out(SPR_sArrowRight, a, x + 4, y + 1, 0);
@@ -430,7 +517,7 @@ static void player_out(const struct pin *p, int x, int y)
 }
 
 /* objects/oPDummy/Draw_0.gml (the transition room's player; image_xscale set by ptrans_draw) */
-static void pdummy_out(const struct pin *p, int x, int y)
+static void pdummy_out(int pi, int x, int y)
 {
     static const int16_t held[PICK_COUNT] = {
         [PICK_ROCK] = SPR_sRock, [PICK_JAR] = SPR_sJar, [PICK_SKULL] = SPR_sSkull, [PICK_FISHBONE] = SPR_sFishBone,
@@ -439,72 +526,72 @@ static void pdummy_out(const struct pin *p, int x, int y)
         [PICK_TELEPORTER] = SPR_sTeleporter, [PICK_SHOTGUN] = SPR_sShotgunRight, [PICK_BOW] = SPR_sBowRight,
         [PICK_FLARE] = SPR_sFlare, [PICK_SCEPTRE] = SPR_sSceptreRight, [PICK_KEY] = SPR_sKeyRight,
     };
-    int32_t a = img_of(p);
-    int ex = is_exit_spr(p->spr);
+    int32_t a = img_of(pi);
+    int ex = is_exit_spr(I_SPR(pi));
     if (ex) {
-        self_out(p, x, y);
+        self_out(pi, x, y);
         if (PG.hasJetpack) spr_out(SPR_sJetpackBack, a, x, y, 0);
         return;
     }
     if (PG.hasJetpack) spr_out(SPR_sJetpackRight, a, x - 4, y - 1, 0);
-    self_out(p, x, y);
+    self_out(pi, x, y);
     if (G.pickupItem > PICK_NONE && G.pickupItem < PICK_OTHER && held[G.pickupItem])
         spr_out(held[G.pickupItem], a, x + 4, y + 2, 0);
 }
 
 /* objects/oJaws/Draw_0.gml */
-static void jaws_out(const struct pin *p, int x, int y)
+static void jaws_out(int pi, int x, int y)
 {
     int b;
-    plain_out(p, x, y);
-    if (p->spr == GSPR_sJawsLeft) {
-        b = p->hp < 10 ? SPR_sJawsBody3L : p->hp < 20 ? SPR_sJawsBody2L : SPR_sJawsBody1L;
+    plain_out(pi, x, y);
+    if (I_SPR(pi) == GSPR_sJawsLeft) {
+        b = I_HP(pi) < 10 ? SPR_sJawsBody3L : I_HP(pi) < 20 ? SPR_sJawsBody2L : SPR_sJawsBody1L;
         spr_out(b, 0, x + 16, y, 0);
-    } else if (p->spr == GSPR_sJawsRight) {
-        b = p->hp < 10 ? SPR_sJawsBody3R : p->hp < 20 ? SPR_sJawsBody2R : SPR_sJawsBody1R;
+    } else if (I_SPR(pi) == GSPR_sJawsRight) {
+        b = I_HP(pi) < 10 ? SPR_sJawsBody3R : I_HP(pi) < 20 ? SPR_sJawsBody2R : SPR_sJawsBody1R;
         spr_out(b, 0, x - 48, y, 0);
     }
 }
 
 static void inst_out(int i)
 {
-    const struct pin *p = &PW.in[i];
-    int x = ftoi(p->x), y = ftoi(p->y);
-    switch (draw_kind[p->obj] & ~DK_SOLID) {
+    int pi = i;
+    int x = fpix(I_X(pi)), y = fpix(I_Y(pi));
+    switch (draw_kind[I_OBJ(pi)] & ~DK_SOLID) {
     case DK_NONE: break;
-    case DK_TODO: draw_st.todo++; self_out(p, x, y); break;
-    case DK_SELF: self_out(p, x, y); break;
+    case DK_TODO: draw_st.todo++; self_out(pi, x, y); break;
+    case DK_SELF: self_out(pi, x, y); break;
     case DK_DAMSEL:                               /* objects/oDamsel/Draw_0.gml: the price tag at cimg, which */
-        self_out(p, x, y);                        /* the play code's ev_draw has counted on already */
-        if (p->cost > 0) collect_out(p->cimg ? p->cimg - 1 : 9, x, y - 12);
+        self_out(pi, x, y);                        /* the play code's ev_draw has counted on already */
+        if (I_COST(pi) > 0) collect_out(I_CIMG(pi) ? I_CIMG(pi) - 1 : 9, x, y - 12);
         break;
     case DK_ITEM:                                 /* objects/oItem/Draw_0.gml (cimg counted in draw_frame) */
-        plain_out(p, x, y);
-        if (p->cost > 0) collect_out(icimg[i] ? icimg[i] - 1 : 9, x, y - 12);
+        plain_out(pi, x, y);
+        if (I_COST(pi) > 0) collect_out(icimg[i] ? icimg[i] - 1 : 9, x, y - 12);
         break;
     case DK_ENEMY:                                /* objects/oEnemy/Draw_0.gml (oEnemy: LEFT 0, RIGHT 1) */
-        if (p->spr < 0) break;
-        if (p->facing == 1) spr_out(draw_spr[p->spr], img_of(p), x + 16, y, 1);
-        else spr_out(draw_spr[p->spr], img_of(p), x, y, 0);
+        if (I_SPR(pi) < 0) break;
+        if (I_FACING(pi) == 1) spr_out(draw_spr[I_SPR(pi)], img_of(pi), x + 16, y, 1);
+        else spr_out(draw_spr[I_SPR(pi)], img_of(pi), x, y, 0);
         break;
     case DK_SHOP:                                 /* objects/oShopkeeper/Draw_0.gml (IDLE 0, FOLLOW 5) */
-        if (p->spr >= 0) {
-            if (p->facing == 1) spr_out(draw_spr[p->spr], img_of(p), x + 16, y, 1);
-            else spr_out(draw_spr[p->spr], img_of(p), x, y, 0);
+        if (I_SPR(pi) >= 0) {
+            if (I_FACING(pi) == 1) spr_out(draw_spr[I_SPR(pi)], img_of(pi), x + 16, y, 1);
+            else spr_out(draw_spr[I_SPR(pi)], img_of(pi), x, y, 0);
         }
-        if (p->hasGun && p->status != 0 && p->status != 5) {
-            if (p->facing == 0) spr_out(SPR_sShotgunLeft, 0, x + 6, y + 10, 0);
+        if (I_HASGUN(pi) && I_STATUS(pi) != 0 && I_STATUS(pi) != 5) {
+            if (I_FACING(pi) == 0) spr_out(SPR_sShotgunLeft, 0, x + 6, y + 10, 0);
             else spr_out(SPR_sShotgunRight, 0, x + 10, y + 10, 0);
         }
         break;
-    case DK_PLAIN: plain_out(p, x, y); break;
+    case DK_PLAIN: plain_out(pi, x, y); break;
     case DK_DICE:                                 /* objects/oDice/Draw_0.gml */
-        self_out(p, x, y);
-        if (!p->rolled && PL.bet > 0) spr_out(SPR_sRedArrowDown, 0, x, y - 12, 0);
+        self_out(pi, x, y);
+        if (!I_ROLLED(pi) && PL.bet > 0) spr_out(SPR_sRedArrowDown, 0, x, y - 12, 0);
         break;
-    case DK_PDUMMY: pdummy_out(p, x, y); break;
-    case DK_JAWS: jaws_out(p, x, y); break;
-    case DK_PLAYER: player_out(p, x, y); break;
+    case DK_PDUMMY: pdummy_out(pi, x, y); break;
+    case DK_JAWS: jaws_out(pi, x, y); break;
+    case DK_PLAYER: player_out(pi, x, y); break;
     }
 }
 
@@ -533,12 +620,64 @@ static uint8_t hud_held_of(int t)
     }
 }
 
+/* oTransition's drawLoot, moneyCount, isLoot, isKills (ptrans.c keeps them in a static struct): src/game is to
+   provide this accessor; until then the transition's text is not drawn (returns 0) */
+__attribute__((weak)) int ptrans_gui(int32_t *v) { (void)v; return 0; }
+
+static char *cat(char *d, const char *s) { while (*s) *d++ = *s++; *d = 0; return d; }
+static char *catn(char *d, int32_t n) { char b[12]; return cat(d, hud_itoa(n, b)); }
+
+/* objects/oTransition/Draw_64.gml (English, room_offset 0): the level's end screen */
+static void transition_out(void)
+{
+    int32_t t[4];
+    char b[48], *e;
+    int32_t s, s2, k;
+    if (PW.room < R_rTransition1 || PW.room > R_rTransition4) return;
+    for (k = 0; k < PW.n && !(I_ALIVE(k) && I_OBJ(k) == OBJ_oTransition); k++) ;
+    if (k == PW.n || !ptrans_gui(t)) return;
+    for (k = 0; k < PW.n; k++)                    /* oDamselKiss.kissed: "MY HERO!" */
+        if (I_ALIVE(k) && I_OBJ(k) == OBJ_oDamselKiss) {
+            if (I_TRIGGER(k)) hud_text_centered("MY HERO!", HUD_FONT_SMALL, 0, 0, 216);
+            break;
+        }
+    e = b;
+    if (G.currLevel - 1 < 1) cat(b, "TUTORIAL CAVE COMPLETED!");
+    else { e = cat(b, "LEVEL "); e = catn(e, G.currLevel - 1); cat(e, " COMPLETED!"); }
+    hud_text(b, HUD_FONT_SMALL, 1, 32, 48);
+    hud_text("TIME  = ", HUD_FONT_SMALL, 0, 32, 64);
+    hud_text("LOOT  = ", HUD_FONT_SMALL, 0, 32, 80);
+    hud_text("KILLS = ", HUD_FONT_SMALL, 0, 32, 96);
+    hud_text("MONEY = ", HUD_FONT_SMALL, 0, 32, 112);
+    if (t[0] >= 1 && !t[2]) hud_text("NONE", HUD_FONT_SMALL, 0, 96, 80);
+    if (t[0] > -2) {                              /* m:ss / m2:ss2 of global.xtime and global.time (ms) */
+        s = PG.xtime / 1000;
+        s2 = PG.time / 1000;
+        e = catn(b, s / 60);
+        e = cat(e, s % 60 < 10 ? ":0" : ":");
+        e = catn(e, s % 60);
+        e = cat(e, " / ");
+        e = catn(e, s2 / 60);
+        e = cat(e, s2 % 60 < 10 ? ":0" : ":");
+        catn(e, s2 % 60);
+        hud_text(b, HUD_FONT_SMALL, 0, 96, 64);
+    }
+    if (t[0] == 2) {
+        if (!t[3]) hud_text("NONE", HUD_FONT_SMALL, 0, 96, 96);
+        e = cat(b, "$");
+        e = catn(e, t[1]);
+        e = cat(e, " / $");
+        catn(e, PG.money);
+        hud_text(b, HUD_FONT_SMALL, 0, 96, 112);
+    }
+}
+
 /* scrDrawHUD / showMessages' state from the play state (docs/ARCADE.md §4) */
 static void hud_out(void)
 {
     static struct hud_state h;                    /* messages stay empty: the play code keeps no messages yet */
     int k, game = -1;
-    h.visible = PG.drawHUD && PL.idx != NOONE && PW.in[PL.idx].alive;
+    h.visible = PG.drawHUD && PL.idx != NOONE && I_ALIVE(PL.idx);
     h.life = PG.plife;
     h.bombs = PG.bombs;
     h.ropes = PG.rope;
@@ -556,8 +695,8 @@ static void hud_out(void)
     h.blood_level = 0;                            /* global.bloodLevel: not in the play state yet */
     h.arrows = PG.arrows;
     for (k = 0; k < PW.n; k++)                    /* oGame.image_index */
-        if (PW.in[k].alive && PW.in[k].obj == OBJ_oGame) { game = k; break; }
-    h.anim = game >= 0 ? ftoi(PW.in[game].img) : 0;
+        if (I_ALIVE(k) && I_OBJ(k) == OBJ_oGame) { game = k; break; }
+    h.anim = game >= 0 ? ftoi(I_IMG(game)) : 0;
     if (PW.room == R_rOlmec) {                    /* scrDrawHUD :8: global.exitX / Y in rOlmec */
         h.exit_x = 640;
         h.exit_y = 544;
@@ -568,7 +707,7 @@ static void hud_out(void)
     h.view_x = PW.xview;
     h.view_y = PW.yview;
     h.message_timer = 0;
-    hud_draw(&h, DRAW_PAL);
+    hud_draw(&h, DRAW_PAL_LIT);
 }
 
 /* ---- the frame ---------------------------------------------------------------------------------------------- */
@@ -581,7 +720,13 @@ void draw_new_game(void) { built_rooms = -1; }
 
 void draw_boot(void)
 {
-    int m;
+    int m, k;
+    for (k = 0; k < GSPR_COUNT; k++) {
+        int sp = draw_spr[k];
+        const struct sprdef *sd = sp >= 0 ? &sprdefs[sp] : 0;
+        spr_local[k] = sd && sd->w <= 16 && sd->h <= 16 && sd->xorig >= 0 && sd->xorig <= 16 && sd->yorig >= 0 &&
+                       sd->yorig <= 16;
+    }
     for (m = 0; m <= NMAPS; m++) cps3v_tilemap(m, 0, 0, UNIT(m), 0);
     bg_shown = -1;
     built_rooms = -1;
@@ -633,34 +778,29 @@ void draw_frame(void)
     uint32_t sxlo = fkey((float)(vx - 16)), sxhi = fkey((float)(vx + VIEW_W + 16));
     uint32_t sylo = fkey((float)(vy + DRAW_CROP - 16)), syhi = fkey((float)(vy + DRAW_CROP + SCREEN_H + 16));
     for (k = PW.n - 1; k >= 0; k--) {             /* newest first: the sort below then moves little */
-        const struct pin *p = &PW.in[k];
+        int pi = k;
         uint32_t kx, ky;
         int c;
         uint16_t t;
         uint8_t dk;
-        if (!p->alive || !p->visible) continue;
-        dk = draw_kind[p->obj];
+        if (!I_ALIVE(pi) || !I_VISIBLE(pi)) continue;
+        dk = draw_kind[I_OBJ(pi)];
         if (dk == DK_NONE) continue;
-        if (dk == DK_ITEM && p->cost > 0) {       /* oItem Draw: cimg += 1, 0 after 9 */
-            if (icid[k] != p->id) {
-                icid[k] = p->id;
+        if (dk == DK_ITEM && I_COST(pi) > 0) {       /* oItem Draw: cimg += 1, 0 after 9 */
+            if (icid[k] != I_ID(pi)) {
+                icid[k] = I_ID(pi);
                 icimg[k] = 0;
             }
             icimg[k] = icimg[k] >= 9 ? 0 : icimg[k] + 1;
         }
-        kx = fkey(p->x);
-        ky = fkey(p->y);
-        if (kx < xlo || kx >= xhi || ky < ylo || ky >= yhi) continue;
-        if (p->spr >= 0 && (kx <= sxlo || kx >= sxhi || ky <= sylo || ky >= syhi)) {
-            int sp = draw_spr[p->spr];
-            if (sp >= 0 && small_spr(sp) && (dk & ~DK_SOLID) != DK_PLAYER && (dk & ~DK_SOLID) != DK_SHOP &&
-                (dk & ~DK_SOLID) != DK_ENEMY && (dk & ~DK_SOLID) != DK_PDUMMY && (dk & ~DK_SOLID) != DK_DICE &&
-                (dk & ~DK_SOLID) != DK_JAWS)
-                continue;                         /* (Draw events that draw elsewhere or more are kept) */
+        kx = fkey(I_X(pi));
+        ky = fkey(I_Y(pi));
+        if (kx <= sxlo || kx >= sxhi || ky <= sylo || ky >= syhi) {   /* not within 16 px of the screen: */
+            if (I_SPR(pi) < 0 || (spr_local[I_SPR(pi)] && dk_local[dk & ~DK_SOLID])) continue;   /* draws nothing */
+            if (kx < xlo || kx >= xhi || ky < ylo || ky >= yhi) continue;
         }
         if ((dk & DK_SOLID) && nmaps && kx >= txlo && kx < txhi && ky >= tylo && ky < tyhi &&
-            (t = terrain_cell(p, &c)) != 0 && (m = map_of_depth(p->depth)) >= 0 &&
-            t_cx >= wc0 && t_cx <= wc1 && t_cy >= wr0 && t_cy <= wr1) {
+            (t = terrain_cached(pi, &c, &m)) != 0 && t_cx >= wc0 && t_cx <= wc1 && t_cy >= wr0 && t_cy <= wr1) {
             uint32_t bit = 1u << (c & 31), *fw = &mframe[m][c >> 5];
             if (!mbase[m][c] && !(*fw & bit)) {
                 mwant[m][c] = t;
@@ -668,13 +808,13 @@ void draw_frame(void)
                 *fw |= bit;
                 continue;
             }
-            if (!mbase[m][c] && PW.in[mown[m][c]].id < p->id) {   /* the newer one is drawn first: it takes the */
+            if (!mbase[m][c] && I_ID(mown[m][c]) < I_ID(pi)) {   /* the newer one is drawn first: it takes the */
                 int o = mown[m][c];                               /* cell, the older one is drawn over it */
                 mwant[m][c] = t;
                 mown[m][c] = (int16_t)k;
                 if (n < ENT_MAX) {
-                    ents[n].dkey = fkey(PW.in[o].depth);
-                    ents[n].id = PW.in[o].id;
+                    ents[n].dkey = fkey(I_DEPTH(o));
+                    ents[n].id = I_ID(o);
                     ents[n].i = (int16_t)o;
                     n++;
                 }
@@ -683,8 +823,8 @@ void draw_frame(void)
             /* taken by a tile, or by a newer instance: a sprite */
         }
         if (n < ENT_MAX) {
-            ents[n].dkey = fkey(p->depth);
-            ents[n].id = p->id;
+            ents[n].dkey = fkey(I_DEPTH(pi));
+            ents[n].id = I_ID(pi);
             ents[n].i = (int16_t)k;
             n++;
         }
@@ -713,10 +853,29 @@ void draw_frame(void)
     }
     draw_st.sprites = (uint32_t)n;
     PROF(2);
+    /* dark levels: oLevel's place in the order (its depth, then its id) and the alpha byte */
+    {
+        static int lvl = -1;
+        int dark = 0;
+        uint32_t lkey = 0;
+        int32_t lid = 0;
+        if (lvl < 0 || lvl >= PW.n || !I_ALIVE(lvl) || I_OBJ(lvl) != OBJ_oLevel)
+            for (lvl = 0; lvl < PW.n && !(I_ALIVE(lvl) && I_OBJ(lvl) == OBJ_oLevel); lvl++) ;
+        frame_a8 = 0;
+        if (lvl < PW.n && (draw_dark_force >= 0 || S_DARKLEVEL)) {
+            double d = S_DARKNESS;
+            dark = 1;
+            frame_a8 = draw_dark_force >= 0 ? draw_dark_force : d <= 0 ? 0 : d >= 1 ? 255 : (int)(d * 255.0);
+            lkey = fkey(I_DEPTH(lvl));
+            lid = I_ID(lvl);
+        }
+        cur_pal = DRAW_PAL;
     /* the list: background, then bands and drawables by depth */
     band_out(0);
     for (k = 0; k < n; k++) {
         const struct ent *e = &ents[k];
+        if (dark && cur_pal == DRAW_PAL && (e->dkey < lkey || (e->dkey == lkey && e->id < lid)))
+            cur_pal = DRAW_PAL_LIT;               /* after oLevel's rectangle */
         while (band < nmaps && mdepth_key[band] >= e->dkey) band_out(1 + band++);
         if (e->i >= 0) inst_out(e->i);
         else {
@@ -727,9 +886,11 @@ void draw_frame(void)
         }
     }
     while (band < nmaps) band_out(1 + band++);
+    }
     PROF(3);
     if (draw_hud_on) {
         hud_out();
+        transition_out();
     }
     PROF(4);
     draw_st.entries = ent_n;
@@ -782,6 +943,11 @@ void draw_vblank(void)
                 }
         }
     draw_st.cells = cells;
+    if (frame_a8 != shown_a8) {                   /* the faded palette (tools/darkfade.py table) */
+        cps3dma_palette(DARK_FADE_AT + 512u * (uint32_t)frame_a8, DRAW_PAL * 256, 256, 0);
+        cps3dma_palette(DARK_FADE_HUD_AT + 512u * (uint32_t)frame_a8, DRAW_PAL_HUDDARK * 256, 256, 0);
+        shown_a8 = frame_a8;
+    }
     cps3v_tilemap(0, vx, vy + DRAW_CROP, UNIT(0), 1);
     for (m = 0; m < NMAPS; m++) cps3v_tilemap(1 + m, vx, vy + DRAW_CROP, UNIT(1 + m), m < nmaps);
 }

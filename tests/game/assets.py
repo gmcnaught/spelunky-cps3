@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """tests/game's flash: tools/hdsound.py's samples at 0 (SND_AT), tools/hdsprites.py's tiles (a blank tile first, as
-tests/view) and palette, tools/hudart.py's HUD tiles and palettes (as tests/hud).
+tests/view) and palette, tools/hudart.py's HUD tiles and palettes (as tests/hud), tools/darkfade.py's faded
+palettes.
     assets.py <gen dir> <snd.bin> <flash.bin>"""
 import json
 import os
@@ -22,4 +23,7 @@ f.tiles(meta['tiles_at'] - 256, bytes(256) + open(os.path.join(gen, 'gfx.bin'), 
 f.colours(meta['pal_at'], meta['palette'])
 f.tiles(hud['tiles_at'], open(os.path.join(gen, 'hud.bin'), 'rb').read())
 f.colours(hud['pal_at'], hud['palette'] + hud['palette_yellow'])
+fade = open(os.path.join(gen, 'fade.bin'), 'rb').read()          # tools/darkfade.py table: 2 x 256 x 256 colours
+at = int(open(os.path.join(gen, 'fade.h')).read().split('DARK_FADE_AT ')[1].split('u')[0], 16)
+f.colours(at, [fade[i] | fade[i + 1] << 8 for i in range(0, len(fade), 2)])
 f.write(out)

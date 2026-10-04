@@ -25,9 +25,8 @@ def main():
     meta = json.load(open(os.path.join(gen, 'gfx.json')))
     gfx = open(os.path.join(gen, 'gfx.bin'), 'rb').read()
     pal = meta['palette']
-    inv = {}
-    for i in range(1, 256):                      # first index of each colour (unused entries are 0, as black is)
-        inv.setdefault(pal[i], i)
+    rgb = meta.get('rgb')                        # the entry's 8-bit colour (tools/hdsprites.py splits 5-bit colours
+                                                 # drawn from several 8-bit ones): checked too when present
     c = os.path.join(gen, 'sprites.c')
     spr, frm, pcs = table(c, 'sprdefs['), table(c, 'framedefs['), table(c, 'piecedefs[')
     names = [ln.strip().strip('",') for ln in open(c).read().split('sprnames[SPR_COUNT] = {')[1].split('};')[0].splitlines() if ln.strip()]
@@ -45,7 +44,7 @@ def main():
                     for xx in range(min(w, im.width)):
                         r, g, b, a = px[xx, yy]
                         if a >= 128:
-                            want[yy][xx] = inv[hdsprites.bgr555(r, g, b)]
+                            want[yy][xx] = (hdsprites.bgr555(r, g, b), (r, g, b) if rgb else None)
             got = [[0] * w for _ in range(h)]
             p0, npc = frm[f0 + fi]
             for dx, dy, pw, ph, tile in pcs[p0:p0 + npc]:
@@ -57,7 +56,8 @@ def main():
                             for xx in range(16):
                                 X, Y = dx + xo + 16 * i + xx, dy + yo + 16 * j + yy
                                 if 0 <= X < w and 0 <= Y < h and tb[16 * yy + xx]:
-                                    got[Y][X] = tb[16 * yy + xx]
+                                    v = tb[16 * yy + xx]
+                                    got[Y][X] = (pal[v], tuple(rgb[v]) if rgb else None)
             if got != want:
                 bad += 1
                 print(f'{n} frame {fi}: differs')

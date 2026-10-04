@@ -1,0 +1,12 @@
+# P7: a dark mines level (level 2, noDarkLevel false: TRACE_NODARK=0): walk, a lamp / the flare crate, whip
+# seed 18
+# level 2
+# nodark 0
+30 -
+40 R
+20 -
+40 L
+20 -
+30 RJ
+30 R
+30 -

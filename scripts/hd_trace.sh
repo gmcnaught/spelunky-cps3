@@ -5,7 +5,7 @@
 #
 #   scripts/hd_trace.sh <route> <seed> [name]      route: tests/routes/<route>.txt
 #   -> build/trace/<name>.bin (+ .names, .log); name defaults to <route>_s<seed>
-#   TRACE_SHOT=r1,... also copies the frames shot_<r>.png / .txt to build/trace/<name>.shot_<r>.*
+#   TRACE_SHOT=r1,... also copies the frames shot_<r>.png / .txt to build/trace/<name>.shot_<r>.* (TRACE_GUI: gui_<r>.*)
 #   scripts/hd_trace.sh --rng-probe    -> build/trace/rng_probe.bin (tools/tracer.py PROBE_GML; tools/gmrand.py)
 #   scripts/hd_trace.sh --gen <cases.txt> [name]   -> build/trace/<name>.gen (+ .names): generator mode
 #       (tools/tracer.py build-gen: every case's instance list right after scrInitLevel, in one runner process)
@@ -72,7 +72,7 @@ if [ -n "$GEN" ]; then
   echo "build/trace/$NAME.gen ($k cases, $(( $(date +%s) - start )) s; $(tail -1 "build/trace/$NAME.log"))"
   exit 0
 fi
-for f in "$RUN"/game/shot_*; do [ -e "$f" ] && cp "$f" "build/trace/$NAME.$(basename "$f")"; done
+for f in "$RUN"/game/shot_* "$RUN"/game/gui_*; do [ -e "$f" ] && cp "$f" "build/trace/$NAME.$(basename "$f")"; done
 n=$(ls "$RUN/game" | grep -c '^trc_.*\.bin$' || true)
 [ "$n" -gt 0 ] || { echo "no trc_*.bin (log: build/trace/$NAME.log)"; tail -20 "build/trace/$NAME.log"; exit 1; }
 k=0; : > "build/trace/$NAME.bin"

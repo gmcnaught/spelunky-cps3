@@ -9,7 +9,9 @@ follow as the runner applies it before drawing. Independent of the C code: it re
         model) drawn over it from the record's globals
     tools/drawmodel.py cmp <trace.bin> <names> <rec> <gen dir> <mame.png> [--hud] [--mask m.png] [--shot shot.png]
         pixels of the MAME snapshot whose 5-bit colour differs from the model; --shot also compares the model's
-        320 x 240 view with the runner's own frame (TRACE_SHOT: application_surface, no GUI)
+        320 x 240 view with the runner's own frame (TRACE_SHOT: application_surface, no GUI); --gui gui.png (with
+        --hud) the model's view with the HUD and oTransition's text against the runner's frame with its GUI
+        (tools/tracer.py TRACE_GUI); --dark a8: drawn as a dark level at alpha byte a8 (tests/game DARK=a8)
     tools/drawmodel.py hostcmp <trace.bin> <names> <gen dir> <host out dir> [--hud]
         every v_<rec>.bin of tests/game/host.c (the C display list composed on the host) against the model's view,
         view lines 8..231 (the screen), all 320 columns
@@ -131,7 +133,27 @@ def view_after(hd, insts, names):
     return vx, vy
 
 
-def drawables(names, tiles, insts, g, kind, blink=-1):
+def pix(v):
+    """the pixel a sprite at coordinate v starts on: ceil(v - 0.5) (round half down; tools/darkfade.py fit:
+    build/trace/g_p7_dark_s18's oFlareSpark at y 112.8 is on row 113)"""
+    import math
+    return math.ceil(v - 0.5)
+
+
+DARK_FORCE = None        # cmp --dark a8: drawn as a dark level at that alpha byte (tests/game DARK=a8)
+
+
+def dark_a8(hd):
+    """the alpha byte of oLevel's rectangle for this record, None when no dark level"""
+    if DARK_FORCE is not None:
+        return DARK_FORCE
+    h = hd.get('hud') or {}
+    if h.get('darkLevel', 0) > 0 and h.get('darkness', -1e9) > -1e8:
+        return max(0, min(255, int(h['darkness'] * 255)))
+    return None
+
+
+def drawables(names, tiles, insts, g, kind, blink=-1, a8=None):
     out = []
     for k, (bg, left, top, w, h, x, y, depth) in enumerate(tiles):
         sid = g.sprid.get(bg)
@@ -153,14 +175,16 @@ def drawables(names, tiles, insts, g, kind, blink=-1):
             held = int(i['vars']['holdItem'])
     for k, i in enumerate(seq):
         d = i.get('draw') or {}
+        on = names['O'][i['obj']]
+        if on == 'oLevel' and a8 is not None:   # the dark level's rectangle (oLevel Draw: draw_set_alpha)
+            out.append((int(d.get('depth', -2)), base + k, 'dark', a8, 0, 0, False))
         if not d.get('visible', 1):
             continue
-        on = names['O'][i['obj']]
         kd = kind.get(on, 'SELF')
         depth = int(d.get('depth', g.obj[on]['depth']))
         if held is not None and i['id'] == held:
             depth = 0
-        x, y = int(i['x']), int(i['y'])
+        x, y = pix(i['x']), pix(i['y'])
         v = i['vars']
         ops = []
 
@@ -243,11 +267,14 @@ TAG = os.path.join(SRC, 'datafiles', 'locale', 'locales', 'en', 'images', 'small
 
 def compose555(dr, g, vx, vy, W=320, H=240):
     """tools/viewlevel.py's compose as bgr555 words (None: nothing), plus the price tag ('tag': HD's
-    small_collect.png, 20 frames side by side, origin 4, 4)"""
+    small_collect.png, 20 frames side by side, origin 4, 4) and a dark level's rectangle ('dark': alpha byte a8 over
+    everything drawn before it, faded from each pixel's 8-bit colour: gfx.json rgb, tools/darkfade.py)"""
     import hdsprites
     pal = g.meta['palette']
+    rgbs = g.meta.get('rgb')
     first = g.meta['first_tile']
     img = [[None] * W for _ in range(H)]
+    src = [[None] * W for _ in range(H)]        # the pixel's 8-bit colour (palette entry or the tag's)
 
     def blit_tile(tile, px, py, flip=False):
         t = tile - first
@@ -255,12 +282,13 @@ def compose555(dr, g, vx, vy, W=320, H=240):
         for yy in range(16):
             Y = py + yy
             if 0 <= Y < H:
-                row = img[Y]
+                row, srow = img[Y], src[Y]
                 for xx in range(16):
                     X = px + xx
                     c = tb[16 * yy + (15 - xx if flip else xx)]
                     if c and 0 <= X < W:
                         row[X] = pal[c]
+                        srow[X] = c
 
     def blit_frame(f, x, y, flip):
         p0, n = g.frm[f]
@@ -281,6 +309,16 @@ def compose555(dr, g, vx, vy, W=320, H=240):
             blit_tile(d[3], 16 * d[4] - vx, 16 * d[5] - vy)
         elif d[2] == 'frame':
             blit_frame(d[3], d[4] - vx, d[5] - vy, d[6])
+        elif d[2] == 'dark':
+            a8 = d[3]
+            for Y in range(H):
+                row, srow = img[Y], src[Y]
+                for X in range(W):
+                    c = srow[X]
+                    if c is not None:
+                        rgb = tuple(rgbs[c]) if isinstance(c, int) else c
+                        row[X] = hdsprites.bgr555(*((ch * (255 - a8) + 127) // 255 for ch in rgb))
+                        srow[X] = None                    # one rectangle a frame
         else:
             if tag is None:
                 tag = Image.open(TAG).convert('RGBA')
@@ -293,7 +331,36 @@ def compose555(dr, g, vx, vy, W=320, H=240):
                     X, Y = d[4] - 4 - vx + xx, d[5] - 4 - vy + yy
                     if a >= 128 and 0 <= X < W and 0 <= Y < H:
                         img[Y][X] = hdsprites.bgr555(r, gg, b)
+                        src[Y][X] = (r, gg, b)
     return img
+
+
+def trans_text(hd, insts, names):
+    """oTransition's Draw GUI (objects/oTransition/Draw_64.gml, English, room_offset 0) from a TRACE_HUD record:
+    [(text, x or None for centred, y, yellow)]"""
+    h = hd.get('hud') or {}
+    if h.get('drawLoot', -1e9) < -1e8:
+        return []
+    out = []
+    if h.get('kissed', -1e9) > 0:
+        out.append(('MY HERO!', None, 216, False))
+    lv = int(hd['currLevel']) - 1
+    out.append(('TUTORIAL CAVE COMPLETED!' if lv < 1 else f'LEVEL {lv} COMPLETED!', 32, 48, True))
+    for k, t in enumerate(['TIME  = ', 'LOOT  = ', 'KILLS = ', 'MONEY = ']):
+        out.append((t, 32, 64 + 16 * k, False))
+    dl = int(h['drawLoot'])
+    if dl >= 1 and not h['isLoot']:
+        out.append(('NONE', 96, 80, False))
+    if dl > -2:
+        s, s2 = int(h['xtime'] // 1000), int(h['time'] // 1000)
+        m, m2 = s // 60, s2 // 60
+        s, s2 = s % 60, s2 % 60
+        out.append((f'{m}:{s:02d} / {m2}:{s2:02d}', 96, 64, False))
+    if dl == 2:
+        if not h['isKills']:
+            out.append(('NONE', 96, 96, False))
+        out.append((f'${int(h["moneyCount"])} / ${int(hd["money"])}', 96, 112, False))
+    return out
 
 
 def view555(g, names, tiles, hd, insts, kind, art=None):
@@ -301,9 +368,13 @@ def view555(g, names, tiles, hd, insts, kind, art=None):
     import hudcheck
     vx, vy = view_after(hd, insts, names)
     v = hudcheck.View()
-    v.px = compose555(drawables(names, tiles, insts, g, kind, hd.get('blinkToggle', -1)), g, vx, vy)
+    v.px = compose555(drawables(names, tiles, insts, g, kind, hd.get('blinkToggle', -1), dark_a8(hd)), g, vx, vy)
     if art:
         hudcheck.model(hud_case(hd, insts, names, vx, vy), art, 320, v)
+        for text, x, y, yel in trans_text(hd, insts, names):
+            if x is None:
+                x = -((len(text) * 8 - 320) // 2)
+            hudcheck.draw_text(v, art, text, 'small', x, y, hudcheck.YELLOW if yel else hudcheck.WHITE)
     return v, (vx, vy)
 
 
@@ -333,7 +404,10 @@ def hostcmp(trace, names_path, gen, d, hud):
     kind = kinds(g, SRC)
     art = hudcheck.Art(SRC) if hud else None
     hm = json.load(open(os.path.join(gen, 'hud.json')))
-    pals = {1: g.meta['palette'], 2: hm['palette'], 3: hm['palette_yellow']}
+    pals = {1: g.meta['palette'], 2: hm['palette'], 3: hm['palette_yellow'], 4: g.meta['palette']}
+    fb = open(os.path.join(gen, 'fade.bin'), 'rb').read()      # code 1 at fade a8 (tools/darkfade.py table)
+    fades = [struct.unpack_from('<256H', fb, 512 * k) for k in range(256)]
+    hfades = [struct.unpack_from('<256H', fb, 512 * (256 + k)) for k in range(256)]
     want = {}
     if d == '-':                                  # a stream from tests/game/host.c (out dir "-"): s32 rec + view
         inp = sys.stdin.buffer
@@ -343,7 +417,8 @@ def hostcmp(trace, names_path, gen, d, hud):
                 h = inp.read(4)
                 if len(h) < 4:
                     return
-                yield struct.unpack('<i', h)[0], inp.read(320 * 240 * 2)
+                a8 = struct.unpack('<i', inp.read(4))[0]
+                yield struct.unpack('<i', h)[0], inp.read(320 * 240 * 2), a8
         stream = frames()
         nxt = next(stream, None)
     else:
@@ -360,12 +435,14 @@ def hostcmp(trace, names_path, gen, d, hud):
             tiles = hd['tiles']
         r = hd['rec']
         raw = None
+        fa8 = 0
         if stream is not None:
             while nxt is not None and nxt[0] < r:
                 nxt = next(stream, None)
             if nxt is None or nxt[0] != r:
                 continue
             raw = nxt[1]
+            fa8 = nxt[2]
         elif r not in want:
             continue
         if hd['phase'] != 1:
@@ -382,7 +459,8 @@ def hostcmp(trace, names_path, gen, d, hud):
             row = v.px[y]
             for x in range(320):
                 w = px[y * 320 + x]
-                c = pals.get(w >> 8, [0] * 256)[w & 255] if w else 0
+                code = w >> 8
+                c = (fades[fa8] if code == 1 else hfades[fa8] if code == 5 else pals.get(code, [0] * 256))[w & 255] if w else 0
                 if c != (row[x] or 0):
                     n += 1
                     bb = [min(bb[0], x), min(bb[1], y), max(bb[2], x), max(bb[3], y)]
@@ -402,7 +480,9 @@ def model(trace, names_path, rec, gen, hud=False):
     names, tiles, hd, insts, _ = load(trace, names_path, rec)
     kind = kinds(g, SRC)
     v, cam = view555(g, names, tiles, hd, insts, kind)
-    scr = hudcheck.screen(view555(g, names, tiles, hd, insts, kind, hudcheck.Art(SRC))[0] if hud else v)
+    vh = view555(g, names, tiles, hd, insts, kind, hudcheck.Art(SRC))[0] if hud else None
+    scr = hudcheck.screen(vh if hud else v)
+    model.with_gui = vh
     return g, v, scr, cam
 
 
@@ -424,6 +504,9 @@ def diff5(a, b, mask=None):
 def main():
     a = sys.argv[1:]
     hud = '--hud' in a
+    global DARK_FORCE
+    if '--dark' in a:
+        DARK_FORCE = int(a[a.index('--dark') + 1])
     if a and a[0] == 'hostcmp':
         sys.exit(0 if hostcmp(a[1], a[2], a[3], a[4], hud) else 1)
     if len(a) < 6:
@@ -441,6 +524,11 @@ def main():
         s = opt('--shot')
         k = shot555(view, s, s.replace('.png', '.mdiff.png'))
         msg += f'; runner frame vs model {k} of {320 * 240} px'
+        fail = fail or k != 0
+    if opt('--gui') and hud:
+        s = opt('--gui')
+        k = shot555(model.with_gui, s, s.replace('.png', '.mdiff.png'))
+        msg += f'; runner GUI frame vs model {k} px'
         fail = fail or k != 0
     print(msg)
     sys.exit(1 if fail else 0)

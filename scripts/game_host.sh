@@ -5,7 +5,8 @@
 #   scripts/game_host.sh <route> <seed> <trace name> [level money enemies] [HUD=0|1]
 #   e.g. scripts/game_host.sh p5_shop 96 g_p5_shop_s96 2 40000 1
 # HUD=0 (default): no HUD on either side; HUD=1: HD's HUD on both (global.collect's "+N" line and the messages are
-# not in the trace: those frames differ in that line).
+# not in the trace: those frames differ in that line). DARK=a8: both sides drawn as a dark level at that alpha byte
+# (the fade path on a level that is not dark).
 set -e
 cd "$(dirname "$0")/.."
 R=$1; S=$2; N=$3; L=${4:-1}; M=${5:-0}; E=${6:-0}
@@ -17,5 +18,5 @@ cc -std=gnu99 -O2 -ffp-contract=off -w -DDRAW_HOST -I$SDK -I$G -Ibuild/gen -Isrc
   -Isrc/snd -o build/game/host/host tests/game/host.c src/main/game.c src/draw/draw.c src/hud/hud.c build/gen/sprites.c \
   build/gen/drawtab.c $G/*.c -lm
 if [ "${HUD:-0}" = 1 ]; then H=hud; F=--hud; else H=nohud; F=; fi
-build/game/host/host tests/routes/$R.txt $S $L $M $E 30 build/gen - all $H 2>/dev/null |
-  python3 tools/drawmodel.py hostcmp build/trace/$N.bin build/trace/$N.names build/gen - $F
+build/game/host/host tests/routes/$R.txt $S $L $M $E 30 build/gen - all $H ${DARK:+$DARK} 2>/dev/null |
+  python3 tools/drawmodel.py hostcmp build/trace/$N.bin build/trace/$N.names build/gen - $F ${DARK:+--dark $DARK}

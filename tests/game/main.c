@@ -53,6 +53,9 @@ void main_boot(void)
 #ifdef GAME_NOHUD
     draw_hud_on = 0;
 #endif
+#ifdef GAME_DARK
+    draw_dark_force = GAME_DARK;                  /* the fade path on any level (scripts/game_check.sh DARK=a8) */
+#endif
     game_cfg.route = route_keys;
     game_cfg.nroute = ROUTE_N;
     game_cfg.tail = ROUTE_TAIL;

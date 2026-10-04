@@ -7,20 +7,36 @@
 # Reference traces with frames: TRACE_SHOT=<recs> scripts/hd_trace.sh (build/game/traces.sh: the gate's three).
 # src/game is taken at GAME_REV (default HEAD) with PIN_MAX 1000, as scripts/playsh2_check.sh does.
 # HUD=0: the program draws no HUD (the runner's frames have none); HUD=1 (default): the model draws HD's HUD from the
-# record's globals (global.collect, the "+N" line, and the messages are not in the trace: they differ when shown).
-# DPROF=1: the draw's parts timed. --host is done by scripts/game_host.sh (every step, on the host).
+# record's globals (TRACE_HUD traces: collect, messages, drawHUD, the transition's text); --gui frames (TRACE_GUI) too.
+# DPROF=1: the draw's parts timed. DARK=a8: the program and the model draw a dark level at that alpha byte (the fade
+# path on a level that is not dark; the runner frames then differ, as expected). --host is done by scripts/game_host.sh (every step, on the host).
 # Output: tests/game/build/<route>/ (snapshots, out.txt: per-snapshot draw stats, diff masks).
 set -e
 cd "$(dirname "$0")/.."
 R=$1; S=$2; N=$3; RECS=$4; L=${5:-1}; M=${6:-0}; E=${7:-0}
-T=tests/game; B=$T/build; O=$B/$R${HUD:+_hud$HUD}; rm -rf "$O"; mkdir -p "$O/w"
+T=tests/game; B=$T/build; O=$B/$R${HUD:+_hud$HUD}${DARK:+_dark$DARK}; rm -rf "$O"; mkdir -p "$O/w"
 G=$B/g; rm -rf "$G"; mkdir -p "$G"
 git archive "${GAME_REV:-HEAD}" src/game | tar -x -C "$G" --strip-components=2
 cp build/gen/objects.[ch] build/gen/gentables.[ch] build/gen/playtables.[ch] "$G/"
 sed -i '' "s/^#define PIN_MAX 4096\$/#define PIN_MAX ${PIN:-1000}/" "$G/play.h"
-grep -q "^#define PIN_MAX ${PIN:-1000}\$" "$G/play.h"; touch "$G/stamp"
+grep -q "^#define PIN_MAX ${PIN:-1000}\$" "$G/play.h"
+# the accessor src/draw needs for oTransition's text (proposed for src/game; added to the snapshot only, until
+# src/game has it): drawLoot, moneyCount, isLoot, isKills of ptrans.c's static state
+grep -q "ptrans_gui" "$G/ptrans.c" || cat >> "$G/ptrans.c" <<'EOF2'
+
+/* tests/game snapshot only (scripts/game_check.sh): proposed accessor for src/draw */
+int ptrans_gui(int32_t *v)
+{
+    v[0] = TR.drawLoot;
+    v[1] = TR.moneyCount;
+    v[2] = TR.isLoot;
+    v[3] = TR.isKills;
+    return 1;
+}
+EOF2
+touch "$G/stamp"
 python3 tools/drawtables.py refs/hd/src build/gen >/dev/null
-scripts/dmake.sh $T OUT=build/$R${HUD:+_hud$HUD}/elf HUD=${HUD:-1} ROUTE=$R SEED=$S SNAPS=$RECS LEVEL=$L MONEY=$M ENEMIES=$E OPT="${OPT:--O2}" DPROF=${DPROF:-0} \
+scripts/dmake.sh $T OUT=build/$R${HUD:+_hud$HUD}${DARK:+_dark$DARK}/elf HUD=${HUD:-1} ROUTE=$R SEED=$S SNAPS=$RECS LEVEL=$L MONEY=$M ENEMIES=$E OPT="${OPT:--O2}" DPROF=${DPROF:-0} ${DARK:+DARK=$DARK} \
   >"$O/make.log" 2>&1 || { tail -20 "$O/make.log"; exit 1; }
 n=$(echo "$RECS" | tr ',' '\n' | grep -c .)
 GAME_OUT="$O/out.txt" GAME_NSNAPS=$n mame sfiii3na -rompath "$O/elf/mame" -skip_gameinfo -nothrottle -sound none \
@@ -29,13 +45,15 @@ GAME_OUT="$O/out.txt" GAME_NSNAPS=$n mame sfiii3na -rompath "$O/elf/mame" -skip_
   -autoboot_script scripts/lua/gamesnap.lua >"$O/mame.log" 2>&1 || true
 rm -rf "$O/elf/mame" "$O"/elf/*.bin "$O/w"         # the ROM set (80 MB) is not kept: the disk is small
 fail=0; k=0; H=--hud; [ "${HUD:-1}" = 0 ] && H=
+[ -n "$DARK" ] && H="$H --dark $DARK"
 for rec in $(echo "$RECS" | tr ',' ' '); do
   s=$(printf '%s/snap/sfiii3na/%04d.png' "$O" $k)
   [ -f "$s" ] || { echo "rec $rec: no snapshot"; fail=1; k=$((k + 1)); continue; }
-  shot=build/trace/$N.shot_$rec.png
+  shot=build/trace/$N.shot_$rec.png; gui=build/trace/$N.gui_$rec.png
+  G2=; [ -f "$gui" ] && [ -n "$H" ] && G2="--gui $gui"
   if [ -f "$shot" ]; then
     python3 tools/drawmodel.py cmp build/trace/$N.bin build/trace/$N.names $rec build/gen "$s" $H \
-      --mask "$O/diff_$rec.png" --shot "$shot" || fail=1
+      --mask "$O/diff_$rec.png" --shot "$shot" $G2 || fail=1
   else
     python3 tools/drawmodel.py cmp build/trace/$N.bin build/trace/$N.names $rec build/gen "$s" $H \
       --mask "$O/diff_$rec.png" || fail=1

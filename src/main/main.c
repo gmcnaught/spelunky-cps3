@@ -1,5 +1,6 @@
 /* The game program's start-up and frame loop (game.h). Flash layout (tests/game/assets.py): samples at 0 (SND_AT),
-   the game palette at GFX_PAL_AT, tiles at GFX_TILES_AT (a blank tile first), the HUD's at HUD_TILES_AT. */
+   the game palette at GFX_PAL_AT, tiles at GFX_TILES_AT (a blank tile first), the HUD's at HUD_TILES_AT, the faded
+   palettes at DARK_FADE_AT (tools/darkfade.py table). */
 #include "cps3.h"
 #include "sprites.h"
 #include "hudart.h"
@@ -25,7 +26,9 @@ __attribute__((weak)) void main_vblank_end(void) {}
 static void load_gfx(void)
 {
     cps3dma_palette(GFX_PAL_AT, DRAW_PAL * 256, 256, 0);
+    cps3dma_palette(GFX_PAL_AT, DRAW_PAL_LIT * 256, 256, 0);   /* the unfaded copy (dark levels: draw.c) */
     cps3dma_palette(HUD_PAL_AT, HUD_PAL * 256, 512, 0);
+    cps3dma_palette(HUD_PAL_AT, DRAW_PAL_HUDDARK * 256, 256, 0);   /* faded by draw.c on dark levels */
     uint32_t src = GFX_TILES_AT - 256, first = GFX_FIRST_TILE - 1u, n = GFX_NTILES + 1;
     while (n) {                                   /* records of at most 1 MB */
         uint32_t k = n > 4096 ? 4096 : n;

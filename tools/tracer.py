@@ -33,10 +33,16 @@ Method from ../maldita.castilla-cps3/tools/tracer.py. Changes, all GML compiled 
   - TRACE_LEVEL=N (P5): the title flow sets global.currLevel = N before room_goto(rLevel) (as the generator mode
     does per case; oDebug's level keys do the same): the route starts on level N. playhost --level N.
     TRACE_MONEY=M (P5) likewise sets global.money = M (shop routes). playhost --money M.
+    TRACE_NODARK=0 (P7) sets global.noDarkLevel = false there (scrClearGlobals leaves it true, so a route that starts
+    on level N could never be a dark level).
   - TRACE_EVLOG=1 (probe runs only): every object event except Draw and oGamepad / oScreen / oIntro's appends
     id * 4096 + k to global.trc_evl (k: the names file's "C k <object> <event>" lines); the record writes the
     list since the last record. Used to determine the runner's event and instance order.
   - TRACE_SHOT=r1,r2,...: oGamepad Post-Draw (new) saves application_surface after record r (shot_gml).
+  - TRACE_GUI=r1,r2,...: oGamepad Draw GUI End (new) saves gui_<r>.png at record r: application_surface with the
+    GUI drawn over it as the runner draws it (oGame's scrDrawHUD and showMessages run by oGame, whose instance
+    variables they set as in its own Draw GUI; global.messageTimer put back after; oTransition's Draw GUI by event_perform, whose only side effect, global.noDarkLevel, it sets to the
+    value it already has this frame) - the frame TRACE_SHOT saves, plus the GUI.
   - TRACE_HUD=1: every record also carries the HUD globals the trace otherwise lacks (global.collect,
     messageTimer, message1 / message2 with their highlights, bloodLevel, drawHUD) in an SPT4 extension block.
   - TRACE_SND=1: every record also carries the sound calls made since the previous record, in call order (SPT4
@@ -99,11 +105,15 @@ Trace format (little-endian; the chunks concatenated in order, scripts/hd_trace.
     u32  count, s32 entries      TRACE_EVLOG's event log (count 0 without TRACE_EVLOG)
   SPT4 (TRACE_HUD / TRACE_SND): an SPT3 record, then
     u32  flags           bit 0 HUD block, bit 1 sound block
-    HUD block: f64 collect, messageTimer, bloodLevel, drawHUD; message1, message2 each as
+    HUD block (flags bit 0): f64 collect, messageTimer, bloodLevel, drawHUD; message1, message2 each as
       u8 type (0 string, 1 array of parts), then a string or u32 n + n strings; then the highlights:
       u32 n + n f64 (global.messageHighlights / message2Highlights when an array; n = 0 otherwise: only arrays
       highlight, scripts/drawHighlightedMessage)
-    sound block: u32 count; per call u8 kind (SND_KINDS index), string asset (audio_get_name; "" none), f64 arg
+    transition block (flags bit 2, with TRACE_HUD): f64 global.xtime, global.time, global.xmoney, and oTransition's
+      drawLoot, moneyCount, isLoot, isKills, oDamselKiss.kissed, oTunnelMan.talk (-1e9 where absent)
+    level block (flags bit 3, with TRACE_HUD): f64 global.darkLevel, oLevel.darkness,
+      oPlayer1.distToNearestLightSource
+    sound block (flags bit 1): u32 count; per call u8 kind (SND_KINDS index), string asset (audio_get_name; "" none), f64 arg
       (playMusic: loop; setSoundVol: the volume argument; audio_play_sound: priority * 2 + loop; else 0)
   Magic "SPT3" (0x33545053, P4). "SPT2": no view, time, image_speed, vars or event log. "SPT1" (before
   2026-10-03 P3): also no image_xscale..visible fields and no tiles. decode reads all three.
@@ -182,7 +192,7 @@ def ext_gml():
     if not (TRACE_HUD or TRACE_SND):
         return ''
     out = f'''
-    buffer_write(b, buffer_u32, {(1 if TRACE_HUD else 0) | (2 if TRACE_SND else 0)});'''
+    buffer_write(b, buffer_u32, {(13 if TRACE_HUD else 0) | (2 if TRACE_SND else 0)});'''
     if TRACE_HUD:
         out += f'''
     buffer_write(b, buffer_f64, {gvar('collect')});
@@ -212,6 +222,19 @@ def ext_gml():
         }}
         else buffer_write(b, buffer_u32, 0);
     }}'''
+        out += f'''
+    buffer_write(b, buffer_f64, {gvar('xtime')});
+    buffer_write(b, buffer_f64, {gvar('time')});
+    buffer_write(b, buffer_f64, {gvar('xmoney')});
+    buffer_write(b, buffer_f64, instance_exists(oTransition) ? {num('oTransition.drawLoot')} : {BAD});
+    buffer_write(b, buffer_f64, instance_exists(oTransition) ? {num('oTransition.moneyCount')} : {BAD});
+    buffer_write(b, buffer_f64, instance_exists(oTransition) ? real(oTransition.isLoot) : {BAD});
+    buffer_write(b, buffer_f64, instance_exists(oTransition) ? real(oTransition.isKills) : {BAD});
+    buffer_write(b, buffer_f64, instance_exists(oDamselKiss) ? real(instance_nearest(176, 176, oDamselKiss).kissed) : {BAD});
+    buffer_write(b, buffer_f64, instance_exists(oTunnelMan) ? real(instance_nearest(176, 176, oTunnelMan).talk) : {BAD});
+    buffer_write(b, buffer_f64, {gvar('darkLevel')});
+    buffer_write(b, buffer_f64, instance_exists(oLevel) ? {num('oLevel.darkness')} : {BAD});
+    buffer_write(b, buffer_f64, instance_exists(oPlayer1) ? {num('oPlayer1.distToNearestLightSource')} : {BAD});'''
     if TRACE_SND:
         out += '''
     buffer_write(b, buffer_u32, global.trc_sndn);
@@ -369,6 +392,8 @@ def gml(segs, seed):
     reseed = '' if os.environ.get('TRACE_RESEED') == '0' else f'random_set_seed({seed});'
     if os.environ.get('TRACE_LEVEL'):
         reseed = f'global.currLevel = {int(os.environ["TRACE_LEVEL"])};\n    ' + reseed
+    if os.environ.get('TRACE_NODARK') == '0':
+        reseed = 'global.noDarkLevel = false;\n    ' + reseed
     if os.environ.get('TRACE_MONEY'):
         reseed = f'global.money = {int(os.environ["TRACE_MONEY"])};\n    ' + reseed
     noenemy = ''
@@ -515,10 +540,44 @@ if ({cond})
 '''
 
 
+def gui_gml():
+    """TRACE_GUI=r1,r2,...: oGamepad Draw GUI End (new) saves gui_<r>.png at record r (see the module doc)"""
+    recs = [int(r) for r in os.environ.get('TRACE_GUI', '').split(',') if r]
+    if not recs:
+        return ''
+    cond = ' || '.join(f'r == {r}' for r in recs)
+    return f'''
+if (!global.trc_on) exit;
+var r = global.trc_rec - 1;
+if ({cond})
+{{
+    var mt = global.messageTimer;
+    var nd = global.noDarkLevel;
+    var w = surface_get_width(application_surface), h = surface_get_height(application_surface);
+    var s = surface_create(w, h);
+    surface_set_target(s);
+    draw_clear_alpha(c_black, 1);
+    gpu_set_blendenable(false);
+    draw_surface(application_surface, 0, 0);
+    gpu_set_blendenable(true);
+    with (oGame) {{ scrDrawHUD(); showMessages(); }}
+    with (oTransition) event_perform(ev_draw, ev_gui);
+    surface_reset_target();
+    surface_save(s, "gui_" + string(r) + ".png");
+    surface_free(s);
+    global.messageTimer = mt;
+    global.noDarkLevel = nd;
+}}
+'''
+
+
 def csx(create, step, begin, end, seed, names):
     q = lambda s: '@"' + s.replace('"', '""') + '"'
     shot = shot_gml()
     shots = f'g.QueueReplace("gml_Object_oGamepad_Draw_77", {q(shot)});\n' if shot else ''
+    gui = gui_gml()
+    if gui:
+        shots += f'g.QueueReplace("gml_Object_oGamepad_Draw_75", {q(gui)});\n'
     return f'''
 using System.IO;
 using System.Text;
@@ -820,6 +879,13 @@ def records(data):
                     o += 4
                     hud[m + '_hl'] = list(struct.unpack_from(f'<{n}d', data, o))
                     o += 8 * n
+                if fl & 4:
+                    hud.update(zip(['xtime', 'time', 'xmoney', 'drawLoot', 'moneyCount', 'isLoot', 'isKills',
+                                    'kissed', 'talk'], struct.unpack_from('<9d', data, o)))
+                    o += 72
+                if fl & 8:
+                    hud.update(zip(['darkLevel', 'darkness', 'distLight'], struct.unpack_from('<3d', data, o)))
+                    o += 24
                 hd['hud'] = hud
             if fl & 2:
                 (n,) = struct.unpack_from('<I', data, o)
