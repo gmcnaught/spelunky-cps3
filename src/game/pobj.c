@@ -1347,7 +1347,9 @@ void ev_collision(int self, int other)
                 PE(o)->yVel = N(-6);
                 PEN(o)->burning = 50;
             }
-        } else PUNTR(1092);
+        } else if (oo == OBJ_oMagmaMan) pcontent_enemy(5017, other, self);     /* Collision_oEnemy :1-11: P7 (D) */
+        else if (!pcontent_ev(FEV_COLLISION, self, other))                     /* P7 hook (oBarrierEmitter: C) */
+            PUNTR(1092);
         break;
     case OBJ_oWeb:                                                             /* objects/oWeb/Collision_*.gml */
         if (obj_is(oo, OBJ_oItem)) {

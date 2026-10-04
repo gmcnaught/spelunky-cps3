@@ -47,7 +47,8 @@ int pitems_player(int site, int i, int arg);         /* jetpack, cape glide, par
 int pitems_world(int site, int i, int arg);
 /* pX_enemy(site, e, arg): the enemy sites of penemy.c (5006 piranha / vampire blood on hurting the player, arg the
    character; 5010 a thrown item / stunned enemy hits e, arg kind 0 item / 1 enemy; 5011 fire frog in water;
-   5013 oSpearsLeft; 5016 an arrow hits a vampire, arg the arrow). Asked in order A .. E (pcontent_enemy): 1 when
+   5013 oSpearsLeft; 5016 an arrow hits a vampire, arg the arrow; 5017 an explosion hits a magma man, arg the
+   explosion: pobj.c oExplosion Collision_oEnemy :1-11). Asked in order A .. E (pcontent_enemy): 1 when
    one ran it; the defaults return 0 and pcontent_enemy does PUNTR(site) */
 int pjungle_enemy(int site, int e, int arg);
 int pswamp_enemy(int site, int e, int arg);
