@@ -395,7 +395,7 @@ static int room_change(void)
 
 int play_step(uint16_t keys, void (*record_cb)(int phase))
 {
-    int k, n, a;
+    int k, n, a, seq0;
     play_dops = 0;
     view_in_step = 0;
     animate();                                                                 /* 1 */
@@ -415,12 +415,15 @@ int play_step(uint16_t keys, void (*record_cb)(int phase))
         PW.room_new = 0;
     }
     view_in_step = 1;
+    /* an instance created during the alarm phase gets no alarm pass in it, also for the alarms after the one that
+       created it (Observed: c_jungle_firefrog_s296 record 246, oFireFrogBomb Alarm_1's oBlood keep alarm[2] 5) */
+    seq0 = PW.seq;
     for (a = 0; a < 12; a++) {                                                 /* alarms */
         n = snapshot(a);
         for (k = 0; k < n; k++) {
             int i = order[k];
             struct pin *p = &PX(i);
-            if (!p->alive) continue;
+            if (!p->alive || pw_seq[i] >= seq0) continue;
             if (PE(p)->alarm[a] >= 0) {
                 PE(p)->alarm[a] -= 1;
                 play_cur_obj = p->obj;
