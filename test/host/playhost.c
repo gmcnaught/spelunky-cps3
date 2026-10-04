@@ -164,7 +164,8 @@ static int set_global(const char *kv)
         return 0;
     }
 #define GI(name, dst) if (!strcmp(k, name)) { dst = x; return 1; }
-    GI("madeMoai", G.madeMoai) GI("kaliPunish", G.kaliPunish)GI("arrows", PG.arrows) GI("bombs", PG.bombs) GI("rope", PG.rope)
+    GI("madeMoai", G.madeMoai) GI("lake", G.lake) GI("madeUdjatEye", G.madeUdjatEye) GI("madeMarketEntrance", G.madeMarketEntrance)
+    GI("marketChance", G.marketChance) GI("kaliPunish", G.kaliPunish) GI("arrows", PG.arrows) GI("bombs", PG.bombs) GI("rope", PG.rope)
     GI("plife", PG.plife) GI("money", PG.money) GI("hasJetpack", PG.hasJetpack) GI("hasCape", PG.hasCape)
     GI("hasParachute", PG.hasParachute) GI("hasMitt", PG.hasMitt) GI("hasGloves", PG.hasGloves)
     GI("hasSpringShoes", PG.hasSpringShoes) GI("hasSpikeShoes", PG.hasSpikeShoes) GI("hasKapala", PG.hasKapala)
@@ -238,8 +239,9 @@ int main(int argc, char **argv)
        starts in rLevel, not oTransition's rLevel2; a lake level not in rLevel3): the first room only */
     if (!room || !strcmp(room, "rLevel")) gen_room_force = 0;
     else if (!strcmp(room, "rOlmec") && level == 16) gen_room_force = 3;
+    else if (!strcmp(room, "rLevel3") && G.lake) gen_room_force = 2;          /* a lake level: --global lake=1 */
     else {
-        fprintf(stderr, "playhost: --room %s: not modelled (only rLevel, and rOlmec on level 16)\n", room);
+        fprintf(stderr, "playhost: --room %s: not modelled (only rLevel, rOlmec on level 16, rLevel3 with lake=1)\n", room);
         return 2;
     }
     play_level_start(nextid);
