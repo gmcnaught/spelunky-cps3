@@ -71,7 +71,51 @@ Per route, mean step in MAME clocks:
 | p5_snakes | 412,835 | 341,729 | -17.2 % |
 | p5_spider | 337,847 | 275,828 | -18.4 % |
 
-Max step: about 21 M in both builds, the level's first step or a room change. jtcps3: JT_RESULT.
+Max step: about 21 M in both builds, the level's first step or a room change. jtcps3 below.
+
+### jtcps3 timing (MiSTer .81, scripts/playsh2_jt.sh, 2026-10-04)
+
+The builds were made at faabac9..6e96383 (the grid commits on 03f01c5's predecessor 0ec4e16; the same pcol.c / pcolgrid.h
+as 58756ab apart from HandleCollision's inlined search, which came with 03f01c5), main RAM only, PIN 1000:
+- **exact:** `EXACT=1`;
+- **grid:** the default (16 px cells);
+- **-Os + O2 hot:** the grid built `OPT=-Os` with pcol.c, pworld.c, prun.c, pscript.c, pobj.c and pplayer.c kept at
+  O2 by `#pragma GCC optimize("O2", "no-tree-loop-distribute-patterns")` (`O2FILES`).
+
+All three: PASS 23 / 23 checksums on jtcps3 (5 generations + 18 routes), sprite RAM self-test OK. The PIN_MAX A / B
+host check of playsh2_jt.sh differs on 15 jobs in every build: since slot reuse (286acc7) the checksum covers the slot
+layout, which depends on PIN_MAX; it now reports instead of stopping (STRICT=1 stops).
+
+Step mean per route, jtcps3 clocks (MAME clocks of the same build, jtcps3 / MAME ratio):
+
+| Route | exact jt (MAME, ratio) | grid jt (MAME, ratio) | -Os+O2 hot jt (MAME, ratio) |
+|---|---|---|---|
+| p4_exit559 | 1,184,482 (304,424, 3.89) | 965,833 (227,036, 4.25) | 980,069 (238,639, 4.11) |
+| p4_hang_ladder | 1,272,611 (319,511, 3.98) | 1,102,892 (261,793, 4.21) | 1,118,414 (275,115, 4.07) |
+| p4_items | 1,242,224 (313,324, 3.96) | 1,088,794 (260,815, 4.17) | 1,105,040 (274,281, 4.03) |
+| p4_spikes | 921,665 (218,010, 4.23) | 831,647 (187,682, 4.43) | 844,904 (194,951, 4.33) |
+| p4_push_rope | 1,310,074 (321,864, 4.07) | 1,130,507 (257,793, 4.39) | 1,142,558 (268,697, 4.25) |
+| p1_walk | 1,508,011 (382,698, 3.94) | 1,249,884 (293,963, 4.25) | 1,266,343 (309,121, 4.10) |
+| p4_bomb_drop | 1,789,307 (466,126, 3.84) | 1,392,827 (328,193, 4.24) | 1,409,408 (344,921, 4.09) |
+| p4_bomb_throw | 1,415,537 (353,396, 4.01) | 1,118,502 (246,104, 4.54) | 1,126,213 (256,114, 4.40) |
+| p5_buy | 1,587,741 (435,286, 3.65) | 1,364,761 (358,876, 3.80) | 1,420,036 (384,421, 3.69) |
+| p5_caveman | 2,076,744 (534,672, 3.88) | 1,673,349 (389,360, 4.30) | 1,726,056 (418,574, 4.12) |
+| p5_cavestun | 1,553,743 (401,673, 3.87) | 1,311,003 (311,046, 4.21) | 1,357,106 (335,188, 4.05) |
+| p5_giant | 1,697,096 (443,016, 3.83) | 1,398,571 (335,504, 4.17) | 1,434,490 (357,915, 4.01) |
+| p5_idol | 1,552,314 (398,034, 3.90) | 1,356,086 (328,218, 4.13) | 1,396,013 (350,805, 3.98) |
+| p5_l3spider | 1,352,869 (331,419, 4.08) | 1,160,485 (266,065, 4.36) | 1,194,243 (282,086, 4.23) |
+| p5_l4 | 1,693,775 (444,488, 3.81) | 1,406,909 (339,647, 4.14) | 1,445,015 (360,108, 4.01) |
+| p5_shop | 1,607,752 (410,904, 3.91) | 1,352,073 (321,960, 4.20) | 1,398,955 (343,099, 4.08) |
+| p5_snakes | 1,659,737 (412,837, 4.02) | 1,453,039 (341,726, 4.25) | 1,499,256 (364,206, 4.12) |
+| p5_spider | 1,284,445 (337,849, 3.80) | 1,107,134 (275,828, 4.01) | 1,134,450 (291,535, 3.89) |
+| mean of route means | 1,483,896 (379,418, 3.91) | 1,248,016 (296,200, 4.21) | 1,277,698 (313,876, 4.07) |
+
+- **Grid against exact on jtcps3:** -15.9 % mean (1.484 M -> 1.248 M), against -21.9 % in MAME. The ratio rises from
+  3.91 to 4.21: the grid's work is cheaper in instructions but not in cache misses / memory waits.
+- **-Os + O2 hot against O2 grid:** +2.4 % on jtcps3 (1.248 M -> 1.278 M), +6.0 % in MAME. The smaller code improves
+  the ratio (4.21 -> 4.07) but not enough to win: O2 stays.
+- **Budget:** 0.84 M jtcps3 clocks per 2-frame step. The grid build's route means are 0.83-1.67 M: only p4_spikes is
+  under.
 
 **Memory (PIN 1000):** 16 KB in all.
 - cells: 65 x 49 int16;
