@@ -2,12 +2,12 @@
 """tests/playsh2 report: the SH-2 records (scripts/lua/playsh2.lua) against the host's (host.c): checksums equal per
 record; SH-2 clocks per generation (by area) and per route step (level start, the first step, mean, max); with a
 .prof file, the PC samples summed per function and per source file, libgcc's soft-float helpers also per caller.
-   report.py <host.txt> <sh2.txt> <nm.txt> [--jt 2.94]"""
+   report.py <host.txt> <sh2.txt> <nm.txt>"""
 import sys, os, re, glob, bisect, collections
 
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..')
 STEP_BUDGET = 2 * 419470            # a game step = 2 frames of 419,470 clocks (25 MHz / 59.6 Hz; PLAN.md section 1)
-JT = 2.94                          # jtcps3 clocks per MAME clock (PLAN.md section 3, Maldita docs/CPS3.md C3)
+JT = 4.2                           # jtcps3 clocks per MAME clock: estimate; jtcost is the metric (scripts/jtcost.sh, docs/PERF3.md; 4.21 = EQUIV.md's grid build on jtcps3)
 AREA = lambda lv: 'mines' if lv <= 4 else 'lush' if lv <= 8 else 'ice' if lv <= 12 else 'temple' if lv <= 15 else 'olmec'
 KIND = {1: 'gen', 2: 'start', 3: 'step', 4: 'early'}
 
@@ -60,7 +60,7 @@ def main():
     for k in diff[:5]: print('  first differences: job %d %s %d host %s SH-2 %s' % (k[0], KIND[k[1]], k[2], host[k]['sum'], sh2[k]['sum']))
     if head: print('MAME emulated time %.1f s; PROF period %s ticks' % (float(head[1]), head[4]))
     # 2. generation, per area
-    print('\nLevel generation (gen_level), SH-2 clocks in MAME (x%.2f for jtcps3):' % JT)
+    print('\nLevel generation (gen_level), SH-2 clocks in MAME (x%.2f for jtcps3: estimate; jtcost is the metric):' % JT)
     by = collections.OrderedDict()
     for (j, kd, i), r in sh2.items():
         if kd == 1:
@@ -95,7 +95,7 @@ def main():
     if allsteps:
         s = sorted(allsteps)
         p = lambda q: s[min(len(s) - 1, int(q * len(s)))]
-        print('  all route steps: %d, mean %.0f (%.1f%% of a step in MAME, %.1f%% x%.2f), median %d, p99 %d, max %d'
+        print('  all route steps: %d, mean %.0f (%.1f%% of a step in MAME, %.1f%% x%.2f estimate; jtcost is the metric), median %d, p99 %d, max %d'
               % (len(s), sum(s) / len(s), 100 * sum(s) / len(s) / STEP_BUDGET, 100 * JT * sum(s) / len(s) / STEP_BUDGET,
                  JT, p(0.5), p(0.99), s[-1]))
     # 4. ATTR: time by category / event x object over the route steps

@@ -417,8 +417,7 @@ int play_step(uint16_t keys, void (*record_cb)(int phase))
     /* 2: xprevious, yprevious. Only oPlayer1's are read (objects/oPlayer1/Collision_oPushBlock.gml; no other
        HD object reads xprevious / yprevious), so only its instances keep them (docs/PERF2.md E) */
     for (k = pw_ohead[OBJ_oPlayer1]; k >= 0; k = pw_inext[k]) {
-        PW.in[k].xprev = PW.in[k].x;
-        PW.in[k].yprev = PW.in[k].y;
+        if (PW.in[k].ext) PE(&PW.in[k])->xprev = PW.in[k].x;
     }
     /* Begin Step: oScreen (drawing surfaces), oGamepad: in a new level room the tracer removes the enemies
        (TRACE_NOENEMY) and writes the phase-0 record */

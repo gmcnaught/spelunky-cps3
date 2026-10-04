@@ -28,6 +28,7 @@ grep -q "^#define PIN_MAX ${PIN:-1792}\$" "$G/play.h"
 # shipping build's collision grid (src/game/pcolgrid.h). GRID_SHIFT=<n>: grid cells of 2^n px (default 4)
 if [ "${EXACT:-0}" = 1 ]; then { echo "#define PCOL_EXACT 1"; cat "$G/pcol.c"; } > "$G/pcol.tmp" && mv "$G/pcol.tmp" "$G/pcol.c"; fi
 if [ -n "${GRID_SHIFT:-}" ]; then { echo "#define PCOL_GRID_SHIFT $GRID_SHIFT"; cat "$G/pcol.c"; } > "$G/pcol.tmp" && mv "$G/pcol.tmp" "$G/pcol.c"; fi
+scripts/unity.sh "$G"                                  # the hot play files as one TU (UNITY=0: separate)
 touch "$G/stamp"
 python3 tools/drawtables.py refs/hd/src build/gen >/dev/null
 scripts/dmake.sh $T OUT=build/$R${HUD:+_hud$HUD}${DARK:+_dark$DARK}${ATTRACT:+_attract$ATTRACT}${HOLD:+_hold}/elf HUD=${HUD:-1} ROUTE=$R SEED=$S SNAPS=$RECS LEVEL=$L MONEY=$M ENEMIES=$E OPT="${OPT:--O2}" DPROF=${DPROF:-0} ${DARK:+DARK=$DARK} ${ATTRACT:+ATTRACT=$ATTRACT} ${HOLD:+HOLD=$HOLD} \

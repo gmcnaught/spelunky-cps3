@@ -21,10 +21,13 @@ What jtcps3 needs:
   - draw: 0.28 M;
   - VBlank: 2 x 17 K;
   - sound: 0.5 K;
-  - **step: what is left, 0.525 M jtcps3 = 146-154 K MAME** (at 3.6-3.41x).
+  - **step: what is left, 0.525 M jtcps3 = 125 K MAME** (at 4.2x: the grid build measured 4.21 on jtcps3, EQUIV.md;
+    the earlier 3.41-3.6x gave 146-154 K and overstated the headroom, docs/REVIEW-SH2.md).
+- **The ratio rises as instruction cuts land** (exact 3.91 -> grid 4.21), so 125 K is an estimate:
+  `scripts/jtcost.sh` (modelled jtcps3 clocks, docs/PERF3.md) is the metric.
 - **Step alone:** under 0.84 M would only need 233-246 K MAME. That excludes draw, so it is not enough.
 
-So the working target is **≤ 135 K MAME**. That keeps 10-15 % margin under the 146-154 K that fits the pair.
+So the target is **≤ 125 K MAME** (0.525 M jtcps3 / 4.2), checked in modelled jtcps3 clocks (PERF3).
 
 MAME does not model the cache or wait states. On jtcps3, extra cost comes from:
 - **Cache misses:** about 2.5 clocks an instruction for straight-line code that misses.
@@ -245,7 +248,7 @@ A also needs grid-with-skip against grid-without-skip record equality, and the s
 
 Expected total, counting the overlaps: 269 K minus about 110-140 K gives **about 130-160 K**.
 - **135 K target:** that range reaches it only at its low end.
-- **146-154 K jtcps3 pair fit:** reached in most of the range.
+- **125 K jtcps3 pair fit (at 4.2x):** not reached by this range.
 
 So the G items (object soft-float, the collision-event pass, oLava) are probably needed too. On jtcps3, A, D and E
 should gain more than MAME shows, because they remove code walked through the cache and the stores. A jtcps3 run
@@ -271,7 +274,7 @@ The real grid baseline is **main 58756ab: 281,254 MAME clocks mean step** (6851/
 371.6 K.
 
 The subsystem shares above are still roughly right, apart from the collision-event pass. The 50 % target is
-therefore about 140 K. The jtcps3 pair fit needs a step of 146-154 K MAME (see Target).
+therefore about 140 K. The jtcps3 pair fit needs a step of about 125 K MAME (see Target).
 
 ### Done: B (0fc7933 on this branch)
 

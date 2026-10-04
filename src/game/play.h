@@ -85,13 +85,15 @@ struct pin_ext {
     int16_t counter, fallCount, burnTimer, fired, facing, state, status, cimg, yOff, hp;
     int16_t trapID, enemyID;  /* instance indices (NOONE) */
     int16_t xAct;
+    int16_t en;             /* its struct pin_en (0: the shared zeros) */
     num px, py;             /* oRopeThrow px, py */
     double direction;       /* oArrow */
     double alpha;           /* image_alpha (oSmokePuff: life / 12) */
     int8_t lbo, tbo, rbo, bbo; /* setCollisionBounds offsets */
     uint8_t etype, style;
     uint8_t hasGun;         /* oShopkeeper (the drawing reads it) */
-    int16_t en;             /* its struct pin_en (0: the shared zeros) */
+    pos xprev;              /* xprevious, kept for oPlayer1 only (prun.c play_step 2; yprevious is never read); with en
+                               moved up, the SH-2's 200 bytes are kept */
 };
 
 /* the enemies' variables (penemy.c, pdamsel.c, pshop.c: oEnemy / oDamsel Create's, oEnemySight's motion), in a
@@ -105,32 +107,33 @@ struct pin_en {
     double hspeed, vspeed;  /* built-in motion (speed, direction): oEnemySight; applied after the Step events */
 };
 
+/* field order for the SH-2's displacement reach (mov.b @(disp,Rn) 0-15, mov.w 0-30, mov.l 0-60): bytes, then int16,
+   then the 32-bit fields; 64 bytes (pworld.c checks it) */
 struct pin {
-    int32_t id;
-    int16_t obj;            /* OBJ_* */
-    PIN_RO int16_t spr;     /* sprite_index (GSPR_*, -1 none) */
-    PIN_RO int16_t mask;    /* mask_index (-1: the sprite) */
-    int16_t ext;            /* its struct pin_ext (0: the shared defaults) */
     uint8_t alive, persistent;
     PIN_RO uint8_t visible;
+    /* the bounding box cache (pworld.c pin_bbox): bbk 0 not computed since the last change of x / y / sprite /
+       mask / scale (the setters clear it), BB_INT the box is bl, bt, br, bb exactly, BB_DBL computed in double
+       each time, BB_NOSPR no sprite */
+    uint8_t bbk;
+    uint8_t invincible, cleanDeath, shopWall, treasure;
+    int16_t obj;            /* OBJ_* */
+    int16_t ext;            /* its struct pin_ext (0: the shared defaults) */
+    PIN_RO int16_t spr;     /* sprite_index (GSPR_*, -1 none) */
+    PIN_RO int16_t mask;    /* mask_index (-1: the sprite) */
+    int16_t bl, bt, br, bb;
+    int16_t type;           /* enum ptype */
+    int32_t id;
     PIN_RO pos x, y;
-    pos xprev, yprev;                       /* kept for oPlayer1 only (prun.c play_step 2) */
     PIN_RO float depth;     /* a float in the runner (-99999991 reads -99999992) */
     PIN_RO img_t img;       /* image_index */
     img_t ispd;             /* image_speed */
     PIN_RO float xscale, yscale, angle;  /* floats in the runner; the values set (+-1, whole numbers, (float) angle) */
-    int16_t type;           /* enum ptype */
-    uint8_t invincible, cleanDeath, shopWall, treasure;
-    /* the bounding box cache (pworld.c pin_bbox): bbk 0 not computed since the last change of x / y / sprite /
-       mask / scale (the setters clear it), BB_INT the box is bl, bt, br, bb exactly, BB_DBL computed in double
-       each time, BB_NOSPR no sprite */
-    int16_t bl, bt, br, bb;
-    uint8_t bbk;
 };
 
 
-/* PW.in and the generator's W.in are the same memory (pworld.c inst_mem): struct pin is struct inst's size and the
-   loaders (play_level_start, play_transition_start) write play instance i only after reading generator instance k
+/* PW.in and the generator's W.in are the same memory (pworld.c inst_mem): struct pin (64 bytes) is not larger than
+   struct inst (72) and the loaders (play_level_start, play_transition_start) write play instance i only after reading generator instance k
    >= i. Nothing reads W during play */
 struct pworld {
     struct pin *in;
@@ -311,8 +314,24 @@ int pcol_count(int obj);
 /* the same with whole-number coordinates (|v| < 30000), without the double conversions */
 int collision_line_i(int32_t x1, int32_t y1, int32_t x2, int32_t y2, int obj, int prec, int notme_self);
 int collision_rect_i(int32_t x1, int32_t y1, int32_t x2, int32_t y2, int obj, int prec, int notme_self);
-int collision_line_any_i(int32_t x1, int32_t y1, int32_t x2, int32_t y2, int obj, int prec, int notme_self); /* != NOONE */
-int pin_xy_int(int i, int32_t *x, int32_t *y);    /* x, y as ints when both are whole numbers */
+int solid_vline_any(int32_t x, int32_t y1, int32_t y2, int notme_self);   /* collision_line(x, y1, x, y2, oSolid, 1, notme) != NOONE */
+int solid_hline_any(int32_t y, int32_t x1, int32_t x2, int notme_self);   /* collision_line(x1, y, x2, y, oSolid, 1, notme) != NOONE */
+/* v as an int in (-30000, 30000) when it is a whole number; x and y as ints when both are (inline: the results stay
+   in registers, no stack traffic in the collision helpers) */
+static inline int pos_int(pos v, int32_t *o)
+{
+#ifdef PLAY_FIXED
+    if ((v & ((1 << PFRAC_BITS) - 1)) != 0) return 0;
+    *o = v >> PFRAC_BITS;
+    return *o > -30000 && *o < 30000;
+#else
+    return fwhole(v, o) && *o > -30000 && *o < 30000;
+#endif
+}
+static inline int pin_xy_int(int i, int32_t *x, int32_t *y)
+{
+    return pos_int(PW.in[i].x, x) && pos_int(PW.in[i].y, y);
+}
 /* the resting-object skip (pobj.c): the solid summary's change clock, whether a region's cells kept still since a
    clock value, and a count of pw_changed calls on one instance */
 uint32_t pw_rest_clock(void);

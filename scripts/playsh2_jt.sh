@@ -23,6 +23,8 @@ done
 cp "$J/gA"/* "$B/g/"
 sed -i '' "s/^#define PIN_MAX [0-9][0-9]*\$/#define PIN_MAX $N/" "$B/g/play.h"
 grep -q "^#define PIN_MAX $N\$" "$B/g/play.h"; touch "$B/g/stamp"
+[ -z "${O2FILES:-}" ] || UNITY=0                       # (a file's optimize pragma would reach the files after it)
+UNITY=${UNITY:-1} scripts/unity.sh "$B/g"                # the hot play files as one TU (UNITY=0: separate)
 # snapcfg.h (tests/playsh2/core.c): where the snapshot keeps alpha
 sed -n '/^struct pin_ext {/,/^};/p' "$B/g/play.h" | grep -q "alpha" && echo "#define ALPHA_IN_EXT 1" > "$B/g/snapcfg.h" || : > "$B/g/snapcfg.h"
 cp "$B/g/snapcfg.h" "$J/gA/"

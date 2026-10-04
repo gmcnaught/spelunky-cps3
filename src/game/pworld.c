@@ -11,8 +11,12 @@
 #endif
 
 /* the generator's instances, then the play instances in the same memory (play.h struct pworld) */
-#define INST_MEM_N (PIN_MAX > INST_MAX ? PIN_MAX : INST_MAX)
-typedef char pin_size_is_inst_size[sizeof(struct pin) == sizeof(struct inst) ? 1 : -1];
+/* struct pin is 64 bytes (a shift indexes PW.in, not a mul.l) and struct inst 72: play slot i ends at byte 64 i + 64 <=
+   72 (i + 1), inside the generator instances 0 .. i, which the loaders have read (play.h) */
+typedef char pin_size_is_64[sizeof(struct pin) == 64 ? 1 : -1];
+typedef char pin_size_le_inst_size[sizeof(struct pin) <= sizeof(struct inst) ? 1 : -1];
+#define INST_MEM_PIN ((PIN_MAX * sizeof(struct pin) + sizeof(struct inst) - 1) / sizeof(struct inst))
+#define INST_MEM_N (INST_MEM_PIN > INST_MAX ? INST_MEM_PIN : INST_MAX)
 /* every generated instance gets a play slot (play_level_start, pcol.c gen_load: the grid's arrays are PIN_MAX long), with
    PIN_DEAD left over */
 typedef char pin_max_covers_inst_max[PIN_MAX > INST_MAX ? 1 : -1];
@@ -26,17 +30,18 @@ static int spr_of(const struct pin *p) { return p->mask >= 0 ? p->mask : p->spr;
 static void grid_reset(void);
 static void grid_unlink(int i);
 static void grid_dirty(int i);
-static void grid_flush(void);
+static void grid_flush_run(void);
 static int16_t ghead[GRID_H][GRID_W];       /* the oSolid family (point queries) */
 static int16_t thead[GRID_H][GRID_W];       /* the other terrain (the drawing only) */
 static int tmaxw, tmaxh;
 static int16_t gnext[PIN_MAX], gcell[PIN_MAX], gdnext[PIN_MAX];
 static uint8_t gond[PIN_MAX];
 static int16_t gdhead = NOONE;
+static inline void grid_flush(void) { if (gdhead >= 0) grid_flush_run(); }   /* the pending grid updates */
 static int gmaxw, gmaxh;
 #define GCELL_FAR (-2)                           /* gcell: an oSolid-family box too far out for the grid */
 static int gfar;                                 /* how many (the grid's line query falls back to the tree then) */
-/* the line queries' cell summary of the oSolid-family entries in ghead (collision_line_any_i): a cell block is an
+/* the line queries' cell summary of the oSolid-family entries in ghead (solid_vline_any, solid_hline_any: line_any): a cell block is an
    entry whose integer box is exactly one in-grid cell ([16 cx, 16 cx + 16) x [16 cy, 16 cy + 16)); gfull counts them
    per cell (gfblk: one of them), gother counts the other entries per cell their box may reach (the cells of
    [l - 1, r] x [t - 1, b], clamped as the queries clamp: a superset of the cells where line_hit can hit them) */
@@ -601,14 +606,13 @@ int pin_add(int obj, pos x, pos y, int32_t id)
     p->persistent = pobj[obj].persistent;
     PIN_WR(pos, p->x) = x;
     PIN_WR(pos, p->y) = y;
-    p->xprev = x;
-    p->yprev = y;
     PIN_WR(float, p->depth) = objdefs[obj].depth;
     PIN_WR(img_t, p->img) = 0;
     p->ispd = 1;
     PIN_WR(float, p->xscale) = PIN_WR(float, p->yscale) = 1;
     PIN_WR(float, p->angle) = 0;
     p->ext = (int16_t)(pin_needs_ext(obj) ? ext_alloc() : 0);   /* with pin_add's defaults (ext_defaults) */
+    if (obj == OBJ_oPlayer1 && p->ext) PE(p)->xprev = x;
     if (p->ext && pin_needs_en(obj)) pin_ext[p->ext].en = (int16_t)en_alloc();
     pw_draw_mark(i);                                 /* (a reused slot may still be on the list: marked once) */
     (void)k;
@@ -671,17 +675,7 @@ void pin_set_sprite(int i, int spr)
 #define BB_DBL 2
 #define BB_NOSPR 3
 
-/* v as an int in (-30000, 30000) when it is a whole number */
-static int pos_int(pos v, int32_t *o)
-{
-#ifdef PLAY_FIXED
-    if ((v & ((1 << PFRAC_BITS) - 1)) != 0) return 0;
-    *o = v >> PFRAC_BITS;
-    return *o > -30000 && *o < 30000;
-#else
-    return fwhole(v, o) && *o > -30000 && *o < 30000;
-#endif
-}
+/* pos_int: play.h */
 
 static void bbox_dbl(const struct pin *p, const struct gsprcol *c, double *l, double *t, double *r, double *b)
 {
@@ -713,10 +707,10 @@ static int dunit(double d)
 
 /* the cache kind of instance i's box (computed when a setter cleared it): with scales of exactly +-1 and whole x, y
    the double formula's results are the integers below */
-static int bbkind(int i)
+static __attribute__((noinline)) int bbkind_set(int i)
 {
     struct pin *p = &PW.in[i];
-    if (p->bbk == 0) {
+    {
         int s = spr_of(p);
         int32_t x, y;
         if (s < 0)
@@ -738,6 +732,11 @@ static int bbkind(int i)
         }
     }
     return p->bbk;
+}
+static inline int bbkind(int i)
+{
+    int k = PW.in[i].bbk;
+    return k ? k : bbkind_set(i);
 }
 
 int pin_bbox(int i, double *l, double *t, double *r, double *b)
@@ -762,12 +761,6 @@ int pin_ibox(int i, int32_t *b)
     if (bbkind(i) != BB_INT) return 0;
     b[0] = p->bl; b[1] = p->bt; b[2] = p->br; b[3] = p->bb;
     return 1;
-}
-
-/* x and y as ints when both are whole numbers (|v| < 30000) */
-int pin_xy_int(int i, int32_t *x, int32_t *y)
-{
-    return pos_int(PW.in[i].x, x) && pos_int(PW.in[i].y, y);
 }
 
 int pin_box_outside(int i, int w, int h)
@@ -1230,7 +1223,7 @@ static void grid_dirty(int i)
     gdhead = (int16_t)i;
 }
 
-static void grid_flush(void)
+static __attribute__((noinline)) void grid_flush_run(void)
 {
     while (gdhead >= 0) {
         int i = gdhead, cx, cy, w, h, solid, block = 0;
@@ -1566,7 +1559,7 @@ int collision_line_i(int32_t x1, int32_t y1, int32_t x2, int32_t y2, int obj, in
 /* the cell summary of the line's own cells (oSolid family, after grid_flush): 1 when a usable cell block is crossed
    by the axis-aligned line (line_hit's integer path hits it), 0 when no other entry reaches these cells and every
    cell block there is a sure miss (no instance is hit), -1 when the scan has to decide */
-static int line_summary(const struct lq *q, int obj, int prec, int notme_self)
+static inline __attribute__((always_inline)) int line_summary(const struct lq *q, int obj, int prec, int notme_self)
 {
     int sure = 1, x, y, k;
     int x0 = clampi(q->lx >> 4, 0, GRID_W - 1), xe = clampi(q->hx >> 4, 0, GRID_W - 1);
@@ -1607,28 +1600,55 @@ static int line_scan(struct qctx *c, int obj, int notme_self)
     return 0;
 }
 
-int collision_line_any_i(int32_t x1, int32_t y1, int32_t x2, int32_t y2, int obj, int prec, int notme_self)
+/* the paths of line_any that need the whole query context (kept out of line: the summary's answer, the
+   common case, then builds no struct qctx on the stack) */
+static void any_ctx(struct qctx *c, int32_t x1, int32_t y1, int32_t x2, int32_t y2, int obj, int prec, int notme_self)
+{
+    c->lq.iok = 1;
+    c->lq.lx = x1 < x2 ? x1 : x2; c->lq.hx = x1 < x2 ? x2 : x1;
+    c->lq.ly = y1 < y2 ? y1 : y2; c->lq.hy = y1 < y2 ? y2 : y1;
+    c->lq.axis = x1 == x2 || y1 == y2;
+    c->obj = obj; c->notme = notme_self; c->prec = prec;
+    c->ix1 = x1; c->iy1 = y1; c->ix2 = x2; c->iy2 = y2; c->dbl = 0;
+}
+
+static __attribute__((noinline)) int any_run(int q, int32_t x1, int32_t y1, int32_t x2, int32_t y2, int obj, int prec,
+                                             int notme_self)
+{
+    struct qctx c;
+    any_ctx(&c, x1, y1, x2, y2, obj, prec, notme_self);
+    return line_run(&c, q, 0) != NOONE;
+}
+
+static __attribute__((noinline)) int any_scan(int32_t x1, int32_t y1, int32_t x2, int32_t y2, int obj, int prec,
+                                              int notme_self)
+{
+    struct qctx c;
+    any_ctx(&c, x1, y1, x2, y2, obj, prec, notme_self);
+    return line_scan(&c, obj, notme_self);
+}
+
+static inline __attribute__((always_inline)) int line_any(int32_t x1, int32_t y1, int32_t x2, int32_t y2, int obj,
+                                                          int prec, int notme_self)
 {
     int q = pcol_query(obj), r;
-    struct qctx c;
+    struct lq lq;
     PWST(line, 1);
     if (q < 0) return 0;
-    c.lq.iok = 1;
-    c.lq.lx = x1 < x2 ? x1 : x2; c.lq.hx = x1 < x2 ? x2 : x1;
-    c.lq.ly = y1 < y2 ? y1 : y2; c.lq.hy = y1 < y2 ? y2 : y1;
-    c.lq.axis = x1 == x2 || y1 == y2;
-    c.obj = obj; c.notme = notme_self; c.prec = prec;
-    c.ix1 = x1; c.iy1 = y1; c.ix2 = x2; c.iy2 = y2; c.dbl = 0;
-    if (q != 1 || obj < 0 || !obj_is(obj, OBJ_oSolid)) return line_run(&c, q, 0) != NOONE;
+    if (q != 1 || obj < 0 || !obj_is(obj, OBJ_oSolid)) return any_run(q, x1, y1, x2, y2, obj, prec, notme_self);
     grid_flush();
-    if (gfar) return line_run(&c, q, 0) != NOONE;
-    r = line_summary(&c.lq, obj, prec, notme_self);
+    if (gfar) return any_run(q, x1, y1, x2, y2, obj, prec, notme_self);
+    lq.iok = 1;
+    lq.lx = x1 < x2 ? x1 : x2; lq.hx = x1 < x2 ? x2 : x1;
+    lq.ly = y1 < y2 ? y1 : y2; lq.hy = y1 < y2 ? y2 : y1;
+    lq.axis = x1 == x2 || y1 == y2;
+    r = line_summary(&lq, obj, prec, notme_self);
 #ifdef PLAY_STATS
-    if (r >= 0 && r != line_scan(&c, obj, notme_self)) {   /* the host builds check every summary answer */
+    if (r >= 0 && r != any_scan(x1, y1, x2, y2, obj, prec, notme_self)) {   /* the host builds check every summary answer */
         fprintf(stderr, "line_summary %d differs from the scan: %d %d %d %d obj %d notme %d\n", r, (int)x1, (int)y1,
                 (int)x2, (int)y2, obj, notme_self);
         {
-            int cx = clampi(c.lq.lx >> 4, 0, GRID_W - 1), cy = clampi(c.lq.ly >> 4, 0, GRID_H - 1), k = gfblk[cy][cx];
+            int cx = clampi(lq.lx >> 4, 0, GRID_W - 1), cy = clampi(lq.ly >> 4, 0, GRID_H - 1), k = gfblk[cy][cx];
             int32_t ib[4] = { 0, 0, 0, 0 };
             int ok = pin_ibox(k, ib);
             fprintf(stderr, "cell %d %d full %d other %d blk %d obj %s alive %d gcell %d gkind %d ibox %d %d %d %d %d\n",
@@ -1642,7 +1662,19 @@ int collision_line_any_i(int32_t x1, int32_t y1, int32_t x2, int32_t y2, int obj
     }
 #endif
     if (r >= 0) return r;
-    return line_scan(&c, obj, notme_self);
+    return any_scan(x1, y1, x2, y2, obj, prec, notme_self);
+}
+
+/* collision_line(x, y1, x, y2, oSolid, 1, notme) != noone and collision_line(x1, y, x2, y, ...): isCollisionLeft /
+   Right / Top / Bottom with whole-number bounds (pscript.c); obj and prec constant, four arguments in registers */
+int solid_vline_any(int32_t x, int32_t y1, int32_t y2, int notme_self)
+{
+    return line_any(x, y1, x, y2, OBJ_oSolid, 1, notme_self);
+}
+
+int solid_hline_any(int32_t y, int32_t x1, int32_t x2, int notme_self)
+{
+    return line_any(x1, y, x2, y, OBJ_oSolid, 1, notme_self);
 }
 
 /* a rectangle query: its sides rounded (floor(v + 0.5)) once */
