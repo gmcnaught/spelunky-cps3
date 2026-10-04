@@ -226,12 +226,16 @@ int main(int argc, char **argv)
     }
     rng_seed(&g_rng, (uint32_t)seed);
     sndhost_init();
-    play_level_start(nextid);
-    if (room && strcmp(room, "rLevel") &&                              /* TRACE_ROOM: the level's own room */
-        !(!strcmp(room, "rOlmec") && PW.room == R_rOlmec)) {
-        fprintf(stderr, "playhost: --room %s: the level starts in another room (only rLevel, and rOlmec on level 16)\n", room);
+    /* the tracer's title flow does room_goto(TRACE_ROOM, default rLevel) whatever the level (an ice level
+       starts in rLevel, not oTransition's rLevel2; a lake level not in rLevel3): the first room only */
+    if (!room || !strcmp(room, "rLevel")) gen_room_force = 0;
+    else if (!strcmp(room, "rOlmec") && level == 16) gen_room_force = 3;
+    else {
+        fprintf(stderr, "playhost: --room %s: not modelled (only rLevel, and rOlmec on level 16)\n", room);
         return 2;
     }
+    play_level_start(nextid);
+    gen_room_force = -1;
     for (k = 0; k < nsteps + tail; k++) {
         t_done = k;                                /* the phase-0 record comes before the step's input */
         {   /* collision tree cost (pcol.c): per-step totals and maxima, printed at the end */

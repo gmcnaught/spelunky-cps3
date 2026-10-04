@@ -58,6 +58,7 @@ void gen_new_game(void);
 
 /* the room for global.currLevel / global.lake (oTransition's choice): 0 rLevel, 1 rLevel2, 2 rLevel3, 3 rOlmec */
 int gen_room_for_level(void);
+extern int gen_room_force;            /* >= 0: gen_room_for_level returns it (playhost: the tracer's room_goto(rLevel)) */
 
 /* create the level room's instances and run their Create events (oGame's ending in scrInitLevel when
    global.gameStart). next_id: the runtime's instance id counter at room start. The RNG (g_rng) is used as it

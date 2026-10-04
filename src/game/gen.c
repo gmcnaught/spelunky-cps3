@@ -95,8 +95,11 @@ void gen_new_game(void)
     G.darkLevel = 0;
 }
 
+int gen_room_force = -1;
+
 int gen_room_for_level(void)
 {
+    if (gen_room_force >= 0) return gen_room_force;
     /* objects/oTransition/Step_0.gml :14-27 (the lake is drawn there: here it is global.lake) */
     if (G.currLevel == 16) return 3;
     if (G.currLevel >= 9 && G.currLevel <= 12) return 1;
