@@ -35,7 +35,9 @@ def masks(path):
 # results equal to the unpatched build: scripts/playsh2_jt.sh checks it)
 JT = '--jt' in sys.argv
 JT_GEN = [(120965577, 2), (120965577, 6), (120965577, 10), (120965577, 14), (120965577, 16)]
-JT_ROUTES = None                               # all
+JT_ROUTES = ['p4_exit559', 'p4_hang_ladder', 'p4_items', 'p4_spikes', 'p4_push_rope', 'p1_walk', 'p4_bomb_drop',
+             'p4_bomb_throw', 'p5_buy', 'p5_caveman', 'p5_cavestun', 'p5_giant', 'p5_idol', 'p5_l3spider', 'p5_l4',
+             'p5_shop', 'p5_snakes', 'p5_spider']     # the 18 of the first jtcps3 runs (screen: 23 rows)
 
 def main():
     args = [a for a in sys.argv[1:] if a != '--jt']

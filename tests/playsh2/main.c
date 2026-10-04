@@ -242,6 +242,9 @@ static void jt_show(uint32_t spr_bad)
     p = put_s(p, spr_bad ? " SPR BAD" : " SPR OK");
     big_text(0, line);
     cps3v_text(0, 3, "JOB CHK NAME   TOTAL      MEAN    MAX");
+#ifdef JT_NAME
+    cps3v_text(0, 27, "BUILD " JT_NAME);
+#endif
     for (j = 0; j < NJOBS && j < 24; j++) {
         int r = jobs[j].route >= 0;
         const char *nm = r ? routes[jobs[j].route].name : "";

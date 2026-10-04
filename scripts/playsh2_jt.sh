@@ -8,7 +8,7 @@
 #   scripts/playsh2_jt.sh          -> tests/playsh2/build/jt/elf/mame/sfiii3na (the set), build/jt/out/{snap,jt.txt}
 set -e
 cd "$(dirname "$0")/.."
-T=tests/playsh2; B=$T/build; J=$B/jt; O=$J/out; N=${PIN:-1000}
+T=tests/playsh2; B=$T/build; J=$B/jt; V=${JTV:-}; O=$J/out$V; N=${PIN:-1000}
 rm -rf "$O" "$B/g" "$J/gA"; mkdir -p "$O/w" "$B/g" "$J/gA"
 git archive "${GAME_REV:-HEAD}" src/game | tar -x -C "$J/gA" --strip-components=2
 cp build/gen/objects.[ch] build/gen/gentables.[ch] build/gen/playtables.[ch] "$J/gA/"
@@ -33,8 +33,14 @@ while [ $j -lt $NJ ]; do
 done
 { echo "};"
   echo "#define JT_LABEL \"\""; } >> "$J/jt_expect.h"
-scripts/dmake.sh $T OUT=build/jt/elf JT=1 SOFTFP=1 >/dev/null
-PSH2_OUT="$O/jt.txt" PSH2_NJOBS=$NJ mame sfiii3na -rompath "$J/elf/mame" -skip_gameinfo -nothrottle -sound none \
+# JTV=<name>: a code-layout variant (build/jt/elf<name>, out<name>): OSFILES (-Os files), LAYOUT=1 (mklayout.py
+# from tests/playsh2/hot.txt)
+LO=; [ "${LAYOUT:-0}" = 1 ] && { python3 $T/mklayout.py $T/hot.txt $J/link$V.ld; LO=LAYOUT=build/jt/link$V.ld; }
+VN=$(echo "${V:-BASE}" | tr a-z_ A-Z-)
+scripts/dmake.sh $T OUT=build/jt/elf$V JT=1 SOFTFP=1 OSFILES="${OSFILES:-}" $LO JTNAME=$VN >/dev/null
+scripts/dmake.sh $T OUT=build/jt/elf$V JT=1 SOFTFP=1 OSFILES="${OSFILES:-}" $LO JTNAME=$VN PROG=pjt$V \
+  TITLE="Spelunky SH-2 timing $VN" mister >/dev/null
+PSH2_OUT="$O/jt.txt" PSH2_NJOBS=$NJ mame sfiii3na -rompath "$J/elf$V/mame" -skip_gameinfo -nothrottle -sound none \
   -video none -seconds_to_run 3000 -cfg_directory "$O/w/cfg" -nvram_directory "$O/w/nvram" -snapshot_directory "$O/snap" \
   -diff_directory "$O/w/diff" -state_directory "$O/w/sta" -inipath "$O/w" -autoboot_script scripts/lua/playsh2_jt.lua \
   >"$O/mame.log" 2>&1 || true

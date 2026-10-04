@@ -53,9 +53,27 @@ endif
 # JT=1: the jtcps3 variant (scripts/playsh2_jt.sh): main RAM only (no sprbss.ld), results on screen (bigtext.c)
 ifeq ($(JT),1)
 SRCS   += bigtext.c
-CFLAGS := -Ibuild/jt $(filter-out -Wl$(comma)-T$(comma)sprbss.ld,$(CFLAGS)) -DJT=1   # build/jt: jobs.h, jt_expect.h
+CFLAGS := -Ibuild/jt $(if $(JTNAME),'-DJT_NAME="$(JTNAME)"') $(filter-out -Wl$(comma)-T$(comma)sprbss.ld,$(CFLAGS)) -DJT=1   # build/jt: jobs.h, jt_expect.h
 endif
+# OSFILES="a.c b.c": those files of the snapshot compiled -Os (the rest -O2); LAYOUT=<linker script>: code built with
+# -ffunction-sections and linked with that script (mklayout.py: hot functions first in SIMM 1)
+OSFILES ?=
+LAYOUT ?=
+ifneq ($(LAYOUT),)
+CFLAGS += -ffunction-sections
+endif
+SRCS   := $(filter-out $(addprefix build/g/,$(OSFILES)),$(SRCS)) $(addprefix $(OUT)/os/,$(OSFILES:.c=.o))
 include ../../../cps3-testgame/sdk/sdk.mk
+
+$(OUT)/os/%.o: build/g/%.c build/g/stamp
+	@mkdir -p $(OUT)/os
+	sh-elf-gcc $(CPS3_CFLAGS) $(filter-out -Wl%,$(CFLAGS)) -Os -I$(CPS3_SDK)/include -c $< -o $@
+ifneq ($(LAYOUT),)
+$(OUT)/main.elf: $(LAYOUT)
+	@mkdir -p $(OUT)
+	sh-elf-gcc $(CPS3_CFLAGS) $(CFLAGS) -I$(CPS3_SDK)/include -I$(OUT) -nostartfiles -T $(LAYOUT) \
+	  -Wl,-Map,$(OUT)/main.map -o $@ $(CPS3_SDK_SRCS) $(SRCS) -lgcc
+endif
 
 build/g/stamp:
 	@echo "build/g missing: scripts/playsh2_check.sh snapshots src/game and build/gen there"; false
