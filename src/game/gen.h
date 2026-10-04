@@ -33,7 +33,7 @@ struct gglobals {
     uint8_t pickupItem;         /* enum pickup */
     int16_t thiefLevel, kaliPunish, kaliGift;
     double favor;               /* global.favor (Kali: halves from sacrifices) */
-    int16_t probDarkLevel, probSnakePit, probCemetary, probSacPit, probAlien, probYetiLair;
+    int16_t probDarkLevel, probSnakePit, probCemetary, probLake, probSacPit, probAlien, probYetiLair;
     int16_t lockedChestChance, marketChance, goldChance;
     int16_t startRoomX, startRoomY, endRoomX, endRoomY, exitX, exitY;
     int16_t roomW, roomH;       /* room_width, room_height */

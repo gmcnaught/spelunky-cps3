@@ -631,7 +631,7 @@ double patan_deg(double a)
 
 /* scripts/scrClearGlobals: a new game. The generator's globals (struct gglobals: gen_new_game, which also sets the
    values oGlobals / scrInit / oTitle Create give them), then the play loop's in the script's order; the globals the
-   port does not model (titleStart, entityGen, yviewPrev, xview / yview, waterCounter, crapsPoint, probLake,
+   port does not model (titleStart, entityGen, yviewPrev, xview / yview, waterCounter, crapsPoint,
    marketEntrance, goldEntrance, hasNinjaSuit, flares) are left out */
 void scrClearGlobals(void)
 {

@@ -59,6 +59,7 @@ void gen_new_game(void)
     G.probDarkLevel = 12;
     G.probSnakePit = 8;
     G.probCemetary = 10;
+    G.probLake = 10;                                                          /* oTransition Step :23 */
     G.probYetiLair = 6;
     G.probAlien = 10;
     G.probSacPit = 8;

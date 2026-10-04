@@ -226,7 +226,10 @@ static void transition_step(int i)
             G.gameStart = 1;
             G.lake = 0;
             if (G.customLevel) PUNTR(4012);
-            else if (G.currLevel >= 5 && G.currLevel <= 8 && !G.genBlackMarket) PUNTR(4013);   /* lake roll: P7 */
+            else if (G.currLevel >= 5 && G.currLevel <= 8 && !G.genBlackMarket) {          /* :21 */
+                if (RAND(1, G.probLake) == 1) { G.lake = 1; play_goto_room = R_rLevel3; }
+                else play_goto_room = R_rLevel;
+            }
             else if (G.currLevel >= 9 && G.currLevel <= 12) play_goto_room = R_rLevel2;
             else if (G.currLevel == 16) play_goto_room = R_rOlmec;
             else play_goto_room = R_rLevel;
