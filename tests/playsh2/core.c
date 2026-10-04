@@ -5,6 +5,7 @@
  * PLAY_ROOM_EARLY repeats the input, view_read() at each record point). */
 #include "pint.h"
 #include "core.h"
+#include "snd.h"
 
 /* the GML instance variables: in struct pin_ext (PE(p)) since 18aca5f, in struct pin before; alpha moved there
    later (snapcfg.h: written by the check scripts from the snapshot's play.h) */
@@ -122,6 +123,7 @@ void run_route(int job, uint32_t seed, const struct route *rt, int tail)
     PG.rope = 4;
     PG.money = rt->money;
     rng_seed(&g_rng, seed);
+    snd_init(15, 15);                             /* as playhost (sndhost_init): src/snd's state at the start */
     plat_begin();
     play_level_start(110325);
     plat_end();
@@ -130,6 +132,7 @@ void run_route(int job, uint32_t seed, const struct route *rt, int tail)
         plat_begin();
         r = play_step(k < n ? masks[k] : 0, rec_cb);
         plat_end();
+        snd_frame();                              /* as playhost: a frame of the sounds' time per step (not timed) */
         plat_rec(job, r == PLAY_ROOM_EARLY ? KIND_EARLY : KIND_STEP, idx++, sum_play(), (uint32_t)PW.n,
                  play_dops);
         if (r == PLAY_ROOM_EARLY) {
