@@ -3,6 +3,7 @@
  * flare crate lying in a level or a shop (not their use), Kali's altar standing. */
 #include "pint.h"
 #include "penemy.h"
+#include "../snd/sndgame.h"                     /* the GML sound calls (src/snd) */
 #include "pcontent.h"                            /* P7 content packages (docs/CONTENT.md) */
 
 int pitem_create(int i, int fromgen)
@@ -83,6 +84,7 @@ int pitem_collision(int self, int other)
         PL.pickupItemType = T_NONE;
         pin_destroy(other);
         pin_set_sprite(self, GSPR_sLockedChestOpen);
+        snd_play(SND_xchestopen);                                      /* :11 */
         obj = pin_create(PX(self).x, PX(self).y, OBJ_oUdjatEye);
         {
             int a = RAND(0, 3), b = RAND(0, 3);

@@ -1037,7 +1037,7 @@ void pl_step(int i)
         else PL.redToggle = 1;
     } else
         PL.redColor = 0;
-    if (PL.holdArrow == ARROW_BOMB) PUNTR(2031);                               /* :28 */
+    if (PL.holdArrow == ARROW_BOMB) pitems_player(2031, i, 0);                              /* :28 */
     if (PL.dead && !p->visible) {                                              /* :63 */
         PE(p)->xVel = 0;
         PE(p)->yVel = 0;

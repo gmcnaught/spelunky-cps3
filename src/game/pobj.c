@@ -1043,7 +1043,7 @@ void ev_step(int i)
             PUNTR(1055);
         break;
     case OBJ_oWeb:                                                             /* objects/oWeb/Step_0.gml */
-        PE(p)->alpha = NTOD(PE(p)->life) / 12;
+        PE(p)->alpha = (float)(NTOD(PE(p)->life) / 12);                   /* image_alpha: a float */
         if (PE(p)->dying) PE(p)->life -= N(0.02);
         if (NLE(PE(p)->life, N(1))) pin_destroy(i);
         break;
@@ -1071,6 +1071,7 @@ void ev_step(int i)
                 if (NGT(NABS(PE(p)->yVel), N(2)) || NGT(NABS(PE(p)->xVel), N(2))) {          /* :210 */
                     pin_set_sprite(i, GSPR_sDiceRoll);
                     PE(p)->value = RAND(1, 6);
+                    if (PL.bet > 0) PE(p)->rolling = 1;                                  /* :214 */
                 } else if (isCollisionBottom(i, 1)) {
                     static const int16_t dice[6] = { GSPR_sDice1, GSPR_sDice2, GSPR_sDice3, GSPR_sDice4,
                                                      GSPR_sDice5, GSPR_sDice6 };
@@ -1366,7 +1367,7 @@ void ev_collision(int self, int other)
         } else if (obj_is(oo, OBJ_oTreasure)) {
             PE(&PX(other))->xVel = 0;
             PE(&PX(other))->yVel = 0;
-        } else
+        } else if (!pcontent_ev(FEV_COLLISION, self, other))                       /* P7 hook (Collision_oSlash) */
             PUNTR(1093);
         break;
     case OBJ_oJar:

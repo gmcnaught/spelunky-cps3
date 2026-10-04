@@ -7,6 +7,7 @@
 #include "penemy.h"
 #include "../snd/sndgame.h"                     /* the GML sound calls (src/snd) */
 #include "pmsg.h"                                /* the HUD messages (trMessages) */
+#include "pcontent.h"                            /* P7 content packages (docs/CONTENT.md) */
 
 enum { S_IDLE = 0, S_WALK = 1, S_ATTACK = 2, S_THROW = 3, S_PATROL = 4, S_FOLLOW = 5, S_STUNNED = 98, S_DEAD = 99 };
 enum { E_LEFT = 0, E_RIGHT = 1 };
@@ -348,7 +349,7 @@ static void shopkeeper_step(int i)
             PEN(p)->welcomed = 1;
         }
         if (PE(p)->style == SHOP_CRAPS) {                                  /* :185 */
-            if (instance_number_p(OBJ_oDice) == 2 && PL.bet > 0) PUNTR(7010);
+            if (instance_number_p(OBJ_oDice) == 2 && PL.bet > 0) pitems_world(7010, i, 0);   /* P7 hook */
             /* else global.diceRolled = false */
         } else if (PL.holdItem != NOONE) {
             int obj = PL.holdItem;
