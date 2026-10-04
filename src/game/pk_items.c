@@ -1011,10 +1011,159 @@ static void skull_pieces(int i)
     }
 }
 
+/* ---- the dice ---------------------------------------------------------------------------------------------- */
+/* objects/oDice/Step_0.gml :1-208, inside the view (+16) */
+static void dice_body(int i)
+{
+    struct pin *p = &PX(i), *pl = &PX(PL.idx);
+    if (PE(p)->cost > 0 && !instance_exists_p(OBJ_oShopkeeper)) PE(p)->cost = 0;   /* :4 */
+    if (isLevel() && !isInShop(PFLOOR(p->x), PFLOOR(p->y))) scrShopkeeperAnger(i, 0);   /* :10 */
+    p = &PX(i);
+    if (PE(p)->held) {                                                         /* :17 (oCharacter: the player) */
+        if (PL.facing == LEFT) pin_setx(p, pl->x - PI(4));
+        else if (PL.facing == RIGHT) pin_setx(p, pl->x + PI(4));
+        if (PE(p)->heavy) {
+            if (PL.state == DUCKING && NLT(NABS(PE(pl)->xVel), N(2))) pin_sety(p, pl->y);
+            else pin_sety(p, pl->y - PI(2));
+        } else {
+            if (PL.state == DUCKING && NLT(NABS(PE(pl)->xVel), N(2))) pin_sety(p, pl->y + PI(4));
+            else pin_sety(p, pl->y + PI(2));
+        }
+        pin_setdepth(p, 1);
+        if (PL.holdItem == NOONE) PE(p)->held = 0;
+    } else {                                                                   /* :38 */
+        moveTo(i, PE(p)->xVel, PE(p)->yVel, 0, 0);
+        PE(p)->colLeft = PE(p)->colRight = PE(p)->colBot = PE(p)->colTop = 0;
+        if (isCollisionLeft(i, 1)) PE(p)->colLeft = 1;
+        if (isCollisionRight(i, 1)) PE(p)->colRight = 1;
+        if (isCollisionBottom(i, 1)) PE(p)->colBot = 1;
+        if (isCollisionTop(i, 1)) PE(p)->colTop = 1;
+        if (!PE(p)->colBot && NLT(PE(p)->yVel, N(6))) PE(p)->yVel += PE(p)->myGrav;
+        if (PE(p)->colLeft || PE(p)->colRight) PE(p)->xVel = NMUL(-PE(p)->xVel, N(0.5));
+        if (PE(p)->colBot) {
+            if (NGT(PE(p)->yVel, N(1))) PE(p)->yVel = NMUL(-PE(p)->yVel, PE(p)->bounceFactor);
+            else PE(p)->yVel = 0;
+            if (NLT(NABS(PE(p)->xVel), N(0.1))) PE(p)->xVel = 0;
+            else if (NNE(NABS(PE(p)->xVel), N(0))) PE(p)->xVel = NMUL(PE(p)->xVel, PE(p)->frictionFactor);
+            if (NLT(NABS(PE(p)->yVel), N(1))) {
+                pin_sety(p, p->y - PI(1));
+                if (!isCollisionBottom(i, 1)) pin_sety(p, p->y + PI(1));
+                PE(p)->yVel = 0;
+            }
+        }
+        if (PE(p)->colLeft) {
+            if (!PE(p)->colRight) pin_setx(p, p->x + PI(1));
+        } else if (PE(p)->colRight)
+            pin_setx(p, p->x - PI(1));
+        if (isCollisionTop(i, 1)) {
+            if (NLT(PE(p)->yVel, N(0))) PE(p)->yVel = NMUL(-PE(p)->yVel, N(0.8));
+            else pin_sety(p, p->y + PI(1));
+        }
+        pin_setdepth(p, G.hasSpectacles ? 0 : 101);
+        if (collision_rect_p(X(i) - 3, Y(i) - 3, X(i) + 3, Y(i) + 3, OBJ_oLava, 0, NOONE) != NOONE) {
+            PE(p)->myGrav = 0;
+            PE(p)->xVel = 0;
+            PE(p)->yVel = 0;
+            pin_sety(p, PADDV(p->y, N(0.05)));
+        }
+        if (CP(X(i), Y(i) - 5, OBJ_oLava)) pin_destroy(i);
+    }
+    p = &PX(i);
+    if (NGT(NABS(PE(p)->xVel), N(3)) || NGT(NABS(PE(p)->yVel), N(3))) {        /* :105 */
+        double x = X(i), y = Y(i);
+        if (collision_rect_p(x - 2, y - 2, x + 2, y + 2, OBJ_oEnemy, 0, NOONE) != NOONE) {
+            int e = instance_nearest_p(x, y, OBJ_oEnemy);
+            struct pin *o = &PX(e);
+            if (!o->invincible && o->obj != OBJ_oMagmaMan) {
+                PE(o)->xVel = PE(p)->xVel;
+                if (o->type == T_CAVEMAN || o->obj == OBJ_oManTrap || o->obj == OBJ_oYeti || o->obj == OBJ_oHawkman) {
+                    if (PE(o)->status != 98) {
+                        if (o->obj == OBJ_oManTrap) {
+                            int ly = RAND(0, 16);
+                            int lx = RAND(0, 16);
+                            pin_create(o->x + PI(lx), o->y - PI(8) + PI(ly), OBJ_oLeaf);
+                        } else
+                            pin_create(o->x, o->y, OBJ_oBlood);
+                        o = &PX(e);
+                        PE(o)->hp -= 1;
+                        PE(o)->status = 98;
+                        PE(o)->counter = PEN(o)->stunTime;
+                        PE(o)->yVel = N(-6);
+                        snd_play(SND_xhit);
+                    }
+                } else if (o->type == T_SHOPKEEPER) {
+                    if (PE(o)->status < 98) {
+                        pin_create(o->x, o->y, OBJ_oBlood);
+                        o = &PX(e);
+                        PE(o)->hp -= 1;
+                        PE(o)->yVel = N(-6);
+                        PE(o)->status = 2;
+                        snd_play(SND_xhit);
+                    }
+                } else if (o->type == T_GIANTSPIDER) {
+                    if (PEN(o)->whipped == 0) {
+                        pin_create(o->x + PI(16), o->y + PI(24), OBJ_oBlood);
+                        o = &PX(e);
+                        PE(o)->hp -= 1;
+                        PEN(o)->whipped = 10;
+                        snd_play(SND_xhit);
+                    }
+                } else if (o->obj == OBJ_oAlienBoss) {
+                    if (PE(o)->status != 99 && o->spr != GSPR_sAlienBossHurt) {
+                        pin_create(o->x + PI(8), o->y + PI(8), OBJ_oBlood);
+                        o = &PX(e);
+                        PE(o)->hp -= 1;
+                        pin_set_sprite(e, GSPR_sAlienBossHurt);
+                        o->ispd = (img_t)0.8;
+                        snd_play(SND_xhit);
+                    }
+                } else {
+                    pin_create(o->x + PI(8), o->y + PI(8), OBJ_oBlood);
+                    o = &PX(e);
+                    PE(o)->hp -= 1;
+                    snd_play(SND_xhit);
+                }
+                p = &PX(i);
+                PE(&PX(e))->xVel = NMUL(PE(p)->xVel, N(0.3));
+            }
+        }
+        x = X(i);
+        y = Y(i);
+        if (collision_rect_p(x - 2, y - 2, x + 2, y + 2, OBJ_oDamsel, 0, NOONE) != NOONE) {
+            int d = instance_nearest_p(x, y, OBJ_oDamsel);
+            struct pin *o = &PX(d);
+            if (!o->invincible && PE(o)->status != 2 && PE(o)->status != 99) {
+                pin_create(PX(i).x, PX(i).y, OBJ_oBlood);
+                o = &PX(d);
+                if (PE(o)->held) {
+                    PE(o)->held = 0;
+                    PL.holdItem = NOONE;
+                    PL.pickupItemType = T_NONE;
+                }
+                PE(o)->hp -= 1;
+                PE(o)->yVel = N(-6);
+                PE(o)->status = 2;
+                PE(o)->counter = 120;
+                PE(o)->xVel = NMUL(PE(&PX(i))->xVel, N(0.3));
+                snd_play(SND_xhit);
+            }
+        }
+    }
+}
+
 int pitems_world(int site, int i, int arg)
 {
     (void)arg;
     switch (site) {
+    case 1002: PE(&PX(i))->value = RAND(1, 6); return 1;                       /* objects/oDice/Create_0.gml :8 */
+    case 1064: dice_body(i); return 1;
+    case 1065: {                                                               /* oDice Step :222-227; rolled: fired */
+        struct pin *p = &PX(i);
+        if (PE(p)->fired) scrShopkeeperAnger(i, 0);                            /* NO CHEATING! */
+        PE(p)->fired = 1;
+        PE(p)->rolling = 0;
+        return 1;
+    }
     case 1015: skull_pieces(i); return 1;
     case 1016: pin_create(PX(i).x - PI(8), PX(i).y - PI(8), OBJ_oSpider); return 1;   /* oJar Destroy :19 */
     case 1018:                                                                 /* objects/oBomb/Destroy_0.gml */
@@ -1071,7 +1220,18 @@ int pitems_world(int site, int i, int arg)
         }
         return 1;
     }
-    case 4001: pin_create(0, 0, OBJ_oCape); return 1;                          /* oTransition Create :25 */
+    case 1070:                                                                 /* objects/oArrow/Alarm_1.gml: a bomb arrow */
+        pin_create(PX(i).x, PX(i).y, OBJ_oExplosion);
+        if (G.graphicsHigh) scrCreateFlame(PX(i).x, PX(i).y, 3);
+        if (PE(&PX(i))->held) PL.holdItem = NOONE;
+        pin_destroy(i);
+        return 1;
+    case 1071: {                                                               /* objects/oArrowTrapRight/Alarm_0.gml */
+        int ar = pin_create(PX(i).x + PI(16), PX(i).y + PI(4), OBJ_oArrow);
+        PE(&PX(ar))->xVel = N(5);
+        return 1;
+    }
+    case 4001: pin_create(0, 0, OBJ_oCape); return 1;                        /* oTransition Create :25 */
     case 4003: {                                                               /* oTransition Create :36-47 */
         int d = instance_first_p(OBJ_oPDummy), c;
         if (d == NOONE) { PUNTR(4003); return 0; }
@@ -1096,10 +1256,85 @@ int pitems_world(int site, int i, int arg)
     return 0;
 }
 
+/* objects/oPsychicWaveP/Step_0.gml (dir: direction) */
+static void psywave_step(int i)
+{
+    struct pin *p = &PX(i);
+    if (PE(p)->counter > 0) {
+        PE(p)->counter -= 1;
+        pin_setx(p, PADDV(p->x, PE(p)->xVel));
+        PE(p)->direction = NGT(PE(p)->xVel, N(0)) ? 0 : 180;
+    } else {
+        int ee = instance_exists_p(OBJ_oEnemy), de = instance_exists_p(OBJ_oDamsel), obj = NOONE;
+        if (ee || de) {
+            double x = X(i), y = Y(i);
+            int enemy = NOONE, damsel = NOONE;
+            if (ee) enemy = instance_nearest_p(x, y, OBJ_oEnemy);
+            if (de) damsel = instance_nearest_p(x, y, OBJ_oDamsel);
+            if (ee && de) {
+                if (point_distance_d(x, y, X(enemy), Y(enemy)) < point_distance_d(x, y, X(damsel), Y(damsel)))
+                    obj = enemy;
+                else
+                    obj = damsel;
+            } else if (ee)
+                obj = instance_nearest_p(x, y, OBJ_oEnemy);
+            else
+                obj = instance_nearest_p(x, y, OBJ_oDamsel);
+            PE(p)->direction = point_direction_d(x, y, X(obj) + 8, Y(obj) + 8);
+        }
+        pin_setx(p, P(X(i) + 2 * pcos_cr(degtorad_d(PE(p)->direction))));
+        pin_sety(p, P(Y(i) + -2 * psin_cr(degtorad_d(PE(p)->direction))));
+    }
+}
+
+/* objects/oPsychicWaveP/Collision_oEnemy.gml, Collision_oDamsel.gml */
+static void psywave_hit(int i, int o)
+{
+    struct pin *e = &PX(o);
+    int dam = obj_is(e->obj, OBJ_oDamsel);
+    if (dam ? e->invincible : (e->obj == OBJ_oAlienBoss || e->invincible)) return;
+    PE(e)->hp -= 3;
+    {
+        int a = RAND(0, 2), b = RAND(1, 2);
+        PE(e)->xVel = NI(a - b);
+    }
+    PE(e)->xVel = N(-1);
+    PE(e)->yVel = N(-6);
+    if (dam) PE(&PX(i))->status = 2;
+}
+
 int pitems_ev(int ev, int i, int arg)
 {
     struct pin *p = &PX(i);
     switch (p->obj) {
+    case OBJ_oWeb:
+        if (ev == FEV_CREATE) { PE(p)->life = N(12); PE(p)->dying = 0; return 1; }   /* objects/oWeb/Create_0.gml */
+        if (ev == FEV_COLLISION && PX(arg).obj == OBJ_oSlash) { pin_destroy(i); return 1; }   /* Collision_oSlash */
+        break;
+    case OBJ_oPsychicCreateP:
+        if (ev == FEV_CREATE) { p->type = T_NONE; PE(p)->xVel = 0; PE(p)->yVel = 0; p->ispd = (img_t)0.2; return 1; }
+        if (ev == FEV_STEP) {
+            pin_setx(p, PADDV(p->x, PE(p)->xVel));
+            pin_sety(p, PADDV(p->y, PE(p)->yVel));
+            if (NLT(PE(p)->yVel, N(6))) PE(p)->yVel += N(0.6);
+            return 1;
+        }
+        if (ev == FEV_COLLISION || ev == FEV_ANIMEND) { pin_destroy(i); return 1; }   /* Collision_oSolid, Other_7 */
+        break;
+    case OBJ_oPsychicWaveP:
+        if (ev == FEV_CREATE) {
+            p->type = T_NONE;
+            PE(p)->yVel = 0;
+            PE(p)->yAcc = N(0.6);
+            p->ispd = (img_t)0.25;
+            PE(p)->counter = 5;
+            PE(p)->direction = 0;
+            return 1;
+        }
+        if (ev == FEV_STEP) { psywave_step(i); return 1; }
+        if (ev == FEV_COLLISION) { psywave_hit(i, arg); return 1; }
+        if (ev == FEV_OUTSIDE || ev == FEV_ANIMEND) { pin_destroy(i); return 1; }
+        break;
     case OBJ_oFlare:
         if (ev == FEV_CREATE) {                                                /* objects/oFlare/Create_0.gml */
             create_item(p);
