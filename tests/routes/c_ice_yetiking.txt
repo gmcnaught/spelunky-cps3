@@ -1,0 +1,14 @@
+# P7 reference (docs/CONTENT.md package C, ice): the yeti lair (needs global.madeMoai, as c_ice_alienboss); the yeti king 96 px below
+# the start, in view (start 72,120, king 80,224), yetis around
+# seed 558
+# level 9
+# globals madeMoai=1
+60 -
+1 A
+60 -
+1 A
+60 -
+4 R
+60 -
+4 L
+200 -

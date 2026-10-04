@@ -1,0 +1,20 @@
+# P7 reference (docs/CONTENT.md package C, ice): the alien craft (needs global.madeMoai: a route that starts on an ice level
+# otherwise always takes scrLevelGen's Moai branch); walk right over the craft to the alien boss (start 136,120, boss 592,192)
+# seed 81
+# level 9
+# globals madeMoai=1
+30 -
+3 RJ
+17 R
+20 R
+20 R
+20 R
+20 R
+20 R
+20 R
+20 R
+30 -
+1 A
+30 -
+1 A
+200 -

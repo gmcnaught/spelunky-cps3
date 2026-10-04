@@ -1,14 +1,18 @@
-# P7 reference (docs/CONTENT.md package E, items): start with the jetpack and fly (TRACE_GLOBALS=hasJetpack=1)
+# P7 reference (docs/CONTENT.md package E, items): start with the jetpack and fly (TRACE_GLOBALS=hasJetpack=1); the jetpack fires only
+# after the jump key is released in the air and pressed again (characterStepEvent :339 kJumped)
 # seed 559
 # level 1
 # globals hasJetpack=1
 30 -
-1 J
-40 J
+4 J
+4 -
+50 J
 60 -
-20 RJ
-40 J
+4 RJ
+4 R
+40 RJ
 60 -
-20 LJ
-30 J
+4 LJ
+4 L
+40 LJ
 80 -

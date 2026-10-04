@@ -1,0 +1,17 @@
+# P7 reference (docs/CONTENT.md package E, items): a dark level's flare crate at the start (TRACE_NODARK=0): open it (up + attack),
+# pick a flare up, throw it, pick up another
+# seed 69
+# level 2
+# nodark 0
+30 -
+1 UA
+40 -
+1 DA
+20 -
+1 A
+40 -
+1 DA
+20 -
+6 R
+1 UA
+80 -

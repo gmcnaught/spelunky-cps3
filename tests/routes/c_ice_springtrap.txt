@@ -1,18 +1,6 @@
-# P7 reference (docs/CONTENT.md package C, ice): a spring trap; start 104,88, oSpringTrap at 144,112
+# P7 reference (docs/CONTENT.md package C, ice): walk onto the spring trap (oSpringTrap Collision_oPlayer1: |x - (trap.x + 8)| < 6)
 # seed 12
 # level 12
-60 -
-12 R
 30 -
-1 A
-30 -
-1 A
-30 -
-1 A
-30 -
-1 A
-30 -
-1 A
-30 -
-1 A
+16 R
 120 -

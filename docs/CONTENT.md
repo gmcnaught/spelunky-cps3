@@ -88,9 +88,9 @@ Yetis, the yeti king (yeti lair), UFOs, aliens and the alien boss (alien craft; 
 thin ice, ice and dark blocks (oIce / oDark destruction, oDrip, frozen cavemen), oDarkFall, the Moai and its exit,
 the crown.
 - **Dependencies:** oEnemySight (translated, for yetis); oRubbleDark; oIceBlock.
-- **Generator gap:** the generator places no oYetiKing or oAlienBoss in 3,200 ice cases. The yeti lair and alien
-  craft are special levels (`global.yetiLair`, `global.alienCraft`): their rooms need checking in the generator
-  before the boss routes (gen*.c, owned by whoever holds the generator then).
+- **Bosses:** the yeti lair and alien craft are scrLevelGen's `else` branches after the Moai branch: a level reached
+  by play (madeMoai already true) or a route with madeMoai=1 gets them (§3). The generator places oYetiKing /
+  oAlienBoss there, equal to the runner.
 - **RNG:** yeti 6, UFO 1, yeti king and alien boss low. oDark Destroy 38 (gem drops, as oLush).
 - **Drawing:** oYetiKing image_yscale (DK_PLAIN reads it); the UFO's tractor laser (oLaser, oLaserTrail) is sprites.
 
@@ -301,6 +301,7 @@ How the routes were chosen:
 | c_jungle_mantrap | 44 / 5 | 4 man traps active (move, status 0/1), closest 41 px; also frogs, fire frogs, a monkey in the level |
 | c_jungle_frog | 71 / 5 | 9 frogs, statuses 0-2, closest 36 px; xfrog 4 |
 | c_jungle_firefrog | 296 / 5 | 4 fire frogs reach the player (5 px): bombs explode, the player is hurt and dies; xfrog 7, xexplosion 2 |
+| c_jungle_scarab | 615 / 2, nodark 0 | a scarab on a dark level, moving, 57 px |
 | c_jungle_monkey | 83 / 7 | 5 monkeys moving (status 5/6), closest 57 px; frogs too |
 | c_swamp_piranha | 537 / 5 | a piranha swimming (moving 363 records), 49 px; the player stays dry |
 | c_swamp_deadfish | 696 / 5 | 3 dead fish moving, 44 px |
@@ -308,8 +309,10 @@ How the routes were chosen:
 | c_swamp_zombie | 215 / 5 | 7 zombies, statuses 0-2, 40 px; xzombie 4 |
 | c_ice_yeti | 143 / 12 | 7 yetis active, 40 px; aliens too |
 | c_ice_ufo | 76 / 10 | 11 UFOs, lasers fire and hit the player (xlaser 4, xhurt 4), 22 px |
-| c_ice_springtrap | 12 / 12 | the player stands on a spring trap (3 px, not triggered); UFO lasers hit (xlaser 6) and kill him |
-| c_ice_darkfall | 202 / 9 | a dark-fall block 6 px away that does not fall (weak: redo with a walk across it) |
+| c_ice_springtrap | 12 / 12 | the player walks onto the spring trap (x within 6 px of its centre): sprung 5 times (xboing 5); UFO lasers hit him |
+| c_ice_darkfall | 202 / 9 | the player jumps onto a dark-fall block and stands: it drops after 20 frames with him on it (player y 104 -> 328) |
+| c_ice_yetiking | 558 / 9, madeMoai=1 | the yeti lair: the yeti king 96 px below the start, active (moves, statuses 0-2), yetis around |
+| c_ice_alienboss | 81 / 9, madeMoai=1 | the alien craft: walk right over it to the alien boss (47 px); the boss animates, fires its psychic attack (xpsychic); UFO lasers and the boss kill the player |
 | c_temple_hawkman | 4 / 14 | 4 hawkmen fight the player (2 px; statuses 0-3, 98: stunned), xalert 30 |
 | c_temple_tomblord | 530 / 13 | a tomb lord walking (statuses 0-2), 40 px |
 | c_temple_smashtrap | 53 / 13 | 2 smash traps moving (status 0/1), 38 px |
@@ -317,12 +320,19 @@ How the routes were chosen:
 | c_items_shotgun | 559 / 1 | pickupItem=Shotgun: 3 shots (18 pellets, xshotgun 3, xhit 18) |
 | c_items_mattock | 559 / 1 | pickupItem=Mattock: 6 mattock hits, 3 blocks dug (xcrunch 3) |
 | c_items_bow | 559 / 1 | pickupItem=Bow, arrows=6: 4 arrows shot (xbowpull 8, xarrowtrap 4) |
-| c_items_jetpack | 559 / 1 | hasJetpack=1 had no effect: no flight (the player only jumps; cause not checked); redo by picking a jetpack up |
+| c_items_jetpack | 559 / 1 | hasJetpack=1: flies (xjetpack 44, player y up to 24). The jetpack fires only after the jump key is released in the air and pressed again (characterStepEvent :339, kJumped): the first route held J throughout |
+| c_items_flare | 69 / 2, nodark 0 | a dark level's flare crate at the start: opened (3 flares), flares picked up and thrown (xthrow 2); also a dark-level light reference |
 
-Weak routes to redo: c_ice_darkfall, c_items_jetpack, c_ice_springtrap (trap not triggered). The yeti king, alien boss,
-scarab and flare crate have no route yet: the generator places no oYetiKing / oAlienBoss (special levels), oScarab and
-oFlareCrate appear only at run time or in rare rooms. playhost has no --room option yet (package D adds it with
-rOlmec's start) and no --global (package E).
+Where an object generates (the generator, genhost; the runner generates the same):
+- Scarabs and flare crates only on dark levels: a route that starts on level N needs TRACE_NODARK=0 (`# nodark 0`),
+  as scrClearGlobals leaves global.noDarkLevel true.
+- The yeti lair and the alien craft (scrLevelGen :225-239) are `else` branches of the Moai branch, which a route
+  starting on an ice level always takes while global.madeMoai is false: they need `# globals madeMoai=1`. With it,
+  12% / 9% of ice levels are a yeti lair / alien craft.
+- Olmec needs `# room rOlmec` (TRACE_ROOM; global.gameStart true there).
+
+playhost has no --room, --global or --nodark yet: packages C, D and E add them with their C side (genhost's case
+overrides already set globals such as madeMoai).
 
 To check a trace reaches its object: the scratch scripts summarised each trace (records present, movement, closest
 approach, status values). The C side of a package is gated with tools/playcmp.py against these traces, after the

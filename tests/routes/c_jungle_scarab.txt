@@ -1,0 +1,15 @@
+# P7 reference (docs/CONTENT.md package A, jungle): a scarab on a dark level (scarabs generate only on dark levels: TRACE_NODARK=0), 57 px from the start
+# seed 615
+# level 2
+# nodark 0
+60 -
+1 A
+40 -
+1 A
+40 -
+6 R
+40 -
+6 L
+40 -
+1 A
+200 -

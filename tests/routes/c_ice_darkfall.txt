@@ -1,18 +1,6 @@
-# P7 reference (docs/CONTENT.md package C, ice): a falling dark block; start 136,120, oDarkFall at 176,112
+# P7 reference (docs/CONTENT.md package C, ice): jump onto a dark-fall block and stand on it (it drops after 20 frames: oDarkFall Step)
 # seed 202
 # level 9
-60 -
-12 RJ
 30 -
-1 A
-30 -
-1 A
-30 -
-1 A
-30 -
-1 A
-30 -
-1 A
-30 -
-1 A
-120 -
+20 RJ
+160 -
