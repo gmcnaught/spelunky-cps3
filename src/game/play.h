@@ -48,7 +48,10 @@ enum ptype {
     T_RUBY, T_BIGRUBY, T_DIAMOND,
     T_WHIP, T_ARROWTRAP, T_OTHER,
     /* enemies' type (penemy.c; "NONE": oEnemy's default, the bat's) */
-    T_ENONE, T_SNAKE, T_SPIDER, T_GIANTSPIDER, T_CAVEMAN, T_SKELETON, T_SHOPKEEPER, T_SCARAB, T_COUNT
+    T_ENONE, T_SNAKE, T_SPIDER, T_GIANTSPIDER, T_CAVEMAN, T_SKELETON, T_SHOPKEEPER, T_SCARAB,
+    /* P7: the other areas' enemy types (each object's Create; oHawkman's is "Yeti" as oYeti's) */
+    T_YETI, T_MANTRAP, T_VAMPIRE, T_TOMBLORD, T_MAGMAMAN, T_ALIENBOSS, T_UFO, T_ALIEN, T_FROG, T_FIREFROG, T_MONKEY,
+    T_PIRANHA, T_MEGAMOUTH, T_YETIKING, T_COUNT
 };
 extern const char *const ptype_names[T_COUNT];
 

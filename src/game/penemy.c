@@ -34,7 +34,8 @@ static void blood(int self, double x, double y, int n)            /* scrCreateBl
     if (bloodless_of(self)) return;
     scrCreateBlood(self, (pos)x, (pos)y, n);
 }
-static int caveman_like(int t) { return t == T_CAVEMAN; }          /* "Caveman" / "ManTrap" / "Yeti" / "Hawkman" */
+/* "Caveman" / "ManTrap" / "Yeti" / "Hawkman" (no Create sets "Hawkman": oHawkman's type is "Yeti") */
+static int caveman_like(int t) { return t == T_CAVEMAN || t == T_MANTRAP || t == T_YETI; }
 
 /* the enemies' view test: x > xview - l and x < xview + 320 + r (same for y) */
 static int eview(int i, int l, int r)
@@ -272,9 +273,14 @@ int pen_hit_common(int e, int kind)
 {
     /* the `with obj` block of oItem Step :244-310 (kind 0) and oEnemy Step :180-261 (kind 1) */
     struct pin *o = &PX(e);
-    if (o->type == T_CAVEMAN) {
+    int t = o->type;
+    if (t == T_CAVEMAN || t == T_MANTRAP || t == T_VAMPIRE || t == T_YETI) {     /* "Hawkman": no Create sets it */
         if (kind == 0 ? PE(o)->status != E_STUNNED : PE(o)->status < E_STUNNED) {
-            blood(e, X(e) + 8, Y(e) + 8, 1);
+            if (t != T_MANTRAP) blood(e, X(e) + 8, Y(e) + 8, 1);
+            else {
+                int yy = RAND(0, 16), xx = RAND(0, 16);                    /* arguments: last first */
+                pin_create(PX(e).x + PI(xx), PX(e).y - PI(8) + PI(yy), OBJ_oLeaf);
+            }
             o = &PX(e);
             PE(o)->hp -= 1;
             PE(o)->status = E_STUNNED;
@@ -282,7 +288,7 @@ int pen_hit_common(int e, int kind)
             PE(o)->yVel = N(-6);
             snd_play(SND_xhit);                                                /* oItem :263, oEnemy :198 */
         }
-    } else if (o->type == T_SHOPKEEPER) {
+    } else if (t == T_SHOPKEEPER) {
         if (PE(o)->status < 98) {
             blood(e, X(e), Y(e), 1);
             o = &PX(e);
@@ -291,7 +297,7 @@ int pen_hit_common(int e, int kind)
             PE(o)->status = 2;
             snd_play(SND_xhit);                                                /* :274, :209 */
         }
-    } else if (o->type == T_GIANTSPIDER) {
+    } else if (t == T_GIANTSPIDER) {
         if (PEN(o)->whipped == 0) {
             blood(e, X(e) + 16, Y(e) + 24, 1);
             o = &PX(e);
@@ -299,9 +305,30 @@ int pen_hit_common(int e, int kind)
             PEN(o)->whipped = 10;
             snd_play(SND_xhit);                                                /* :284, :219 */
         }
-    } else if (o->obj == OBJ_oManTrap || o->obj == OBJ_oVampire || o->obj == OBJ_oYeti || o->obj == OBJ_oHawkman ||
-               o->obj == OBJ_oTombLord || o->obj == OBJ_oAlienBoss || o->obj == OBJ_oUFO) {
-        pcontent_enemy(5010, e, kind);                                                  /* P7 hook */
+    } else if (t == T_TOMBLORD) {
+        if (PEN(o)->whipped == 0) {
+            blood(e, X(e) + 16, Y(e) + 16, 1);
+            o = &PX(e);
+            PE(o)->hp -= 1;
+            PEN(o)->whipped = 20;
+            snd_play(SND_xhit);                                                /* :293, :229 */
+        }
+    } else if (t == T_ALIENBOSS) {
+        if (PE(o)->status != 99 && o->spr != GSPR_sAlienBossHurt) {
+            blood(e, X(e) + 8, Y(e) + 8, 1);
+            o = &PX(e);
+            PE(o)->hp -= 1;
+            pin_set_sprite(e, GSPR_sAlienBossHurt);
+            o->ispd = (img_t)0.8;
+            snd_play(SND_xhit);                                                /* :304, :240 */
+        }
+    } else if (t == T_UFO) {
+        pin_create(PX(e).x + PI(8), PX(e).y + PI(8), OBJ_oExplosion);
+        snd_play(SND_xexplosion);                                              /* :310, :246 */
+        if (RAND(1, 3) == 1) pin_create(PX(e).x + PI(8), PX(e).y + PI(8), OBJ_oAlienEject);
+        PG.ufos += 1;
+        PG.kills += 1;
+        if (kind == 1) pin_destroy(e);                                     /* oEnemy :250 (oItem's commented out) */
     } else {
         blood(e, X(e) + 8, Y(e) + 8, 1);
         o = &PX(e);
@@ -354,8 +381,8 @@ void pen_parent_step(int i)
         }
         PEN(p)->burning -= 1;
     }
-    if (CP(X(i) + dfloor(sprw(i) / 2.0), Y(i) - 1, OBJ_oLava)) ptemple_world(5012, i, 0);                   /* :63 */
-    if (CP(X(i) + dfloor(sprw(i) / 2.0), Y(i) + sprh(i) - 2, OBJ_oLava)) ptemple_world(5012, i, 0);
+    if (CP(X(i) + dfloor(sprw(i) / 2.0), Y(i) - 1, OBJ_oLava)) ptemple_world(5012, i, 1);                   /* :63 */
+    if (CP(X(i) + dfloor(sprw(i) / 2.0), Y(i) + sprh(i) - 2, OBJ_oLava)) ptemple_world(5012, i, 2);   /* :65 */
     if (collision_rect_p(X(i) + 2, Y(i) + 2, X(i) + 14, Y(i) + 14, OBJ_oSpearsLeft, 0, NOONE) != NOONE)
         pcontent_enemy(5013, i, 0);                                                     /* P7 hook */
     if (CP(X(i) + 8, Y(i) + 16, OBJ_oSpikes) && NGT(PE(p)->yVel, N(2))) {  /* :108 */
@@ -1252,7 +1279,15 @@ int pen_collision(int self, int other)
                     snd_play(SND_xalert);                                      /* oEnemySight/Collision_oCharacter :6 */
                 }
             }
-            if (instance_exists_p(OBJ_oHawkman)) PUNTR(5030);
+            n = pw_with(OBJ_oHawkman, w, 256);                                 /* :10 with oHawkman */
+            for (k = 0; k < n; k++) {
+                int c = w[k];
+                if (!PX(c).alive) continue;
+                if (DLT(distance_to_object_p(c, OBJ_oPlayer1), 100) && PE(&PX(c))->status < 98) {
+                    PE(&PX(c))->status = 2;
+                    snd_play(SND_xalert);                                      /* oEnemySight/Collision_oCharacter :15 */
+                }
+            }
         }
         return 1;
     case OBJ_oWebBall:
@@ -1339,10 +1374,9 @@ int pen_jar_hit(int jar, int skull)
         if (!PX(e).invincible) {
             struct pin *o = &PX(e);
             PE(o)->xVel = PE(j)->xVel;
-            if (o->type == T_CAVEMAN || o->type == T_SHOPKEEPER || o->obj == OBJ_oManTrap || o->obj == OBJ_oYeti ||
-                o->obj == OBJ_oHawkman) {
+            if (o->type == T_CAVEMAN || o->type == T_MANTRAP || o->type == T_YETI || o->type == T_SHOPKEEPER) {
                 if (PE(o)->status != 98) {
-                    if (o->obj != OBJ_oManTrap) pin_create(o->x, o->y, OBJ_oBlood);
+                    if (o->type != T_MANTRAP) pin_create(o->x, o->y, OBJ_oBlood);
                     o = &PX(e);
                     PE(o)->status = E_STUNNED;
                     PE(o)->counter = PEN(o)->stunTime;

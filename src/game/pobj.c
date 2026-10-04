@@ -29,6 +29,8 @@ const char *const ptype_names[T_COUNT] = {
     "Gold Chunk", "Gold Nugget", "Gold Bar", "Gold Bars", "Emerald", "Big Emerald", "Sapphire", "Big Sapphire",
     "Ruby", "Big Ruby", "Diamond", "Whip", "Arrow Trap", "(other)",
     "NONE", "Snake", "Spider", "Giant Spider", "Caveman", "Skeleton", "Shopkeeper", "Scarab",
+    "Yeti", "ManTrap", "Vampire", "Tomb Lord", "Magma Man", "Alien Boss", "UFO", "Alien", "Frog", "Fire Frog",
+    "Monkey", "Piranha", "Mega Mouth", "Yeti King",
 };
 
 /* ---- Create events ------------------------------------------------------------------------------------- */
