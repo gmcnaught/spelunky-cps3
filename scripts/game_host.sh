@@ -14,7 +14,7 @@ G=tests/game/build/g
 [ -f "$G/stamp" ] || { echo "no src/game snapshot: run scripts/game_check.sh first"; exit 1; }
 SDK=../cps3-testgame/sdk/include
 mkdir -p build/game/host
-cc -std=gnu99 -O2 -ffp-contract=off -w -DDRAW_HOST -I$SDK -I$G -Ibuild/gen -Isrc/draw -Isrc/main -Isrc/hud -Isrc/shell \
+cc -std=gnu99 -O2 -ffp-contract=off -w -DDRAW_HOST -DSND_LOG -Ibuild/snd -I$SDK -I$G -Ibuild/gen -Isrc/draw -Isrc/main -Isrc/hud -Isrc/shell \
   -Isrc/snd -Isrc/front -o build/game/host/host tests/game/host.c src/main/game.c src/draw/draw.c src/hud/hud.c build/gen/sprites.c \
   src/front/front.c build/gen/fronttables.c src/snd/snd.c \
   build/gen/drawtab.c $G/*.c -lm

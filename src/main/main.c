@@ -5,7 +5,7 @@
 #include "sprites.h"
 #include "hudart.h"
 #include "shell.h"
-#include "snd.h"
+#include "sndgame.h"
 #include "draw.h"
 #include "game.h"
 

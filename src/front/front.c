@@ -22,7 +22,7 @@
 #include "front.h"
 #include "pcol.h"
 #include "hud.h"
-#include "snd.h"
+#include "sndgame.h"
 #include "shell.h"
 
 #define FRONT_TITLE_STEPS  900

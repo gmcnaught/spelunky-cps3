@@ -37,6 +37,27 @@ void cps3s_volume(int v, int vol_l, int vol_r) { (void)v; (void)vol_l; (void)vol
 void cps3s_step(int v, uint32_t step) { (void)v; (void)step; }
 void cps3s_keys(uint16_t keys) { (void)keys; }
 uint16_t cps3s_keys_now(void) { return 0; }
+
+/* HOST_SND=<file>: src/snd's call log as tools/sndcmp.py's lines, "SND <kind> <asset> <arg>" and "R <rec> -" at each
+   record point (src/main game.c game_rec_hook), into that file */
+#include "sndnames.h"
+static FILE *sndf;
+extern void (*game_rec_hook)(int32_t rec);
+static void snd_print(int k, int s, double arg)
+{
+    static const char *const kinds[] = { "", "playSound", "playMusic", "startMusic", "stopAllMusic", "setSoundVol",
+                                         "audio_stop_sound", "audio_pause_all", "audio_resume_all", "audio_stop_all",
+                                         "audio_play_sound" };
+    fprintf(sndf, "SND %s %s %.17g\n", kinds[k], s >= 0 && s < SND_COUNT ? sndnames[s] : "-", arg);
+}
+static void rec_print(int32_t rec) { fprintf(sndf, "R %ld -\n", (long)rec); }
+static void snd_log_open(void)
+{
+    const char *f = getenv("HOST_SND");
+    if (!f || !(sndf = fopen(f, "w"))) return;
+    snd_log = snd_print;
+    game_rec_hook = rec_print;
+}
 void main_draw_end(void) {}
 
 /* ---- the recorder ---- */
@@ -161,7 +182,8 @@ int main(int argc, char **argv)
         gfx = slurp(argv[4], "gfx.bin");
         hud = slurp(argv[4], "hud.bin");
         draw_boot();
-    snd_init(15, 15);
+        snd_init(15, 15);
+        snd_log_open();
         if (argc > 6) {                           /* host attract <seed> <steps> <gen> - <room>: start there */
             front_rec_cb = 0;
             front_start_at(atoi(argv[6]));

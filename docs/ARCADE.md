@@ -57,6 +57,36 @@ A step that overruns its two frames delays the next one: no step is skipped.
 Game hooks (weak no-ops in `shell.c`, for the play runtime to define): `game_boot`, `game_attract_step`,
 `game_begin`, `game_step(const struct shell_input *)`, `game_draw`.
 
+### Attract cycle (our design; HD has none)
+
+HD's title waits for the player. The cabinet's ATTRACT mode cycles HD's own rooms instead, run by `src/front` on the
+play loop (`game_attract_step`, one step every second frame, like play):
+
+| room | how long | what runs |
+|---|---|---|
+| rIntro | until oIntro's own `room_goto(rTitle)`: about 815 steps, 27 s (the boot trace's room change at record 815) | the story text, the dummy's walk |
+| rTitle | 900 steps (30 s; `FRONT_TITLE_STEPS`) | the title's scripted flare and sparks, the dummy who climbs down |
+| rHighscores | 450 steps (15 s; `FRONT_SCORES_STEPS`) | the scores box from the EEPROM's records |
+
+After rHighscores the cycle starts again at rIntro. A room the front end does not model (e.g. a door the title's
+player walks through) also restarts it at rIntro. A credit plus Start leaves the cycle at any step: `game_begin`
+calls `front_stop`, then the normal game start.
+
+Seeding rule:
+- **The intro:** oIntro's Create calls `randomize()`, which in HD seeds from the clock. On the cabinet that call
+  seeds with `front_seed` (`src/front/front.c`; 1 on the cabinet, the route's seed in tests). Every cycle is the
+  same, as each pass through rIntro reseeds.
+- **A game start:** `game_begin` seeds the generator again, with `game_cfg.seed` (tests) or the frame counter
+  (`SH.frame * 2654435761 + 1`). It also runs `gen_new_game`, scrClearGlobals' part.
+- **Result:** no RNG draw and no global from the attract rooms reaches a level, as HD's clock seed makes the level
+  seed arbitrary there too. The front end never changes a level's seed.
+
+Checks:
+- Host, every step, against HD's boot trace (`scripts/front_host.sh`): the display list equal on all records, and the
+  sound calls (`HOST_SND`, tools/sndcmp.py) equal: boot 1,301 records with 24 runner calls; the high-scores room
+  201 records with none in either log.
+- MAME vs model: 0 px on the gated records (`scripts/game_check.sh` ATTRACT=1 / 5).
+
 The test switch (MAME: Service Mode; jtcps3: F2) opens the settings screen: FREE PLAY, COINS PER CREDIT, CLEAR HIGH
 SCORES, SAVE AND EXIT (up / down choose, B1 or right change, left back, test or B1 on SAVE AND EXIT leave). Leaving
 stores the settings and restarts the program.

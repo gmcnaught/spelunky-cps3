@@ -9,6 +9,7 @@
 
 struct game_cfg game_cfg = { 0, 0, 30, 0, 1, 0, 1 };
 int32_t game_rec, game_rec1 = -1, game_steps;
+void (*game_rec_hook)(int32_t rec);               /* tests: called at each record point with its number */
 uint8_t game_over;
 
 /* tools/tracer.py's record points: the tracer (and test/host/playhost.c) reads the view there, which the play
@@ -17,6 +18,7 @@ static void rec_cb(int phase)
 {
     view_read();
     if (phase == 1) game_rec1 = game_rec;
+    if (game_rec_hook) game_rec_hook(game_rec);
     game_rec++;
 }
 
