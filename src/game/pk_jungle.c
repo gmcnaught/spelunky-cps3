@@ -205,6 +205,7 @@ static int jungle_create(int i, int fromgen)
         p->ispd = (img_t)0.2;
         return 1;
     case OBJ_oTikiTorch: p->ispd = (img_t)0.5; return 1;
+    case OBJ_oSpearsLeft: p->type = T_NONE; return 1;                /* oDrawnSprite's Create (type = "") */
     case OBJ_oSpearTrapTop: case OBJ_oSpearTrapLit: case OBJ_oSpearTrapBottom:
         if (!fromgen) return 0;                                      /* only generated */
         PE(p)->fired = 0;
