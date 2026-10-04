@@ -414,7 +414,9 @@ int play_step(uint16_t keys, void (*record_cb)(int phase))
         int r = room_change();
         return r ? r : PLAY_ROOM_EARLY;
     }
-    for (k = pw_ahead; k >= 0; k = pw_anext[k]) {                              /* 2: xprevious, yprevious */
+    /* 2: xprevious, yprevious. Only oPlayer1's are read (objects/oPlayer1/Collision_oPushBlock.gml; no other
+       HD object reads xprevious / yprevious), so only its instances keep them (docs/PERF2.md E) */
+    for (k = pw_ohead[OBJ_oPlayer1]; k >= 0; k = pw_inext[k]) {
         PW.in[k].xprev = PW.in[k].x;
         PW.in[k].yprev = PW.in[k].y;
     }
@@ -428,17 +430,25 @@ int play_step(uint16_t keys, void (*record_cb)(int phase))
     view_in_step = 1;
     /* an instance created during the alarm phase gets no alarm pass in it, also for the alarms after the one that
        created it (Observed: c_jungle_firefrog_s296 record 246, oFireFrogBomb Alarm_1's oBlood keep alarm[2] 5) */
+    /* the alarm passes walk the objects' lists instead of a snapshot (docs/PERF2.md E): the same instances in the
+       same order. Destroying an instance unlinks it but keeps its pw_inext (its successor then, or a later one),
+       and its slot is not reused before pw_release, so the walk goes on to the instances that follow; the ones
+       created during the passes are appended to the lists and skipped by their pw_seq, as the snapshot leaves
+       them out */
     seq0 = PW.seq;
+    if (evobj0[16] == 0) evobj_init();
     for (a = 0; a < 12; a++) {                                                 /* alarms */
-        n = snapshot(a);
-        for (k = 0; k < n; k++) {
-            int i = order[k];
-            struct pin *p = &PX(i);
-            if (!p->alive || pw_seq[i] >= seq0) continue;
-            if (PE(p)->alarm[a] >= 0) {
-                PE(p)->alarm[a] -= 1;
-                play_cur_obj = p->obj;
-                if (PE(p)->alarm[a] == 0) { ev_alarm(i, a); pcol_event_done(i); }
+        int j;
+        for (j = evobj0[a]; j < evobj0[a + 1]; j++) {
+            int i;
+            for (i = pw_ohead[evobj[j]]; i >= 0; i = pw_inext[i]) {
+                struct pin *p = &PX(i);
+                if (!p->alive || pw_seq[i] >= seq0) continue;
+                if (PE(p)->alarm[a] >= 0) {
+                    PE(p)->alarm[a] -= 1;
+                    play_cur_obj = p->obj;
+                    if (PE(p)->alarm[a] == 0) { ev_alarm(i, a); pcol_event_done(i); }
+                }
             }
         }
     }

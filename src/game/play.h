@@ -114,7 +114,7 @@ struct pin {
     uint8_t alive, persistent;
     PIN_RO uint8_t visible;
     PIN_RO pos x, y;
-    pos xprev, yprev;
+    pos xprev, yprev;                       /* kept for oPlayer1 only (prun.c play_step 2) */
     PIN_RO float depth;     /* a float in the runner (-99999991 reads -99999992) */
     PIN_RO img_t img;       /* image_index */
     img_t ispd;             /* image_speed */
