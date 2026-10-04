@@ -1134,11 +1134,60 @@ static void level_step(int i)
         PW.vborder = 96;
 }
 
+/* The Step's claimant per object (docs/PERF2.md D). Which of the P5 hooks (pen_step, pdam_step, pshop_step,
+ * pitem_step, tried in that order) runs an instance's Step, or none (ev_step's own switch), depends on its object
+ * only: each hook returns 1 or 0 by a switch on the object or obj_is, and returns 0 without any effect. So the
+ * first Step of an object tries the hooks in order and keeps the claimant; later ones call it directly. The same
+ * holds one level down for treasure (ptrans_step's switch, then obj_is(oTreasure)). -DPLAY_DCHECK (host check):
+ * every Step tries the chain and aborts if the claimant differs from the kept one. */
+enum { SK_NONE, SK_PEN, SK_PDAM, SK_PSHOP, SK_PITEM, SK_OWN, SK_TREASURE };
+static uint8_t stepk[OBJ_COUNT];
+
+static int step_hooks(int i)
+{
+    if (pen_step(i)) return SK_PEN;
+    if (pdam_step(i)) return SK_PDAM;
+    if (pshop_step(i)) return SK_PSHOP;
+    if (pitem_step(i)) return SK_PITEM;
+    return SK_OWN;
+}
+
+#ifdef PLAY_DCHECK
+#include <stdio.h>
+#include <stdlib.h>
+static void stepk_check(int o, int k)
+{
+    if (stepk[o] != SK_NONE && stepk[o] != k) {
+        fprintf(stderr, "PLAY_DCHECK: object %d Step claimant %d, kept %d\n", o, k, stepk[o]);
+        abort();
+    }
+    stepk[o] = (uint8_t)k;
+}
+#endif
+
 void ev_step(int i)
 {
     if (front_on && front_ev(FEV_STEP, i, 0)) return;                                 /* P8 hook */
     struct pin *p = &PX(i);
-    if (pen_step(i) || pdam_step(i) || pshop_step(i) || pitem_step(i)) return; /* P5 hook */
+#ifdef PLAY_DCHECK
+    {
+        int k = step_hooks(i);
+        if (k != SK_OWN) { stepk_check(p->obj, k); return; }
+        if (stepk[p->obj] != SK_NONE && stepk[p->obj] < SK_OWN) stepk_check(p->obj, SK_OWN);   /* aborts */
+    }
+#else
+    switch (stepk[p->obj]) {                                                   /* P5 hook */
+    case SK_PEN: pen_step(i); return;
+    case SK_PDAM: pdam_step(i); return;
+    case SK_PSHOP: pshop_step(i); return;
+    case SK_PITEM: pitem_step(i); return;
+    case SK_TREASURE: treasure_step(i); return;
+    case SK_OWN: break;
+    default:
+        if ((stepk[p->obj] = (uint8_t)step_hooks(i)) != SK_OWN) return;
+        break;
+    }
+#endif
     switch (p->obj) {
     case OBJ_oPlayer1: pl_step(i); break;
     case OBJ_oGame: game_step(i); break;
@@ -1206,8 +1255,20 @@ void ev_step(int i)
         break;
     case OBJ_oGamepad: break;                                                  /* prun.c */
     default:
-        if (ptrans_step(i)) break;
-        if (obj_is(p->obj, OBJ_oTreasure)) treasure_step(i);
+        if (ptrans_step(i)) {
+#ifdef PLAY_DCHECK
+            stepk_check(p->obj, SK_OWN);
+#endif
+            break;
+        }
+        if (obj_is(p->obj, OBJ_oTreasure)) {
+#ifdef PLAY_DCHECK
+            stepk_check(p->obj, SK_TREASURE);
+#else
+            stepk[p->obj] = SK_TREASURE;
+#endif
+            treasure_step(i);
+        }
         else if (obj_is(p->obj, OBJ_oItem)) {
             if (p->obj == OBJ_oDice) {                                         /* objects/oDice/Step_0.gml */
                 if (inview(i, 16)) pitems_world(1064, i, 0);                                /* :1-208: P5 (shops) */
