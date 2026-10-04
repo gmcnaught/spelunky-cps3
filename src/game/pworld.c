@@ -688,15 +688,6 @@ static int pc_bit(const struct pcinst *q, float lx, float ly)
     return (q->mask[cy * q->bpr + (cx >> 3)] & bit[cx & 7]) != 0;
 }
 
-#define PC_ROWS 64                              /* rows of a precise overlap computed once (taller: the plain loop) */
-
-static int pc_bit_i(const struct pcinst *q, int x, int y)
-{
-    static const uint8_t bit[8] = { 0x80, 0x40, 0x20, 0x10, 0x08, 0x04, 0x02, 0x01 };
-    int cx = x - (int)q->ml, cy = y - (int)q->mt;
-    return (q->mask[cy * q->bpr + (cx >> 3)] & bit[cx & 7]) != 0;
-}
-
 /* getPoints: the corners of the rotated mask box */
 static void sa_points(const struct pcinst *q, float *pt)
 {
@@ -763,47 +754,6 @@ static int precise_collision(const struct pcinst *A, const struct pcinst *B)
     ixA = 1.0f / A->xs; ixB = 1.0f / B->xs; iyA = 1.0f / A->ys; iyB = 1.0f / B->ys;
     rA = rotated_eps(A->ang);
     rB = rotated_eps(B->ang);
-    if (!rA && !rB) {
-        float lxA, lxB;
-        int16_t rowA[PC_ROWS], rowB[PC_ROWS];
-        int n = 0, k;
-        if (!(x1 > x0)) return 0;
-        /* the rows' sprite rows first (each a function of yc alone, the same operations as the runner's inner loop):
-           -1 outside the mask box (or, with a mask, its truncated row outside it), else that row */
-        for (yc = y0; y1 > yc && n < PC_ROWS; yc = yc + 1.0f, n++) {
-            float lyA = (yc - A->y) * iyA + A->yo, lyB = (yc - B->y) * iyB + B->yo, ty;
-            rowA[n] = -1;
-            if (!(A->mt > lyA || lyA >= abA)) {
-                ty = (float)(int)lyA;
-                rowA[n] = (int16_t)(!A->mask ? 0 : (A->mt > ty || ty > A->mb) ? -1 : (int)ty);
-            }
-            rowB[n] = -1;
-            if (!(B->mt > lyB || lyB >= abB)) {
-                ty = (float)(int)lyB;
-                rowB[n] = (int16_t)(!B->mask ? 0 : (B->mt > ty || ty > B->mb) ? -1 : (int)ty);
-            }
-        }
-        if (!(y1 > yc)) {                            /* all rows fit */
-            lxB = (x0 - B->x) * ixB + B->xo;
-            lxA = (x0 - A->x) * ixA + A->xo;
-            for (xc = x0; x1 > xc; xc = xc + 1.0f, lxB = lxB + ixB, lxA = lxA + ixA) {
-                int okA, okB, cA, cB;
-                float tA, tB;
-                if (A->ml > lxA || lxA >= arA || B->ml > lxB || lxB >= arB) continue;
-                tA = (float)(int)lxA; tB = (float)(int)lxB;
-                okA = !(A->ml > tA) && !(tA > A->mr);
-                okB = !(B->ml > tB) && !(tB > B->mr);
-                if ((A->mask && !okA) || (B->mask && !okB)) continue;
-                cA = (int)tA; cB = (int)tB;
-                for (k = 0; k < n; k++) {
-                    if (rowA[k] < 0 || rowB[k] < 0) continue;
-                    if (A->mask && !pc_bit_i(A, cA, rowA[k])) continue;
-                    if (!B->mask || pc_bit_i(B, cB, rowB[k])) return 1;
-                }
-            }
-            return 0;
-        }
-    }
     if (!rA && !rB) {
         float lxA, lxB;
         if (!(x1 > x0)) return 0;
