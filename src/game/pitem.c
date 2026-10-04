@@ -11,9 +11,9 @@ int pitem_create(int i, int fromgen)
     if (p->obj == OBJ_oUdjatEye) {                                     /* objects/oUdjatEye/Create_0.gml */
         create_item(p);
         p->type = T_UDJATEYE;
-        p->xVel = p->yVel = p->xAcc = p->yAcc = 0;
+        PE(p)->xVel = PE(p)->yVel = PE(p)->xAcc = PE(p)->yAcc = 0;
         setCollisionBounds(i, -6, -6, 6, 6);
-        p->cost = 0;
+        PE(p)->cost = 0;
         return 1;
     }
     return 0;
@@ -27,15 +27,15 @@ int pitem_step(int i)
         return 1;
     case OBJ_oWebCannon:                                               /* objects/oWebCannon/Step_0.gml */
         item_step(i);
-        if (PX(i).held) pin_set_sprite(i, PL.facing == 18 ? GSPR_sWebCannonL : GSPR_sWebCannonR);
+        if (PE(&PX(i))->held) pin_set_sprite(i, PL.facing == 18 ? GSPR_sWebCannonL : GSPR_sWebCannonR);
         return 1;
     case OBJ_oMattock:                                                 /* objects/oMattock/Step_0.gml */
         item_step(i);
-        if (PX(i).held) pin_set_sprite(i, PL.facing == 18 ? GSPR_sMattockLeft : GSPR_sMattockRight);
+        if (PE(&PX(i))->held) pin_set_sprite(i, PL.facing == 18 ? GSPR_sMattockLeft : GSPR_sMattockRight);
         return 1;
     case OBJ_oMachete: case OBJ_oPistol: case OBJ_oShotgun: case OBJ_oSceptre:   /* <obj>/Step_0.gml */
         item_step(i);
-        if (PX(i).alive && PX(i).held) {
+        if (PX(i).alive && PE(&PX(i))->held) {
             int l = PX(i).obj == OBJ_oMachete ? GSPR_sMacheteLeft : PX(i).obj == OBJ_oPistol ? GSPR_sPistolLeft :
                     PX(i).obj == OBJ_oShotgun ? GSPR_sShotgunLeft : GSPR_sSceptreLeft;
             int r = PX(i).obj == OBJ_oMachete ? GSPR_sMacheteRight : PX(i).obj == OBJ_oPistol ? GSPR_sPistolRight :
@@ -45,7 +45,7 @@ int pitem_step(int i)
         return 1;
     case OBJ_oBow:                                                     /* objects/oBow/Step_0.gml */
         item_step(i);
-        if (PX(i).alive && PX(i).held) {
+        if (PX(i).alive && PE(&PX(i))->held) {
             pin_set_sprite(i, PL.facing == 18 ? GSPR_sBowLeft : GSPR_sBowRight);
             if (NGE(PL.bowStrength, N(10))) PX(i).img = 3;
             else if (NGT(PL.bowStrength, N(6))) PX(i).img = 2;
@@ -75,9 +75,9 @@ int pitem_collision(int self, int other)
 {
     struct pin *p = &PX(self);
     if (p->obj != OBJ_oLockedChest) return 0;
-    if (PX(other).held && p->spr == GSPR_sLockedChest) {
+    if (PE(&PX(other))->held && p->spr == GSPR_sLockedChest) {
         int obj;
-        PX(other).held = 0;
+        PE(&PX(other))->held = 0;
         PL.holdItem = NOONE;
         PL.pickupItemType = T_NONE;
         pin_destroy(other);
@@ -85,13 +85,13 @@ int pitem_collision(int self, int other)
         obj = pin_create(PX(self).x, PX(self).y, OBJ_oUdjatEye);
         {
             int a = RAND(0, 3), b = RAND(0, 3);
-            PX(obj).xVel = NI(a - b);
+            PE(&PX(obj))->xVel = NI(a - b);
         }
-        PX(obj).yVel = N(-2);
+        PE(&PX(obj))->yVel = N(-2);
         obj = pin_create(PX(self).x, PX(self).y, OBJ_oPoof);
-        PX(obj).xVel = N(-0.4);
+        PE(&PX(obj))->xVel = N(-0.4);
         obj = pin_create(PX(self).x, PX(self).y, OBJ_oPoof);
-        PX(obj).xVel = N(0.4);
+        PE(&PX(obj))->xVel = N(0.4);
         pin_destroy(self);
     }
     return 1;

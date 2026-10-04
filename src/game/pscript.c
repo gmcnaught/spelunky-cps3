@@ -10,26 +10,42 @@ double prandom(double n)
 void setCollisionBounds(int i, int l, int t, int r, int b)
 {
     struct pin *p = &PX(i);
-    p->lbo = (int8_t)l;
-    p->tbo = (int8_t)t;
-    p->rbo = (int8_t)r;
-    p->bbo = (int8_t)b;
+    PE(p)->lbo = (int8_t)l;
+    PE(p)->tbo = (int8_t)t;
+    PE(p)->rbo = (int8_t)r;
+    PE(p)->bbo = (int8_t)b;
 }
 
 /* scripts/calculateCollisionBounds */
 void calcBounds(int i, double *lb, double *tb, double *rb, double *bb)
 {
     const struct pin *p = &PX(i);
-    *lb = PTOD(p->x) + p->lbo;
-    *tb = PTOD(p->y) + p->tbo;
-    *rb = PTOD(p->x) + p->rbo;
-    *bb = PTOD(p->y) + p->bbo;
+    *lb = PTOD(p->x) + PE(p)->lbo;
+    *tb = PTOD(p->y) + PE(p)->tbo;
+    *rb = PTOD(p->x) + PE(p)->rbo;
+    *bb = PTOD(p->y) + PE(p)->bbo;
+}
+
+/* calculateCollisionBounds as ints when x and y are whole numbers (then the rounding below is the identity) */
+static int ibounds(int i, int32_t *lb, int32_t *tb, int32_t *rb, int32_t *bb)
+{
+    const struct pin *p = &PX(i);
+    int32_t x, y;
+    if (!pin_xy_int(i, &x, &y)) return 0;
+    *lb = x + PE(p)->lbo;
+    *tb = y + PE(p)->tbo;
+    *rb = x + PE(p)->rbo;
+    *bb = y + PE(p)->bbo;
+    return 1;
 }
 
 /* scripts/isCollisionLeft: collision_line(round(lb-d), round(tb), round(lb-d), round(bb-1), oSolid, 1, 1) > 0 */
 int isCollisionLeft(int i, int d)
 {
     double lb, tb, rb, bb;
+    int32_t il, it, ir, ib;
+    if (ibounds(i, &il, &it, &ir, &ib))
+        return collision_line_i(il - d, it, il - d, ib - 1, OBJ_oSolid, 1, i) != NOONE;
     calcBounds(i, &lb, &tb, &rb, &bb);
     return collision_line_p(dround(lb - d), dround(tb), dround(lb - d), dround(bb - 1), OBJ_oSolid, 1, i) != NOONE;
 }
@@ -37,6 +53,9 @@ int isCollisionLeft(int i, int d)
 int isCollisionRight(int i, int d)
 {
     double lb, tb, rb, bb;
+    int32_t il, it, ir, ib;
+    if (ibounds(i, &il, &it, &ir, &ib))
+        return collision_line_i(ir + d - 1, it, ir + d - 1, ib - 1, OBJ_oSolid, 1, i) != NOONE;
     calcBounds(i, &lb, &tb, &rb, &bb);
     return collision_line_p(dround(rb + d - 1), dround(tb), dround(rb + d - 1), dround(bb - 1), OBJ_oSolid, 1, i) != NOONE;
 }
@@ -44,6 +63,9 @@ int isCollisionRight(int i, int d)
 int isCollisionTop(int i, int d)
 {
     double lb, tb, rb, bb;
+    int32_t il, it, ir, ib;
+    if (ibounds(i, &il, &it, &ir, &ib))
+        return collision_line_i(il, it - d, ir - 1, it - d, OBJ_oSolid, 1, i) != NOONE;
     calcBounds(i, &lb, &tb, &rb, &bb);
     return collision_line_p(dround(lb), dround(tb - d), dround(rb - 1), dround(tb - d), OBJ_oSolid, 1, i) != NOONE;
 }
@@ -51,6 +73,9 @@ int isCollisionTop(int i, int d)
 int isCollisionBottom(int i, int d)
 {
     double lb, tb, rb, bb;
+    int32_t il, it, ir, ib;
+    if (ibounds(i, &il, &it, &ir, &ib))
+        return collision_line_i(il, ib + d - 1, ir - 1, ib + d - 1, OBJ_oSolid, 1, i) != NOONE;
     calcBounds(i, &lb, &tb, &rb, &bb);
     return collision_line_p(dround(lb), dround(bb + d - 1), dround(rb - 1), dround(bb + d - 1), OBJ_oSolid, 1, i) != NOONE;
 }
@@ -59,6 +84,12 @@ int isCollisionBottom(int i, int d)
 int isCollisionLadder(int i)
 {
     double lb, tb, rb, bb;
+    int32_t il, it, ir, ib;
+    if (ibounds(i, &il, &it, &ir, &ib)) {
+        if (collision_rect_i(il + 8, it + 8, ir - 8, ib - 8, OBJ_oLadderTop, 1, i) != NOONE)
+            return 1;
+        return collision_rect_i(il + 8, it + 8, ir - 8, ib - 8, OBJ_oLadder, 1, i) != NOONE;
+    }
     calcBounds(i, &lb, &tb, &rb, &bb);
     if (collision_rect_p(lb + 8, tb + 8, rb - 8, bb - 8, OBJ_oLadderTop, 1, i) != NOONE)
         return 1;
@@ -68,6 +99,9 @@ int isCollisionLadder(int i)
 int isCollisionPlatformBottom(int i, int d)
 {
     double lb, tb, rb, bb;
+    int32_t il, it, ir, ib;
+    if (ibounds(i, &il, &it, &ir, &ib))
+        return collision_line_i(il, ib + d - 1, ir - 1, ib + d - 1, OBJ_oPlatform, 1, i) != NOONE;
     calcBounds(i, &lb, &tb, &rb, &bb);
     return collision_line_p(dround(lb), dround(bb + d - 1), dround(rb - 1), dround(bb + d - 1), OBJ_oPlatform, 1, i) != NOONE;
 }
@@ -75,6 +109,9 @@ int isCollisionPlatformBottom(int i, int d)
 int isCollisionPlatform(int i)
 {
     double lb, tb, rb, bb;
+    int32_t il, it, ir, ib;
+    if (ibounds(i, &il, &it, &ir, &ib))
+        return collision_rect_i(il, it, ir - 1, ib - 1, OBJ_oPlatform, 1, i) != NOONE;
     calcBounds(i, &lb, &tb, &rb, &bb);
     return collision_rect_p(lb, tb, rb - 1, bb - 1, OBJ_oPlatform, 1, i) != NOONE;
 }
@@ -82,6 +119,9 @@ int isCollisionPlatform(int i)
 int isCollisionWaterTop(int i, int d)
 {
     double lb, tb, rb, bb;
+    int32_t il, it, ir, ib;
+    if (ibounds(i, &il, &it, &ir, &ib))
+        return collision_line_i(il, it - d, ir - 1, it - d, OBJ_oWater, 1, i) != NOONE;
     calcBounds(i, &lb, &tb, &rb, &bb);
     return collision_line_p(dround(lb), dround(tb - d), dround(rb - 1), dround(tb - d), OBJ_oWater, 1, i) != NOONE;
 }
@@ -89,6 +129,9 @@ int isCollisionWaterTop(int i, int d)
 int isCollisionMoveableSolidLeft(int i, int d)
 {
     double lb, tb, rb, bb;
+    int32_t il, it, ir, ib;
+    if (ibounds(i, &il, &it, &ir, &ib))
+        return collision_line_i(il - d, it, il - d, ib - 1, OBJ_oMoveableSolid, 1, i) != NOONE;
     calcBounds(i, &lb, &tb, &rb, &bb);
     return collision_line_p(dround(lb - d), dround(tb), dround(lb - d), dround(bb - 1), OBJ_oMoveableSolid, 1, i) != NOONE;
 }
@@ -96,6 +139,9 @@ int isCollisionMoveableSolidLeft(int i, int d)
 int isCollisionMoveableSolidRight(int i, int d)
 {
     double lb, tb, rb, bb;
+    int32_t il, it, ir, ib;
+    if (ibounds(i, &il, &it, &ir, &ib))
+        return collision_line_i(ir + d - 1, it, ir + d - 1, ib - 1, OBJ_oMoveableSolid, 1, i) != NOONE;
     calcBounds(i, &lb, &tb, &rb, &bb);
     return collision_line_p(dround(rb + d - 1), dround(tb), dround(rb + d - 1), dround(bb - 1), OBJ_oMoveableSolid, 1, i) != NOONE;
 }
@@ -104,6 +150,9 @@ int isCollisionMoveableSolidRight(int i, int d)
 int getIdCollisionRight(int i, int d)
 {
     double lb, tb, rb, bb;
+    int32_t il, it, ir, ib;
+    if (ibounds(i, &il, &it, &ir, &ib))
+        return collision_line_i(ir + d - 1, it + 5, ir + d - 1, ib - 1, OBJ_oSolid, 1, i);
     calcBounds(i, &lb, &tb, &rb, &bb);
     return collision_line_p(dround(rb + d - 1), dround(tb + 5), dround(rb + d - 1), dround(bb - 1), OBJ_oSolid, 1, i);
 }
@@ -111,6 +160,9 @@ int getIdCollisionRight(int i, int d)
 int getIdCollisionLeft(int i, int d)
 {
     double lb, tb, rb, bb;
+    int32_t il, it, ir, ib;
+    if (ibounds(i, &il, &it, &ir, &ib))
+        return collision_line_i(il - d, it + 5, il - d, ib - 1, OBJ_oSolid, 1, i);
     calcBounds(i, &lb, &tb, &rb, &bb);
     return collision_line_p(dround(lb - d), dround(tb + 5), dround(lb - d), dround(bb - 1), OBJ_oSolid, 1, i);
 }
@@ -248,8 +300,13 @@ void move_snap(int i, int hs, int vs)
 /* x > xview - m and x < xview + 320 + m and y > yview - m and y < yview + 240 + m */
 int inview(int i, int m)
 {
-    double x = PTOD(PX(i).x), y = PTOD(PX(i).y);
+    double x, y;
+    int32_t ix, iy;
     view_read();
+    if (pin_xy_int(i, &ix, &iy))                  /* whole numbers: the epsilon compares are the integer ones */
+        return ix > PW.xview - m && ix < PW.xview + 320 + m && iy > PW.yview - m && iy < PW.yview + 240 + m;
+    x = PTOD(PX(i).x);
+    y = PTOD(PX(i).y);
     return DGT(x, PW.xview - m) && DLT(x, PW.xview + 320 + m) && DGT(y, PW.yview - m) && DLT(y, PW.yview + 240 + m);
 }
 
@@ -301,9 +358,9 @@ void scrHoldItem(int t)
     if (obj >= 0) {
         int h = pin_create(pl->x, pl->y, obj);
         PL.holdItem = h;
-        PX(h).held = 1;
-        PX(h).cost = 0;
-        PX(h).New = 0;
+        PE(&PX(h))->held = 1;
+        PE(&PX(h))->cost = 0;
+        PE(&PX(h))->New = 0;
         PL.pickupItemType = (int16_t)t;
         PL.whoaTimer = PL.whoaTimerMax;
     } else {
@@ -318,9 +375,9 @@ void scrDropItem(num xv, num yv)
     int h = PL.holdItem;
     if (h == NOONE)
         return;
-    PX(h).held = 0;
-    PX(h).xVel = xv;
-    PX(h).yVel = yv;
+    PE(&PX(h))->held = 0;
+    PE(&PX(h))->xVel = xv;
+    PE(&PX(h))->yVel = yv;
     if (PL.bowArmed)
         scrFireBow();
     if (PL.pickupItemType != PX(h).type)
@@ -368,15 +425,15 @@ void scrStealItem(void)
         PUNTR(3002);                              /* the equipment pickups: P5 */
         break;
     case T_MACHETE: case T_MATTOCK: case T_PISTOL: case T_WEBCANNON: case T_TELEPORTER: case T_SHOTGUN: case T_BOW:
-        if (PX(h).cost > 0) {                     /* :229-293 */
-            PX(h).cost = 0;
-            PX(h).forSale = 0;
+        if (PE(&PX(h))->cost > 0) {                     /* :229-293 */
+            PE(&PX(h))->cost = 0;
+            PE(&PX(h))->forSale = 0;
         }
         break;
     case T_DAMSEL:                                /* P5: bought (global.damselsBought: statistics) */
-        if (PX(h).cost > 0) {
-            PX(h).cost = 0;
-            PX(h).forSale = 0;
+        if (PE(&PX(h))->cost > 0) {
+            PE(&PX(h))->cost = 0;
+            PE(&PX(h))->forSale = 0;
         }
         break;
     default:                                      /* :304 messages only */

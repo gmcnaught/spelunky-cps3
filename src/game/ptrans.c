@@ -38,8 +38,8 @@ static void transition_create(int i)
     if (PG.hasCape) PUNTR(4001);
     if (G.currLevel - 1 < 1) PUNTR(4002);                                      /* scrClearGlobals: not reached */
     if (G.kaliPunish >= 2) PUNTR(4003);
-    p->alarm[0] = 10;                                                          /* :48 */
-    p->alarm[1] = 30;
+    PE(p)->alarm[0] = 10;                                                          /* :48 */
+    PE(p)->alarm[1] = 30;
     if (PG.xdamsels > 0) pin_create(PI(176 + 8), PI(176 + 8), OBJ_oDamselKiss);   /* :52 (P5) */
     if (isRoomIs(R_rTransition1x) || isRoomIs(R_rTransition2x) || isRoomIs(R_rTransition3x)) PUNTR(4005);
 }
@@ -94,14 +94,14 @@ void play_transition_start(int room)
         switch (p->obj) {
         case OBJ_oTransition: transition_create(k); break;
         case OBJ_oPDummy:                                                      /* objects/oPDummy/Create_0.gml */
-            p->status = 0;
-            p->yVel = 0;
+            PE(p)->status = 0;
+            PE(p)->yVel = 0;
             if (G.isDamsel || G.isTunnelMan) PUNTR(4007);
             else pin_set_sprite(k, GSPR_sRunLeft);
-            p->facing = 1;                                                     /* RIGHT = 1 here */
+            PE(p)->facing = 1;                                                     /* RIGHT = 1 here */
             break;
         case OBJ_oEntrance: case OBJ_oExit:
-            p->etype = EX_EXIT;
+            PE(p)->etype = EX_EXIT;
             break;
         default:
             if ((pobj[p->obj].ev & EV_CREATE) && p->obj != OBJ_oBrick && p->obj != OBJ_oHardBlock &&
@@ -185,9 +185,9 @@ static void transition_alarm0(int i)
         TR.drawPosX += 8;
     if (TR.drawLoot == 2) {
     } else if (TR.hurryup)
-        PX(i).alarm[0] = 1;
+        PE(&PX(i))->alarm[0] = 1;
     else
-        PX(i).alarm[0] = 3;
+        PE(&PX(i))->alarm[0] = 3;
 }
 
 /* objects/oTransition/Step_0.gml */
@@ -198,8 +198,8 @@ static void transition_step(int i)
         if (instance_exists_p(OBJ_oTunnelMan)) PUNTR(4011);
         if (TR.drawLoot == 2 && TR.moneyCount == PG.xmoney && n == 0) {
             GP.pressed &= (uint16_t)~(K_ATTACK | K_START);
-            if (PX(i).alarm[0] > 1) PX(i).alarm[0] = 1;
-            if (PX(i).alarm[1] > 1) PX(i).alarm[1] = 1;
+            if (PE(&PX(i))->alarm[0] > 1) PE(&PX(i))->alarm[0] = 1;
+            if (PE(&PX(i))->alarm[1] > 1) PE(&PX(i))->alarm[1] = 1;
             G.gameStart = 1;
             G.lake = 0;
             if (G.customLevel) PUNTR(4012);
@@ -227,26 +227,26 @@ static void transition_step(int i)
 static void pdummy_step(int i)
 {
     struct pin *p = &PX(i);
-    pin_sety(p, PADDV(p->y, p->yVel));
-    if (p->status != 99 && collision_point_p(PTOD(p->x) + 8, PTOD(p->y), OBJ_oDamselKiss, 0, NOONE) != NOONE) {   /* P5 */
+    pin_sety(p, PADDV(p->y, PE(p)->yVel));
+    if (PE(p)->status != 99 && collision_point_p(PTOD(p->x) + 8, PTOD(p->y), OBJ_oDamselKiss, 0, NOONE) != NOONE) {   /* P5 */
         int person = instance_nearest_p(PTOD(p->x) + 8, PTOD(p->y), OBJ_oDamselKiss);
-        if (!PX(person).trigger) {                                             /* not kissed */
-            p->status = 99;                                                    /* STOPPED */
-            p->xVel = 0;
-            p->yVel = 0;
+        if (!PE(&PX(person))->trigger) {                                             /* not kissed */
+            PE(p)->status = 99;                                                    /* STOPPED */
+            PE(p)->xVel = 0;
+            PE(p)->yVel = 0;
             pin_set_sprite(i, GSPR_sStandLeft);
             pin_set_sprite(person, GSPR_sDamselKissL);
-            p->alarm[5] = 30;
+            PE(p)->alarm[5] = 30;
         }
     }
     if (instance_exists_p(OBJ_oTunnelMan)) PUNTR(4020);
-    if (p->status == 0) {                                                      /* TRANSITION */
+    if (PE(p)->status == 0) {                                                      /* TRANSITION */
         if (PTOD(p->x) >= 280) {
             if (p->spr != GSPR_sPExit && p->spr != GSPR_sDamselExit && p->spr != GSPR_sTunnelExit)
                 pin_set_sprite(i, GSPR_sPExit);
         } else
             pin_setx(p, p->x + (PI(2)));
-    } else if (p->status != 99)                                                /* STOPPED: nothing */
+    } else if (PE(p)->status != 99)                                                /* STOPPED: nothing */
         PUNTR(4021);
 }
 
@@ -266,12 +266,12 @@ int ptrans_alarm(int i, int a)
         if (a == 0) transition_alarm0(i);
         else if (a == 1) {                                                     /* objects/oTransition/Alarm_1.gml */
             TR.drawLoot += 1;
-            if (TR.drawLoot < 0) PX(i).alarm[1] = TR.hurryup ? 1 : 30;
+            if (TR.drawLoot < 0) PE(&PX(i))->alarm[1] = TR.hurryup ? 1 : 30;
         }
         return 1;
     case OBJ_oPDummy:
         if (a == 5) {                                                          /* objects/oPDummy/Alarm_5.gml */
-            PX(i).status = 0;
+            PE(&PX(i))->status = 0;
             pin_set_sprite(i, GSPR_sRunLeft);
         } else
             PUNTR(4022);
@@ -301,5 +301,5 @@ int ptrans_create(int i)
 
 void ptrans_draw(int i)
 {
-    if (PX(i).obj == OBJ_oPDummy) pin_setxscale(&PX(i), PX(i).facing == 1 ? -1 : 1);  /* objects/oPDummy/Draw_0.gml */
+    if (PX(i).obj == OBJ_oPDummy) pin_setxscale(&PX(i), PE(&PX(i))->facing == 1 ? -1 : 1);  /* objects/oPDummy/Draw_0.gml */
 }

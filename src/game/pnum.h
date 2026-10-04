@@ -151,6 +151,33 @@ static inline int32_t fx_recip_round(num a)
 #define NOPS(k)       ((void)0)
 #endif
 
+/* bit tests without soft-float (the SH-2 has no FPU): d == 0 (either sign), and a float that is a whole number below
+   2^15 in magnitude as its int (the mantissa times 2^(e - 127 + 9) has the integer part in the high word and the
+   fraction in the low one: a 32 x 32 -> 64 multiply, no variable shift) */
+static inline int dzero(double d)
+{
+    union { double d; uint64_t u; } v;
+    v.d = d;
+    return (v.u << 1) == 0;
+}
+static const uint32_t fwhole_mul[15] = { 1u << 9, 1u << 10, 1u << 11, 1u << 12, 1u << 13, 1u << 14, 1u << 15,
+                                         1u << 16, 1u << 17, 1u << 18, 1u << 19, 1u << 20, 1u << 21, 1u << 22,
+                                         1u << 23 };
+static inline int fwhole(float f, int32_t *o)
+{
+    union { float f; uint32_t u; } v;
+    uint32_t e;
+    uint64_t p;
+    v.f = f;
+    if ((v.u & 0x7fffffffu) == 0) { *o = 0; return 1; }
+    e = (v.u >> 23) & 0xffu;
+    if (e < 127 || e > 141) return 0;
+    p = (uint64_t)((v.u & 0x7fffffu) | 0x800000u) * fwhole_mul[e - 127];
+    if ((uint32_t)p != 0) return 0;
+    *o = (v.u & 0x80000000u) ? -(int32_t)(p >> 32) : (int32_t)(p >> 32);
+    return 1;
+}
+
 /* GML comparisons of reals (the runner's YYCompareVal): d = a - b; equal when |d| <= epsilon (math_set_epsilon,
    default 0.00001), else the sign of d decides. Observed: build/trace/p4_push_rope_s365 record 168, a rope's
    yVel -4.2e-15 passes `yVel >= 0`. NLT .. NNE take two num (the fractional GML variables), DLT .. DNE two

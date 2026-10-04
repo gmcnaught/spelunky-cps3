@@ -79,7 +79,10 @@ struct pcol_stats pcol_st;
 #define RT_NODES 640
 /* entries: play instance i is entry i; while a level is generated (gmode), generator instance w is entry w */
 #define ENT_MAX (PIN_MAX > INST_MAX ? PIN_MAX : INST_MAX)
-struct rbr { float r[4]; int16_t id; };        /* r: min x, min y, max x, max y; id: child node or entry */
+/* rectangle sides as order-mapped float bits (fkey: signed int order = float order; -0 as +0): the tests and the
+   min / max are integer compares, the area arithmetic takes the floats back (kf) */
+typedef int32_t rk;
+struct rbr { rk r[4]; int16_t id; };           /* r: min x, min y, max x, max y; id: child node or entry */
 struct rnode { int16_t count, level; struct rbr b[RMAX]; };
 static struct rnode rn[RT_NODES];
 static int16_t rfreel[RT_NODES];
@@ -132,6 +135,20 @@ static int32_t fkey(float f)
 #define FGT(a, b) (fkey(a) > fkey(b))
 #define FEQ(a, b) (fkey(a) == fkey(b))
 
+/* the float of a key */
+static uint32_t kbits(rk k) { return k >= 0 ? (uint32_t)k : (uint32_t)(k ^ 0x7fffffff); }
+static float kf(rk k)
+{
+    union { float f; uint32_t u; } v;
+    v.u = kbits(k);
+    return v.f;
+}
+
+static void keys_of(rk *k, const float *f)
+{
+    k[0] = fkey(f[0]); k[1] = fkey(f[1]); k[2] = fkey(f[2]); k[3] = fkey(f[3]);
+}
+
 /* ---- the area arithmetic (float, the runner's) with an exact integer path: a float that is a whole number below
    2^14 in magnitude gives its int without soft-float (fint), and float sums / products / fmaf of such values are the
    integer results while those stay below 2^24 in magnitude. struct xv holds a value as an int (k & 1) and / or a
@@ -142,12 +159,12 @@ struct xv { float f; int32_t i; uint8_t k; };
 static const uint32_t fint_mul[14] = { 1u << 9, 1u << 10, 1u << 11, 1u << 12, 1u << 13, 1u << 14, 1u << 15, 1u << 16,
                                        1u << 17, 1u << 18, 1u << 19, 1u << 20, 1u << 21, 1u << 22 };
 
-static int fint(float f, int32_t *o)
+static int fint_bits(uint32_t u, int32_t *o)
 {
-    union { float f; uint32_t u; } v;
+    struct { uint32_t u; } v;
     uint32_t e, m, hi, lo;
     uint64_t p;
-    v.f = f;
+    v.u = u;
     if ((v.u & 0x7fffffffu) == 0) { *o = 0; return 1; }
     e = (v.u >> 23) & 0xffu;
     if (e < 127 || e > 140) return 0;
@@ -159,6 +176,9 @@ static int fint(float f, int32_t *o)
     *o = (v.u & 0x80000000u) ? -(int32_t)hi : (int32_t)hi;
     return 1;
 }
+
+/* the int of a key's float (a whole number below 2^14) */
+static int kint(rk k, int32_t *o) { return fint_bits(kbits(k), o); }
 
 #define XV_LIM 16777216                       /* 2^24: below it, the float results are the integers */
 static int xv_small(int32_t i) { return i > -XV_LIM && i < XV_LIM; }
@@ -193,20 +213,20 @@ static int xv_eq(struct xv *a, struct xv *b)
 }
 
 /* the area of r: (r[2] - r[0]) * (r[3] - r[1]) in float */
-static void rarea(struct xv *o, const float *r)
+static void rarea(struct xv *o, const rk *r)
 {
     int32_t a, b, c, d;
-    if (fint(r[0], &a) && fint(r[1], &b) && fint(r[2], &c) && fint(r[3], &d) && xv_small((c - a) * (d - b))) {
+    if (kint(r[0], &a) && kint(r[1], &b) && kint(r[2], &c) && kint(r[3], &d) && xv_small((c - a) * (d - b))) {
         xv_seti(o, (c - a) * (d - b));
         return;
     }
     {
-        float w = r[2] - r[0], h = r[3] - r[1];
+        float w = kf(r[2]) - kf(r[0]), h = kf(r[3]) - kf(r[1]);
         xv_setf(o, w * h);
     }
 }
 
-static void rcomb(float *o, const float *a, const float *b);
+static void rcomb(rk *o, const rk *a, const rk *b);
 
 
 /* w * h - a with one rounding: the arm64 runner's fnmsub (s registers). fmaf, not (float)((double)w * h - a):
@@ -217,32 +237,32 @@ static float fms(float w, float h, float a)
 }
 
 /* the area of the combined rectangle less area (fused: one rounding) */
-static void rcomb_growth(struct xv *res, const float *a, const float *b, struct xv *area)
+static void rcomb_growth(struct xv *res, const rk *a, const rk *b, struct xv *area)
 {
-    float o[4];
+    rk o[4];
     int32_t x0, y0, x1, y1;
     rcomb(o, a, b);
-    if ((area->k & 1) && fint(o[0], &x0) && fint(o[1], &y0) && fint(o[2], &x1) && fint(o[3], &y1)) {
+    if ((area->k & 1) && kint(o[0], &x0) && kint(o[1], &y0) && kint(o[2], &x1) && kint(o[3], &y1)) {
         int32_t g = (x1 - x0) * (y1 - y0) - area->i;
         if (xv_small(g)) { xv_seti(res, g); return; }
     }
-    xv_setf(res, fms(o[2] - o[0], o[3] - o[1], xv_f(area)));
+    xv_setf(res, fms(kf(o[2]) - kf(o[0]), kf(o[3]) - kf(o[1]), xv_f(area)));
 }
 
-static void rcomb(float *o, const float *a, const float *b)
+static void rcomb(rk *o, const rk *a, const rk *b)
 {
-    o[0] = FLT(a[0], b[0]) ? a[0] : b[0];
-    o[1] = FLT(a[1], b[1]) ? a[1] : b[1];
-    o[2] = FGT(a[2], b[2]) ? a[2] : b[2];
-    o[3] = FGT(a[3], b[3]) ? a[3] : b[3];
+    o[0] = a[0] < b[0] ? a[0] : b[0];
+    o[1] = a[1] < b[1] ? a[1] : b[1];
+    o[2] = a[2] > b[2] ? a[2] : b[2];
+    o[3] = a[3] > b[3] ? a[3] : b[3];
 }
 
-static int roverlap(const float *a, const float *b)
+static int roverlap(const rk *a, const rk *b)
 {
-    return !(FGT(a[0], b[2]) || FGT(b[0], a[2]) || FGT(a[1], b[3]) || FGT(b[1], a[3]));
+    return !(a[0] > b[2] || b[0] > a[2] || a[1] > b[3] || b[1] > a[3]);
 }
 
-static void rcover(int n, float *o)
+static void rcover(int n, rk *o)
 {
     int k;
     const struct rnode *p = &rn[n];
@@ -255,10 +275,10 @@ static void rcover(int n, float *o)
 static struct {
     int8_t part[RMAX + 1];
     int8_t count[2];
-    float cover[2][4];
+    rk cover[2][4];
     struct xv area[2];
     struct rbr buf[RMAX + 1];
-    float cover_split[4];
+    rk cover_split[4];
     struct xv cover_split_area;
 } pv;
 
@@ -361,7 +381,7 @@ static int add_branch(const struct rbr *br, int n, int *newn)
     return 1;
 }
 
-static int pick_branch(const float *r, int n)
+static int pick_branch(const rk *r, int n)
 {
     const struct rnode *p = &rn[n];
     struct xv best_incr, best_area, area, incr;
@@ -430,7 +450,7 @@ static void disconnect(int n, int k)
 }
 
 /* RemoveRectRec: 0 when found and removed */
-static int remove_rec(const float *r, int id, int n)
+static int remove_rec(const rk *r, int id, int n)
 {
     struct rnode *p = &rn[n];
     int k;
@@ -461,7 +481,7 @@ static int remove_rec(const float *r, int id, int n)
     return 1;
 }
 
-static int remove_rect(const float *r, int id)
+static int remove_rect(const rk *r, int id)
 {
     nrelist = 0;
     if (remove_rec(r, id, rroot)) return 1;
@@ -486,7 +506,7 @@ static int remove_rect(const float *r, int id)
 
 static int (*s_cb)(int e, void *ctx);
 static void *s_ctx;
-static float s_r[4];
+static rk s_r[4];
 
 static int search_rec(int n)
 {
@@ -504,9 +524,40 @@ static int search_rec(int n)
     return 1;
 }
 
+/* the key of (float)v for a whole number |v| < 2^24 (exact), without soft-float: the float's bits built from the
+   highest set bit (constant-shift tests) and a table multiply */
+static const uint32_t ikey_mul[24] = { 1u << 23, 1u << 22, 1u << 21, 1u << 20, 1u << 19, 1u << 18, 1u << 17, 1u << 16,
+                                       1u << 15, 1u << 14, 1u << 13, 1u << 12, 1u << 11, 1u << 10, 1u << 9, 1u << 8,
+                                       1u << 7, 1u << 6, 1u << 5, 1u << 4, 1u << 3, 1u << 2, 1u << 1, 1u };
+static rk ikey(int32_t v)
+{
+    uint32_t a = v < 0 ? (uint32_t)-v : (uint32_t)v, t = a, bits;
+    int p = 0;
+    if (a == 0) return 0;
+    if (t >= 0x10000u) { t >>= 16; p += 16; }
+    if (t >= 0x100u) { t >>= 8; p += 8; }
+    if (t >= 0x10u) { t >>= 4; p += 4; }
+    if (t >= 0x4u) { t >>= 2; p += 2; }
+    if (t >= 0x2u) { p += 1; }
+    bits = ((uint32_t)(p + 127) << 23) | ((a * ikey_mul[p]) & 0x7fffffu);
+    if (v < 0) bits |= 0x80000000u;
+    return (int32_t)bits >= 0 ? (int32_t)bits : (int32_t)(bits ^ 0x7fffffff);
+}
+
+void pcol_search_i(int32_t l, int32_t t, int32_t r, int32_t b, int (*cb)(int e, void *ctx), void *ctx)
+{
+    s_r[0] = ikey(l); s_r[1] = ikey(t); s_r[2] = ikey(r); s_r[3] = ikey(b);
+    s_cb = cb;
+    s_ctx = ctx;
+    rlock = 1;
+    pcol_st.searches++;
+    search_rec(rroot);
+    rlock = 0;
+}
+
 void pcol_search(float l, float t, float r, float b, int (*cb)(int e, void *ctx), void *ctx)
 {
-    s_r[0] = l; s_r[1] = t; s_r[2] = r; s_r[3] = b;
+    s_r[0] = fkey(l); s_r[1] = fkey(t); s_r[2] = fkey(r); s_r[3] = fkey(b);
     s_cb = cb;
     s_ctx = ctx;
     rlock = 1;
@@ -583,7 +634,7 @@ static uint8_t gmode;                  /* a level is being generated: entries ar
 static uint8_t ef[ENT_MAX];
 static int16_t dn[ENT_MAX], dp[ENT_MAX], tn[ENT_MAX], tp[ENT_MAX];
 static int16_t dhead = -1, thead = -1;
-static float er[ENT_MAX][4];           /* the rectangle the entry was put in with (RemoveRect's search key) */
+static rk er[ENT_MAX][4];           /* the rectangle the entry was put in with (RemoveRect's search key) */
 static uint8_t epass[ENT_MAX];         /* the HandleCollision pass that entry searched in (EPASS_NONE: none since the
                                           last wrap; pass_no runs 0 .. 254, then every epass is reset) */
 static uint8_t pass_no;
@@ -657,12 +708,52 @@ static void sincos_f(float a, float *s, float *c)
     }
 }
 
+/* the box as integers when the fmadds of ebbox give whole numbers: scales +-1, angle 0, whole x, y (play: pworld.c's
+   cached box; generator instances: int16 x, y at scale 1) */
+static int ebbox_int(int e, int32_t *ib)
+{
+    if (!gmode) return dzero(PW.in[e].angle) && pin_ibox(e, ib);
+    if (W.in[e].spr < 0) return 0;
+    {
+        const struct gsprcol *g = &gsprcol[W.in[e].spr];
+        ib[0] = W.in[e].x + (g->l - g->xo);
+        ib[1] = W.in[e].y + (g->t - g->yo);
+        ib[2] = ib[0] + (g->r - g->l + 1);
+        ib[3] = ib[1] + (g->b - g->t + 1);
+        return 1;
+    }
+}
+
+static rk ikey(int32_t v);
+
 /* CInstance::Compute_BoundingBox (non-compatibility mode), normalized (CollisionUpdate): o = l, t, r, b */
+static void ebbox(int e, float dx, float dy, float *o);
+
+/* the same as keys (the tree's rectangles) */
+static void ebbox_keys(int e, float dx, float dy, rk *k)
+{
+    int32_t ib[4];
+    float fr[4];
+    if (fkey(dx) == 0 && fkey(dy) == 0 && ebbox_int(e, ib)) {
+        k[0] = ikey(ib[0]); k[1] = ikey(ib[1]); k[2] = ikey(ib[2]); k[3] = ikey(ib[3]);
+        return;
+    }
+    ebbox(e, dx, dy, fr);
+    keys_of(k, fr);
+}
+
 static void ebbox(int e, float dx, float dy, float *o)
 {
     float x, y, xs = 1, ys = 1, ang = 0, w, h, t0, t1;
     int s;
     const struct gsprcol *c;
+    if (fkey(dx) == 0 && fkey(dy) == 0) {
+        int32_t ib[4];
+        if (ebbox_int(e, ib)) {
+            o[0] = (float)ib[0]; o[1] = (float)ib[1]; o[2] = (float)ib[2]; o[3] = (float)ib[3];
+            return;
+        }
+    }
     if (!gmode) {
         const struct pin *p = &PW.in[e];
         s = p->mask >= 0 ? p->mask : p->spr;
@@ -733,11 +824,11 @@ static void cupdate_at(int e, float dx, float dy)
     if (!(ef[e] & EF_TREE) && edead(e)) return;
     if (rlock) return;
     if (!emember(e)) return;
-    ebbox(e, dx, dy, b.r);
+    ebbox_keys(e, dx, dy, b.r);
     if (ef[e] & EF_TREE) {
         pcol_st.removes++;
         if (remove_rect(er[e], e)) {
-            float cv[4];
+            rk cv[4];
             rcover(rroot, cv);
             remove_rect(cv, e);
         }
@@ -752,11 +843,41 @@ static void cupdate_at(int e, float dx, float dy)
 static void cupdate(int e) { cupdate_at(e, 0, 0); }
 
 /* CollisionMarkDirty (with the stale bounding box flag its callers set) */
+/* the stale tree members (EF_STALE, on the dirty list): pushed when they become stale; entries no longer stale and
+   repeats are dropped when the stack is read (stk_compact). A scan that computes the boxes of an object's instances
+   in creation order (collision_point and the like) only changes the tree through these */
+static int16_t stk[ENT_MAX];
+static int nstk;
+
+static void stk_compact(void)
+{
+    int k, j, n = 0;
+    for (k = 0; k < nstk; k++) {
+        int16_t e = stk[k];
+        if (!(ef[e] & EF_STALE)) continue;
+        for (j = n; j > 0 && stk[j - 1] > e; j--) stk[j] = stk[j - 1];
+        if (j > 0 && stk[j - 1] == e) {                 /* a repeat: undo the shift */
+            for (; j < n; j++) stk[j] = stk[j + 1];
+            continue;
+        }
+        stk[j] = e;
+        n++;
+    }
+    nstk = n;
+}
+
 static void mark_e(int e)
 {
     int o = eobj(e);
-    ef[e] |= EF_STALE;
-    if ((oinfo[o] & (OI_MEMBER | OI_DYN)) || esolid(e)) dlist_front(e);
+    if ((oinfo[o] & (OI_MEMBER | OI_DYN)) || esolid(e)) {
+        if (!(ef[e] & EF_STALE)) {
+            if (nstk == ENT_MAX) stk_compact();
+            stk[nstk++] = (int16_t)e;
+        }
+        ef[e] |= EF_STALE;
+        dlist_front(e);
+    } else
+        ef[e] |= EF_STALE;
     if (oinfo[o] & OI_F08) tlist_front(e);
 }
 
@@ -820,20 +941,21 @@ int pcol_quiet(void) { return quiet_any; }
 /* the level is loaded (play_level_start): the loader's writes are done; from here every change is a mark */
 void pcol_load_done(void) { sync_all(); }
 
-void pcol_touch_stale(int obj, int notme, int upto)
+/* the touches of a creation-order scan of obj's instances (but notme) up to and including `upto` (NOONE: all) that
+   change the tree: those of the stale members, in creation order */
+static void touch_stale(int obj, int notme, int upto)
 {
-    static int16_t st[PIN_MAX];
-    int n = 0, e, k, j;
-    for (e = dhead; e >= 0; e = dn[e]) {
-        if (!(ef[e] & EF_STALE) || e == notme || (upto >= 0 && e > upto) || !PW.in[e].alive ||
-            !obj_is(PW.in[e].obj, obj))
-            continue;
-        for (j = n; j > 0 && st[j - 1] > e; j--) st[j] = st[j - 1];
-        st[j] = (int16_t)e;
-        n++;
+    int k;
+    stk_compact();
+    for (k = 0; k < nstk; k++) {
+        int e = stk[k], alive = gmode ? W.in[e].alive : PW.in[e].alive;
+        if (upto >= 0 && e > upto) break;
+        if (e == notme || !alive || !obj_is(eobj(e), obj) || !(ef[e] & EF_STALE)) continue;
+        touch_e(e);
     }
-    for (k = 0; k < n; k++) touch_e(st[k]);
 }
+
+void pcol_touch_stale(int obj, int notme, int upto) { touch_stale(obj, notme, upto); }
 
 void pcol_event_done(int i) { if (i >= 0 && PW.in[i].alive) sync1(i); }
 
@@ -878,6 +1000,7 @@ static void room_reset(void)
     }
     dhead = thead = -1;
     npend = 0;
+    nstk = 0;
     for (o = 0; o < OBJ_COUNT; o++) {
         oinfo[o] &= (uint8_t)~OI_DYN;
         ocnt[o] = 0;
@@ -901,13 +1024,14 @@ static void remove_marked(void)
         if ((ef[e] & EF_TREE) && !many) {
             pcol_st.removes++;
             if (remove_rect(er[e], e)) {
-                float cv[4];
+                rk cv[4];
                 rcover(rroot, cv);
                 remove_rect(cv, e);
             }
         }
         obj_count(eobj(e), -1);
         entry_clear(e);
+        if (!gmode) pw_removed(e);                /* the instance's memory goes (struct pin_ext) */
     }
     npend = 0;
     if (many) rebuild_all();
@@ -963,6 +1087,8 @@ static void gen_load(void)
     thead = GMAP(thead);
 #undef GMAP
     for (e = n; e < ENT_MAX; e++) { ef[e] = 0; epass[e] = EPASS_NONE; }
+    nstk = 0;                                     /* the stale stack, renamed: the stale ones in order */
+    for (e = 0; e < n; e++) if ((ef[e] & (EF_STALE | EF_OND)) == (EF_STALE | EF_OND)) stk[nstk++] = (int16_t)e;
     quiet_any = 1;
     gmode = 0;
 }
@@ -1031,7 +1157,7 @@ static int query_e(int obj, int gen)
             if (!alive || edead(ent) || !obj_is(eobj(ent), obj) || (ef[ent] & EF_TREE)) continue;
             if (!gen) sync1(ent);
             ef[ent] &= (uint8_t)~EF_STALE;        /* Compute_BoundingBox(false) */
-            ebbox(ent, 0, 0, b.r);
+            ebbox_keys(ent, 0, 0, b.r);
             b.id = (int16_t)ent;
             pcol_st.inserts++;
             insert_rect(&b, 0);
@@ -1054,6 +1180,8 @@ static int query_e(int obj, int gen)
 }
 
 int pcol_query(int obj) { return query_e(obj, 0); }
+
+int pcol_count(int obj) { return ocnt[obj]; }
 
 /* HandleCollision */
 /* collision pairs in one pass: at most 28 seen (the routes, and 300 idle steps with enemies over 20 seeds x 16
@@ -1204,17 +1332,10 @@ void pcol_gen_hook(int op, int w, int a, int b, int c)
                                                      creation order up to the hit (Collision_Point) */
     case IH_DIST:                                 /* distance_to_object(a = obj) from w: self, then every instance */
         if (op == IH_DIST) touch_e(e);
-        for (k = 0; k < W.n; k++) {
-            if (op == IH_POINT && w >= 0 && k > w) break;
-            if (W.in[k].alive && obj_is(W.in[k].obj, a) && (ef[k] & EF_STALE)) touch_e(k);
-        }
+        touch_stale(a, NOONE, op == IH_POINT ? w : NOONE);
         break;
     case IH_RECT:                                 /* collision_rectangle(.., a = obj) = w */
-        if (query_e(a, 1) == 2)
-            for (k = 0; k < W.n; k++) {
-                if (w >= 0 && k > w) break;
-                if (W.in[k].alive && obj_is(W.in[k].obj, a) && (ef[k] & EF_STALE)) touch_e(k);
-            }
+        if (query_e(a, 1) == 2) touch_stale(a, NOONE, w);
         break;
     case IH_PLACE: {                              /* instance_place by w (a = obj) = b; c = dx + 4096 * dy + offset */
         int q = query_e(a, 1), dx = (c & 4095) - 2048, dy = ((c >> 12) & 4095) - 2048, moved = dx || dy;

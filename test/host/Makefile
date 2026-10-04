@@ -47,6 +47,17 @@ $(OUT)/playhost_nc: playhost.c $(SRC) $(PSRC) $(ROOT)/src/game/*.h $(GEN)/playta
 	mkdir -p $(OUT)
 	$(CC) $(CFLAGS) -DPLAY_STATS -ffp-contract=off $(INC) -o $@ playhost.c $(SRC) $(PSRC)
 
+# pcol.c's integer path of the R-tree area arithmetic against the float expressions (it includes pcol.c)
+$(OUT)/pcolxv: pcolxv.c $(SRC) $(PSRC) $(ROOT)/src/game/*.h $(GEN)/playtables.h
+	mkdir -p $(OUT)
+	$(CC) $(CFLAGS) -ffp-contract=off $(INC) -o $@ pcolxv.c $(SRC) $(filter-out $(ROOT)/src/game/pcol.c,$(PSRC)) -lm
+
+# struct pin_ext checked (play.h PIN_EXT_CHECK): exits 3 when the shared record 0 (the terrain's defaults) was
+# written or a removed instance's record is read; run it over the routes and generated levels
+$(OUT)/playhost_extchk: playhost.c $(SRC) $(PSRC) $(ROOT)/src/game/*.h $(GEN)/playtables.h
+	mkdir -p $(OUT)
+	$(CC) $(CFLAGS) -DPLAY_STATS -DPIN_EXT_CHECK -ffp-contract=off $(INC) -o $@ playhost.c $(SRC) $(PSRC)
+
 # the play code with struct pin's collision fields const (play.h PIN_CONST_CHECK): a write that bypasses the
 # pin_set* setters (and so the collision tree's dirty marks) is a compile error. Compile only (no binary)
 constcheck: $(GEN)/objects.h $(GEN)/gentables.h $(GEN)/playtables.h

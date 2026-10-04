@@ -22,6 +22,10 @@ static int gmaxw, gmaxh;
 /* ---- per-object instance lists: the alive instances of each object in creation order (index order), and the
    alive count of each object with its descendants. Linked at pin_add, unlinked when alive goes to 0 ------------ */
 int16_t pw_ohead[OBJ_COUNT], pw_inext[PIN_MAX];
+/* every alive instance in creation order: pw_ahead, then pw_anext[i] (an instance unlinked keeps its pw_anext, so a
+   walk that saw it continues from it) */
+int16_t pw_ahead, pw_anext[PIN_MAX];
+static int16_t pw_atail, aprev[PIN_MAX];
 static int16_t otail[OBJ_COUNT], iprev[PIN_MAX];
 static int16_t olive[OBJ_COUNT];
 /* the objects that are obj or its descendants: odesc[odesc0[obj] .. odesc0[obj + 1]) */
@@ -52,6 +56,7 @@ static void olists_reset(void)
         pw_ohead[o] = otail[o] = NOONE;
         olive[o] = 0;
     }
+    pw_ahead = pw_atail = NOONE;
     grid_reset();
 }
 
@@ -69,6 +74,10 @@ static void olink(int i)
     if (otail[o] >= 0) pw_inext[otail[o]] = (int16_t)i; else pw_ohead[o] = (int16_t)i;
     otail[o] = (int16_t)i;
     olive_add(o, 1);
+    pw_anext[i] = NOONE;
+    aprev[i] = pw_atail;
+    if (pw_atail >= 0) pw_anext[pw_atail] = (int16_t)i; else pw_ahead = (int16_t)i;
+    pw_atail = (int16_t)i;
 }
 
 static void ounlink(int i)
@@ -78,6 +87,8 @@ static void ounlink(int i)
     if (pw_inext[i] >= 0) iprev[pw_inext[i]] = iprev[i]; else otail[o] = iprev[i];
     olive_add(o, -1);
     grid_unlink(i);
+    if (aprev[i] >= 0) pw_anext[aprev[i]] = pw_anext[i]; else pw_ahead = pw_anext[i];
+    if (pw_anext[i] >= 0) aprev[pw_anext[i]] = aprev[i]; else pw_atail = aprev[i];
 }
 
 /* the alive instances of obj (with its descendants) in creation order: a merge of the objects' lists. More than
@@ -139,9 +150,128 @@ void pw_changed(int i)
 
 int pw_count(int obj) { return olive[obj]; }
 
+/* ---- the struct pin_ext pool: record 0 holds the defaults (shared, never written); the others are allocated by
+   pin_add for objects that need them and freed when the instance leaves (CRoom::RemoveMarked: pw_removed) ------ */
+struct pin_ext pin_ext[EXT_MAX];
+static int16_t extfree[EXT_MAX];
+static int nextfree;
+static uint8_t needs_ext[OBJ_COUNT];        /* 0 unknown, 1 no, 2 yes */
+static int ext_used, ext_used_max;
+
+/* pin_add's defaults: zero, alarms off, no trap / enemy */
+static void ext_defaults(struct pin_ext *x)
+{
+    unsigned char *b = (unsigned char *)x;
+    unsigned k;
+    for (k = 0; k < sizeof *x; k++) b[k] = 0;
+    for (k = 0; k < 12; k++) x->alarm[k] = -1;
+    x->trapID = x->enemyID = NOONE;
+}
+
+/* the terrain: static blocks, ladders, backgrounds and the transition rooms' decorations ("...Tile"), whose
+   instances keep the defaults (no event besides Create / Destroy, no alarm, no collision event; and no other code
+   writes their variables: the PIN_EXT_CHECK build checks that over the routes and generated levels). Every other
+   object gets its own record */
+static const char *const terrain_names[] = {
+    "oBrick", "oBrickSmooth", "oBlock", "oHardBlock", "oLush", "oTemple", "oIce", "oDark", "oDesert", "oDesert2",
+    "oLavaSolid", "oAlienShip", "oAlienShipFloor", "oXocBlock", "oAltarLeft", "oAltarRight", "oMoai", "oMoai2",
+    "oMoai3", "oMoaiInside", "oLadder", "oLadderOrange", "oLadderTop", "oRoom", "oBlackBG", "oBlackFadeUp",
+    "oCaveBG", "oCaveBG2", "oCaveBGEntrance", "oBackdrop", "oForeground"
+};
+
+static int str_eq(const char *a, const char *b)
+{
+    while (*a && *a == *b) { a++; b++; }
+    return *a == *b;
+}
+
+static int is_terrain(int obj)
+{
+    const char *n = objdefs[obj].name;
+    const struct pobj *o = &pobj[obj];
+    unsigned k, len = 0;
+    if ((o->ev & ~(EV_CREATE | EV_DESTROY)) || o->alarms || o->ncol) return 0;
+    for (k = 0; k < sizeof terrain_names / sizeof terrain_names[0]; k++)
+        if (str_eq(n, terrain_names[k])) return 1;
+    while (n[len]) len++;
+    return len > 4 && str_eq(n + len - 4, "Tile");
+}
+
+int pin_needs_ext(int obj)
+{
+    if (!needs_ext[obj]) needs_ext[obj] = (uint8_t)(is_terrain(obj) ? 1 : 2);
+    return needs_ext[obj] == 2;
+}
+
+static void ext_reset(void)
+{
+    int k;
+    ext_defaults(&pin_ext[0]);
+    nextfree = 0;
+    for (k = EXT_MAX - 1; k >= 1; k--) extfree[nextfree++] = (int16_t)k;
+    ext_used = 0;
+}
+
+static int ext_alloc(void)
+{
+    int e;
+    if (nextfree == 0) {
+        PUNTR(9005);
+        return 0;
+    }
+    e = extfree[--nextfree];
+    ext_defaults(&pin_ext[e]);
+    if (++ext_used > ext_used_max) ext_used_max = ext_used;
+    return e;
+}
+
+int pw_ext_used_max(void) { return ext_used_max; }
+
+/* instance i left the room (RemoveMarked): its record is free */
+void pw_removed(int i)
+{
+    struct pin *p = &PW.in[i];
+    if (p->ext > 0) {
+        extfree[nextfree++] = p->ext;
+        ext_used--;
+    }
+#ifdef PIN_EXT_CHECK
+    p->ext = -1;                                     /* a later PE(p) is an error */
+#else
+    p->ext = 0;
+#endif
+}
+
+#ifdef PIN_EXT_CHECK
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+/* the check build: no access to a removed instance's record, and record 0 still the defaults */
+struct pin_ext *pin_ext_checked(const struct pin *p)
+{
+    static struct pin_ext def;
+    static int init;
+    if (!init) { ext_defaults(&def); init = 1; }
+    if (memcmp(&pin_ext[0], &def, sizeof def)) {
+        unsigned k;
+        for (k = 0; k < sizeof def && ((unsigned char *)&pin_ext[0])[k] == ((unsigned char *)&def)[k]; k++) {}
+        fprintf(stderr, "PIN_EXT_CHECK: record 0 written at byte %u (step %u, current object %s)\n", k,
+                (unsigned)PW.step, play_cur_obj >= 0 ? objdefs[play_cur_obj].name : "-");
+        exit(3);
+    }
+    if (p->ext < 0) {
+        fprintf(stderr, "PIN_EXT_CHECK: removed instance %ld (%s) read (step %u)\n", (long)p->id,
+                objdefs[p->obj].name, (unsigned)PW.step);
+        exit(3);
+    }
+    return &pin_ext[p->ext];
+}
+#endif
+
 void pw_reset(void)
 {
     PW.n = 0;
+    ext_reset();
     olists_reset();
     pcol_after_reset();
 }
@@ -178,9 +308,8 @@ int pin_add(int obj, pos x, pos y, int32_t id)
     PIN_WR(double, p->xscale) = PIN_WR(double, p->yscale) = 1;
     PIN_WR(double, p->angle) = 0;
     p->alpha = 1;
-    for (k = 0; k < 12; k++)
-        p->alarm[k] = -1;
-    p->trapID = p->enemyID = NOONE;
+    p->ext = (int16_t)(pin_needs_ext(obj) ? ext_alloc() : 0);   /* with pin_add's defaults (ext_defaults) */
+    (void)k;
     olink(i);
     gcell[i] = NOONE;
     gond[i] = 0;
@@ -245,12 +374,7 @@ static int pos_int(pos v, int32_t *o)
     *o = v >> PFRAC_BITS;
     return *o > -30000 && *o < 30000;
 #else
-    int32_t t;
-    if (!(v > -30000 && v < 30000)) return 0;
-    t = (int32_t)v;
-    if ((pos)t != v) return 0;
-    *o = t;
-    return 1;
+    return fwhole(v, o) && *o > -30000 && *o < 30000;
 #endif
 }
 
@@ -266,6 +390,16 @@ static void bbox_dbl(const struct pin *p, const struct gsprcol *c, double *l, do
     *b = *t + (ys < 0 ? -ys : ys) * (c->b - c->t + 1);
 }
 
+/* 1 / -1 when d is exactly 1.0 / -1.0, else 0 (bits) */
+static int dunit(double d)
+{
+    union { double d; uint64_t u; } v;
+    v.d = d;
+    if (v.u == 0x3ff0000000000000ull) return 1;
+    if (v.u == 0xbff0000000000000ull) return -1;
+    return 0;
+}
+
 /* the cache kind of instance i's box (computed when a setter cleared it): with scales of exactly +-1 and whole x, y
    the double formula's results are the integers below */
 static int bbkind(int i)
@@ -278,7 +412,7 @@ static int bbkind(int i)
             p->bbk = BB_NOSPR;
         else {
             const struct gsprcol *c = &gsprcol[s];
-            int xs = p->xscale == 1 ? 1 : p->xscale == -1 ? -1 : 0, ys = p->yscale == 1 ? 1 : p->yscale == -1 ? -1 : 0;
+            int xs = dunit(p->xscale), ys = dunit(p->yscale);
             if (xs && ys && pos_int(p->x, &x) && pos_int(p->y, &y)) {
                 int32_t l = xs > 0 ? x + (c->l - c->xo) : x - (c->r + 1 - c->xo);
                 int32_t t = ys > 0 ? y + (c->t - c->yo) : y - (c->b + 1 - c->yo);
@@ -311,12 +445,18 @@ int pin_bbox(int i, double *l, double *t, double *r, double *b)
 }
 
 /* the box as integers when it is cached so (BB_INT); 0 otherwise (no sprite, or not whole: use pin_bbox) */
-static int pin_ibox(int i, int32_t *b)
+int pin_ibox(int i, int32_t *b)
 {
     const struct pin *p = &PW.in[i];
     if (bbkind(i) != BB_INT) return 0;
     b[0] = p->bl; b[1] = p->bt; b[2] = p->br; b[3] = p->bb;
     return 1;
+}
+
+/* x and y as ints when both are whole numbers (|v| < 30000) */
+int pin_xy_int(int i, int32_t *x, int32_t *y)
+{
+    return pos_int(PW.in[i].x, x) && pos_int(PW.in[i].y, y);
 }
 
 int pin_box_outside(int i, int w, int h)
@@ -362,7 +502,8 @@ static int mask_at(int i, double px, double py)
     {
         int bpr = (mw + 7) >> 3;
         const uint8_t *m = pmaskdata + ps->maskoff + f * bpr * (c->b - c->t + 1);
-        return (m[cy * bpr + (cx >> 3)] >> (7 - (cx & 7))) & 1;
+        static const uint8_t bit[8] = { 0x80, 0x40, 0x20, 0x10, 0x08, 0x04, 0x02, 0x01 };  /* no variable shift */
+        return (m[cy * bpr + (cx >> 3)] & bit[cx & 7]) != 0;
     }
 }
 
@@ -491,7 +632,7 @@ static int grid_point(int obj, int notme, const struct pq *q, int prec)
 
 /* Command_CollisionPoint tests the object's instances in creation order (Collision_Point computes each stale box:
    pcol_touch) */
-int collision_point_p(double px, double py, int obj, int prec, int notme_self)
+int (collision_point_p)(double px, double py, int obj, int prec, int notme_self)
 {
     int k;
     struct pq q;
@@ -562,9 +703,16 @@ static void lq_init(struct lq *q, double x1, double y1, double x2, double y2)
 
 /* seg_box clips to the closed box [l, r - 1e-9] x [t, b - 1e-9]: with whole numbers, a segment whose bounding box
    misses [l, r - 1] x [t, b - 1] misses it, and an axis-aligned one that meets it hits it */
-static int line_hit(int k, const struct lq *q, double x1, double y1, double x2, double y2, int prec)
+struct rq;
+/* a query: the line's ends as doubles (x1 .. y2; with dbl 0 they are ix1 .. iy2 and converted when needed) */
+struct qctx { int obj, notme, prec, self, hit; double x1, y1, x2, y2, dx, dy; struct lq lq; struct rq *rq;
+              int32_t ix1, iy1, ix2, iy2; uint8_t dbl; };
+
+static int line_hit(int k, struct qctx *c)
 {
-    double l, t, r, b, t0, t1;
+    double l, t, r, b, t0, t1, x1, y1, x2, y2;
+    const struct lq *q = &c->lq;
+    int prec = c->prec;
     int32_t ib[4];
     if (q->iok && pin_ibox(k, ib)) {
         if (q->hx < ib[0] || q->lx >= ib[2] || q->hy < ib[1] || q->ly >= ib[3])
@@ -574,6 +722,11 @@ static int line_hit(int k, const struct lq *q, double x1, double y1, double x2, 
     }
     if (!pin_bbox(k, &l, &t, &r, &b))
         return 0;
+    if (!c->dbl) {
+        c->x1 = c->ix1; c->y1 = c->iy1; c->x2 = c->ix2; c->y2 = c->iy2;
+        c->dbl = 1;
+    }
+    x1 = c->x1; y1 = c->y1; x2 = c->x2; y2 = c->y2;
     if (!seg_box(x1, y1, x2, y2, l, t, r, b, &t0, &t1))
         return 0;
     if (!prec || !precise(k))
@@ -594,12 +747,11 @@ static int line_hit(int k, const struct lq *q, double x1, double y1, double x2, 
 /* collision_line / collision_rectangle / instance_place: ShouldUseFastCollision; with the tree (pcol_query 1),
    the first hit in the tree's search order (the search callbacks return false at the first hit); otherwise the
    object's instances in creation order */
-struct qctx { int obj, notme, prec, self, hit; double x1, y1, x2, y2, dx, dy; struct lq lq; struct rq *rq; };
 
 static int line_cb(int k, void *v)
 {
     struct qctx *q = (struct qctx *)v;
-    if (k >= PIN_MAX || !match(k, q->obj, q->notme) || !line_hit(k, &q->lq, q->x1, q->y1, q->x2, q->y2, q->prec)) return 1;
+    if (k >= PIN_MAX || !match(k, q->obj, q->notme) || !line_hit(k, q)) return 1;
     q->hit = k;
     return 0;
 }
@@ -612,32 +764,60 @@ static void qrect(double x1, double y1, double x2, double y2, float *r)
     r[3] = (float)(y1 < y2 ? y2 : y1) + 1.0f;
 }
 
-int collision_line_p(double x1, double y1, double x2, double y2, int obj, int prec, int notme_self)
+/* the search of collision_line (c: the query, q: pcol_query's answer, r: the tree search rectangle; NULL: the
+   whole-number one from c->lq) */
+static int line_run(struct qctx *c, int q, const float *r)
 {
-    int k, q = pcol_query(obj);
-    struct qctx c;
-    PWST(line, 1);
-    if (q < 0) return NOONE;
-    lq_init(&c.lq, x1, y1, x2, y2);
+    int k;
     if (q == 1) {
-        float r[4];
-        c.obj = obj; c.notme = notme_self; c.prec = prec; c.hit = NOONE;
-        c.x1 = x1; c.y1 = y1; c.x2 = x2; c.y2 = y2;
-        qrect(x1, y1, x2, y2, r);
-        pcol_search(r[0], r[1], r[2], r[3], line_cb, &c);
-        return c.hit;
+        c->hit = NOONE;
+        if (r) pcol_search(r[0], r[1], r[2], r[3], line_cb, c);
+        else pcol_search_i(c->lq.lx - 1, c->lq.ly - 1, c->lq.hx + 1, c->lq.hy + 1, line_cb, c);
+        return c->hit;
     }
     {
         struct fam it;
-        fam_begin(&it, obj);
+        fam_begin(&it, c->obj);
         while ((k = fam_get(&it)) != NOONE) {
-            if (k == notme_self) continue;
+            if (k == c->notme) continue;
             pcol_touch(k);
-            if (line_hit(k, &c.lq, x1, y1, x2, y2, prec))
+            if (line_hit(k, c))
                 return k;
         }
     }
     return NOONE;
+}
+
+int (collision_line_p)(double x1, double y1, double x2, double y2, int obj, int prec, int notme_self)
+{
+    int q = pcol_query(obj);
+    struct qctx c;
+    float r[4];
+    PWST(line, 1);
+    if (q < 0) return NOONE;
+    lq_init(&c.lq, x1, y1, x2, y2);
+    c.obj = obj; c.notme = notme_self; c.prec = prec;
+    c.x1 = x1; c.y1 = y1; c.x2 = x2; c.y2 = y2; c.dbl = 1;
+    if (q == 1) qrect(x1, y1, x2, y2, r);
+    return line_run(&c, q, r);
+}
+
+/* collision_line with whole-number ends (|v| < 30000): the same without the double conversions */
+int collision_line_i(int32_t x1, int32_t y1, int32_t x2, int32_t y2, int obj, int prec, int notme_self)
+{
+    int q = pcol_query(obj);
+    struct qctx c;
+    float r[4];
+    PWST(line, 1);
+    if (q < 0) return NOONE;
+    c.lq.iok = 1;
+    c.lq.lx = x1 < x2 ? x1 : x2; c.lq.hx = x1 < x2 ? x2 : x1;
+    c.lq.ly = y1 < y2 ? y1 : y2; c.lq.hy = y1 < y2 ? y2 : y1;
+    c.lq.axis = x1 == x2 || y1 == y2;
+    c.obj = obj; c.notme = notme_self; c.prec = prec;
+    c.ix1 = x1; c.iy1 = y1; c.ix2 = x2; c.iy2 = y2; c.dbl = 0;
+    (void)r;
+    return line_run(&c, q, 0);                  /* qrect: (float)min - 1.0f is these exactly */
 }
 
 /* a rectangle query: its sides rounded (floor(v + 0.5)) once */
@@ -699,20 +879,44 @@ static int rect_cb(int k, void *v)
     return 0;
 }
 
-int collision_rect_p(double x1, double y1, double x2, double y2, int obj, int prec, int notme_self)
+static int rect_run(struct rq *rq, int q, const float *r, int obj, int prec, int notme_self);
+
+int (collision_rect_p)(double x1, double y1, double x2, double y2, int obj, int prec, int notme_self)
 {
-    int k, q = pcol_query(obj);
+    int q = pcol_query(obj);
     struct rq rq;
+    float r[4];
     PWST(rect, 1);
     if (q < 0) return NOONE;
     rq_init(&rq, x1, y1, x2, y2);
+    if (q == 1) qrect(x1, y1, x2, y2, r);
+    return rect_run(&rq, q, r, obj, prec, notme_self);
+}
+
+/* collision_rectangle with whole-number corners (|v| < 30000): floor(v + 0.5) is v */
+int collision_rect_i(int32_t x1, int32_t y1, int32_t x2, int32_t y2, int obj, int prec, int notme_self)
+{
+    int q = pcol_query(obj);
+    struct rq rq;
+    float r[4];
+    PWST(rect, 1);
+    if (q < 0) return NOONE;
+    rq.iok = 1;
+    rq.ilx = x1 < x2 ? x1 : x2; rq.ihx = x1 < x2 ? x2 : x1;
+    rq.ily = y1 < y2 ? y1 : y2; rq.ihy = y1 < y2 ? y2 : y1;
+    rq.lx = rq.ilx; rq.hx = rq.ihx; rq.ly = rq.ily; rq.hy = rq.ihy;
+    (void)r;
+    return rect_run(&rq, q, 0, obj, prec, notme_self);
+}
+
+static int rect_run(struct rq *rq, int q, const float *r, int obj, int prec, int notme_self)
+{
+    int k;
     if (q == 1) {
         struct qctx c;
-        float r[4];
-        c.obj = obj; c.notme = notme_self; c.prec = prec; c.hit = NOONE; c.rq = &rq;
-        c.x1 = x1; c.y1 = y1; c.x2 = x2; c.y2 = y2;
-        qrect(x1, y1, x2, y2, r);
-        pcol_search(r[0], r[1], r[2], r[3], rect_cb, &c);
+        c.obj = obj; c.notme = notme_self; c.prec = prec; c.hit = NOONE; c.rq = rq;
+        if (r) pcol_search(r[0], r[1], r[2], r[3], rect_cb, &c);
+        else pcol_search_i(rq->ilx - 1, rq->ily - 1, rq->ihx + 1, rq->ihy + 1, rect_cb, &c);
         return c.hit;
     }
     {
@@ -721,7 +925,7 @@ int collision_rect_p(double x1, double y1, double x2, double y2, int obj, int pr
         while ((k = fam_get(&it)) != NOONE) {
             if (k == notme_self) continue;
             pcol_touch(k);
-            if (rect_hit(k, &rq, prec))
+            if (rect_hit(k, rq, prec))
                 return k;
         }
     }

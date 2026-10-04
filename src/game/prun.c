@@ -31,24 +31,27 @@ static uint16_t objev(int obj)
 #define EVK_STEP 12
 #define EVK_OUTSIDE 13
 #define EVK_END 14
+#define EVK_DRAW 15
 static int16_t evobj[1024];
-static int16_t evobj0[16];
+static int16_t evobj0[17];
 
 static void evobj_init(void)
 {
     int key, rt, n = 0;
-    for (key = 0; key < 15; key++) {
+    for (key = 0; key < 16; key++) {
         evobj0[key] = (int16_t)n;
         for (rt = 0; rt < RTOBJ_COUNT; rt++) {
             int o = obj_byrt[rt], has;
-            if (key < 12) has = (pobj[o].alarms >> key) & 1;
-            else has = (objev(o) & (key == EVK_STEP ? EV_STEP : key == EVK_OUTSIDE ? EV_OUTSIDE : EV_END)) != 0;
+            static const uint16_t abit[12] = { 1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048 };
+            if (key < 12) has = (pobj[o].alarms & abit[key]) != 0;
+            else has = (objev(o) & (key == EVK_STEP ? EV_STEP : key == EVK_OUTSIDE ? EV_OUTSIDE :
+                                    key == EVK_END ? EV_END : EV_DRAW)) != 0;
             if (!has) continue;
             if (n == (int)(sizeof evobj / sizeof evobj[0])) { PUNTR(9004); break; }
             evobj[n++] = (int16_t)o;
         }
     }
-    evobj0[15] = (int16_t)n;
+    evobj0[16] = (int16_t)n;
 }
 
 /* the alive instances whose object has the event `key`, in dispatch order: the objects in runtime order, each
@@ -56,7 +59,7 @@ static void evobj_init(void)
 static int snapshot(int key)
 {
     int j, n = 0;
-    if (evobj0[15] == 0) evobj_init();
+    if (evobj0[16] == 0) evobj_init();
     PWST(snap, 1);
     for (j = evobj0[key]; j < evobj0[key + 1]; j++) {
         int i;
@@ -122,8 +125,21 @@ static void view_update(void)
  * animation (oGame's image_index 1) but no drawing (the player's image_xscale 1). */
 static void draw_and_view(void)
 {
-    int k;
-    for (k = 0; k < PW.n; k++)
+    int k, j, m = 0, n0 = PW.n;
+    /* the instances with a Draw event in creation order (the objects' lists merged), then any created meanwhile
+       (indices from n0 on, as the scan of every instance reached them) */
+    if (evobj0[16] == 0) evobj_init();
+    for (j = evobj0[EVK_DRAW]; j < evobj0[EVK_DRAW + 1]; j++)
+        for (k = pw_ohead[evobj[j]]; k >= 0; k = pw_inext[k]) {
+            int a = m++;
+            while (a > 0 && order[a - 1] > k) { order[a] = order[a - 1]; a--; }
+            order[a] = (int16_t)k;
+        }
+    for (j = 0; j < m; j++) {
+        k = order[j];
+        if (PW.in[k].alive && PW.in[k].visible) { ev_draw(k); pcol_event_done(k); }
+    }
+    for (k = n0; k < PW.n; k++)
         if (PW.in[k].alive && PW.in[k].visible && (pobj[PW.in[k].obj].ev & EV_DRAW))
             { ev_draw(k); pcol_event_done(k); }
     view_update();
@@ -137,10 +153,11 @@ static uint32_t fbits(float f) { union { float f; uint32_t u; } v; v.f = f; retu
    goes 0 -> 1 -> 0 with an Animation End: the same without the float arithmetic */
 static void animate(void)
 {
-    int k, n = PW.n;
-    PWST(anim, n);
-    for (k = 0; k < n; k++) {
+    int k, n = PW.n, next;
+    for (k = pw_ahead; k >= 0 && k < n; k = next) {   /* the instances of the step's start, creation order */
         struct pin *p = &PW.in[k];
+        next = pw_anext[k];
+        PWST(anim, 1);
         if (!p->alive) continue;
         if (p->spr < 0) {
             p->img = p->img + p->ispd;
@@ -180,6 +197,15 @@ static void enemies_out(void)
             pin_kill(k);
 }
 
+/* a generated instance whose struct pin_ext values differ from pin_add's defaults */
+static int gen_not_default(const struct inst *g)
+{
+    int a;
+    for (a = 0; a < 12; a++) if (g->alarm[a] != -1) return 1;
+    return g->facing || g->status || g->cost || g->value || g->etype || g->style || (g->flags & (IF_FORSALE | IF_HELD)) ||
+           g->xvel || g->yvel;
+}
+
 void play_level_start(int32_t next_id)
 {
     int k;
@@ -207,28 +233,33 @@ void play_level_start(int32_t next_id)
             int a;
             pin_setspr(p, g->spr);
             p->depth = g->depth;
-            for (a = 0; a < 12; a++) p->alarm[a] = g->alarm[a];
-            p->facing = g->facing;
-            p->status = g->status;
-            p->cost = g->cost;
-            p->value = g->value;
             p->treasure = g->treasure;
-            p->etype = g->etype;
-            p->style = g->style;
+            if (p->ext) {
+                for (a = 0; a < 12; a++) PE(p)->alarm[a] = g->alarm[a];
+                PE(p)->facing = g->facing;
+                PE(p)->status = g->status;
+                PE(p)->cost = g->cost;
+                PE(p)->value = g->value;
+                PE(p)->etype = g->etype;
+                PE(p)->style = g->style;
+            } else if (gen_not_default(g))
+                PUNTR(9006);                       /* terrain shares the defaults (pworld.c pin_needs_ext) */
         }
         if (g->obj == OBJ_oPlayer1) pl_init_from_gen(i);
         else pobj_init_from_gen(i);
         {
             struct pin *p = &PX(i);
-            p->cost = g->cost;
-            p->forSale = (g->flags & IF_FORSALE) != 0;
             p->invincible = (g->flags & IF_INVINCIBLE) != 0;
             p->shopWall = (g->flags & IF_SHOPWALL) != 0;
             p->cleanDeath = (g->flags & IF_CLEANDEATH) != 0;
-            p->held = (g->flags & IF_HELD) != 0;
-            p->xVel = NMUL(NI(g->xvel), N(1.0 / 256));
-            p->yVel = NMUL(NI(g->yvel), N(1.0 / 256));
-            if (obj_is(g->obj, OBJ_oItem) || obj_is(g->obj, OBJ_oTreasure)) p->value = g->value;
+            if (p->ext) {
+                PE(p)->cost = g->cost;
+                PE(p)->forSale = (g->flags & IF_FORSALE) != 0;
+                PE(p)->held = (g->flags & IF_HELD) != 0;
+                PE(p)->xVel = NMUL(NI(g->xvel), N(1.0 / 256));
+                PE(p)->yVel = NMUL(NI(g->yvel), N(1.0 / 256));
+                if (obj_is(g->obj, OBJ_oItem) || obj_is(g->obj, OBJ_oTreasure)) PE(p)->value = g->value;
+            }
         }
     }
     /* the persistent tracer instance (oGamepad: inputs in its Step, the record in its End Step) */
@@ -241,7 +272,7 @@ void play_level_start(int32_t next_id)
     PG.drawHUD = 1;
     PLEV.musicFade = 0;
     for (k = 0; k < PW.n; k++)
-        if (PX(k).alive && PX(k).held && PL.idx != NOONE) {                    /* the item scrHoldItem gave */
+        if (PX(k).alive && PE(&PX(k))->held && PL.idx != NOONE) {                    /* the item scrHoldItem gave */
             PL.holdItem = k;
             PL.pickupItemType = PX(k).type;
             PL.whoaTimer = PL.whoaTimerMax;
@@ -290,7 +321,7 @@ int play_step(uint16_t keys, void (*record_cb)(int phase))
         int r = room_change();
         return r ? r : PLAY_ROOM_EARLY;
     }
-    for (k = 0; k < PW.n; k++) {                                               /* 2: xprevious, yprevious */
+    for (k = pw_ahead; k >= 0; k = pw_anext[k]) {                              /* 2: xprevious, yprevious */
         PW.in[k].xprev = PW.in[k].x;
         PW.in[k].yprev = PW.in[k].y;
     }
@@ -308,10 +339,10 @@ int play_step(uint16_t keys, void (*record_cb)(int phase))
             int i = order[k];
             struct pin *p = &PX(i);
             if (!p->alive) continue;
-            if (p->alarm[a] >= 0) {
-                p->alarm[a] -= 1;
+            if (PE(p)->alarm[a] >= 0) {
+                PE(p)->alarm[a] -= 1;
                 play_cur_obj = p->obj;
-                if (p->alarm[a] == 0) { ev_alarm(i, a); pcol_event_done(i); }
+                if (PE(p)->alarm[a] == 0) { ev_alarm(i, a); pcol_event_done(i); }
             }
         }
     }

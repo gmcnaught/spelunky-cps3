@@ -61,27 +61,19 @@ extern const char *const ptype_names[T_COUNT];
 #else
 #define PIN_RO
 #endif
-struct pin {
-    int32_t id;
-    int16_t obj;            /* OBJ_* */
-    PIN_RO int16_t spr;     /* sprite_index (GSPR_*, -1 none) */
-    PIN_RO int16_t mask;    /* mask_index (-1: the sprite) */
-    uint8_t alive, visible, persistent;
-    uint8_t ingrid;
-    PIN_RO pos x, y;
-    pos xprev, yprev;
-    float depth;            /* a float in the runner (-99999991 reads -99999992) */
-    img_t img, ispd;        /* image_index, image_speed */
-    PIN_RO double xscale, yscale, angle;
-    double alpha;
+/* An instance: the fields every instance uses (struct pin, PIN_MAX of them) and the GML instance variables
+   (struct pin_ext) in a pool, allocated by pin_add for the objects that can use them (pworld.c pin_needs_ext: any
+   event besides Create / Destroy, an alarm or a collision event). The others (the terrain: oBrick, oLush, oTemple,
+   ...; 70-80 % of a level's instances) share record 0, which holds pin_add's defaults and is never written (the
+   PIN_EXT_CHECK build checks it after every event). PE(p) is p's record */
+struct pin_ext {
     int32_t alarm[12];
     /* the GML instance variables the translated events use (named as in GML) */
     num xVel, yVel, xAcc, yAcc, myGrav, grav;
     num bounceFactor, frictionFactor, life;
-    int16_t type;           /* enum ptype */
     uint8_t held, armed, safe, heavy, trigger, stuck, sticky, canPickUp, canCollect, falling, bounce, dying;
-    uint8_t invincible, collectible, cleanDeath, shopWall, forSale, New, breakPieces, active, inDiceHouse;
-    uint8_t colLeft, colRight, colBot, colTop, rolled, rolling;
+    uint8_t collectible, forSale, New, breakPieces, active, inDiceHouse;
+    uint8_t colLeft, colRight, colBot, colTop, rolling;
     int32_t value, cost;
     int16_t counter, fallCount, burnTimer, fired, facing, state, status, cimg, yOff, hp;
     int16_t trapID, enemyID;  /* instance indices (NOONE) */
@@ -89,20 +81,38 @@ struct pin {
     num px, py;             /* oRopeThrow px, py */
     double direction;       /* oArrow */
     int8_t lbo, tbo, rbo, bbo; /* setCollisionBounds offsets */
-    /* the bounding box cache (pworld.c pin_bbox): bbk 0 not computed since the last change of x / y / sprite /
-       mask / scale (the setters clear it), BB_INT the box is bl, bt, br, bb exactly, BB_DBL computed in double
-       each time, BB_NOSPR no sprite */
-    int16_t bl, bt, br, bb;
-    uint8_t bbk;
-    uint8_t treasure, etype, style;
+    uint8_t etype, style;
     /* enemies, damsel, shopkeeper (penemy.c, pdamsel.c, pshop.c): oEnemy / oDamsel Create's variables */
-    uint8_t countsAsKill, swimming, edead, bounced, startled, angered, pickedUp;
+    uint8_t countsAsKill, swimming, edead, bounced, startled, angered;
     int16_t bloodLeft, sacCount, burning, stunTime, sightCounter, squirtTimer, whipped, hit, stunMax;
     int16_t bombID, owner, firing, turnTimer, throwCount;
     uint8_t hasGun, welcomed;
     num myGravNorm, myGravWater, yVelLimit;
     double hspeed, vspeed;  /* built-in motion (speed, direction): oEnemySight; applied after the Step events */
 };
+
+struct pin {
+    int32_t id;
+    int16_t obj;            /* OBJ_* */
+    PIN_RO int16_t spr;     /* sprite_index (GSPR_*, -1 none) */
+    PIN_RO int16_t mask;    /* mask_index (-1: the sprite) */
+    int16_t ext;            /* its struct pin_ext (0: the shared defaults) */
+    uint8_t alive, visible, persistent;
+    PIN_RO pos x, y;
+    pos xprev, yprev;
+    float depth;            /* a float in the runner (-99999991 reads -99999992) */
+    img_t img, ispd;        /* image_index, image_speed */
+    PIN_RO double xscale, yscale, angle;
+    double alpha;
+    int16_t type;           /* enum ptype */
+    uint8_t invincible, cleanDeath, shopWall, treasure;
+    /* the bounding box cache (pworld.c pin_bbox): bbk 0 not computed since the last change of x / y / sprite /
+       mask / scale (the setters clear it), BB_INT the box is bl, bt, br, bb exactly, BB_DBL computed in double
+       each time, BB_NOSPR no sprite */
+    int16_t bl, bt, br, bb;
+    uint8_t bbk;
+};
+
 
 struct pworld {
     struct pin in[PIN_MAX];
@@ -119,6 +129,19 @@ struct pworld {
 extern struct pworld PW;
 
 #define PX(i) (PW.in[i])
+#ifndef EXT_MAX
+#define EXT_MAX 512              /* struct pin_ext records (0: the shared defaults) */
+#endif
+extern struct pin_ext pin_ext[EXT_MAX];
+int pin_needs_ext(int obj);                       /* pworld.c: its instances get their own record */
+void pw_removed(int i);                           /* RemoveMarked took instance i out: its record is free */
+int pw_ext_used_max(void);
+#ifdef PIN_EXT_CHECK
+struct pin_ext *pin_ext_checked(const struct pin *p);
+#define PE(p) pin_ext_checked(p)
+#else
+#define PE(p) (&pin_ext[(p)->ext])
+#endif
 static inline int pin_is(int i, int obj) { return i >= 0 && PW.in[i].alive && obj_is(PW.in[i].obj, obj); }
 
 /* the setters of the collision-relevant fields: store, and on a real change (!=; the scales and the angle as the
@@ -185,13 +208,31 @@ void pin_destroy(int i);                          /* instance_destroy: Destroy e
 void pin_kill(int i);                             /* gone without the Destroy event (instance_destroy(id, false)) */
 void pin_set_sprite(int i, int spr);
 int pin_bbox(int i, double *l, double *t, double *r, double *b);
-int pin_box_outside(int i, int w, int h);
+int pin_ibox(int i, int32_t *b);                  /* the box l, t, r, b when whole numbers (cached); else 0 */
+int pin_box_outside(int i, int w, int h);          /* its box is outside [0, w] x [0, h] (Outside Room) */
 /* the alive instances of each object in creation order: pw_ohead[obj], then pw_inext[i] (NOONE ends) */
 extern int16_t pw_ohead[OBJ_COUNT], pw_inext[PIN_MAX];
-int pw_count(int obj);                            /* alive instances of obj with its descendants */           /* its box is outside [0, w] x [0, h] (Outside Room) */
+extern int16_t pw_ahead, pw_anext[PIN_MAX];        /* every alive instance in creation order */
+int pw_count(int obj);                            /* alive instances of obj with its descendants */
 int collision_point_p(double px, double py, int obj, int prec, int notme_self);
 int collision_line_p(double x1, double y1, double x2, double y2, int obj, int prec, int notme_self);
 int collision_rect_p(double x1, double y1, double x2, double y2, int obj, int prec, int notme_self);
+/* no instance of obj at all, so these return NOONE with no side effect, without evaluating the coordinates (often
+   doubles): collision_point when none is alive (it touches only alive ones); collision_line / rectangle when the
+   collision tree counts none either (pcol_query gives -1 before any UpdateTree). The functions keep their names */
+int pcol_count(int obj);
+#define pw_noinst_point(obj) ((obj) >= 0 && pw_count(obj) == 0)
+#define pw_noinst_tree(obj) ((obj) >= 0 && pcol_count(obj) == 0)
+#define collision_point_p(px, py, obj, prec, notme) \
+    (pw_noinst_point(obj) ? NOONE : (collision_point_p)((px), (py), (obj), (prec), (notme)))
+#define collision_line_p(x1, y1, x2, y2, obj, prec, notme) \
+    (pw_noinst_tree(obj) ? NOONE : (collision_line_p)((x1), (y1), (x2), (y2), (obj), (prec), (notme)))
+#define collision_rect_p(x1, y1, x2, y2, obj, prec, notme) \
+    (pw_noinst_tree(obj) ? NOONE : (collision_rect_p)((x1), (y1), (x2), (y2), (obj), (prec), (notme)))
+/* the same with whole-number coordinates (|v| < 30000), without the double conversions */
+int collision_line_i(int32_t x1, int32_t y1, int32_t x2, int32_t y2, int obj, int prec, int notme_self);
+int collision_rect_i(int32_t x1, int32_t y1, int32_t x2, int32_t y2, int obj, int prec, int notme_self);
+int pin_xy_int(int i, int32_t *x, int32_t *y);    /* x, y as ints when both are whole numbers */
 int instance_place_p(int self, double px, double py, int obj);
 #define place_meeting_p(self, px, py, obj) (instance_place_p((self), (px), (py), (obj)) != NOONE)
 int instance_nearest_p(double px, double py, int obj);
