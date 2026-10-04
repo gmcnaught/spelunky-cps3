@@ -34,6 +34,30 @@ static inline int32_t dround(double a)
     return (f & 1) ? f + 1 : f;
 }
 
+/* (double)f for a float on the bits (no __extendsfdf2 call): a normal number's exponent rebiased (127 -> 1023) and its
+   mantissa shifted into place; +-0 the sign alone; subnormals, infinities and NaN through the conversion. TOD(x):
+   (double)x, with fwiden when x is a float (the type picks it at compile time; C++: the plain conversion) */
+static inline double fwiden(float f)
+{
+    union { float f; uint32_t u; } v;
+    union { double d; uint64_t u; } r;
+    uint32_t e;
+    v.f = f;
+    e = (v.u >> 23) & 0xffu;
+    if (e == 0 || e == 0xffu) {
+        if ((v.u << 1) != 0) return (double)f;
+        r.u = (uint64_t)(v.u & 0x80000000u) << 32;
+        return r.d;
+    }
+    r.u = ((uint64_t)((v.u & 0x80000000u) | ((e + 896u) << 20) | ((v.u & 0x7fffffu) >> 3)) << 32) | (uint64_t)(v.u << 29);
+    return r.d;
+}
+#ifdef __cplusplus
+#define TOD(x) ((double)(x))
+#else
+#define TOD(x) __builtin_choose_expr(__builtin_types_compatible_p(__typeof__(x), float), fwiden((float)(x)), (double)(x))
+#endif
+
 #if defined(PLAY_COUNT) && defined(__cplusplus)
 /* -DPLAY_COUNT (compiled as C++ by test/host: playhost_count): num is a binary64 that counts its operations (the
    cost of keeping the GML reals in double on the SH-2, where each one is a libgcc soft-float call) */
@@ -175,6 +199,13 @@ static inline int dzero(double d)
     v.d = d;
     return (v.u << 1) == 0;
 }
+/* dzero((double)f) on the float's bits (the widening keeps +-0 and every other value: no __extendsfdf2 call) */
+static inline int fzero(float f)
+{
+    union { float f; uint32_t u; } v;
+    v.f = f;
+    return (v.u << 1) == 0;
+}
 static const uint32_t fwhole_mul[15] = { 1u << 9, 1u << 10, 1u << 11, 1u << 12, 1u << 13, 1u << 14, 1u << 15,
                                          1u << 16, 1u << 17, 1u << 18, 1u << 19, 1u << 20, 1u << 21, 1u << 22,
                                          1u << 23 };
@@ -199,12 +230,6 @@ static inline int fwhole(float f, int32_t *o)
    doubles (image_index, image_speed, positions) */
 #define GML_EPS 0.00001
 #define GML_EPS_BITS 0x3ee4f8b588e368f1ull    /* the bits of GML_EPS */
-static inline int gcmp_dd(double a, double b)
-{
-    double d = a - b;
-    if ((d < 0 ? -d : d) <= GML_EPS) return 0;
-    return d >= 0 ? 1 : -1;
-}
 /* gcmp_dd(a, 0) on the bits: a - 0 is a; |a| <= eps compares as unsigned (the magnitude bits order as the values,
    NaN above infinity); then NaN gives -1 (d >= 0 is false) and the sign bit decides */
 static inline int gcmp_z(double a)
@@ -216,6 +241,12 @@ static inline int gcmp_z(double a)
     if (m <= GML_EPS_BITS) return 0;
     if (m > 0x7ff0000000000000ull) return -1;
     return (v.u >> 63) ? -1 : 1;
+}
+/* d = a - b; 0 when |d| <= eps, else the sign of d (NaN: -1). The tests on d are gcmp_z's on its bits (one soft-float
+   call, the subtraction, in place of three) */
+static inline int gcmp_dd(double a, double b)
+{
+    return gcmp_z(a - b);
 }
 #define gcmp_d(a, b)  ((__builtin_constant_p(b) && (b) == 0) ? gcmp_z(a) : gcmp_dd((a), (b)))
 /* gcmp_dd(a * m, 0) > 0 for an int m. For m = 2^k (k <= 20) the product is exact unless it overflows (then

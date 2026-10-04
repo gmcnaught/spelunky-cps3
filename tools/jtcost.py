@@ -27,7 +27,7 @@ usage: jtcost.py [--route R] [--step N] [--consts review|fit] trace nm.txt"""
 import sys, re, bisect, collections, os
 
 args = sys.argv[1:]
-opt = {'--route': '?', '--step': '?', '--consts': os.getenv('JTCOST_CONSTS', 'review')}
+opt = {'--route': '?', '--step': '?', '--consts': os.getenv('JTCOST_CONSTS', 'fit')}
 while args and args[0] in opt:
     opt[args[0]] = args[1]; args = args[2:]
 if len(args) != 2 or opt['--consts'] not in ('review', 'fit'): sys.exit(__doc__)
@@ -63,6 +63,10 @@ def fn(pc):
     i = bisect.bisect_right(SA, pc) - 1
     return syms[i][1] if i >= 0 else '?'
 PLAY = [a for a, n in syms if n == '_play_step'][0]
+PCHIST = os.getenv('JTC_PCHIST'); pch = collections.Counter()   # JTC_PCHIST=<symbol>: its instructions by address
+callers = collections.Counter()
+litmiss = collections.Counter()               # literal-pool line misses by the literal's address
+STARTS = set(SA)                                  # a function's first instruction: one entry (call) of it
 dm = collections.Counter(); dsto = collections.Counter()
 
 class Cache:
@@ -106,6 +110,10 @@ for line in open(tr):
     elif pc == ret and R[15] == sp0:
         break
     f = fn(pc); c = per[f]
+    if pc in STARTS:
+        c['entries'] += 1
+        if f.startswith('___'): callers[(f, fn(R[16]))] += 1     # libgcc helper: who called it (PR)
+    if f == PCHIST: pch[pc] += 1
     dis = dis.strip(); op = dis.split()[0] if dis else ''
     args_ = dis[len(op):].strip()
     ev = collections.Counter()          # this instruction's events (keys of CONSTS)
@@ -176,6 +184,7 @@ for line in open(tr):
                     ev['dmiss_' + ('simm' if reg == 'simm' else 'ram')] += 1
                     st['dmiss_' + reg] += 1; c['dmiss'] += 1
                     dm[('lit:' + fn(a)) if (reg == 'simm' and fn(a) == f) else dname(a)] += 1
+                    if reg == 'simm' and m.group(3) == 'PC': litmiss[a] += 1
     if op in ('MUL.L', 'DMULS.L', 'DMULU.L'): ev['mull'] += 1; st['mul'] += 1
     if op in ('MULS.W', 'MULU.W', 'MULS', 'MULU'): ev['mulw'] += 1; st['mulw'] += 1
     if op in JUMPS: ev['jump'] += 1; st['jump'] += 1
@@ -198,10 +207,10 @@ K = {k: v[SI] for k, v in CONSTS.items()}
 print('stores %d (%.0f%% stack) -> %.0f jtcps3 clocks; I-miss %d lines -> %.0f; D-miss ram %d / simm %d -> %.0f' % (
     stores, 100 * st['st_stack'] / max(stores, 1), stores * (1 + K['store']), st['imiss'], st['imiss'] * K['imiss'],
     st['dmiss_ram'], st['dmiss_simm'], st['dmiss_ram'] * K['dmiss_ram'] + st['dmiss_simm'] * K['dmiss_simm']))
-print('\nfunction           instr   model  ratio  imiss  dmiss  stores(stack)')
-for f, c in sorted(per.items(), key=lambda x: -x[1]['cost'])[:30]:
+print('\nfunction           instr   model  ratio  imiss  dmiss  stores(stack)  calls')
+for f, c in sorted(per.items(), key=lambda x: -x[1]['cost'])[:45]:
     s = sum(v for k, v in c.items() if k.startswith('st_'))
-    print('%-22s %7d %7.0f %5.2f %6d %6d %6d(%d)' % (f[:22], c['ins'], c['cost'], c['cost'] / c['ins'], c['imiss'], c['dmiss'], s, c['st_stack']))
+    print('%-22s %7d %7.0f %5.2f %6d %6d %6d(%d) %6d' % (f[:22], c['ins'], c['cost'], c['cost'] / c['ins'], c['imiss'], c['dmiss'], s, c['st_stack'], c['entries']))
 
 print('\nD-miss lines by symbol (lit: = literal pool of the running function)')
 print('  literal pools total', lit)
@@ -231,3 +240,25 @@ for s in (0, 1):
           'dmiss_ram=%d dmiss_simm=%d lit=%d' % (opt['--route'], opt['--step'], SETS[s], ins, st['mame'], tot[s],
                                                 tot[s] / max(ins, 1), stores, st['st_stack'], st['imiss'],
                                                 st['dmiss_ram'], st['dmiss_simm'], lit))
+
+print('\nsoft-float / libgcc calls by caller')
+for (h, cf), v in callers.most_common(30): print('  %-16s <- %-24s %6d' % (h, cf, v))
+
+SIMM1 = os.getenv('JTC_SIMM1')                   # simm1.bin (.text at 0x06000000): what the missed literals hold
+if SIMM1:
+    img = open(SIMM1, 'rb').read(); kinds = collections.Counter()
+    for a, v in litmiss.items():
+        o = (a & 0x1fffffff) - 0x06000000
+        w = int.from_bytes(img[o:o + 4], 'big') if 0 <= o and o + 4 <= len(img) else -1
+        if 0x02000000 <= w < 0x02080000: k = 'RAM data address'
+        elif 0x04000000 <= w < 0x05000000: k = 'video / sprite RAM address'
+        elif 0x06000000 <= w < 0x06100000 and fn(w) != '?' and (w in STARTS): k = 'function address'
+        elif 0x06000000 <= w < 0x07000000: k = 'SIMM data address (tables)'
+        else: k = 'constant'
+        kinds[k] += v
+    print('\nliteral-pool line misses by what the literal holds (JTC_SIMM1)')
+    for k, v in kinds.most_common(): print('  %-30s %6d' % (k, v))
+
+if PCHIST:
+    print('\n%s: executions by address (JTC_PCHIST)' % PCHIST)
+    for a in sorted(pch): print('  %08x %7d' % (a, pch[a]))

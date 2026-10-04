@@ -870,7 +870,7 @@ static void sincos_f(float a, float *s, float *c)
    cached box; generator instances: int16 x, y at scale 1) */
 static int ebbox_int(int e, int32_t *ib)
 {
-    if (!gmode) return dzero(PW.in[e].angle) && pin_ibox(e, ib);
+    if (!gmode) return fzero(PW.in[e].angle) && pin_ibox(e, ib);
     if (W.in[e].spr < 0) return 0;
     {
         const struct gsprcol *g = &gsprcol[W.in[e].spr];

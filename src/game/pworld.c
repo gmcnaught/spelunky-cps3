@@ -14,6 +14,7 @@
 /* struct pin is 64 bytes (a shift indexes PW.in, not a mul.l) and struct inst 72: play slot i ends at byte 64 i + 64 <=
    72 (i + 1), inside the generator instances 0 .. i, which the loaders have read (play.h) */
 typedef char pin_size_is_64[sizeof(struct pin) == 64 ? 1 : -1];
+typedef char pin_ext_size_8[sizeof(struct pin_ext) % 8 == 0 && EXT_MAX * (sizeof(struct pin_ext) / 8) < 32768 ? 1 : -1];   /* exto */
 typedef char pin_size_le_inst_size[sizeof(struct pin) <= sizeof(struct inst) ? 1 : -1];
 #define INST_MEM_PIN ((PIN_MAX * sizeof(struct pin) + sizeof(struct inst) - 1) / sizeof(struct inst))
 #define INST_MEM_N (INST_MEM_PIN > INST_MAX ? INST_MEM_PIN : INST_MAX)
@@ -432,7 +433,7 @@ void pw_removed(int i)
 #ifdef PIN_EXT_CHECK
     p->ext = -1;                                     /* a later PE(p) is an error */
 #else
-    p->ext = 0;
+    pin_set_ext(p, 0);
 #endif
 }
 
@@ -453,7 +454,7 @@ static void dead_init(void)
 #ifdef PIN_EXT_CHECK
     d->ext = -1;                                     /* PE(PIN_DEAD) is an error */
 #else
-    d->ext = EXT_SCRATCH;
+    pin_set_ext(d, EXT_SCRATCH);
 #endif
     dead_ok = 1;
 }
@@ -611,7 +612,7 @@ int pin_add(int obj, pos x, pos y, int32_t id)
     p->ispd = 1;
     PIN_WR(float, p->xscale) = PIN_WR(float, p->yscale) = 1;
     PIN_WR(float, p->angle) = 0;
-    p->ext = (int16_t)(pin_needs_ext(obj) ? ext_alloc() : 0);   /* with pin_add's defaults (ext_defaults) */
+    pin_set_ext(p, pin_needs_ext(obj) ? ext_alloc() : 0);         /* with pin_add's defaults (ext_defaults) */
     if (obj == OBJ_oPlayer1 && p->ext) PE(p)->xprev = x;
     if (p->ext && pin_needs_en(obj)) pin_ext[p->ext].en = (int16_t)en_alloc();
     pw_draw_mark(i);                                 /* (a reused slot may still be on the list: marked once) */
@@ -681,9 +682,9 @@ static void bbox_dbl(const struct pin *p, const struct gsprcol *c, double *l, do
 {
     double xs = p->xscale, ys = p->yscale, x = PTOD(p->x), y = PTOD(p->y);
     PWST(bbox, 1);
-    if (!dzero(p->angle)) {                       /* rotated: the box of the rotated sprite (pcol.c ebbox) */
+    if (!fzero(p->angle)) {                       /* rotated: the box of the rotated sprite (pcol.c ebbox) */
         float o[4];
-        pcol_box((int)(p - PW.in), o);
+        pcol_box(PIN_IDX(p), o);
         *l = o[0]; *t = o[1]; *r = o[2]; *b = o[3];
         return;
     }
@@ -695,13 +696,13 @@ static void bbox_dbl(const struct pin *p, const struct gsprcol *c, double *l, do
     *b = *t + (ys < 0 ? -ys : ys) * (c->b - c->t + 1);
 }
 
-/* 1 / -1 when d is exactly 1.0 / -1.0, else 0 (bits) */
-static int dunit(double d)
+/* 1 / -1 when f is exactly 1.0f / -1.0f, else 0 (bits: the same answer as for (double)f) */
+static int funit(float f)
 {
-    union { double d; uint64_t u; } v;
-    v.d = d;
-    if (v.u == 0x3ff0000000000000ull) return 1;
-    if (v.u == 0xbff0000000000000ull) return -1;
+    union { float f; uint32_t u; } v;
+    v.f = f;
+    if (v.u == 0x3f800000u) return 1;
+    if (v.u == 0xbf800000u) return -1;
     return 0;
 }
 
@@ -717,8 +718,8 @@ static __attribute__((noinline)) int bbkind_set(int i)
             p->bbk = BB_NOSPR;
         else {
             const struct gsprcol *c = &gsprcol[s];
-            int xs = dunit(p->xscale), ys = dunit(p->yscale);
-            if (xs && ys && dzero(p->angle) && pos_int(p->x, &x) && pos_int(p->y, &y)) {
+            int xs = funit(p->xscale), ys = funit(p->yscale);
+            if (xs && ys && fzero(p->angle) && pos_int(p->x, &x) && pos_int(p->y, &y)) {
                 int32_t l = xs > 0 ? x + (c->l - c->xo) : x - (c->r + 1 - c->xo);
                 int32_t t = ys > 0 ? y + (c->t - c->yo) : y - (c->b + 1 - c->yo);
                 PWST(bbox_int, 1);
@@ -755,7 +756,7 @@ int pin_bbox(int i, double *l, double *t, double *r, double *b)
 }
 
 /* the box as integers when it is cached so (BB_INT); 0 otherwise (no sprite, or not whole: use pin_bbox) */
-int pin_ibox(int i, int32_t *b)
+__attribute__((always_inline)) inline int pin_ibox(int i, int32_t *b)
 {
     const struct pin *p = &PW.in[i];
     if (bbkind(i) != BB_INT) return 0;
@@ -2080,9 +2081,32 @@ int instance_number_p(int obj)
     return n;
 }
 
+/* distance_to_instance_p's square root: Newton from d (not correctly rounded: 1,046,164 of the integers 1 .. 2^22
+   differ from psqrt by an ulp; kept as it is). For d = n^2 it gives n exactly (checked for n = 1 .. 65536) */
+static double dist_newton(double d)
+{
+    double s = d, prev = 0;
+    int it;
+    if (d <= 0) return 0;
+    for (it = 0; it < 64 && s != prev; it++) { prev = s; s = 0.5 * (s + d / s); }
+    return s;
+}
+
 double distance_to_instance_p(int self, int k)
 {
     double sl, st, sr, sb, l, t, r, b, xd = 0, yd = 0, d;
+    int32_t ia[4], ic[4];
+    if (pin_ibox(self, ia) && pin_ibox(k, ic)) {   /* whole boxes: separated on one axis, d = n^2 and the result n */
+        int32_t ixd = 0, iyd = 0;
+        if (ic[0] > ia[2]) ixd = ic[0] - ia[2];
+        if (ic[2] < ia[0]) ixd = ic[2] - ia[0];
+        if (ic[1] > ia[3]) iyd = ic[1] - ia[3];
+        if (ic[3] < ia[1]) iyd = ic[3] - ia[1];
+        if (ixd == 0) return iyd < 0 ? -iyd : iyd;
+        if (iyd == 0) return ixd < 0 ? -ixd : ixd;
+        xd = ixd; yd = iyd;
+        return dist_newton(xd * xd + yd * yd);
+    }
     if (!pin_bbox(self, &sl, &st, &sr, &sb))
         sl = sr = PTOD(PW.in[self].x), st = sb = PTOD(PW.in[self].y);
     if (!pin_bbox(k, &l, &t, &r, &b))
@@ -2092,13 +2116,7 @@ double distance_to_instance_p(int self, int k)
     if (t > sb) yd = t - sb;
     if (b < st) yd = b - st;
     d = xd * xd + yd * yd;
-    {   /* sqrt by Newton (no libm on the SH-2) */
-        double s = d, prev = 0;
-        int it;
-        if (d <= 0) return 0;
-        for (it = 0; it < 64 && s != prev; it++) { prev = s; s = 0.5 * (s + d / s); }
-        return s;
-    }
+    return dist_newton(d);                         /* sqrt by Newton (no libm on the SH-2) */
 }
 
 double distance_to_object_p(int self, int obj)
