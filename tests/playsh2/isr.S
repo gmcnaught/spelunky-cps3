@@ -1,9 +1,11 @@
 /* tests/playsh2 interrupt handlers (vector table at VBR = _vtab, main.c): the SH7604 FRT
-     vector 73  FOVI: the FRC overflowed (every 65,536 ticks = 524,288 clocks): _ovf_n counted, OVF cleared
-     vector 72  FOCI (output compare A), PROF builds: while the tag (the work's kind) equals the wanted kind, the
-                interrupted PC and PR logged as 16-byte buckets from 0x06000000 (one word each); then OCRA moved
-                on by the period (ticks)
-   _ovf_n, _prof_n and the log live in sprite RAM (main.c P_*): main.c clears main RAM between jobs. */
+     vector 73  FOVI: the FRC overflowed: _ovf_n counted, OVF cleared (not enabled: main.c uses the wrap count below)
+     vector 72  FOCI (output compare A), every period ticks (all builds; 4,096 unless PROF): counts the FRC's
+                wraps for main.c now() (MAME raises the overflow interrupt at its own timeslice, up to a wrap early
+                or late, so the overflow count is not used); PROF builds: while the tag (the work's kind) equals the
+                wanted kind, the interrupted PC and PR logged as 16-byte buckets from 0x06000000 (one word each);
+                then OCRA moved on by the period
+   the counters and the log live in character RAM (main.c P_*): main.c clears main RAM between jobs. */
     .section .text
     .align 2
     .global _ovf_isr
@@ -33,14 +35,31 @@ _prof_isr:
     mov.b   @r1, r0
     and     #0xf7, r0           /* OCFA (bit 3) <- 0 */
     mov.b   r0, @r1
-    /* OCRA = FRC + period (FRC high, low; OCRA high then low) */
+    /* FRC: high, low, high again (and low again if the high byte moved: MAME has no latch) */
     mov.l   k_frc, r1
     mov.b   @r1, r2
     mov.b   @(1, r1), r0
-    extu.b  r2, r2
+    mov.b   @r1, r3
+    cmp/eq  r2, r3
+    bt      1f
+    mov.b   @(1, r1), r0
+    mov     r3, r2
+1:  extu.b  r2, r2
     shll8   r2
     extu.b  r0, r0
     or      r0, r2
+    /* the wrap count (main.c now()): FRC below its value at the previous interrupt = one wrap (the interrupt
+       comes every period < 65,536 ticks) */
+    mov.l   k_lastf, r1
+    mov.l   @r1, r0
+    cmp/hs  r0, r2
+    bt      2f
+    mov.l   k_exth, r3
+    mov.l   @r3, r0
+    add     #1, r0
+    mov.l   r0, @r3
+2:  mov.l   r2, @r1
+    /* OCRA = FRC + period (OCRA high then low) */
     mov.l   k_per, r1
     mov.l   @r1, r0
     add     r0, r2
@@ -108,15 +127,17 @@ _prof_isr:
 k_ftcsr: .long 0xfffffe11
 k_frc:   .long 0xfffffe12
 k_ocra:  .long 0xfffffe14
-k_ovfn:  .long 0x04000010
-k_tag:   .long 0x04000014
-k_pn:    .long 0x04000018
-k_per:   .long 0x0400001c
-k_pmax:  .long 49152
-k_want:  .long 0x04000020
+k_ovfn:  .long 0x04100010
+k_tag:   .long 0x04100014
+k_pn:    .long 0x04100018
+k_per:   .long 0x0410001c
+k_pmax:  .long 65536
+k_want:  .long 0x04100020
 k_base:  .long 0x06000000
-k_skc:   .long 0x04000024
-k_skip:  .long 0x04000028
-k_lastc: .long 0x0400002c
-k_wrapf: .long 0x04000030
-k_plog:  .long 0x04010000
+k_skc:   .long 0x04100024
+k_skip:  .long 0x04100028
+k_lastc: .long 0x0410002c
+k_wrapf: .long 0x04100030
+k_exth:  .long 0x04100034
+k_lastf: .long 0x04100038
+k_plog:  .long 0x04140000

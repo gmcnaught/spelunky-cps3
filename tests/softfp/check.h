@@ -7,6 +7,7 @@
 #include "cases.h"
 
 struct cs_case { uint64_t a, b; };
+/* (double operations: 3% of the pairs are carry / sticky shapes, below) */
 
 static inline uint64_t canon_d(uint64_t r) { return ((r & 0x7fffffffffffffffull) > 0x7ff0000000000000ull) ? 0x7ff8000000000000ull : r; }
 static inline uint32_t canon_f(uint32_t r) { return ((r & 0x7fffffffu) > 0x7f800000u) ? 0x7fc00000u : r; }
@@ -26,6 +27,15 @@ static inline struct cs_case cs_case_for(int op)
         c.b = 0;
         break;
     default:
+        if (cs_u32(100) < 3) {                       /* a carry with a sticky bit: a's significand near all ones, b
+                                                        32..63 binades below with a few low bits */
+            uint64_t ex = 1 + cs_u32(2000), s = (uint64_t)cs_u32(2) << 63;
+            c.a = s | (ex << 52) | (0x000fffffffffffffull - cs_u32(4));
+            uint32_t d = 32 + cs_u32(32), lo = cs_u32(32);
+            c.b = s | ((ex > d ? ex - d : 1) << 52) | (uint64_t)(cs_next() & ((1ull << lo) - 1)) | ((uint64_t)cs_u32(4) << 50);
+            if (cs_u32(4) == 0) c.b ^= 0x8000000000000000ull;
+            break;
+        }
         c.a = cs_d1();
         c.b = cs_d2(c.a);
         break;

@@ -20,6 +20,6 @@ int main(int argc, char **argv)
     if (argc > 1 && !strcmp(argv[1], "--count")) { printf("%d\n", NJOBS); return 0; }
     j = argc > 1 ? atoi(argv[1]) : 0;
     if (jobs[j].route < 0) run_gen(j, jobs[j].seed, jobs[j].level);
-    else run_route(j, jobs[j].seed, routes[jobs[j].route].masks, routes[jobs[j].route].n, 30);
+    else run_route(j, jobs[j].seed, &routes[jobs[j].route], 30);
     return 0;
 }

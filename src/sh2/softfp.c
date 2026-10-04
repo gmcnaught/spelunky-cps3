@@ -18,6 +18,7 @@
  * divide unit (DIVU) in two 29-bit quotient steps; compares on the bit patterns. Other operands take a general
  * path (unpack, 64-bit significand with sticky bit, one rounding).
  *
+ * SOFTFP_ASM: add and subtract from softfp_sh2.S (its fast path in assembly; this file's add for the rest).
  * SOFTFP_HOST: the functions are named sf_* and divide in C (the host test); SOFTFP_SFNAMES: named sf_* on the SH-2
  * (tests/softfp, beside libgcc's); otherwise __adddf3 ... (libgcc's names). */
 #include <stdint.h>
@@ -174,7 +175,15 @@ static f64 add_special(f64 a, f64 b)               /* an operand is NaN or infin
 
 /* ---- binary64 entry points ------------------------------------------------------------------------------- */
 
-HOT f64 SF(adddf3)(f64 a, f64 b)
+/* SOFTFP_ASM (the SH-2 builds): add / subtract are softfp_sh2.S's, which come here (softfp_add_c) for the operands
+   their fast path leaves out */
+#ifdef SOFTFP_ASM
+#define ADD_C softfp_add_c
+f64 SF(adddf3)(f64 a, f64 b);
+#else
+#define ADD_C SF(adddf3)
+#endif
+HOT f64 ADD_C(f64 a, f64 b)
 {
     uint32_t ah = HI(a), al = LO(a), bh = HI(b), bl = LO(b);
     int ea = (ah >> 20) & 0x7ff, eb = (bh >> 20) & 0x7ff;
@@ -252,7 +261,9 @@ HOT f64 SF(adddf3)(f64 a, f64 b)
     return MK((sa << 31) | ((uint32_t)e << 20) | (rh & 0xfffff), rl);
 }
 
+#ifndef SOFTFP_ASM
 HOT f64 SF(subdf3)(f64 a, f64 b) { return SF(adddf3)(a, b ^ D_SIGN); }
+#endif
 
 static f64 mul_gen(f64 a, f64 b)                   /* finite, neither zero */
 {

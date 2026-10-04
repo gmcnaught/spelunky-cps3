@@ -98,10 +98,49 @@ def main():
         print('  all route steps: %d, mean %.0f (%.1f%% of a step in MAME, %.1f%% x%.2f), median %d, p99 %d, max %d'
               % (len(s), sum(s) / len(s), 100 * sum(s) / len(s) / STEP_BUDGET, 100 * JT * sum(s) / len(s) / STEP_BUDGET,
                  JT, p(0.5), p(0.99), s[-1]))
-    # 4. profile
+    # 4. ATTR: time by category / event x object over the route steps
+    attr = a[1] + '.attr'
+    if os.path.exists(attr):
+        attribution(attr, sh2, js)
+    # 5. profile
     prof = a[1] + '.prof'
     if nm and os.path.exists(prof):
         profile(prof, nm, head, sys.argv[-1] == '--wrap')
+
+
+def attribution(path, sh2, js):
+    hdr = open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'build', 'g', 'objects.h')).read()
+    names = re.findall(r'^    OBJ_(\w+),', hdr, re.M)
+    steps = [(k, v) for k, v in sh2.items() if k[1] in (3, 4) and js[k[0]][2] >= 0]
+    tot = sum(v['clk'] for _, v in steps)
+    coll = sum(v['extra'] for _, v in steps)
+    nonc = sorted(v['clk'] - v['extra'] for _, v in steps)
+    first = [v['clk'] - v['extra'] for k, v in steps if k[2] == 1]
+    n = len(nonc)
+    print('\nATTR: route steps %d, %.0f clocks a step (wrappers included); collision searches %.0f (%.1f%%)'
+          % (n, tot / n, coll / n, 100.0 * coll / tot))
+    print('  outside collision searches, a step: mean %.0f, median %d, p90 %d, max %d; first steps of levels: %s'
+          % (sum(nonc) / n, nonc[n // 2], nonc[int(n * 0.9)], nonc[-1], ', '.join(str(x) for x in first)))
+    cats, ev = {}, []
+    for line in open(path):
+        f = line.split()
+        if f[0] == 'C': cats[int(f[1])] = (float(f[2]), int(f[3]))
+        if f[0] == 'E': ev.append((float(f[3]), int(f[1]), int(f[2]), int(f[4])))
+    TYPES = ['Create', 'Destroy', 'Step', 'End Step', 'Alarm', 'Animation End', 'Collision', 'Draw']
+    nc = tot - coll
+    print('  per step (exclusive):  %-28s %10s %8s %9s' % ('', 'clocks', '% non-c', 'calls'))
+    for c, nm in ((0, 'dispatch (play_step loops)'), (2, 'collision-event pass (pcol)'), (3, 'instance searches (exists/with)')):
+        print('    %-36s %10.0f %7.1f%% %9.1f' % (nm, cats[c][0] / n, 100.0 * cats[c][0] / nc, cats[c][1] / n))
+    print('    %-36s %10.0f %8s %9.1f' % ('collision searches', cats[1][0] / n, '', cats[1][1] / n))
+    bytype = collections.Counter()
+    for clk, t, o, calls in ev: bytype[t] += clk
+    for t, clk in bytype.most_common():
+        cn = sum(c for _, tt, _, c in ev if tt == t)
+        print('    %-36s %10.0f %7.1f%% %9.1f' % ('events: ' + TYPES[t], clk / n, 100.0 * clk / nc, cn / n))
+    print('  events by object (exclusive, collision searches excluded), largest:')
+    for clk, t, o, calls in sorted(ev, reverse=True)[:20]:
+        print('    %-16s %-14s %10.0f a step %6.1f%%  %8.1f calls a step  %7.0f a call'
+              % (names[o] if o < len(names) else o, TYPES[t], clk / n, 100.0 * clk / nc, calls / n, clk / calls))
 
 
 COLL = re.compile(r'^(collision_\w+|instance_place_p|instance_nearest_p|pin_bbox|point_hit|line_hit|rect_hit|seg_box|'

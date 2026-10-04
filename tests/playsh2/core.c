@@ -91,16 +91,19 @@ static void rec_cb(int phase)
     view_read();                                  /* playhost's record() reads the view */
 }
 
-/* a route: masks[0 .. n - 1], then `tail` steps without input */
-void run_route(int job, uint32_t seed, const uint16_t *masks, int n, int tail)
+/* a route: its masks, then `tail` steps without input; level, money and enemies as playhost's --level, --money,
+   --enemies */
+void run_route(int job, uint32_t seed, const struct route *rt, int tail)
 {
-    int k, r, idx = 0;
+    int k, r, idx = 0, n = rt->n;
+    const uint16_t *masks = rt->masks;
+    play_noenemy = !rt->enemies;
     gen_new_game();
-    G.currLevel = 1;
+    G.currLevel = (int16_t)rt->level;
     PG.plife = 4;
     PG.bombs = 4;
     PG.rope = 4;
-    PG.money = 0;
+    PG.money = rt->money;
     rng_seed(&g_rng, seed);
     plat_begin();
     play_level_start(110325);
