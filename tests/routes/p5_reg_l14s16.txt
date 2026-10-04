@@ -1,0 +1,10 @@
+# seed 16
+# level 14
+# P5 regression case (7f854d9 changed its host output): the mixed route (run right, jump, left, bomb, duck-bomb) at level 14, seed 16 (the full-regression case "L14 s16"), enemies on
+20 R
+10 J
+20 L
+5 B
+60 -
+10 DB
+60 -
