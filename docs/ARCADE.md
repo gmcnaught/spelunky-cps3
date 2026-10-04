@@ -35,7 +35,7 @@ so `checkRun` is the held button), the F-keys (`oDebug`, restart F6: X8), the ke
 **Start and pay.** HD needs seven play buttons (jump, whip, item, run, bomb, rope, pay); the CPS3 panel has six. Start
 is pay during play (`INPUT_START_PAY`, `struct shell`'s `start_mode`; the game can switch it to `INPUT_START_MENU`),
 so HD's pause on Start (`oScreen/Step_1.gml:32`) is not reachable on the cabinet (VARIANTS X9: the arcade has no
-quit; pause is open). The places that take `checkAttackPressed() or checkStartPressed()` (transition skip, restart
+quit). Decided (user, 2026-10-03): Start stays pay; if pause is wanted it goes on a button combo. The places that take `checkAttackPressed() or checkStartPressed()` (transition skip, restart
 after death, title) still work with B2.
 
 **Panels.** The game is single-player. The Start button that begins a game picks the panel (P1 or P2) that controls
@@ -115,7 +115,5 @@ Not checked: jtcps3 (the HUD uses only the sprite path already exact in tests/vi
 
 ## 6. Open
 
-- Start as pay removes HD's pause on the cabinet; alternatives: pay on Up + B3, or drop the run button (HD's
-  `downToRun` gives running by down + direction).
 - The compass's bottom arrows (view y 224-239) lose their lower 8 lines to the crop (screen ends at view line 231).
 - Attract mode content (HD's intro / title / scores rooms without controls, or a demo) is the play runtime's.
