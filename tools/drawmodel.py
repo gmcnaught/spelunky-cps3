@@ -104,8 +104,14 @@ def load(trace, names_path, rec, recs=None):
 
 
 def room_size(rname):
-    return {'rLevel': (672, 544), 'rLevel2': (672, 608), 'rLevel3': (672, 672), 'rOlmec': (672, 880)}.get(rname,
-                                                                                                         (320, 240))
+    return {'rLevel': (672, 544), 'rLevel2': (672, 608), 'rLevel3': (672, 672), 'rOlmec': (672, 880),
+            'rIntro': (960, 240), 'rTitle': (768, 240), 'rHighscores': (320, 256)}.get(rname, (320, 240))
+
+
+# the view's target per room (the room's view 0, refs/hd/src/rooms/<room>.yy; the levels: oScreen's oPlayer1) and
+# its vertical border; None: the room's code places the view (rTitle: oTitle Step)
+VIEW_TARGET = {'rIntro': ('oPDummy3', 160), 'rTitle': (None, 0)}
+ROOM_BG = {'rIntro': 'backgroundNight'}
 
 
 def view_after(hd, insts, names):
@@ -115,8 +121,11 @@ def view_after(hd, insts, names):
     vx, vy = int(hd['xview']), int(hd['yview'])
     W, H = room_size(rname)
     vb = 96 if rname in LEVEL_ROOMS else 0
+    target = 'oPlayer1'
+    if rname in VIEW_TARGET:
+        target, vb = VIEW_TARGET[rname]
     for i in insts:
-        if names['O'][i['obj']] == 'oPlayer1':
+        if names['O'][i['obj']] == target:
             import math
             x, y, hb = math.floor(i['x']), math.floor(i['y']), 160
             if x - hb < vx:
@@ -140,6 +149,9 @@ def pix(v):
     return math.ceil(v - 0.5)
 
 
+SAVE = None              # hostcmp --save dir
+LOCSIGN = {o: 's' + o[1:] for o in ('oStartSign', 'oScoresSign', 'oQuitSign', 'oTutorialSign', 'oLevel5Sign',
+                                    'oLevel9Sign', 'oLevel13Sign', 'oResetSign')}
 DARK_FORCE = None        # cmp --dark a8: drawn as a dark level at that alpha byte (tests/game DARK=a8)
 
 
@@ -153,7 +165,20 @@ def dark_a8(hd):
     return None
 
 
-def drawables(names, tiles, insts, g, kind, blink=-1, a8=None):
+def front_lpos():
+    """room instance id -> its place in its layer, for the front rooms (build/gen/fronttables_rt.txt)"""
+    if not hasattr(front_lpos, 'm'):
+        front_lpos.m = {}
+        p = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'build', 'gen', 'fronttables_rt.txt')
+        if os.path.exists(p):
+            for line in open(p):
+                f = line.split()
+                if f[0] == 'INST' and len(f) > 10:
+                    front_lpos.m[int(f[1])] = int(f[10])
+    return front_lpos.m
+
+
+def drawables(names, tiles, insts, g, kind, blink=-1, a8=None, front=None):
     out = []
     for k, (bg, left, top, w, h, x, y, depth) in enumerate(tiles):
         sid = g.sprid.get(bg)
@@ -168,7 +193,13 @@ def drawables(names, tiles, insts, g, kind, blink=-1, a8=None):
     base = len(tiles)
     seq = list(insts)                             # equal depths: newest first (the trace's order). Checked on the
     # runner's frames: build/trace/g_p4_exit559_s559 record 300 and g_p5_shop_s96 record 242 (overlapping oBlood /
-    # oBloodTrail at depth 1) equal only so; the other 16 frames of the gate are equal either way
+    # oBloodTrail at depth 1) equal only so; the other 16 frames of the gate are equal either way.
+    # In the front rooms (many room instances): a layer draws the instances made at run time first (newest first),
+    # then its room instances in their order in the layer (build/trace/g_p8_boot_s7 record 820: rTitle's two logos
+    # at depth 1 equal only so); tools/fronttables.py gives the layer positions
+    lp = front_lpos()
+    if any(i['id'] in lp for i in insts):
+        seq = sorted(insts, key=lambda i: -(0x40000000 + i['id']) if i['id'] not in lp else -(0x3fffffff - lp[i['id']]))
     held = None                                   # oPlayer1 End Step (Step_2.gml), after the record: holdItem.depth
     for i in insts:                               # = 0 (51 climbing with jetpack / cape: not traced)
         if names['O'][i['obj']] == 'oPlayer1' and i['vars'].get('holdItem') is not None:
@@ -178,6 +209,13 @@ def drawables(names, tiles, insts, g, kind, blink=-1, a8=None):
         on = names['O'][i['obj']]
         if on == 'oLevel' and a8 is not None:   # the dark level's rectangle (oLevel Draw: draw_set_alpha)
             out.append((int(d.get('depth', -2)), base + k, 'dark', a8, 0, 0, False))
+        if on == 'oIntro' and front is not None:  # objects/oIntro/Draw_0.gml: the fade, then the story's lines
+            dep = int(d.get('depth', 0))
+            fl = front['fadeLevel']
+            out.append((dep, base + k, 'dark', max(0, min(255, int(fl * 255))), 0, 0, False))
+            for n, (txt, y) in enumerate(zip(front['str'], (100, 116, 132))):
+                if front['drawStatus'] > n:
+                    out.append((dep, base + k, 'text', txt, -((len(txt) * 8 - 320) // 2), y, False))
         if not d.get('visible', 1):
             continue
         kd = kind.get(on, 'SELF')
@@ -193,6 +231,8 @@ def drawables(names, tiles, insts, g, kind, blink=-1, a8=None):
                 ops.append((g.frame(g.sprid[name], img), X, Y, flip))
 
         sn = names['S'].get(i['spr']) if i['spr'] >= 0 else None
+        if sn is None and on in LOCSIGN:          # scripts/loadLocalizedSprites: sprite_add'ed English signs, the
+            sn = LOCSIGN[on]                      # same pixels as the objects' own sprites (checked: 8 of 8)
         img = int(i['img'])
         facing = int(v.get('facing', 0))
         if kd == 'NONE' or sn is None and kd not in ('PLAYER',):
@@ -265,7 +305,7 @@ SRC = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'refs', 'hd
 TAG = os.path.join(SRC, 'datafiles', 'locale', 'locales', 'en', 'images', 'small_collect.png')
 
 
-def compose555(dr, g, vx, vy, W=320, H=240):
+def compose555(dr, g, vx, vy, W=320, H=240, bgname='bgCave'):
     """tools/viewlevel.py's compose as bgr555 words (None: nothing), plus the price tag ('tag': HD's
     small_collect.png, 20 frames side by side, origin 4, 4) and a dark level's rectangle ('dark': alpha byte a8 over
     everything drawn before it, faded from each pixel's 8-bit colour: gfx.json rgb, tools/darkfade.py)"""
@@ -300,15 +340,23 @@ def compose555(dr, g, vx, vy, W=320, H=240):
                     else:
                         blit_tile(tile + i * ph + j, x + dx + 16 * i, y + dy + 16 * j)
     tag = None
-    bg = g.sprid['bgCave']
-    for ry in range((vy // 64) * 64, vy + H, 64):
-        for rx in range((vx // 64) * 64, vx + W, 64):
+    bg = g.sprid[bgname]
+    bw, bh = g.spr[bg][0], g.spr[bg][1]
+    for ry in range((vy // bh) * bh, vy + H, bh):
+        for rx in range((vx // bw) * bw, vx + W, bw):
             blit_frame(g.spr[bg][9], rx - vx, ry - vy, False)
     for d in dr:
         if d[2] == 'cell':
             blit_tile(d[3], 16 * d[4] - vx, 16 * d[5] - vy)
         elif d[2] == 'frame':
             blit_frame(d[3], d[4] - vx, d[5] - vy, d[6])
+        elif d[2] == 'text':                      # a Draw-event text (src/front): (text, x, y) in room coordinates
+            import hudcheck
+            if not hasattr(compose555, 'art'):
+                compose555.art = hudcheck.Art(SRC)
+            tv = hudcheck.View(W, H)
+            tv.px = img
+            hudcheck.draw_text(tv, compose555.art, d[3], 'small', d[4] - vx, d[5] - vy)
         elif d[2] == 'dark':
             a8 = d[3]
             for Y in range(H):
@@ -363,15 +411,42 @@ def trans_text(hd, insts, names):
     return out
 
 
+def scores_text(hd, insts, names):
+    """oHighscores' Draw GUI (objects/oHighscores/Draw_64.gml, English) for a cabinet's blank EEPROM (every score 0):
+    [(text, x or None for centred, y, yellow)]"""
+    if names['R'].get(hd['room']) != 'rHighscores':
+        return []
+    pl = next((i for i in insts if names['O'][i['obj']] == 'oPlayer1'), None)
+    if pl is None:
+        return []
+    out = []
+    if pl['y'] < 156:
+        out.append(('SECRET CHALLENGES', 112 + (192 - 17 * 8) // 2, 32, True))
+    else:
+        # tr(): datafiles/locale/locales/en/text.json ("MONEY:  " -> "MONEY:   ", ...)
+        out += [('TOP DEFILERS', 112 + (192 - 12 * 8) // 2, 32, True), ('MONEY:   0', 120, 48, False),
+                ('KILLS:   0', 120, 64, False), ('SAVES:   0', 120, 80, False),
+                ('STATISTICS', 112 + (192 - 10 * 8) // 2, 112, True), ('PLAYS:   0', 120, 128, False),
+                ('DEATHS:  0', 120, 144, False), ('WINS:    0', 120, 160, False)]
+    blk = [i for i in insts if names['O'][i['obj']] == 'oPushBlock']
+    if blk and min(blk, key=lambda i: (i['x'] - 160) ** 2 + (i['y'] - 240) ** 2)['x'] > 160:
+        out.append(('THIS WILL CLEAR EVERYTHING!', None, 216, True))
+    return out
+
+
 def view555(g, names, tiles, hd, insts, kind, art=None):
     """the model's 320 x 240 view as bgr555 words (None: nothing), with the HUD when art (hudcheck.Art) is given"""
     import hudcheck
     vx, vy = view_after(hd, insts, names)
     v = hudcheck.View()
-    v.px = compose555(drawables(names, tiles, insts, g, kind, hd.get('blinkToggle', -1), dark_a8(hd)), g, vx, vy)
+    rname = names['R'].get(hd['room'], '')
+    h = hd.get('hud') or {}
+    front = h if h.get('fadeLevel', -1e9) > -1e8 else None
+    v.px = compose555(drawables(names, tiles, insts, g, kind, hd.get('blinkToggle', -1), dark_a8(hd), front), g, vx, vy,
+                      bgname=ROOM_BG.get(rname, 'bgCave'))
     if art:
         hudcheck.model(hud_case(hd, insts, names, vx, vy), art, 320, v)
-        for text, x, y, yel in trans_text(hd, insts, names):
+        for text, x, y, yel in trans_text(hd, insts, names) + scores_text(hd, insts, names):
             if x is None:
                 x = -((len(text) * 8 - 320) // 2)
             hudcheck.draw_text(v, art, text, 'small', x, y, hudcheck.YELLOW if yel else hudcheck.WHITE)
@@ -465,6 +540,17 @@ def hostcmp(trace, names_path, gen, d, hud):
                     n += 1
                     bb = [min(bb[0], x), min(bb[1], y), max(bb[2], x), max(bb[3], y)]
         total += 1
+        if n and SAVE and bad < 3:                # --save dir: model / host views of the first differing frames
+            from PIL import Image
+            for nm, get in (('model', lambda x, y: v.px[y][x] or 0),
+                            ('host', lambda x, y: (fades[fa8] if px[y * 320 + x] >> 8 == 1 else hfades[fa8] if px[y * 320 + x] >> 8 == 5 else pals.get(px[y * 320 + x] >> 8, [0] * 256))[px[y * 320 + x] & 255] if px[y * 320 + x] else 0)):
+                im = Image.new('RGB', (320, 240))
+                ip = im.load()
+                for yy in range(240):
+                    for xx in range(320):
+                        w = get(xx, yy)
+                        ip[xx, yy] = ((w & 31) << 3, (w >> 5 & 31) << 3, (w >> 10 & 31) << 3)
+                im.save(os.path.join(SAVE, f'{nm}_{r}.png'))
         if n:
             bad += 1
             print(f'rec {r} camera {cam[0]},{cam[1]}: host list vs model {n} of {320 * 224} px differ, view x {bb[0]}-{bb[2]} '
@@ -486,6 +572,25 @@ def model(trace, names_path, rec, gen, hud=False):
     return g, v, scr, cam
 
 
+def sstext(im, col, row, text):
+    """the SDK's 8 x 8 SS-layer font (cps3-testgame/sdk/src/font.h, white) at text cell (col, row) of the screen"""
+    import re
+    if not hasattr(sstext, 'font'):
+        f = open(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'cps3-testgame', 'sdk', 'src',
+                              'font.h')).read()
+        sstext.font = [[int(v, 16) for v in re.findall(r'0x([0-9a-f]{2})', ln)] for ln in f.splitlines()
+                       if ln.strip().startswith('{0x')]
+    p = im.load()
+    for k, ch in enumerate(text):
+        g = sstext.font[ord(ch) - 32] if 32 <= ord(ch) < 96 else [0] * 8
+        for y in range(8):
+            for x in range(8):
+                if g[y] >> (7 - x) & 1:
+                    X, Y = 8 * (col + k) + x, 8 * row + y
+                    if X < 384 and Y < 224:
+                        p[X, Y] = (255, 255, 255)
+
+
 def diff5(a, b, mask=None):
     a, b = a.convert('RGB').load(), b.convert('RGB').load()
     n = 0
@@ -504,7 +609,9 @@ def diff5(a, b, mask=None):
 def main():
     a = sys.argv[1:]
     hud = '--hud' in a
-    global DARK_FORCE
+    global DARK_FORCE, SAVE
+    if '--save' in a:
+        SAVE = a[a.index('--save') + 1]
     if '--dark' in a:
         DARK_FORCE = int(a[a.index('--dark') + 1])
     if a and a[0] == 'hostcmp':
@@ -517,6 +624,10 @@ def main():
         scr.save(a[5])
         print(f'{a[5]}: camera {cam}')
         return
+    for k, w in enumerate(a):                     # --sstext col,row,TEXT: the shell's SS text layer (src/shell: the
+        if w == '--sstext':                       # attract's credit line), over everything, not zoomed
+            col, row, text = a[k + 1].split(',', 2)
+            sstext(scr, int(col), int(row), text)
     n = diff5(scr, Image.open(a[5]), opt('--mask'))
     msg = f'rec {a[3]} camera {cam[0]},{cam[1]}: MAME vs model {n} of {384 * 224} px differ'
     fail = n != 0

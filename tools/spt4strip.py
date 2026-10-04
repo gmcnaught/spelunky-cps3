@@ -37,6 +37,9 @@ def strip(data):
                 o += 72                              # the transition block
             if fl & 8:
                 o += 24                              # the level block
+            if fl & 16:
+                o += 16                              # the front block
+                for _ in range(3): o = data.index(b'\0', o) + 1
         if fl & 2:
             (n,) = struct.unpack_from('<I', data, o); o += 4
             for _ in range(n): o += 1; o = data.index(b'\0', o) + 1 + 8

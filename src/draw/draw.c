@@ -20,6 +20,7 @@
 #include "hudart.h"
 #include "fade.h"
 #include "pint.h"
+#include "front.h"
 
 #define UNIT(m)      CPS3V_MAP_UNIT(m)
 #define BLANK        (GFX_FIRST_TILE - 1u)        /* the flash's blank tile (empty tilemap cells) */
@@ -32,6 +33,7 @@
 #define TSPR_MAX     1024
 #define DRAW_ENTRIES_MAX 1000                     /* the frame's sublist area: 1,024 entries less group alignment */
 #ifdef DRAW_HOST                                  /* tests/game/host.c: the display list on the host */
+#include <stdio.h>
 static uint16_t zoom_x_host;
 #define ZOOM_X       zoom_x_host
 #else
@@ -56,6 +58,7 @@ uint8_t draw_hud_on = 1;
 #define I_OBJ(i)     (PW.in[i].obj)
 #define I_ID(i)      (PW.in[i].id)
 #define I_SPR(i)     (PW.in[i].spr)
+#define I_MASK(i)    (PW.in[i].mask)
 #define I_IMG(i)     (PW.in[i].img)
 #define I_X(i)       (PW.in[i].x)
 #define I_Y(i)       (PW.in[i].y)
@@ -159,8 +162,12 @@ int16_t draw_dark_force = -1;
 static uint16_t mbase[NMAPS][MAPC_MAX] DRAW_MAPS_SECTION;
 static uint16_t mwant[NMAPS][MAPC_MAX] DRAW_MAPS_SECTION;
 static uint16_t mshown[NMAPS][MAPC_MAX] DRAW_MAPS_SECTION;
-static uint32_t mframe[NMAPS][MAPC_MAX / 32 + 1];            /* want cell taken by an instance this frame */
-static int16_t mown[NMAPS][MAPC_MAX] DRAW_MAPS_SECTION;     /* that instance */
+/* terrain on the tilemaps, kept up to date from src/game's dirty marks (pw_draw_dirty): per map cell the instances
+   whose frame is that cell's tile (chead, then cnext); the one drawn first (largest draw key: the newest) is the
+   cell's tile in mwant unless a tile_add tile has the cell; the others (texc) are drawn as sprites over it */
+static int16_t chead[NMAPS][MAPC_MAX] DRAW_MAPS_SECTION;
+static int16_t cnext[PIN_MAX], ccell[PIN_MAX];   /* ccell: m * MAPC_MAX + cell, -1 when not on a cell */
+static uint16_t ctile[PIN_MAX];
 /* oItem's cimg (its Draw event's price-tag frame counter; the play code keeps oDamsel's only): per instance slot,
    with the id it belongs to; counted at each draw_frame for every visible item with a price, as the Draw event is
    run for every visible instance */
@@ -329,8 +336,6 @@ static uint16_t terrain_cell(int pi, int *c)
     return pc->tile;
 }
 
-/* terrain_cell and map_of_depth of an instance, remembered per slot with the fields they read (x, y, sprite,
-   image, depth, scales, angle as bit patterns): a solid that did not change costs a few compares */
 /* the transform terrain cells and the cached draws need: image_xscale, image_yscale 1 (xscale -1 allowed for draws,
    *flip), image_angle 0, by bit patterns */
 static inline __attribute__((always_inline)) int plain_transform(int pi, int *flip)
@@ -343,37 +348,12 @@ static inline __attribute__((always_inline)) int plain_transform(int pi, int *fl
     return 1;
 }
 
-/* per slot, the result of a computation from fields that rarely change, with those fields as bit patterns
-   (x, y, image_index, depth, sprite; the transform checked as plain_transform each time):
-   kind 1: terrain_cell + map_of_depth (cx, cy, c, tile, m);  kind 2: a draw_self frame (cx, cy = room position,
+/* per slot, a draw_self frame computed from fields that rarely change, with those fields as bit patterns (x, y,
+   image_index, depth, sprite; the transform checked as plain_transform each time): kind 2 (cx, cy = room position,
    c = framedefs index, m = flip, tile = 1 when the sprite has art) */
 struct tcache { uint32_t xb, yb, ib, db; int16_t spr, cx, cy, c; uint16_t tile; int8_t m; };
 static struct tcache tcache[PIN_MAX] DRAW_CACHE_SECTION;
 static uint8_t tcache_ok[PIN_MAX];                /* the kind cached (0 none) */
-static uint16_t terrain_cached(int pi, int *c, int *m)
-{
-    struct tcache *e = &tcache[pi];
-    uint32_t xb = fbits(I_X(pi)), yb = fbits(I_Y(pi)), ib = fbits(I_IMG(pi)), db = fbits(I_DEPTH(pi));
-    int flip;
-    if (!plain_transform(pi, &flip) || flip) return 0;
-    if (tcache_ok[pi] != 1 || e->xb != xb || e->yb != yb || e->spr != I_SPR(pi) || e->ib != ib || e->db != db) {
-        int cc = 0;
-        e->xb = xb; e->yb = yb; e->ib = ib; e->db = db;
-        e->spr = I_SPR(pi);
-        e->tile = terrain_cell(pi, &cc);
-        e->m = (int8_t)(e->tile ? map_of_depth(I_DEPTH(pi)) : -1);
-        e->c = (int16_t)cc;
-        e->cx = (int16_t)t_cx;
-        e->cy = (int16_t)t_cy;
-        tcache_ok[pi] = 1;
-    }
-    if (!e->tile || e->m < 0) return 0;
-    *c = e->c;
-    *m = e->m;
-    t_cx = e->cx;
-    t_cy = e->cy;
-    return e->tile;
-}
 
 /* the tile_add layers into mbase / tspr (gtiles less the deleted ones). A layer draws its tiles in element order,
    newest first (layer_get_all_elements; checked against the runner's frame: build/trace/g_p4_exit559_s559 record
@@ -411,6 +391,8 @@ static void build_tiles(void)
     tiles_dirty = 0;
 }
 
+static void claims_reset(void);
+
 /* a room started: the background, the three tilemap depths (most cells: tiles and terrain), the tile layers */
 static void build_room(void)
 {
@@ -421,7 +403,8 @@ static void build_room(void)
     if (cols > 64) cols = 64;
     if (cols * rows > MAPC_MAX) rows = MAPC_MAX / cols;
     ncells = cols * rows;
-    bg_spr = (PW.room == R_rOlmec || G.levelType == 3) ? SPR_bgTemple : SPR_bgCave;
+    bg_spr = PW.room == 1 /* rIntro */ ? SPR_backgroundNight :
+             (PW.room == R_rOlmec || (G.levelType == 3 && !front_on)) ? SPR_bgTemple : SPR_bgCave;
     if (bg_spr != bg_shown) bg_dirty = 1;
     /* cells per depth */
     for (k = 0; k < gntiles; k++) {
@@ -474,6 +457,7 @@ static void build_room(void)
     built_rooms = play_rooms_entered;
     built_room = PW.room;
     for (k = 0; k < PIN_MAX; k++) tcache_ok[k] = 0;
+    claims_reset();
     draw_st.room_builds++;
 }
 
@@ -495,7 +479,7 @@ void draw_tile_delete(int depth, int x, int y)
 /* spr_local[GSPR_*]: the sprite has art and draws within 16 px of its origin (any frame, mirrored or not);
    dk_local[kind]: the Draw event draws only the sprite about its origin (and the price tag at y - 16 .. y - 7) */
 static uint8_t spr_local[GSPR_COUNT];
-static const uint8_t dk_local[DK_TODO + 1] = { [DK_SELF] = 1, [DK_DAMSEL] = 1, [DK_ITEM] = 1, [DK_PLAIN] = 1,
+static const uint8_t dk_local[DK_FRONT + 1] = { [DK_SELF] = 1, [DK_DAMSEL] = 1, [DK_ITEM] = 1, [DK_PLAIN] = 1,
                                                [DK_TODO] = 1 };
 
 static int32_t img_of(int pi) { return ftoi(I_IMG(pi)); }
@@ -657,6 +641,7 @@ static void inst_out(int i)
     case DK_PDUMMY: pdummy_out(pi, x, y); break;
     case DK_JAWS: jaws_out(pi, x, y); break;
     case DK_PLAYER: player_out(pi, x, y); break;
+    case DK_FRONT: front_draw(pi, ox, oy); break;   /* src/front: the attract rooms' Draw-event text */
     }
 }
 
@@ -685,9 +670,8 @@ static uint8_t hud_held_of(int t)
     }
 }
 
-/* oTransition's drawLoot, moneyCount, isLoot, isKills (ptrans.c keeps them in a static struct): src/game is to
-   provide this accessor; until then the transition's text is not drawn (returns 0) */
-__attribute__((weak)) int ptrans_gui(int32_t *v) { (void)v; return 0; }
+/* oTransition's drawLoot, moneyCount, isLoot, isKills: src/game/ptrans.c (0: no oTransition) */
+int ptrans_gui(int32_t *v);
 
 static char *cat(char *d, const char *s) { while (*s) *d++ = *s++; *d = 0; return d; }
 static char *catn(char *d, int32_t n) { char b[12]; return cat(d, hud_itoa(n, b)); }
@@ -781,6 +765,160 @@ static inline int ent_before(const struct ent *a, const struct ent *b)
     return a->dkey > b->dkey || (a->dkey == b->dkey && a->id > b->id);
 }
 
+/* ---- terrain claims and the instances the frame looks at --------------------------------------------------- */
+#define CAND_W (PIN_MAX / 32 + 1)
+static uint32_t texc[CAND_W];                     /* on a cell, not its tile: a sprite */
+static uint32_t tother[CAND_W];                   /* drawable and not on a cell */
+static int16_t cand_list[PIN_MAX];
+/* the instances drawn as sprites that draw within 16 px of their origin (spr_local, dk_local): in 64-px blocks by
+   origin (clamped), so that a frame looks only at the blocks around the screen */
+#define BLK_W 16
+#define BLK_H 16
+static int16_t bhead[BLK_H][BLK_W], bnext[PIN_MAX], bpos[PIN_MAX];   /* bpos: by * BLK_W + bx, -1 none */
+static uint32_t cand[CAND_W];
+static uint8_t hb8[256];                           /* the highest set bit of a byte */
+/* in a block: a local sprite, not an oItem (its Draw event counts the price tag's frames on every frame) */
+static int blk_local(int i)
+{
+    uint8_t dk = draw_kind[I_OBJ(i)] & ~DK_SOLID;
+    return I_SPR(i) >= 0 && spr_local[I_SPR(i)] && dk_local[dk] && dk != DK_ITEM;
+}
+static int blk_of(float f, int n) { int32_t v = ftoi(f) >> 6; return v < 0 ? 0 : v >= n ? n - 1 : (int)v; }
+
+static int32_t dkey_of(int i) { return front_on ? front_drawkey(i) : I_ID(i); }
+
+/* cell c of map m: its tile (the tile_add tile, else the claimant drawn first) and which claimants are sprites.
+   The frame's old rule, kept: drawn first = largest draw key, then the higher slot */
+static void cell_fix(int m, int c)
+{
+    int k, best = -1;
+    int32_t bk = 0;
+    if (!mbase[m][c])
+        for (k = chead[m][c]; k >= 0; k = cnext[k]) {
+            int32_t d = dkey_of(k);
+            if (best < 0 || d > bk || (d == bk && k > best)) {
+                best = k;
+                bk = d;
+            }
+        }
+    mwant[m][c] = mbase[m][c] ? mbase[m][c] : best >= 0 ? ctile[best] : 0;
+    for (k = chead[m][c]; k >= 0; k = cnext[k])
+        if (k == best) texc[k >> 5] &= ~(1u << (k & 31));
+        else texc[k >> 5] |= 1u << (k & 31);
+}
+
+/* the claim of instance i from its current fields: a terrain cell of a tilemap (terrain_cell: a solid's single
+   16 x 16 tile, unscaled, on a cell; its depth one of the maps') when visible, else a drawable (tother) */
+static void claim_update(int i)
+{
+    uint32_t bit = 1u << (i & 31);
+    int c = 0, m;
+    uint16_t t;
+    if (ccell[i] >= 0) {
+        int om = ccell[i] / MAPC_MAX, oc = ccell[i] % MAPC_MAX;
+        int16_t *pp = &chead[om][oc];
+        while (*pp != i) pp = &cnext[*pp];
+        *pp = cnext[i];
+        ccell[i] = -1;
+        texc[i >> 5] &= ~bit;
+        cell_fix(om, oc);
+    }
+    tother[i >> 5] &= ~bit;
+    if (bpos[i] >= 0) {
+        int16_t *pp = &bhead[bpos[i] / BLK_W][bpos[i] % BLK_W];
+        while (*pp != i) pp = &bnext[*pp];
+        *pp = bnext[i];
+        bpos[i] = -1;
+    }
+    if (i >= PW.n || !I_ALIVE(i) || !I_VISIBLE(i) || draw_kind[I_OBJ(i)] == DK_NONE) return;
+    if (nmaps && (t = terrain_cell(i, &c)) != 0 && (m = map_of_depth(I_DEPTH(i))) >= 0) {
+        cnext[i] = chead[m][c];
+        chead[m][c] = (int16_t)i;
+        ccell[i] = (int16_t)(m * MAPC_MAX + c);
+        ctile[i] = t;
+        cell_fix(m, c);
+    } else if (blk_local(i)) {
+        int bx = blk_of(I_X(i), BLK_W), by = blk_of(I_Y(i), BLK_H);
+        bnext[i] = bhead[by][bx];
+        bhead[by][bx] = (int16_t)i;
+        bpos[i] = (int16_t)(by * BLK_W + bx);
+    } else
+        tother[i >> 5] |= bit;
+}
+
+/* a room was built: every instance claimed again */
+static void claims_reset(void)
+{
+    int m, k;
+    const int16_t *dl;
+    for (m = 0; m < NMAPS; m++)
+        for (k = 0; k < MAPC_MAX; k++) {
+            chead[m][k] = NOONE;
+            mwant[m][k] = m < nmaps && k < ncells ? mbase[m][k] : 0;
+        }
+    for (k = 0; k < PIN_MAX; k++) ccell[k] = bpos[k] = -1;
+    for (k = 0; k < BLK_W * BLK_H; k++) bhead[k / BLK_W][k % BLK_W] = NOONE;
+    for (k = 0; k < CAND_W; k++) texc[k] = tother[k] = 0;
+    for (k = 0; k < PW.n; k++) claim_update(k);
+    pw_draw_dirty(&dl);
+    pw_draw_dirty_clear();
+}
+
+/* the tile_add tiles changed (mbase): every cell again */
+static void claims_refix(void)
+{
+    int m, k;
+    for (m = 0; m < nmaps; m++)
+        for (k = 0; k < ncells; k++) cell_fix(m, k);
+}
+
+/* the instances the frame looks at, newest (highest slot) first: the drawables not on a cell or in a block, the
+   cell claimants drawn as sprites (a cell's tile is drawn by its tilemap), and the blocks' instances around the
+   screen (a local sprite shows only for its origin within (vx - 16, vx + 336) x (vy - 8, vy + 248)) */
+static int scan_candidates(void)
+{
+    const int16_t *dl;
+    int nd = pw_draw_dirty(&dl), k, w, n = 0, bx, by;
+    int bx0 = (vx - 16) >> 6, bx1 = (vx + VIEW_W + 16) >> 6, by0 = (vy + DRAW_CROP - 16) >> 6;
+    int by1 = (vy + DRAW_CROP + SCREEN_H + 16) >> 6;
+    for (k = 0; k < nd; k++) claim_update(dl[k]);
+    pw_draw_dirty_clear();
+#ifdef DRAW_HOST
+    for (k = 0; k < PIN_MAX; k++) {               /* host check: the claims are those of the current fields */
+        int c = 0, m = -1, want = -1, other = 0, blk = -1;
+        uint16_t t = 0;
+        if (k < PW.n && I_ALIVE(k) && I_VISIBLE(k) && draw_kind[I_OBJ(k)] != DK_NONE) {
+            if (nmaps && (t = terrain_cell(k, &c)) != 0 && (m = map_of_depth(I_DEPTH(k))) >= 0) want = m * MAPC_MAX + c;
+            else if (blk_local(k))
+                blk = blk_of(I_Y(k), BLK_H) * BLK_W + blk_of(I_X(k), BLK_W);
+            else other = 1;
+        }
+        if (ccell[k] != want || (want >= 0 && ctile[k] != t) || ((tother[k >> 5] >> (k & 31) & 1) != other) ||
+            bpos[k] != blk)
+            fprintf(stderr, "draw: claim of %d (obj %d) stale: cell %d want %d, block %d want %d\n", k,
+                    k < PW.n ? I_OBJ(k) : -1, ccell[k], want, bpos[k], blk);
+    }
+#endif
+    for (k = 0; k < CAND_W; k++) cand[k] = texc[k] | tother[k];
+    if (bx0 < 0) bx0 = 0;
+    if (by0 < 0) by0 = 0;
+    if (bx1 > BLK_W - 1) bx1 = BLK_W - 1;
+    if (by1 > BLK_H - 1) by1 = BLK_H - 1;
+    for (by = by0; by <= by1; by++)
+        for (bx = bx0; bx <= bx1; bx++)
+            for (k = bhead[by][bx]; k >= 0; k = bnext[k]) cand[k >> 5] |= 1u << (k & 31);
+    for (w = CAND_W - 1; w >= 0; w--) {
+        uint32_t v = cand[w];
+        while (v) {
+            int b = v >> 16 ? (v >> 24 ? 24 + hb8[v >> 24] : 16 + hb8[v >> 16 & 255])
+                            : (v >> 8 ? 8 + hb8[v >> 8 & 255] : hb8[v & 255]);
+            v &= ~(1u << b);
+            cand_list[n++] = (int16_t)(32 * w + b);
+        }
+    }
+    return n;
+}
+
 void draw_new_game(void) { built_rooms = -1; }
 
 void draw_boot(void)
@@ -792,6 +930,7 @@ void draw_boot(void)
         spr_local[k] = sd && sd->w <= 16 && sd->h <= 16 && sd->xorig >= 0 && sd->xorig <= 16 && sd->yorig >= 0 &&
                        sd->yorig <= 16;
     }
+    for (k = 1; k < 256; k++) hb8[k] = (uint8_t)(hb8[k >> 1] + (k > 1));
     for (m = 0; m <= NMAPS; m++) cps3v_tilemap(m, 0, 0, UNIT(m), 0);
     bg_shown = -1;
     built_rooms = -1;
@@ -799,14 +938,17 @@ void draw_boot(void)
 
 void draw_frame(void)
 {
-    int k, m, n = 0, band = 0;
+    int k, m, n = 0, band = 0, q, ncand;
     uint32_t xlo, xhi, ylo, yhi;
     PROF0();
     draw_st.frames++;
     draw_st.todo = draw_st.unsup = draw_st.noart = 0;
     ent_n = 0;
     if (built_rooms != play_rooms_entered || built_room != PW.room) build_room();
-    if (tiles_dirty) build_tiles();
+    if (tiles_dirty) {
+        build_tiles();
+        claims_refix();
+    }
     vx = PW.xview;
     vy = PW.yview;
     ox = vx;
@@ -820,14 +962,6 @@ void draw_frame(void)
     wr1 = (vy + DRAW_CROP + SCREEN_H - 1) >> 4;
     if (wc1 >= cols) wc1 = cols - 1;
     if (wr1 >= rows) wr1 = rows - 1;
-    for (m = 0; m < nmaps; m++) {
-        int r, c;
-        for (r = wr0; r <= wr1; r++) {
-            uint16_t *w = &mwant[m][r * cols], *b = &mbase[m][r * cols];
-            for (c = wc0; c <= wc1; c++) w[c] = b[c];
-        }
-        for (k = 0; k < MAPC_MAX / 32 + 1; k++) mframe[m][k] = 0;
-    }
     PROF(0);
     /* coarse view test on the float bits: x in [vx - 320, vx + 640), y in [vy - 240, vy + 480); terrain only in the
        screen's cells */
@@ -836,8 +970,6 @@ void draw_frame(void)
     ylo = fkey((float)(vy - 240));
     yhi = fkey((float)(vy + 480));
     {
-    uint32_t txlo = fkey((float)(16 * wc0)), txhi = fkey((float)(16 * wc1 + 16));
-    uint32_t tylo = fkey((float)(16 * wr0)), tyhi = fkey((float)(16 * wr1 + 16));
     /* sprites of at most 16 x 16 with the origin inside them draw within x - 16 .. x + 16: in view only for x in
        (vx - 16, vx + 336), y in (vy + 8 - 16, vy + 248) */
     uint32_t sxlo = fkey((float)(vx - 16)), sxhi = fkey((float)(vx + VIEW_W + 16));
@@ -852,8 +984,9 @@ void draw_frame(void)
             n++;
         }
     }
-    for (k = PW.n - 1; k >= 0; k--) {             /* newest first: the sort below then moves little */
-        int pi = k;
+    ncand = scan_candidates();
+    for (q = 0; q < ncand; q++) {                 /* newest first: the sort below then moves little */
+        int pi = k = cand_list[q];
         uint32_t kx, ky;
         int c;
         uint16_t t;
@@ -874,32 +1007,9 @@ void draw_frame(void)
             if (I_SPR(pi) < 0 || (spr_local[I_SPR(pi)] && dk_local[dk & ~DK_SOLID])) continue;   /* draws nothing */
             if (kx < xlo || kx >= xhi || ky < ylo || ky >= yhi) continue;
         }
-        if ((dk & DK_SOLID) && nmaps && kx >= txlo && kx < txhi && ky >= tylo && ky < tyhi &&
-            (t = terrain_cached(pi, &c, &m)) != 0 && t_cx >= wc0 && t_cx <= wc1 && t_cy >= wr0 && t_cy <= wr1) {
-            uint32_t bit = 1u << (c & 31), *fw = &mframe[m][c >> 5];
-            if (!mbase[m][c] && !(*fw & bit)) {
-                mwant[m][c] = t;
-                mown[m][c] = (int16_t)k;
-                *fw |= bit;
-                continue;
-            }
-            if (!mbase[m][c] && I_ID(mown[m][c]) < I_ID(pi)) {   /* the newer one is drawn first: it takes the */
-                int o = mown[m][c];                               /* cell, the older one is drawn over it */
-                mwant[m][c] = t;
-                mown[m][c] = (int16_t)k;
-                if (n < ENT_MAX) {
-                    ents[n].dkey = fkey(I_DEPTH(o));
-                    ents[n].id = I_ID(o);
-                    ents[n].i = (int16_t)o;
-                    n++;
-                }
-                continue;
-            }
-            /* taken by a tile, or by a newer instance: a sprite */
-        }
         if (n < ENT_MAX) {
             ents[n].dkey = fkey(I_DEPTH(pi));
-            ents[n].id = I_ID(pi);
+            ents[n].id = front_on ? front_drawkey(pi) : I_ID(pi);
             ents[n].i = (int16_t)k;
             n++;
         }
@@ -937,6 +1047,23 @@ void draw_frame(void)
         } else
             for (k = 0; k < n; k++) ord[k] = (uint16_t)k;
     }
+    if (front_on) {                               /* front rooms: room instances by layer position, not slot */
+        static uint16_t tmp[ENT_MAX];             /* order: a bottom-up merge sort */
+        int wdt, lo;
+        uint16_t *a = ord, *b = tmp, *t;
+        for (wdt = 1; wdt < n; wdt *= 2) {
+            for (lo = 0; lo < n; lo += 2 * wdt) {
+                int mid = lo + wdt < n ? lo + wdt : n, hi = lo + 2 * wdt < n ? lo + 2 * wdt : n;
+                int i = lo, j = mid, o = lo;
+                while (i < mid && j < hi) b[o++] = ent_before(&ents[a[j]], &ents[a[i]]) ? a[j++] : a[i++];
+                while (i < mid) b[o++] = a[i++];
+                while (j < hi) b[o++] = a[j++];
+            }
+            t = a; a = b; b = t;
+        }
+        if (a != ord)
+            for (k = 0; k < n; k++) ord[k] = a[k];
+    } else
     for (k = 1; k < n; k++) {                     /* insertion pass (nearly sorted: about n compares) */
         uint16_t o = ord[k];
         int j = k - 1;
@@ -957,7 +1084,15 @@ void draw_frame(void)
         if (lvl < 0 || lvl >= PW.n || !I_ALIVE(lvl) || I_OBJ(lvl) != OBJ_oLevel)
             for (lvl = 0; lvl < PW.n && !(I_ALIVE(lvl) && I_OBJ(lvl) == OBJ_oLevel); lvl++) ;
         frame_a8 = 0;
-        if (lvl < PW.n && (draw_dark_force >= 0 || S_DARKLEVEL)) {
+        if (front_on) {                           /* the attract rooms' black rectangle (oIntro's fade) */
+            int fa = 0, fi = front_fade(&fa);
+            if (fi >= 0) {
+                dark = 1;
+                frame_a8 = fa;
+                lkey = fkey(I_DEPTH(fi));
+                lid = front_drawkey(fi);
+            }
+        } else if (lvl < PW.n && (draw_dark_force >= 0 || S_DARKLEVEL)) {
             double d = S_DARKNESS;
             dark = 1;
             frame_a8 = draw_dark_force >= 0 ? draw_dark_force : d <= 0 ? 0 : d >= 1 ? 255 : (int)(d * 255.0);
@@ -983,10 +1118,11 @@ void draw_frame(void)
     while (band < nmaps) band_out(1 + band++);
     }
     PROF(3);
-    if (draw_hud_on) {
+    if (draw_hud_on && !front_on) {
         hud_out();
         transition_out();
     }
+    if (front_on) front_draw_gui();
     PROF(4);
     draw_st.entries = ent_n;
     frame_pending = 1;
@@ -1003,7 +1139,7 @@ void draw_vblank(void)
         uint16_t bg[4][4];
         const struct sprdef *sd = &sprdefs[bg_spr];
         const struct framedef *fd = &framedefs[sd->frame];
-        int p;
+        int p, mw = (sd->w >> 4) - 1, mh = (sd->h >> 4) - 1;   /* the period in cells: 16, 32 or 64 px */
         for (r = 0; r < 4; r++)
             for (c = 0; c < 4; c++) bg[c][r] = BLANK;
         for (p = fd->piece; p < fd->piece + fd->npieces; p++) {
@@ -1011,11 +1147,11 @@ void draw_vblank(void)
             int i, j;
             for (i = 0; i < pc->w; i++)
                 for (j = 0; j < pc->h; j++)
-                    bg[(((pc->dx + sd->xorig) >> 4) + i) & 3][(((pc->dy + sd->yorig) >> 4) + j) & 3] =
+                    bg[(((pc->dx + sd->xorig) >> 4) + i) & mw][(((pc->dy + sd->yorig) >> 4) + j) & mh] =
                         (uint16_t)(pc->tile + i * pc->h + j);
         }
         for (r = 0; r < 64; r++)
-            for (c = 0; c < 64; c++) cps3v_cell(UNIT(0), c, r, bg[c & 3][r & 3], DRAW_PAL, 0);
+            for (c = 0; c < 64; c++) cps3v_cell(UNIT(0), c, r, bg[c & mw][r & mh], DRAW_PAL, 0);
         bg_shown = bg_spr;
         bg_dirty = 0;
         cells += 4096;

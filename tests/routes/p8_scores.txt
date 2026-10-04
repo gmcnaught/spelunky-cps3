@@ -1,0 +1,3 @@
+# P8: the high-scores room entered from the title flow (TRACE_ROOM=rHighscores), no input
+# seed 7
+200 -

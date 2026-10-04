@@ -16,6 +16,7 @@
 #include "game.h"
 #include "play.h"
 #include "route.h"
+#include "front.h"
 
 struct marker {
     uint32_t magic, state;
@@ -56,6 +57,13 @@ void main_boot(void)
 #ifdef GAME_DARK
     draw_dark_force = GAME_DARK;                  /* the fade path on any level (scripts/game_check.sh DARK=a8) */
 #endif
+#ifdef GAME_ATTRACT
+    {
+        extern uint32_t front_seed;
+        front_seed = ROUTE_SEED;                  /* oIntro's randomize() (the traces' random_set_seed) */
+        if (GAME_ATTRACT > 1) front_start_at(GAME_ATTRACT);   /* tests: the cycle from that room */
+    }
+#endif
     game_cfg.route = route_keys;
     game_cfg.nroute = ROUTE_N;
     game_cfg.tail = ROUTE_TAIL;
@@ -69,9 +77,13 @@ static uint32_t frame;
 void main_inputs(uint32_t *pad0, uint32_t *pad1, uint32_t *lines)
 {
     frame++;
+#ifdef GAME_ATTRACT                                   /* the attract mode: no coin, no start */
+    *pad0 = *pad1 = *lines = 0;
+#else
     *pad0 = frame >= 40 && frame < 44 ? CPS3_START : 0;
     *pad1 = 0;
     *lines = frame >= 20 && frame < 24 ? CR_COIN1 : 0;
+#endif
 }
 
 static uint32_t t0, pend_draw;

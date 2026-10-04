@@ -15,8 +15,10 @@ G=tests/game/build/g
 SDK=../cps3-testgame/sdk/include
 mkdir -p build/game/host
 cc -std=gnu99 -O2 -ffp-contract=off -w -DDRAW_HOST -I$SDK -I$G -Ibuild/gen -Isrc/draw -Isrc/main -Isrc/hud -Isrc/shell \
-  -Isrc/snd -o build/game/host/host tests/game/host.c src/main/game.c src/draw/draw.c src/hud/hud.c build/gen/sprites.c \
+  -Isrc/snd -Isrc/front -o build/game/host/host tests/game/host.c src/main/game.c src/draw/draw.c src/hud/hud.c build/gen/sprites.c \
+  src/front/front.c build/gen/fronttables.c \
   build/gen/drawtab.c $G/*.c -lm
 if [ "${HUD:-0}" = 1 ]; then H=hud; F=--hud; else H=nohud; F=; fi
-build/game/host/host tests/routes/$R.txt $S $L $M $E 30 build/gen - all $H ${DARK:+$DARK} 2>/dev/null |
+build/game/host/host tests/routes/$R.txt $S $L $M $E 30 build/gen - all $H ${DARK:+$DARK} 2>build/game/host/stderr.txt |
   python3 tools/drawmodel.py hostcmp build/trace/$N.bin build/trace/$N.names build/gen - $F ${DARK:+--dark $DARK}
+grep -h "^draw: " build/game/host/stderr.txt | sort | uniq -c | head -5

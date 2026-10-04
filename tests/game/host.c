@@ -20,10 +20,13 @@
 #include "draw.h"
 #include "game.h"
 #include "fade.h"
+#include "front.h"
 
 struct shell SH;
 volatile uint32_t vbl_count;
 void main_draw_begin(void) {}
+void snd_play(int s) { (void)s; }                /* the front end's sounds (src/snd is not linked here) */
+int snd_audio_play(int s, int prio, int loop) { (void)s; (void)prio; (void)loop; return 0; }
 void main_draw_end(void) {}
 
 /* ---- the recorder ---- */
@@ -138,6 +141,47 @@ int main(int argc, char **argv)
     char line[256];
     int n = 0, all = 0;
     FILE *f;
+    if (argc > 1 && !strcmp(argv[1], "attract")) {   /* host attract <seed> <steps> <gen dir> -: the front end */
+        extern uint32_t front_seed;
+        int k, steps = atoi(argv[3]);
+        int32_t last = -1;
+        front_seed = (uint32_t)strtoul(argv[2], 0, 10);
+        SH.g.tunnel1 = 10001;                     /* a blank EEPROM (src/shell hs_boot: HD's ini defaults) */
+        SH.g.tunnel2 = 20001;
+        gfx = slurp(argv[4], "gfx.bin");
+        hud = slurp(argv[4], "hud.bin");
+        draw_boot();
+        if (argc > 6) {                           /* host attract <seed> <steps> <gen> - <room>: start there */
+            front_rec_cb = 0;
+            front_start_at(atoi(argv[6]));
+        }
+        for (k = 0; k < steps; k++) {
+            game_attract_step();
+            cps3v_begin();
+            game_draw();
+            cps3v_end();
+            draw_vblank();
+            if (game_rec1 >= 0 && game_rec1 != last) {
+                int32_t r = game_rec1, a = host_a8;
+                last = r;
+                compose();
+                fwrite(&r, 4, 1, stdout);
+                fwrite(&a, 4, 1, stdout);
+                fwrite(view, 2, 320 * 240, stdout);
+                {
+                    int q;
+                    fprintf(stderr, "D %d %u %u room %d", game_rec1, draw_st.entries, draw_st.sprites, PW.room);
+                    if (getenv("HOST_OBJ"))
+                        for (q = 0; q < PW.n; q++)
+                            if (PW.in[q].alive && PW.in[q].obj == atoi(getenv("HOST_OBJ")))
+                                fprintf(stderr, " [%d %g %g spr %d img %g xs %g]", PW.in[q].id, PW.in[q].x, PW.in[q].y,
+                                        PW.in[q].spr, PW.in[q].img, PW.in[q].xscale);
+                    fprintf(stderr, "\n");
+                }
+            }
+        }
+        return 0;
+    }
     if (argc < 9) {
         fprintf(stderr, "usage: host <route.txt> <seed> <level> <money> <enemies> <tail> <gen dir> <out dir> [recs|all]\n");
         return 2;

@@ -39,6 +39,12 @@ Method from ../maldita.castilla-cps3/tools/tracer.py. Changes, all GML compiled 
     id * 4096 + k to global.trc_evl (k: the names file's "C k <object> <event>" lines); the record writes the
     list since the last record. Used to determine the runner's event and instance order.
   - TRACE_SHOT=r1,r2,...: oGamepad Post-Draw (new) saves application_surface after record r (shot_gml).
+  - TRACE_BOOT=1 (P8, the front end): no room flow (the intro and title run as on a cabinet, the route's keys from
+    the first step in rIntro); the trace starts at the first Begin Step in rIntro. oIntro's randomize() is still
+    random_set_seed(SEED); the trcSnd log starts there too.
+  - TRACE_ROOM=<room> (P8): the title flow goes to that room instead of rLevel and the trace starts there
+    (rHighscores: the attract cycle's scores room, entered directly as src/front does), global.gameStart false
+    (as the title's SCORES door leaves it: oGame's Create then generates no level).
   - TRACE_GUI=r1,r2,...: oGamepad Draw GUI End (new) saves gui_<r>.png at record r: application_surface with the
     GUI drawn over it as the runner draws it (oGame's scrDrawHUD and showMessages run by oGame, whose instance
     variables they set as in its own Draw GUI; global.messageTimer put back after; oTransition's Draw GUI by event_perform, whose only side effect, global.noDarkLevel, it sets to the
@@ -113,6 +119,7 @@ Trace format (little-endian; the chunks concatenated in order, scripts/hd_trace.
       drawLoot, moneyCount, isLoot, isKills, oDamselKiss.kissed, oTunnelMan.talk (-1e9 where absent)
     level block (flags bit 3, with TRACE_HUD): f64 global.darkLevel, oLevel.darkness,
       oPlayer1.distToNearestLightSource
+    front block (flags bit 4, with TRACE_HUD): f64 oIntro.fadeLevel, oIntro.drawStatus, string str1, str2, str3
     sound block (flags bit 1): u32 count; per call u8 kind (SND_KINDS index), string asset (audio_get_name; "" none), f64 arg
       (playMusic: loop; setSoundVol: the volume argument; audio_play_sound: priority * 2 + loop; else 0)
   Magic "SPT3" (0x33545053, P4). "SPT2": no view, time, image_speed, vars or event log. "SPT1" (before
@@ -137,6 +144,8 @@ MAGIC2 = 0x32545053  #  drawing fields and tiles; both still decoded)
 MAGIC1 = 0x31545053
 MAGIC4 = 0x34545053  # "SPT4": SPT3 + the TRACE_HUD / TRACE_SND extension block
 TRACE_HUD = os.environ.get('TRACE_HUD') == '1'
+BOOT = os.environ.get('TRACE_BOOT') == '1'   # P8: trace from the first Begin Step in rIntro, no room flow
+ROOM = os.environ.get('TRACE_ROOM', 'rLevel')  # P8: the title flow's room (rHighscores: the attract's scores room)
 TRACE_SND = os.environ.get('TRACE_SND') == '1'
 # sound log kinds (SPT4 sound block)
 SND_KINDS = ['', 'playSound', 'playMusic', 'startMusic', 'stopAllMusic', 'setSoundVol', 'audio_stop_sound',
@@ -192,7 +201,7 @@ def ext_gml():
     if not (TRACE_HUD or TRACE_SND):
         return ''
     out = f'''
-    buffer_write(b, buffer_u32, {(13 if TRACE_HUD else 0) | (2 if TRACE_SND else 0)});'''
+    buffer_write(b, buffer_u32, {(29 if TRACE_HUD else 0) | (2 if TRACE_SND else 0)});'''
     if TRACE_HUD:
         out += f'''
     buffer_write(b, buffer_f64, {gvar('collect')});
@@ -234,7 +243,12 @@ def ext_gml():
     buffer_write(b, buffer_f64, instance_exists(oTunnelMan) ? real(instance_nearest(176, 176, oTunnelMan).talk) : {BAD});
     buffer_write(b, buffer_f64, {gvar('darkLevel')});
     buffer_write(b, buffer_f64, instance_exists(oLevel) ? {num('oLevel.darkness')} : {BAD});
-    buffer_write(b, buffer_f64, instance_exists(oPlayer1) ? {num('oPlayer1.distToNearestLightSource')} : {BAD});'''
+    buffer_write(b, buffer_f64, instance_exists(oPlayer1) ? {num('oPlayer1.distToNearestLightSource')} : {BAD});
+    buffer_write(b, buffer_f64, instance_exists(oIntro) ? {num('oIntro.fadeLevel')} : {BAD});
+    buffer_write(b, buffer_f64, instance_exists(oIntro) ? {num('oIntro.drawStatus')} : {BAD});
+    buffer_write(b, buffer_string, instance_exists(oIntro) ? string(oIntro.str1) : "");
+    buffer_write(b, buffer_string, instance_exists(oIntro) ? string(oIntro.str2) : "");
+    buffer_write(b, buffer_string, instance_exists(oIntro) ? string(oIntro.str3) : "");'''
     if TRACE_SND:
         out += '''
     buffer_write(b, buffer_u32, global.trc_sndn);
@@ -423,7 +437,7 @@ if ({f} && !(m & {bit})) {f}Released = true;
 if (!{f} && (m & {bit})) {f}Pressed = true;
 {f} = ((m & {bit}) != 0);
 ''' for bit, f in KEYS.values())
-    step = f'''
+    flow = '' if BOOT else f'''
 if (global.trc_phase == 0 && room == rIntro)
 {{
     global.trc_phase = 1;
@@ -434,10 +448,11 @@ else if (global.trc_phase == 1 && room == rTitle)
 {{
     global.trc_phase = 2;
     global.usedShortcut = false;
-    global.gameStart = true;
+    global.gameStart = {'true' if ROOM == 'rLevel' else 'false'};
     {reseed}
-    room_goto(rLevel);
-}}
+    room_goto({ROOM});
+}}'''
+    step = f'''{flow}
 var m = 0;
 if (global.trc_on)
 {{
@@ -452,7 +467,7 @@ global.trc_m = m;
 '''
     begin = f'''
 if (global.trc_done) exit;
-if (!global.trc_on && global.trc_phase == 2 && room == rLevel)
+if (!global.trc_on && {'room == rIntro' if BOOT else 'global.trc_phase == 2 && room == ' + ROOM})
 {{
     global.trc_on = 1;
     global.trc_buf = buffer_create(1048576, buffer_grow, 1);
@@ -562,6 +577,8 @@ if ({cond})
     gpu_set_blendenable(true);
     with (oGame) {{ scrDrawHUD(); showMessages(); }}
     with (oTransition) event_perform(ev_draw, ev_gui);
+    with (oTitle) event_perform(ev_draw, ev_gui);
+    with (oHighscores) event_perform(ev_draw, ev_gui);
     surface_reset_target();
     surface_save(s, "gui_" + string(r) + ".png");
     surface_free(s);
@@ -601,7 +618,7 @@ g.Import();
 
 SND_WRAP = '''
 function trcSnd(k, s, a) {
-    if (variable_global_exists("trc_phase") && global.trc_phase == 2 && !global.trc_done) {
+    if (variable_global_exists("trc_on") && (global.trc_phase == 2 || global.trc_on) && !global.trc_done) {
         var nm = "";
         if (!is_undefined(s)) { try { nm = audio_get_name(s); } catch (e) { nm = "?"; } }
         global.trc_snd[global.trc_sndn] = [k, nm, a];
@@ -886,6 +903,10 @@ def records(data):
                 if fl & 8:
                     hud.update(zip(['darkLevel', 'darkness', 'distLight'], struct.unpack_from('<3d', data, o)))
                     o += 24
+                if fl & 16:
+                    hud['fadeLevel'], hud['drawStatus'] = struct.unpack_from('<2d', data, o)
+                    o += 16
+                    hud['str'] = [sz() for _ in range(3)]
                 hd['hud'] = hud
             if fl & 2:
                 (n,) = struct.unpack_from('<I', data, o)

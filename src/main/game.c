@@ -3,6 +3,7 @@
 #include "shell.h"
 #include "pint.h"
 #include "draw.h"
+#include "front.h"
 #include "game.h"
 
 struct game_cfg game_cfg = { 0, 0, 30, 0, 1, 0, 1 };
@@ -18,8 +19,17 @@ static void rec_cb(int phase)
     game_rec++;
 }
 
+/* attract: HD's intro, title and high-scores rooms (src/front) */
+void game_attract_step(void)
+{
+    front_rec_cb = rec_cb;
+    if (!front_on) game_rec = 0, game_rec1 = -1;
+    front_step();
+}
+
 void game_begin(void)
 {
+    front_stop();
     gen_new_game();
     G.currLevel = game_cfg.level;
     PG.plife = 4;
@@ -62,6 +72,12 @@ int game_step(const struct shell_input *in)
 
 void game_draw(void)
 {
+    if (front_on) {                               /* attract */
+        main_draw_begin();
+        draw_frame();
+        main_draw_end();
+        return;
+    }
     if (game_steps == 0) return;
     main_draw_begin();
     draw_frame();
