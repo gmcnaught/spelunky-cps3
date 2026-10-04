@@ -31,7 +31,8 @@ struct gglobals {
     uint8_t giantSpider, genGiantSpider, LockedChest, Key, cleanSolids, murderer, checkWater;
     uint8_t ashGrave, TombLord, genTombLord, genGoldEntrance, madeGoldEntrance, olmecDead, doorOpen;
     uint8_t pickupItem;         /* enum pickup */
-    int16_t thiefLevel, kaliPunish;
+    int16_t thiefLevel, kaliPunish, kaliGift;
+    double favor;               /* global.favor (Kali: halves from sacrifices) */
     int16_t probDarkLevel, probSnakePit, probCemetary, probSacPit, probAlien, probYetiLair;
     int16_t lockedChestChance, marketChance, goldChance;
     int16_t startRoomX, startRoomY, endRoomX, endRoomY, exitX, exitY;

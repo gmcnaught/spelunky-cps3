@@ -65,6 +65,8 @@ void gen_new_game(void)
     G.thiefLevel = 0;
     G.murderer = 0;
     G.kaliPunish = 0;
+    G.favor = 0;                                                              /* :66 */
+    G.kaliGift = 0;
     G.madeUdjatEye = 0;
     G.genUdjatEye = 0;
     G.madeMarketEntrance = 0;
