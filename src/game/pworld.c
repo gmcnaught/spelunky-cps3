@@ -684,7 +684,7 @@ static void bbox_dbl(const struct pin *p, const struct gsprcol *c, double *l, do
     PWST(bbox, 1);
     if (!fzero(p->angle)) {                       /* rotated: the box of the rotated sprite (pcol.c ebbox) */
         float o[4];
-        pcol_box((int)(p - PW.in), o);
+        pcol_box(PIN_IDX(p), o);
         *l = o[0]; *t = o[1]; *r = o[2]; *b = o[3];
         return;
     }

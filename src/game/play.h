@@ -202,7 +202,10 @@ static inline int pin_is(int i, int obj) { return i >= 0 && PW.in[i].alive && ob
    runner's floats) tell the collision tree (pcol.c: CollisionMarkDirty) */
 void pw_changed(int i);                           /* pworld.c: the box cache, the solid grid, pcol_changed */
 #define PIN_WR(T, f) (*(T *)&(f))
-static inline void pin_changed_(struct pin *p) { pw_changed((int)(p - PW.in)); }
+/* p's slot index: its byte offset in PW.in / 64 as an unsigned shift (a signed pointer difference by 64 is a libgcc
+   __ashiftrt_r4_6 call on the SH-2, which has no multi-bit arithmetic shift) */
+#define PIN_IDX(p) ((int)((uint32_t)((const char *)(p) - (const char *)PW.in) / (uint32_t)sizeof(struct pin)))
+static inline void pin_changed_(struct pin *p) { pw_changed(PIN_IDX(p)); }
 static inline void pin_setx(struct pin *p, pos v) { pos o = p->x; PIN_WR(pos, p->x) = v; if (o != v) pin_changed_(p); }
 static inline void pin_sety(struct pin *p, pos v) { pos o = p->y; PIN_WR(pos, p->y) = v; if (o != v) pin_changed_(p); }
 static inline void pin_setxy(struct pin *p, pos x, pos y)
@@ -230,19 +233,19 @@ static inline void pin_setimg(struct pin *p, img_t v)
 {
     img_t o = p->img;
     PIN_WR(img_t, p->img) = v;
-    if (o != v) pw_draw_mark((int)(p - PW.in));
+    if (o != v) pw_draw_mark(PIN_IDX(p));
 }
 static inline void pin_setvisible(struct pin *p, int v)
 {
     int o = p->visible;
     PIN_WR(uint8_t, p->visible) = (uint8_t)v;
-    if (o != v) pw_draw_mark((int)(p - PW.in));
+    if (o != v) pw_draw_mark(PIN_IDX(p));
 }
 static inline void pin_setdepth(struct pin *p, float v)
 {
     float o = p->depth;
     PIN_WR(float, p->depth) = v;
-    if (o != v) pw_draw_mark((int)(p - PW.in));
+    if (o != v) pw_draw_mark(PIN_IDX(p));
 }
 static inline void pin_setxscale(struct pin *p, double v)
 {
