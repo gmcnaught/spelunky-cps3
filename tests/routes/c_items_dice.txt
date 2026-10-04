@@ -1,0 +1,29 @@
+# P7 reference (docs/CONTENT.md package E, items): the dice house (seed 191, level 2): a bet, two dice thrown, the roll
+# seed 191
+# level 2
+# money 5000
+30 -
+10 R
+10 RJ
+10 R
+2 -
+8 RJ
+14 R
+40 -
+30 L
+4 L
+10 -
+1 P
+20 -
+6 D
+1 DA
+10 -
+1 UA
+50 -
+8 L
+10 -
+6 D
+1 DA
+10 -
+1 UA
+80 -
