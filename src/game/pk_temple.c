@@ -25,7 +25,8 @@ enum { E_IDLE = 0, E_WALK = 1, E_STUNNED = 98, E_DEAD = 99, E_LEFT = 0, E_RIGHT 
 static double X(int i) { return PTOD(PX(i).x); }
 static double Y(int i) { return PTOD(PX(i).y); }
 static int CP(double x, double y, int obj) { return collision_point_p(x, y, obj, 0, NOONE) != NOONE; }
-static int CPn(double x, double y, int obj, int self) { return collision_point_p(x, y, obj, 1, self) != NOONE; }
+/* collision_point(x, y, obj, -1, -1): the runner reads a bool argument as value > 0.5, so prec and notme are false */
+static int CPm(double x, double y, int obj) { return collision_point_p(x, y, obj, 0, NOONE) != NOONE; }
 static int sprw(int i) { int s = PX(i).spr; return s >= 0 ? (int)(psprite[s].w * PX(i).xscale) : 0; }
 static int sprh(int i) { int s = PX(i).spr; return s >= 0 ? (int)(psprite[s].h * PX(i).yscale) : 0; }
 static int pl(void) { return PL.idx; }
@@ -124,7 +125,7 @@ static void hawkman_step(int i)
     if (PE(p)->status != E_DEAD && PE(p)->status != E_STUNNED && PE(p)->hp < 1) PE(p)->status = E_DEAD;
     if (isCollisionBottom(i, 1) && PE(p)->status != E_STUNNED) PE(p)->yVel = 0;   /* :43 */
     if (PE(p)->status == E_IDLE) {                                         /* :45 */
-        if (isCollisionBottom(i, 1) && (CPn(X(i) - 1, Y(i), OBJ_oSolid, i) || CPn(X(i) + 16, Y(i), OBJ_oSolid, i))) {
+        if (isCollisionBottom(i, 1) && (CPm(X(i) - 1, Y(i), OBJ_oSolid) || CPm(X(i) + 16, Y(i), OBJ_oSolid))) {
             PE(p)->yVel = N(-6);
             PE(p)->xVel = PE(p)->facing == E_LEFT ? N(-1) : N(1);
             PE(p)->counter -= 10;
@@ -141,14 +142,14 @@ static void hawkman_step(int i)
             PE(p)->facing = PE(p)->facing == E_LEFT ? E_RIGHT : E_LEFT;
         if (PE(p)->facing == E_LEFT) {
             PE(p)->xVel = N(-1.5);
-            if (!CPn(X(i) - 1, Y(i) + 16, OBJ_oSolid, i)) {
+            if (!CPm(X(i) - 1, Y(i) + 16, OBJ_oSolid)) {
                 PE(p)->status = E_IDLE;
                 PE(p)->counter = (int16_t)RAND(20, 50);
                 PE(p)->xVel = 0;
             }
         } else {
             PE(p)->xVel = N(1.5);
-            if (!CPn(X(i) + 16, Y(i) + 16, OBJ_oSolid, i)) {
+            if (!CPm(X(i) + 16, Y(i) + 16, OBJ_oSolid)) {
                 PE(p)->status = E_IDLE;
                 PE(p)->counter = (int16_t)RAND(20, 50);
                 PE(p)->xVel = 0;
@@ -523,14 +524,14 @@ static void magmaman_step(int i)
             PE(p)->facing = PE(p)->facing == E_LEFT ? E_RIGHT : E_LEFT;
         if (PE(p)->facing == E_LEFT) {
             PE(p)->xVel = N(-1.5);
-            if (!CPn(X(i) - 1, Y(i) + 16, OBJ_oSolid, i)) {
+            if (!CPm(X(i) - 1, Y(i) + 16, OBJ_oSolid)) {
                 PE(p)->status = E_IDLE;
                 PE(p)->counter = (int16_t)RAND(20, 50);
                 PE(p)->xVel = 0;
             }
         } else {
             PE(p)->xVel = N(1.5);
-            if (!CPn(X(i) + 16, Y(i) + 16, OBJ_oSolid, i)) {
+            if (!CPm(X(i) + 16, Y(i) + 16, OBJ_oSolid)) {
                 PE(p)->status = E_IDLE;
                 PE(p)->counter = (int16_t)RAND(20, 50);
                 PE(p)->xVel = 0;
@@ -1163,6 +1164,375 @@ static void lava_rope(int i)
     PUNTR(7004);                                                       /* oRopeBurn */
 }
 
+/* ==== D2: oOlmec ================================================================================================== */
+/* oOlmec's carryPlayer, slammed, toggle */
+#define carryPlayer armed
+#define slammed trigger
+#define toggle sticky
+enum { OL_START2 = -2, OL_START1 = -1, OL_IDLE = 0, OL_BOUNCE = 1, OL_RECOVER = 2, OL_DROWNING = 4, OL_PREPARE = 5,
+       OL_SLAM = 6, OL_CREATE = 7 };
+
+/* objects/oOlmec/Create_0.gml (fromgen: facing drawn by the generator) */
+static void olmec_create(int i, int fromgen)
+{
+    struct pin *p = &PX(i);
+    p->type = T_OTHER;                                                     /* "Olmec" */
+    p->shopWall = 0;
+    PE(p)->xVel = PE(p)->yVel = PE(p)->xAcc = PE(p)->yAcc = 0;
+    setCollisionBounds(i, 2, 0, 62, 64);
+    PE(p)->myGrav = N(0.2);
+    p->invincible = 1;
+    PE(p)->carryPlayer = 0;
+    p->ispd = (img_t)0.4;
+    if (!fromgen) PE(p)->facing = (int16_t)RAND(0, 1);
+    PE(p)->status = OL_START1;
+    PE(p)->counter = 0;
+    PE(p)->slammed = 0;
+    play_hborder = 0;                                                      /* :37 */
+    PW.vborder = 0;
+    view_set_y(400);
+    play_view_obj = OBJ_oOlmec;
+}
+
+static void olmec_debris(int i, int xr, int x0, int yr, int y0, int xvk)
+{
+    int yy = RAND(0, yr), xx = RAND(0, xr), d;
+    d = pin_create(PX(i).x + PI(x0 + xx), PX(i).y + PI(y0 + yy), OBJ_oOlmecDebris);
+    if (xvk == 1) PE(&PX(d))->xVel = NI(RAND(1, 4));
+    else if (xvk == -1) PE(&PX(d))->xVel = NI(-RAND(1, 4));
+    else {
+        int a = RAND(1, 4), b = RAND(1, 4);
+        PE(&PX(d))->xVel = NI(a - b);
+    }
+    PE(&PX(d))->yVel = NI(-RAND(1, 3));
+}
+
+/* objects/oOlmec/Step_0.gml */
+static void olmec_step(int i)
+{
+    struct pin *p = &PX(i);
+    int c = pl();
+    if (PE(p)->carryPlayer ||
+        collision_rect_p(X(i) - 1, Y(i), X(i) + 66, Y(i) + 62, OBJ_oPlayer1, 0, NOONE) != NOONE) {
+        struct pin *q = &PX(c);
+        pin_setx(q, PADDV(q->x, PE(p)->xVel));
+        pin_sety(q, PADDV(q->y, PE(p)->yVel));
+    }
+    moveTo(i, PE(p)->xVel, PE(p)->yVel, 0, 0);
+    if (NLT(PE(p)->yVel, N(6))) PE(p)->yVel += PE(p)->myGrav;
+    if (isCollisionTop(i, 1)) {                                            /* :14 */
+        pin_create(p->x, p->y - PI(16), OBJ_oOlmecSlam);
+        p = &PX(i);
+        pin_sety(p, p->y + PI(1));
+        if (NLT(PE(p)->yVel, N(0))) PE(p)->yVel = NMUL(-PE(p)->yVel, N(0.8));
+    }
+    if (isCollisionLeft(i, 1)) {
+        pin_setx(p, p->x + PI(1));
+        PE(p)->xVel = 0;
+    }
+    if (isCollisionRight(i, 1)) {
+        pin_setx(p, p->x - PI(1));
+        PE(p)->xVel = 0;
+    }
+    if (CP(X(i), Y(i) + 64, OBJ_oLava)) PE(p)->status = OL_DROWNING;
+    if (CP(X(i), Y(i) - 2, OBJ_oLava)) {                                  /* :36 */
+        G.olmecDead = 1;
+        PG.kills += 1;
+        pin_destroy(i);
+    }
+    p = &PX(i);
+    if (collision_rect_p(X(i), Y(i) - 2, X(i) + 64, Y(i) + 64, OBJ_oPlayer1, 0, NOONE) != NOONE) PE(p)->carryPlayer = 1;
+    else PE(p)->carryPlayer = 0;
+    switch (PE(p)->status) {
+    case OL_START1:                                                        /* :50 */
+        view_read();
+        if (PW.xview < 176) view_set_x(PW.xview + 2);
+        else {
+            PE(p)->alarm[1] = 100;
+            PE(p)->status = OL_START2;
+        }
+        if (isCollisionBottom(i, 1)) PE(p)->yVel = 0;
+        break;
+    case OL_START2:
+        if (isCollisionBottom(i, 1)) PE(p)->yVel = 0;
+        break;
+    case OL_IDLE:                                                          /* :67 */
+        if (PE(p)->counter > 0) PE(p)->counter -= 1;
+        if (PE(p)->counter == 0) PE(p)->status = OL_BOUNCE;
+        if (isCollisionBottom(i, 1)) PE(p)->yVel = 0;
+        PE(p)->toggle = 1;
+        break;
+    case OL_CREATE: {                                                      /* :79 */
+        int k;
+        for (k = 0; k < 6; k++) {
+            int ya = RAND(0, 32), yb = RAND(0, 32);
+            int xa_ = RAND(0, 32), xb = RAND(0, 32);
+            pin_create(PX(i).x + PI(32 + xa_ - xb), PX(i).y + PI(14 + ya - yb), OBJ_oPsychicCreate2);
+        }
+        for (k = 0; k < 3; k++) pin_create(PX(i).x + PI(32), PX(i).y + PI(16), OBJ_oYellowBall);
+        snd_play(SND_xpsychic);                                                /* :88 */
+        p = &PX(i);
+        PE(p)->status = OL_IDLE;
+        break;
+    }
+    case OL_RECOVER:                                                       /* :91 */
+        if (isCollisionBottom(i, 1)) {
+            snd_play(SND_xthump);                                              /* :95 */
+            PE(p)->status = OL_IDLE;
+            PE(p)->xVel = 0;
+            PE(p)->yVel = 0;
+            PE(p)->counter = (int16_t)RAND(40, 100);
+        } else {
+            if (PE(p)->counter > 1) PE(p)->counter -= 1;
+            else if (PE(p)->counter == 1) {
+                if (DLT(X(c), X(i))) PE(p)->xVel = N(-0.25);
+                else if (DGT(X(c), X(i) + 64)) PE(p)->xVel = N(0.25);
+                else PE(p)->xVel = 0;
+                PE(p)->counter -= 1;
+            } else {
+                if (NLT(PE(p)->xVel, N(0)) && PE(p)->toggle) PE(p)->xVel -= N(0.25);
+                else if (NLT(PE(p)->xVel, N(0)) && !PE(p)->toggle) PE(p)->xVel += N(0.25);
+                if (NGT(PE(p)->xVel, N(0)) && PE(p)->toggle) PE(p)->xVel += N(0.25);
+                else if (NGT(PE(p)->xVel, N(0)) && !PE(p)->toggle) PE(p)->xVel -= N(0.25);
+                if (NLE(PE(p)->xVel, N(-2)) || NGE(PE(p)->xVel, N(2))) PE(p)->toggle = !PE(p)->toggle;
+            }
+            if ((!PL.active && NGE(PE(p)->yVel, N(0))) ||
+                (DGT(Y(c), Y(i)) && DLT(dabs(X(c) - (X(i) + 32)), 32) && NGT(PE(p)->xVel, N(-1)))) {
+                PE(p)->status = OL_PREPARE;
+                PE(p)->yVel = 0;
+                PE(p)->xVel = 0;
+                PE(p)->myGrav = 0;
+                PE(p)->counter = 20;
+            }
+        }
+        break;
+    case OL_BOUNCE:                                                        /* :131 */
+        if (isCollisionBottom(i, 1)) PE(p)->yVel = N(-4);
+        else {
+            PE(p)->counter = 10;
+            PE(p)->status = OL_RECOVER;
+            snd_play(SND_xbigjump);                                            /* :141 */
+        }
+        break;
+    case OL_PREPARE:
+        if (PE(p)->counter > 0) PE(p)->counter -= 1;
+        else {
+            PE(p)->yVel = N(5);
+            PE(p)->myGrav = N(0.2);
+            PE(p)->status = OL_SLAM;
+            PE(p)->slammed = 0;
+        }
+        break;
+    case OL_SLAM:                                                          /* :155 */
+        PE(p)->carryPlayer = 0;
+        if (isCollisionBottom(i, 1)) {
+            if (!PE(p)->slammed) {
+                pin_create(p->x, p->y + PI(64), OBJ_oOlmecSlam);
+                p = &PX(i);
+                PE(p)->slammed = 1;
+                scrShake(5);
+            } else {
+                if (RAND(1, 2) == 1 || !PL.active) PE(p)->status = OL_IDLE;
+                else PE(p)->status = OL_CREATE;
+                PE(p)->xVel = 0;
+                PE(p)->yVel = 0;
+                PE(p)->counter = 60;
+                if (!PL.active) PE(p)->alarm[5] = 50;
+            }
+        }
+        break;
+    case OL_DROWNING:                                                      /* :177 */
+        PE(p)->xVel = 0;
+        PE(p)->yVel = N(0.1);
+        PE(p)->myGrav = 0;
+        scrShake(10);
+        if (!snd_is_playing(SND_xflame)) snd_play(SND_xflame);                 /* :183 */
+        break;
+    }
+    if (isCollisionTop(i, 1)) PE(p)->yVel = N(1);
+    if (isCollisionLeft(i, 1) || isCollisionRight(i, 1)) PE(p)->xVel = -PE(p)->xVel;
+    if (isCollisionSolid(i)) pin_sety(p, p->y - PI(2));
+}
+
+static void olmec_alarm(int i, int a)
+{
+    struct pin *p = &PX(i);
+    int16_t w[64];
+    int n, k;
+    switch (a) {
+    case 1:                                                            /* objects/oOlmec/Alarm_1.gml */
+        pin_set_sprite(i, GSPR_sOlmecStart2);
+        for (k = 0; k < 6; k++) olmec_debris(i, 32, 32, 32, 0, 1);
+        snd_play(SND_xthump);                                                  /* :8 */
+        n = pw_with(OBJ_oHawkmanWorship, w, 64);
+        for (k = 0; k < n; k++) {
+            int hw = w[k], h;
+            if (!PX(hw).alive) continue;
+            h = pin_create(PX(hw).x, PX(hw).y, OBJ_oHawkman);
+            PE(&PX(h))->status = 98;
+            PE(&PX(h))->hp = 1;
+            PE(&PX(h))->xVel = N(-3);
+            PE(&PX(h))->yVel = N(-5);
+            PE(&PX(h))->counter = 300;
+            pin_destroy(hw);
+        }
+        n = pw_with(OBJ_oCavemanWorship, w, 64);
+        for (k = 0; k < n; k++) {
+            if (!PX(w[k]).alive) continue;
+            pin_setimg(&PX(w[k]), 0);
+            PX(w[k]).ispd = 0;
+        }
+        PE(&PX(i))->alarm[2] = 50;
+        break;
+    case 2:                                                            /* Alarm_2 */
+        pin_set_sprite(i, GSPR_sOlmecStart3);
+        PE(p)->alarm[3] = 50;
+        for (k = 0; k < 6; k++) olmec_debris(i, 32, 0, 32, 0, -1);
+        snd_play(SND_xthump);                                                  /* :9 */
+        break;
+    case 3:                                                            /* Alarm_3 */
+        pin_set_sprite(i, GSPR_sOlmec);
+        for (k = 0; k < 12; k++) olmec_debris(i, 64, 0, 32, 32, 0);
+        snd_play(SND_xthump);                                                  /* :8 */
+        PE(&PX(i))->alarm[4] = 50;
+        break;
+    case 4:                                                            /* Alarm_4 */
+        PE(p)->toggle = 1;
+        PE(p)->status = OL_BOUNCE;
+        snd_play(SND_xbigjump);                                                /* :3 */
+        snd_play(SND_xalert);                                                  /* :4 */
+        PE(p)->alarm[6] = 20;
+        break;
+    case 5:                                                            /* Alarm_5 */
+        play_hborder = 160;                                                /* global.display_w / 2 */
+        PW.vborder = 64;
+        /* Observed (c_temple_olmec_s1 record 437): this step's later reads see xview 0 and the old yview, without
+           the target following of prun.c's view_read (the view object changed with it): xview without vdirty */
+        PW.xview = 0;
+        play_view_obj = OBJ_oPlayer1;
+        PL.active = 1;
+        PE(p)->status = OL_IDLE;
+        PE(p)->counter = 100;
+        snd_music(SND_mBoss, 1);                                               /* :8 */
+        break;
+    case 6:                                                            /* Alarm_6 */
+        n = pw_with(OBJ_oCavemanWorship, w, 64);
+        for (k = 0; k < n; k++) {
+            int cw = w[k], cm;
+            if (!PX(cw).alive) continue;
+            cm = pin_create(PX(cw).x, PX(cw).y, OBJ_oCaveman);
+            PE(&PX(cm))->facing = 1;
+            PE(&PX(cm))->status = 2;
+            pin_destroy(cw);
+        }
+        break;
+    }
+}
+
+/* ==== oOlmecDebris, oOlmecSlam, oYellowBall, oPsychicCreate2, oFinalBoss ============================================ */
+/* objects/oOlmecDebris/Create_0.gml */
+static void debris_create(int i)
+{
+    struct pin *p = &PX(i);
+    int n;
+    p->type = T_NONE;                                                      /* oDrawnSprite: "" */
+    p->ispd = (img_t)0.3;
+    PE(p)->xVel = PE(p)->yVel = PE(p)->xAcc = PE(p)->yAcc = 0;
+    setCollisionBounds(i, -4, -4, 4, 4);
+    {
+        double a = prandom(4);
+        double b = prandom(4);
+        PE(p)->xVel = ND(a - b);
+    }
+    PE(p)->yVel = ND(-1 - prandom(2));
+    PE(p)->grav = N(0.6);
+    p->invincible = 1;
+    PE(p)->bounce = 1;
+    n = RAND(1, 3);
+    if (n == 1) pin_set_sprite(i, GSPR_sOlmecDebris2);
+    else if (n == 2) pin_set_sprite(i, GSPR_sOlmecDebris3);
+}
+
+/* objects/oOlmecDebris/Step_0.gml */
+static void debris_step(int i)
+{
+    struct pin *p = &PX(i);
+    pin_setx(p, PADDV(p->x, PE(p)->xVel));
+    pin_sety(p, PADDV(p->y, PE(p)->yVel));
+    if (PE(p)->bounce) {
+        if (NLT(PE(p)->yVel, N(6))) PE(p)->yVel += PE(p)->grav;
+        if (CP(X(i), Y(i) + 4, OBJ_oTemple)) {
+            if (NGT(PE(p)->yVel, N(1))) PE(p)->yVel = NMUL(-PE(p)->yVel, N(0.4));
+            else {
+                pin_create(p->x, p->y, OBJ_oSmokePuff);
+                pin_destroy(i);
+                p = &PX(i);
+            }
+            if (NLT(NABS(PE(p)->xVel), N(0.1))) PE(p)->xVel = 0;
+            else if (NNE(NABS(PE(p)->xVel), N(0))) PE(p)->xVel = NMUL(PE(p)->xVel, N(0.3));
+        }
+    }
+}
+
+/* objects/oYellowBall/Create_0.gml */
+static void yellowball_create(int i)
+{
+    struct pin *p = &PX(i);
+    p->type = T_NONE;
+    PE(p)->yVel = ND(-1 * (prandom(3) + 4));
+    PE(p)->xVel = NI(RAND(2, 5));
+    if (RAND(1, 2) == 1) PE(p)->xVel = NMUL(PE(p)->xVel, N(-1));
+    PE(p)->alarm[1] = 1;
+}
+
+/* objects/oYellowBall/Step_0.gml */
+static void yellowball_step(int i)
+{
+    struct pin *p = &PX(i);
+    pin_setx(p, PADDV(p->x, PE(p)->xVel));
+    pin_sety(p, PADDV(p->y, PE(p)->yVel));
+    if (collision_rect_p(X(i) - 8, Y(i) - 8, X(i) + 8, Y(i) + 8, OBJ_oSolid, 0, NOONE) != NOONE &&
+        collision_rect_p(X(i) - 8, Y(i) - 8, X(i) + 8, Y(i) + 8, OBJ_oOlmec, 0, NOONE) == NOONE) {
+        int n, obj = -1;
+        pin_setx(p, PSUBV(p->x, PE(p)->xVel));
+        pin_sety(p, PSUBV(p->y, PE(p)->yVel));
+        if (RAND(1, 2) == 1) n = RAND(1, 4);
+        else n = RAND(1, 5);
+        switch (n) {
+        case 1: obj = OBJ_oBat; break;
+        case 2: obj = OBJ_oSpider; break;
+        case 3: obj = OBJ_oSnake; break;
+        case 4: obj = OBJ_oFrog; break;
+        case 5: obj = OBJ_oFireFrog; break;
+        }
+        if (obj >= 0) pin_create(p->x - PI(8), p->y - PI(8), obj);
+        pin_destroy(i);
+        p = &PX(i);
+    }
+    if (NLT(PE(p)->yVel, N(6))) PE(p)->yVel += N(0.15);
+}
+
+/* objects/oFinalBoss/Step_0.gml */
+static void finalboss_step(int i)
+{
+    (void)i;
+    if (G.olmecDead && !G.doorOpen) {
+        int16_t w[16];
+        int n = pw_with(OBJ_oEntrance, w, 16), k, b;
+        G.doorOpen = 1;
+        for (k = 0; k < n; k++) if (PX(w[k]).alive) pin_destroy(w[k]);
+        pin_create(PI(640), PI(544), OBJ_oXEnd);
+        if (!CP(640, 560, OBJ_oSolid)) {
+            b = pin_create(PI(640), PI(560), OBJ_oTemple);
+            PX(b).invincible = 1;
+        } else {
+            b = collision_point_p(640, 560, OBJ_oSolid, 1, NOONE);           /* instance_position */
+            if (b != NOONE) PX(b).invincible = 1;
+        }
+        snd_play(SND_xthump);                                                  /* :16 */
+    }
+}
+
 /* ==== dispatch ==================================================================================================== */
 static int create_ev(int i, int fromgen)
 {
@@ -1188,6 +1558,30 @@ static int create_ev(int i, int fromgen)
     case OBJ_oCeilingTrap: ceiling_create(i, 0); return 1;
     case OBJ_oDoor: ceiling_create(i, 1); return 1;
     case OBJ_oTemple: if (!fromgen) temple_create(i); return 1;
+    case OBJ_oOlmec: olmec_create(i, fromgen); return 1;
+    case OBJ_oOlmecDebris: debris_create(i); return 1;
+    case OBJ_oOlmecSlam:                                               /* objects/oOlmecSlam/Create_0.gml */
+        PE(&PX(i))->alarm[0] = 1;
+        snd_play(SND_xslam);                                                   /* :2 */
+        return 1;
+    case OBJ_oYellowBall: yellowball_create(i); return 1;
+    case OBJ_oYellowTrail: PX(i).type = T_NONE; PX(i).ispd = 1; return 1;
+    case OBJ_oPsychicCreate2: {                                        /* objects/oPsychicCreate2/Create_0.gml */
+        struct pin *p = &PX(i);
+        int o = instance_first_p(OBJ_oOlmec);
+        p->type = T_NONE;
+        PE(p)->yVel = 0;
+        PE(p)->yAcc = N(0.6);
+        p->ispd = (img_t)0.4;
+        PE(p)->direction = point_direction_d(X(i), Y(i), X(o) + 32, Y(o) + 16);
+        return 1;
+    }
+    case OBJ_oFinalBoss:                                               /* objects/oFinalBoss/Create_0.gml */
+        G.olmecDead = 0;
+        G.doorOpen = 0;
+        return 1;
+    case OBJ_oCavemanWorship: PX(i).ispd = (img_t)0.25; return 1;
+    case OBJ_oLavaSolid: PX(i).invincible = 1; return 1;
     }
     return 0;
 }
@@ -1215,6 +1609,17 @@ static int step_ev(int i)
     case OBJ_oSmashTrap: case OBJ_oSmashTrapLit: smashtrap_step(i); return 1;
     case OBJ_oCeilingTrap: ceiling_step(i); return 1;
     case OBJ_oDoor: door_step(i); return 1;
+    case OBJ_oOlmec: olmec_step(i); return 1;
+    case OBJ_oOlmecDebris: debris_step(i); return 1;
+    case OBJ_oYellowBall: yellowball_step(i); return 1;
+    case OBJ_oPsychicCreate2: {                                        /* objects/oPsychicCreate2/Step_0.gml */
+        struct pin *p = &PX(i);
+        double d = degtorad_d(PE(p)->direction);
+        pin_setx(p, (pos)(PTOD(p->x) + 2 * pcos_cr(d)));
+        pin_sety(p, (pos)(PTOD(p->y) + -2 * psin_cr(d)));
+        return 1;
+    }
+    case OBJ_oFinalBoss: finalboss_step(i); return 1;
     case OBJ_oTempleFake:                                              /* objects/oTempleFake/Step_0.gml */
         if (!CP(X(i) + 8, Y(i) + 8, OBJ_oDoor)) {
             pin_create(PX(i).x, PX(i).y, OBJ_oTemple);
@@ -1230,6 +1635,15 @@ static int alarm_ev(int i, int a)
     switch (PX(i).obj) {
     case OBJ_oHawkman: if (a == 0) PEN(&PX(i))->whipped = 0; return 1;    /* objects/oHawkman/Alarm_0.gml */
     case OBJ_oMagmaMan: if (a == 0) PEN(&PX(i))->whipped = 0; return 1;   /* objects/oMagmaMan/Alarm_0.gml */
+    case OBJ_oOlmec: olmec_alarm(i, a); return 1;
+    case OBJ_oOlmecSlam: if (a == 0) pin_destroy(i); return 1;        /* objects/oOlmecSlam/Alarm_0.gml */
+    case OBJ_oYellowBall:
+        if (a == 0) PX(i).invincible = 0;                              /* objects/oYellowBall/Alarm_0.gml */
+        else if (a == 1) {                                             /* Alarm_1 */
+            if (instance_number_p(OBJ_oYellowTrail) < 12) pin_create(PX(i).x, PX(i).y, OBJ_oYellowTrail);
+            PE(&PX(i))->alarm[1] = 4;
+        }
+        return 1;
     case OBJ_oMagma:                                                   /* objects/oMagma/Alarm_0.gml (1: none) */
         if (a == 0) {
             pin_create(PX(i).x, PX(i).y, OBJ_oMagmaTrail);
@@ -1259,6 +1673,7 @@ static int animend_ev(int i)
         return 1;
     case OBJ_oMagmaTrail: case OBJ_oLavaDrip: pin_destroy(i); return 1;
     case OBJ_oTombLord: return tomblord_animend(i);
+    case OBJ_oYellowTrail: case OBJ_oPsychicCreate2: pin_destroy(i); return 1;
     case OBJ_oCeilingTrap:                                             /* objects/oCeilingTrap/Other_7.gml */
         if (p->spr == GSPR_sCeilingTrapS) pin_set_sprite(i, GSPR_sCeilingTrap);
         return 1;
@@ -1300,6 +1715,13 @@ static int collision_ev(int self, int other)
         else tomblord_whipped(self, other);
         return 1;
     case OBJ_oFly: fly_hit(self, other); return 1;
+    case OBJ_oOlmecSlam:                                               /* Collision_oBlock / oPushBlock / oTemple */
+        if (oo == OBJ_oBlock || oo == OBJ_oPushBlock || oo == OBJ_oTemple) {
+            PX(other).cleanDeath = 0;                                  /* tile_delete: drawing only */
+            pin_destroy(other);
+        }
+        return 1;                                                      /* Collision_oSolid: commented out */
+    case OBJ_oYellowBall: return 1;                                    /* Collision_oSolid: commented out */
     case OBJ_oGoldDoor: golddoor_sceptre(self, other); return 1;
     case OBJ_oFlame:                                                   /* objects/oFlame/Collision_oWater.gml */
         if (!obj_is(oo, OBJ_oLava)) return 0;                          /* water: package B */
@@ -1339,8 +1761,21 @@ int ptemple_ev(int ev, int i, int arg)
     case FEV_ANIMEND: return animend_ev(i);
     case FEV_COLLISION: return collision_ev(i, arg);
     case FEV_DESTROY: return destroy_ev(i);
+    case FEV_OUTSIDE:
+        if (PX(i).obj == OBJ_oYellowBall) { pin_destroy(i); return 1; }   /* objects/oYellowBall/Other_0.gml */
+        return 0;
     }
     return 0;
+}
+
+/* gameStepEvent's oMovingSolid loop (penemy.c pen_moving_solids): viscidTop of moving solid s, -1 if not ours */
+int ptemple_msolid(int s)
+{
+    switch (PX(s).obj) {
+    case OBJ_oSmashTrap: case OBJ_oSmashTrapLit: case OBJ_oCeilingTrap: case OBJ_oDoor: case OBJ_oOlmec:
+        return 1;                                                      /* Create_0.gml: viscidTop = 1 */
+    }
+    return -1;
 }
 
 int ptemple_player(int site, int i, int arg)
