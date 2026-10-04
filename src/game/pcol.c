@@ -108,7 +108,8 @@ static int nalloc(void)
     n = rfreel[--rnfree];
     rn[n].count = 0;
     rn[n].level = -1;
-    if (++rnused > (int)pcol_st.nodes_max) pcol_st.nodes_max = (uint32_t)rnused;
+    ++rnused;
+    PCST(rnused > (int)pcol_st.nodes_max ? (pcol_st.nodes_max = (uint32_t)rnused) : 0);
     return n;
 }
 
@@ -657,7 +658,7 @@ static void search_run(void);           /* the tree, or pcolgrid.h in play */
 static int search_rec(int n)
 {
     int k;
-    pcol_st.visits++;
+    PCST(pcol_st.visits++);
     if (rn[n].level > 0) {
         for (k = 0; k < rn[n].count; k++)
             if (s_overlap(&rn[n].b[k]) && !search_rec(rn[n].b[k].id))
@@ -697,7 +698,7 @@ void pcol_search_i(int32_t l, int32_t t, int32_t r, int32_t b, int (*cb)(int e, 
     s_cb = cb;
     s_ctx = ctx;
     rlock = 1;
-    pcol_st.searches++;
+    PCST(pcol_st.searches++);
     search_run();
     rlock = 0;
 }
@@ -713,7 +714,7 @@ void pcol_search(float l, float t, float r, float b, int (*cb)(int e, void *ctx)
     s_cb = cb;
     s_ctx = ctx;
     rlock = 1;
-    pcol_st.searches++;
+    PCST(pcol_st.searches++);
     search_run();
     rlock = 0;
 }
@@ -1029,18 +1030,18 @@ static void cupdate_at(int e, float dx, float dy)
     if (!emember(e)) return;
     ebbox_rect(e, dx, dy, &b);
     if (PCOL_GRID_ON) {                           /* pcolgrid.h */
-        pcol_st.inserts++;
+        PCST(pcol_st.inserts++);
         er_set(e, &b);
         ef[e] |= EF_TREE;
         pgrid_put(e);
         return;
     }
     if (ef[e] & EF_TREE) {
-        pcol_st.removes++;
+        PCST(pcol_st.removes++);
         remove_entry(e);
     }
     b.id = (int16_t)e;
-    pcol_st.inserts++;
+    PCST(pcol_st.inserts++);
     insert_rect(&b, 0);
     er_set(e, &b);
     ef[e] |= EF_TREE;
@@ -1106,7 +1107,7 @@ static void sync_all(void)
 {
     int i;
     if (!quiet_any) return;
-    pcol_st.syncs++;
+    PCST(pcol_st.syncs++);
     for (i = 0; i < PW.n; i++)
         if (PW.in[i].alive) sync1(i);
     quiet_any = 0;
@@ -1116,7 +1117,7 @@ static void sync_all(void)
 static void flush(void)
 {
     sync_all();
-    pcol_st.flushes++;
+    PCST(pcol_st.flushes++);
     while (dhead >= 0) {
         int e = dhead;
         dlist_remove(e);
@@ -1230,7 +1231,7 @@ static void remove_marked(void)
     for (k = 0; k < npend; k++) {
         int e = pend[k];
         if ((ef[e] & EF_TREE) && !many && !PCOL_GRID_ON) {
-            pcol_st.removes++;
+            PCST(pcol_st.removes++);
             remove_entry(e);
         }
         obj_count(eobj(e), -1);
@@ -1367,7 +1368,7 @@ static int query_e(int obj, int gen)
             ef[ent] &= (uint8_t)~EF_STALE;        /* Compute_BoundingBox(false) */
             ebbox_rect(ent, 0, 0, &b);
             b.id = (int16_t)ent;
-            pcol_st.inserts++;
+            PCST(pcol_st.inserts++);
             if (!gen && PCOL_GRID_ON) {
                 er_set(ent, &b);
                 ef[ent] |= EF_TREE;
@@ -1458,7 +1459,7 @@ void pcol_handle(void)
         s_cb = collision_result;
         s_ctx = 0;
         rlock = 1;
-        pcol_st.searches++;
+        PCST(pcol_st.searches++);
         search_run();                             /* the tree, or pcolgrid.h in play */
         rlock = 0;
         if (keeps_testing(s)) {                   /* pushed on the front of a local list */
@@ -1468,7 +1469,7 @@ void pcol_handle(void)
         }
         epass[s] = pass_no;
     }
-    if ((uint32_t)npairs > pcol_st.pairs_max) pcol_st.pairs_max = (uint32_t)npairs;
+    PCST((uint32_t)npairs > pcol_st.pairs_max ? (pcol_st.pairs_max = (uint32_t)npairs) : 0);
     if (++pass_no == EPASS_NONE) {                /* wrap: no entry has searched in the passes to come */
         int e;
         for (e = 0; e < ENT_MAX; e++) epass[e] = EPASS_NONE;

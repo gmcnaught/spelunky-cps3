@@ -42,6 +42,13 @@ int pcol_probe(int obj, int32_t *ids, int max);
 /* statistics for the cost report */
 struct pcol_stats { uint32_t inserts, removes, searches, visits, syncs, nodes_max, flushes, pairs_max; };
 extern struct pcol_stats pcol_st;
+/* PCST(e): a counter update, kept in the host builds only (test/host/playhost's PCOL lines read them; on the SH-2 each
+   was a store, 6 clocks on jtcps3) */
+#ifdef __sh__
+#define PCST(e) ((void)0)
+#else
+#define PCST(e) ((void)(e))
+#endif
 
 /* generator hook (inst.h: inst_hook) */
 void pcol_gen_hook(int op, int w, int a, int b, int c);

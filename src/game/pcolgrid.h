@@ -107,16 +107,20 @@ static void pgrid_put(int e)
 }
 
 /* s_r overlaps entry e (inclusive sides) */
-static int pg_overlap(int e)
+static __attribute__((noinline)) int pg_overlap_f(int e)       /* a float side: s_overlap's key compare */
+{
+    const rk *r = er[e];
+    struct rbr b;
+    b.r[0] = r[0]; b.r[1] = r[1]; b.r[2] = r[2]; b.r[3] = r[3]; b.w = erw[e];
+    return s_overlap(&b);
+}
+
+static inline int pg_overlap(int e)
 {
     const rk *r = er[e];
     if (erw[e] & s_r.w)
         return !(s_r.r[0] > r[2] || r[0] > s_r.r[2] || s_r.r[1] > r[3] || r[1] > s_r.r[3]);
-    {
-        struct rbr b;
-        b.r[0] = r[0]; b.r[1] = r[1]; b.r[2] = r[2]; b.r[3] = r[3]; b.w = erw[e];
-        return s_overlap(&b);
-    }
+    return pg_overlap_f(e);
 }
 
 /* the search: s_r, s_cb, s_ctx set by pcol_search / pcol_search_i */
@@ -133,11 +137,11 @@ static void pgrid_search(void)
     for (y = c[1]; y <= c[3]; y++)
         for (x = c[0]; x <= c[2]; x++)
             for (e = pg_head[y * PGRID_W + x]; e >= 0; e = pg_next[e]) {
-                pcol_st.visits++;
+                PCST(pcol_st.visits++);
                 if (pg_overlap(e)) pg_buf[n++] = (int16_t)e;
             }
     for (e = pg_big; e >= 0; e = pg_next[e]) {
-        pcol_st.visits++;
+        PCST(pcol_st.visits++);
         if (pg_overlap(e)) pg_buf[n++] = (int16_t)e;
     }
     for (k = 0; k < n; k++) pg_seq[k] = pw_seq[pg_buf[k]];
