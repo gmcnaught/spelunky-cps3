@@ -75,8 +75,9 @@ Max step: about 21 M in both builds, the level's first step or a room change. jt
 
 ### jtcps3 timing (MiSTer .81, scripts/playsh2_jt.sh, 2026-10-04)
 
-The builds were made at faabac9..6e96383 (the grid commits on 03f01c5's predecessor 0ec4e16; the same pcol.c / pcolgrid.h
-as 58756ab apart from HandleCollision's inlined search, which came with 03f01c5), main RAM only, PIN 1000:
+The builds were made before the grid's rebase onto 03f01c5: 899ce76 (grid and exact) and 01a2559 (-Os), both on main
+0ec4e16, so without perf1's soft-float cuts of 64a7b11 / item 6 and without HandleCollision's inlined search (the
+rebased hashes faabac9..6e96383 contain those and measure lower in MAME); main RAM only, PIN 1000:
 - **exact:** `EXACT=1`;
 - **grid:** the default (16 px cells);
 - **-Os + O2 hot:** the grid built `OPT=-Os` with pcol.c, pworld.c, prun.c, pscript.c, pobj.c and pplayer.c kept at
