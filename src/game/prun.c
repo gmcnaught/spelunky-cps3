@@ -99,12 +99,21 @@ void view_set_y(int32_t y)
     PW.vdirty = 1;
 }
 
+void view_set_x(int32_t x)
+{
+    PW.xview = x;
+    PW.vdirty = 1;
+}
+
+/* view_object[0] and view_hborder[0] of the level rooms (oPlayer1, 160; oOlmec sets oOlmec, 0 until its Alarm_5) */
+int16_t play_view_obj = OBJ_oPlayer1, play_hborder = 160;
+
 static void view_update(void)
 {
     int i = front_on ? (front_view_obj >= 0 ? instance_first_p(front_view_obj) : NOONE)   /* P8 hook */
-                     : instance_first_p(OBJ_oPlayer1);
+                     : instance_first_p(play_view_obj);
     if (i != NOONE) {
-        int32_t x = PFLOOR(PX(i).x), y = PFLOOR(PX(i).y), hb = front_on ? front_hborder : 160, vb = PW.vborder;
+        int32_t x = PFLOOR(PX(i).x), y = PFLOOR(PX(i).y), hb = front_on ? front_hborder : play_hborder, vb = PW.vborder;
         if (x - hb < PW.xview) PW.xview = x - hb;
         else if (x + hb > PW.xview + 320) PW.xview = x + hb - 320;
         if (y - vb < PW.yview) PW.yview = y - vb;
@@ -272,6 +281,8 @@ void play_level_start(int32_t next_id)
     PW.xview = PW.yview = 0;
     PW.vborder = 96;
     PW.vdirty = 0;
+    play_view_obj = OBJ_oPlayer1;
+    play_hborder = 160;
     PW.step = 0;
     PL.idx = NOONE;
     for (k = 0; k < W.n; k++) {

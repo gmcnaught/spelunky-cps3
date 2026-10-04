@@ -332,6 +332,8 @@ void play_level_start(int32_t next_id);           /* generate the level (gen_lev
    follows its target at once (see prun.c) */
 void view_read(void);
 void view_set_y(int32_t y);
+void view_set_x(int32_t x);
+extern int16_t play_view_obj, play_hborder;      /* view_object[0], view_hborder[0] (oOlmec changes them) */
 /* one step with the key mask; record_cb is called at the trace's record point (oGamepad's End Step) */
 /* one frame with the route's key mask; record_cb(phase) is called where the tracer writes its records (phase 0:
    the first Begin Step in a room; phase 1: oGamepad's End Step). Returns 0; PLAY_ROOM_EARLY when an Animation
