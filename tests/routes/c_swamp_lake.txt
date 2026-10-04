@@ -1,0 +1,21 @@
+# P7 reference (docs/CONTENT.md package B (swamp)): the natural level-6 lake of tests/gen/chains (seed 121013091, chain
+# 0: the level after five chained levels) started standalone: lake=1 plus the chain's carried globals reproduce the
+# generator case exactly. The player runs right over two walls and drops into the cave above the lake; the lake's
+# piranhas, oJaws (out of view: no action) and the water run every step
+# seed 121013091
+# level 6
+# globals lake=1,madeUdjatEye=1,madeMarketEntrance=1,marketChance=81
+# room rLevel3
+# nodark 0
+10 -
+40 R
+1 -
+10 RJ
+16 R
+1 -
+10 RJ
+28 R
+1 -
+10 RJ
+12 R
+20 -
