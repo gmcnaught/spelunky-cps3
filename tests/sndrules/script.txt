@@ -1,0 +1,72 @@
+# tests/sndrules: frame op args (frame = vblank count from 0; ops run after snd_frame() of that frame).
+# Ops: play S (playSound) | guard S (if not audio_is_playing(S) playSound(S)) | music S loop (playMusic)
+#      aplay S prio loop (audio_play_sound) | stop S | stopmusic | stopall | pause | resume
+#      gain S reg (setSoundVol as a volume register) | level S v (setSoundVol at level v) | musicflag 0/1
+# music start, repeat is a no-op
+2   music mCave 1
+4   music mCave 1
+# a repeated effect stacks: three voices
+6   play xhit
+6   play xhit
+6   play xhit
+# audio_is_playing guard: one voice
+8   guard xpush
+8   guard xpush
+# 13 more effects with 11 voices free: two steal the oldest (the xhit on voices 1 and 2)
+10  play xbowpull
+10  play xtfall
+10  play xpfall
+10  play xsteps
+10  play xghost
+10  play xalien
+10  play xyetiyell
+10  play xpsychic
+10  play xsmallexplode
+10  play xteleport
+10  play xlasercharge
+10  play xexplosion
+10  play xlaser
+# the third xhit still plays: guard does nothing
+11  guard xhit
+# asset gain changes a playing track
+12  level mCave 5
+# a second bowpull (steals the oldest: voice 3, the last xhit), then audio_stop_sound stops both instances
+13  play xbowpull
+14  stop xbowpull
+# pause holds every voice; a sound started while paused plays; resume restarts the held ones
+20  pause
+22  play xjump
+24  gain xtfall 4000
+30  resume
+# effects run out (key-off by frames); then a guard plays again
+200 guard xhit
+# priority: 15 voices at priority 10, a priority-2 effect is dropped, another priority-10 one steals the oldest
+240 stopall
+242 aplay xbowpull 10 0
+242 aplay xbowpull 10 0
+242 aplay xbowpull 10 0
+242 aplay xbowpull 10 0
+242 aplay xbowpull 10 0
+242 aplay xtfall 10 0
+242 aplay xtfall 10 0
+242 aplay xtfall 10 0
+242 aplay xtfall 10 0
+242 aplay xtfall 10 0
+244 aplay xalien 10 0
+244 aplay xalien 10 0
+244 aplay xalien 10 0
+244 aplay xalien 10 0
+244 aplay xalien 10 0
+246 play xhit
+248 aplay xcoin 10 0
+250 guard xbowpull
+# music change, stop, loop past the track's end (mLush 17.44 s), the music flag
+300 stopmusic
+302 music mLush 1
+1400 music mBoss 1
+1420 musicflag 0
+1422 stopmusic
+1424 music mCave 1
+1426 musicflag 1
+1428 aplay mVictory 10 0
+1430 music mVictory 1
