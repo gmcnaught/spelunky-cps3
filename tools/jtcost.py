@@ -63,6 +63,8 @@ def fn(pc):
     i = bisect.bisect_right(SA, pc) - 1
     return syms[i][1] if i >= 0 else '?'
 PLAY = [a for a, n in syms if n == '_play_step'][0]
+PCHIST = os.getenv('JTC_PCHIST'); pch = collections.Counter()   # JTC_PCHIST=<symbol>: its instructions by address
+STARTS = set(SA)                                  # a function's first instruction: one entry (call) of it
 dm = collections.Counter(); dsto = collections.Counter()
 
 class Cache:
@@ -106,6 +108,8 @@ for line in open(tr):
     elif pc == ret and R[15] == sp0:
         break
     f = fn(pc); c = per[f]
+    if pc in STARTS: c['entries'] += 1
+    if f == PCHIST: pch[pc] += 1
     dis = dis.strip(); op = dis.split()[0] if dis else ''
     args_ = dis[len(op):].strip()
     ev = collections.Counter()          # this instruction's events (keys of CONSTS)
@@ -198,10 +202,10 @@ K = {k: v[SI] for k, v in CONSTS.items()}
 print('stores %d (%.0f%% stack) -> %.0f jtcps3 clocks; I-miss %d lines -> %.0f; D-miss ram %d / simm %d -> %.0f' % (
     stores, 100 * st['st_stack'] / max(stores, 1), stores * (1 + K['store']), st['imiss'], st['imiss'] * K['imiss'],
     st['dmiss_ram'], st['dmiss_simm'], st['dmiss_ram'] * K['dmiss_ram'] + st['dmiss_simm'] * K['dmiss_simm']))
-print('\nfunction           instr   model  ratio  imiss  dmiss  stores(stack)')
-for f, c in sorted(per.items(), key=lambda x: -x[1]['cost'])[:30]:
+print('\nfunction           instr   model  ratio  imiss  dmiss  stores(stack)  calls')
+for f, c in sorted(per.items(), key=lambda x: -x[1]['cost'])[:45]:
     s = sum(v for k, v in c.items() if k.startswith('st_'))
-    print('%-22s %7d %7.0f %5.2f %6d %6d %6d(%d)' % (f[:22], c['ins'], c['cost'], c['cost'] / c['ins'], c['imiss'], c['dmiss'], s, c['st_stack']))
+    print('%-22s %7d %7.0f %5.2f %6d %6d %6d(%d) %6d' % (f[:22], c['ins'], c['cost'], c['cost'] / c['ins'], c['imiss'], c['dmiss'], s, c['st_stack'], c['entries']))
 
 print('\nD-miss lines by symbol (lit: = literal pool of the running function)')
 print('  literal pools total', lit)
@@ -231,3 +235,7 @@ for s in (0, 1):
           'dmiss_ram=%d dmiss_simm=%d lit=%d' % (opt['--route'], opt['--step'], SETS[s], ins, st['mame'], tot[s],
                                                 tot[s] / max(ins, 1), stores, st['st_stack'], st['imiss'],
                                                 st['dmiss_ram'], st['dmiss_simm'], lit))
+
+if PCHIST:
+    print('\n%s: executions by address (JTC_PCHIST)' % PCHIST)
+    for a in sorted(pch): print('  %08x %7d' % (a, pch[a]))
