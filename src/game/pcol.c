@@ -1114,7 +1114,7 @@ static void sync_all(void)
 }
 
 /* UpdateTree */
-static void flush(void)
+static __attribute__((noinline)) void flush_run(void)
 {
     sync_all();
     PCST(pcol_st.flushes++);
@@ -1126,6 +1126,12 @@ static void flush(void)
             cupdate(e);
         }
     }
+}
+
+static inline void flush(void)
+{
+    if (quiet_any || dhead >= 0) flush_run();
+    else PCST(pcol_st.flushes++);                  /* (flush_run counts it otherwise) */
 }
 
 static void touch_e(int e)
@@ -1350,13 +1356,10 @@ static void set_dyn(int obj)
         if (obj_is(o, obj) && !(oinfo[o] & (OI_MEMBER | OI_DYN))) oinfo[o] |= OI_DYN;
 }
 
-/* ShouldUseFastCollision, and UpdateTree when it says 1 */
-static int query_e(int obj, int gen)
+/* query_e's first query of an object that is not yet in the tree: its instances go in */
+static __attribute__((noinline)) void query_dyn(int obj, int gen)
 {
-    int cnt = ocnt[obj];
-    if (cnt == 0) return -1;
-    if (cnt < rn[rroot].level) return 2;
-    if (!(oinfo[obj] & (OI_MEMBER | OI_DYN))) {
+    {
         int e, n = gen ? W.n : PW.nord;
         set_dyn(obj);
         for (e = 0; e < n; e++) {
@@ -1380,17 +1383,29 @@ static int query_e(int obj, int gen)
             ef[ent] |= EF_TREE;
         }
     }
-    if (gen) {
-        while (dhead >= 0) {
-            int e = dhead;
-            dlist_remove(e);
-            if (!edead(e)) {
-                ef[e] &= (uint8_t)~EF_STALE;
-                cupdate(e);
-            }
+}
+
+static __attribute__((noinline)) void gen_flush(void)
+{
+    while (dhead >= 0) {
+        int e = dhead;
+        dlist_remove(e);
+        if (!edead(e)) {
+            ef[e] &= (uint8_t)~EF_STALE;
+            cupdate(e);
         }
-    } else
-        flush();
+    }
+}
+
+/* ShouldUseFastCollision, and UpdateTree when it says 1 (inline: the common answer needs no frame) */
+static inline int query_e(int obj, int gen)
+{
+    int cnt = ocnt[obj];
+    if (cnt == 0) return -1;
+    if (cnt < rn[rroot].level) return 2;
+    if (!(oinfo[obj] & (OI_MEMBER | OI_DYN))) query_dyn(obj, gen);
+    if (gen) gen_flush();
+    else flush();
     return 1;
 }
 

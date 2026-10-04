@@ -49,7 +49,7 @@ int isCollisionLeft(int i, int d)
     double lb, tb, rb, bb;
     int32_t il, it, ir, ib;
     if (ibounds(i, &il, &it, &ir, &ib))
-        return collision_line_any_i(il - d, it, il - d, ib - 1, OBJ_oSolid, 1, i);
+        return solid_vline_any(il - d, it, ib - 1, i);
     calcBounds(i, &lb, &tb, &rb, &bb);
     return collision_line_p(dround(lb - d), dround(tb), dround(lb - d), dround(bb - 1), OBJ_oSolid, 1, i) != NOONE;
 }
@@ -59,7 +59,7 @@ int isCollisionRight(int i, int d)
     double lb, tb, rb, bb;
     int32_t il, it, ir, ib;
     if (ibounds(i, &il, &it, &ir, &ib))
-        return collision_line_any_i(ir + d - 1, it, ir + d - 1, ib - 1, OBJ_oSolid, 1, i);
+        return solid_vline_any(ir + d - 1, it, ib - 1, i);
     calcBounds(i, &lb, &tb, &rb, &bb);
     return collision_line_p(dround(rb + d - 1), dround(tb), dround(rb + d - 1), dround(bb - 1), OBJ_oSolid, 1, i) != NOONE;
 }
@@ -69,7 +69,7 @@ int isCollisionTop(int i, int d)
     double lb, tb, rb, bb;
     int32_t il, it, ir, ib;
     if (ibounds(i, &il, &it, &ir, &ib))
-        return collision_line_any_i(il, it - d, ir - 1, it - d, OBJ_oSolid, 1, i);
+        return solid_hline_any(it - d, il, ir - 1, i);
     calcBounds(i, &lb, &tb, &rb, &bb);
     return collision_line_p(dround(lb), dround(tb - d), dround(rb - 1), dround(tb - d), OBJ_oSolid, 1, i) != NOONE;
 }
@@ -79,7 +79,7 @@ int isCollisionBottom(int i, int d)
     double lb, tb, rb, bb;
     int32_t il, it, ir, ib;
     if (ibounds(i, &il, &it, &ir, &ib))
-        return collision_line_any_i(il, ib + d - 1, ir - 1, ib + d - 1, OBJ_oSolid, 1, i);
+        return solid_hline_any(ib + d - 1, il, ir - 1, i);
     calcBounds(i, &lb, &tb, &rb, &bb);
     return collision_line_p(dround(lb), dround(bb + d - 1), dround(rb - 1), dround(bb + d - 1), OBJ_oSolid, 1, i) != NOONE;
 }

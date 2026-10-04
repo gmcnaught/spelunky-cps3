@@ -41,7 +41,7 @@ static inline void grid_flush(void) { if (gdhead >= 0) grid_flush_run(); }   /* 
 static int gmaxw, gmaxh;
 #define GCELL_FAR (-2)                           /* gcell: an oSolid-family box too far out for the grid */
 static int gfar;                                 /* how many (the grid's line query falls back to the tree then) */
-/* the line queries' cell summary of the oSolid-family entries in ghead (collision_line_any_i): a cell block is an
+/* the line queries' cell summary of the oSolid-family entries in ghead (solid_vline_any, solid_hline_any: line_any): a cell block is an
    entry whose integer box is exactly one in-grid cell ([16 cx, 16 cx + 16) x [16 cy, 16 cy + 16)); gfull counts them
    per cell (gfblk: one of them), gother counts the other entries per cell their box may reach (the cells of
    [l - 1, r] x [t - 1, b], clamped as the queries clamp: a superset of the cells where line_hit can hit them) */
@@ -1600,7 +1600,7 @@ static int line_scan(struct qctx *c, int obj, int notme_self)
     return 0;
 }
 
-/* the paths of collision_line_any_i that need the whole query context (kept out of line: the summary's answer, the
+/* the paths of line_any that need the whole query context (kept out of line: the summary's answer, the
    common case, then builds no struct qctx on the stack) */
 static void any_ctx(struct qctx *c, int32_t x1, int32_t y1, int32_t x2, int32_t y2, int obj, int prec, int notme_self)
 {
@@ -1628,7 +1628,8 @@ static __attribute__((noinline)) int any_scan(int32_t x1, int32_t y1, int32_t x2
     return line_scan(&c, obj, notme_self);
 }
 
-int collision_line_any_i(int32_t x1, int32_t y1, int32_t x2, int32_t y2, int obj, int prec, int notme_self)
+static inline __attribute__((always_inline)) int line_any(int32_t x1, int32_t y1, int32_t x2, int32_t y2, int obj,
+                                                          int prec, int notme_self)
 {
     int q = pcol_query(obj), r;
     struct lq lq;
@@ -1662,6 +1663,18 @@ int collision_line_any_i(int32_t x1, int32_t y1, int32_t x2, int32_t y2, int obj
 #endif
     if (r >= 0) return r;
     return any_scan(x1, y1, x2, y2, obj, prec, notme_self);
+}
+
+/* collision_line(x, y1, x, y2, oSolid, 1, notme) != noone and collision_line(x1, y, x2, y, ...): isCollisionLeft /
+   Right / Top / Bottom with whole-number bounds (pscript.c); obj and prec constant, four arguments in registers */
+int solid_vline_any(int32_t x, int32_t y1, int32_t y2, int notme_self)
+{
+    return line_any(x, y1, x, y2, OBJ_oSolid, 1, notme_self);
+}
+
+int solid_hline_any(int32_t y, int32_t x1, int32_t x2, int notme_self)
+{
+    return line_any(x1, y, x2, y, OBJ_oSolid, 1, notme_self);
 }
 
 /* a rectangle query: its sides rounded (floor(v + 0.5)) once */
