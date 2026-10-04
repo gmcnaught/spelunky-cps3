@@ -15,6 +15,11 @@ cp build/gen/objects.[ch] build/gen/gentables.[ch] build/gen/playtables.[ch] "$J
 # EXACT=1: the exact build (PCOL_EXACT); default the shipping build's collision grid. GRID_SHIFT=<n>: 2^n px cells
 if [ "${EXACT:-0}" = 1 ]; then { echo "#define PCOL_EXACT 1"; cat "$J/gA/pcol.c"; } > "$J/pcol.tmp" && mv "$J/pcol.tmp" "$J/gA/pcol.c"; fi
 if [ -n "${GRID_SHIFT:-}" ]; then { echo "#define PCOL_GRID_SHIFT $GRID_SHIFT"; cat "$J/gA/pcol.c"; } > "$J/pcol.tmp" && mv "$J/pcol.tmp" "$J/gA/pcol.c"; fi
+# OPT=-Os O2FILES="pcol.c pworld.c ...": the build at OPT with those snapshot files kept at O2 by a pragma (a plain
+# O2 pragma emits memmove calls, which do not link: loop-distribute-patterns off)
+for f in ${O2FILES:-}; do
+  { echo '#pragma GCC optimize("O2", "no-tree-loop-distribute-patterns")'; cat "$J/gA/$f"; } > "$J/o2.tmp" && mv "$J/o2.tmp" "$J/gA/$f"
+done
 cp "$J/gA"/* "$B/g/"
 sed -i '' "s/^#define PIN_MAX 4096\$/#define PIN_MAX $N/" "$B/g/play.h"
 grep -q "^#define PIN_MAX $N\$" "$B/g/play.h"; touch "$B/g/stamp"
@@ -42,8 +47,8 @@ done
 # from tests/playsh2/hot.txt)
 LO=; [ "${LAYOUT:-0}" = 1 ] && { python3 $T/mklayout.py $T/hot.txt $J/link$V.ld; LO=LAYOUT=build/jt/link$V.ld; }
 VN=$(echo "${V:-BASE}" | tr a-z_ A-Z-)
-scripts/dmake.sh $T OUT=build/jt/elf$V JT=1 SOFTFP=1 OSFILES="${OSFILES:-}" $LO JTNAME=$VN >/dev/null
-scripts/dmake.sh $T OUT=build/jt/elf$V JT=1 SOFTFP=1 OSFILES="${OSFILES:-}" $LO JTNAME=$VN PROG=pjt$V \
+scripts/dmake.sh $T OUT=build/jt/elf$V JT=1 SOFTFP=1 OPT="${OPT:--O2}" OSFILES="${OSFILES:-}" $LO JTNAME=$VN >/dev/null
+scripts/dmake.sh $T OUT=build/jt/elf$V JT=1 SOFTFP=1 OPT="${OPT:--O2}" OSFILES="${OSFILES:-}" $LO JTNAME=$VN PROG=pjt$V \
   TITLE="Spelunky SH-2 timing $VN" mister >/dev/null
 PSH2_OUT="$O/jt.txt" PSH2_NJOBS=$NJ scripts/mame.sh sfiii3na -rompath "$J/elf$V/mame" -skip_gameinfo -nothrottle -sound none \
   -video none -seconds_to_run 3000 -cfg_directory "$O/w/cfg" -nvram_directory "$O/w/nvram" -snapshot_directory "$O/snap" \
