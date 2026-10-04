@@ -33,6 +33,14 @@ static int16_t gdhead = NOONE;
 static int gmaxw, gmaxh;
 #define GCELL_FAR (-2)                           /* gcell: an oSolid-family box too far out for the grid */
 static int gfar;                                 /* how many (the grid's line query falls back to the tree then) */
+/* the line queries' cell summary of the oSolid-family entries in ghead (collision_line_any_i): a cell block is an
+   entry whose integer box is exactly one in-grid cell ([16 cx, 16 cx + 16) x [16 cy, 16 cy + 16)); gfull counts them
+   per cell (gfblk: one of them), gother counts the other entries per cell their box may reach (the cells of
+   [l - 1, r] x [t - 1, b], clamped as the queries clamp: a superset of the cells where line_hit can hit them) */
+static uint8_t gfull[GRID_H][GRID_W];
+static int16_t gfblk[GRID_H][GRID_W];
+static uint16_t gother[GRID_H][GRID_W];
+static uint8_t gkind[PIN_MAX], gox0[PIN_MAX], goy0[PIN_MAX], gox1[PIN_MAX], goy1[PIN_MAX];   /* 1 block, 2 other */
 
 /* ---- per-object instance lists: the alive instances of each object in creation order (index order), and the
    alive count of each object with its descendants. Linked at pin_add, unlinked when alive goes to 0 ------------ */
@@ -1092,16 +1100,48 @@ static void grid_reset(void)
 {
     int x, y;
     for (y = 0; y < GRID_H; y++)
-        for (x = 0; x < GRID_W; x++) ghead[y][x] = thead[y][x] = NOONE;
+        for (x = 0; x < GRID_W; x++) { ghead[y][x] = thead[y][x] = NOONE; gfull[y][x] = 0; gother[y][x] = 0; }
+    for (x = 0; x < PIN_MAX; x++) gkind[x] = 0;
     gdhead = NOONE;
     gmaxw = gmaxh = tmaxw = tmaxh = 1;
     gfar = 0;
+}
+
+static void gsum_out(int i)
+{
+    int x, y;
+    if (gkind[i] == 1) {
+        x = gox0[i]; y = goy0[i];
+        if (--gfull[y][x] && gfblk[y][x] == i) {        /* another block of the cell stands for it (in its list) */
+            int k;
+            for (k = ghead[y][x]; k >= 0 && (k == i || gkind[k] != 1); k = gnext[k]) {}
+            gfblk[y][x] = (int16_t)k;
+        }
+    } else
+        for (y = goy0[i]; y <= goy1[i]; y++)
+            for (x = gox0[i]; x <= gox1[i]; x++) gother[y][x]--;
+    gkind[i] = 0;
+}
+
+static void gsum_in(int i, int x0, int y0, int x1, int y1, int block)
+{
+    int x, y;
+    gox0[i] = (uint8_t)x0; goy0[i] = (uint8_t)y0; gox1[i] = (uint8_t)x1; goy1[i] = (uint8_t)y1;
+    if (block) {
+        gkind[i] = 1;
+        if (gfull[y0][x0]++ == 0) gfblk[y0][x0] = (int16_t)i;
+        return;
+    }
+    gkind[i] = 2;
+    for (y = y0; y <= y1; y++)
+        for (x = x0; x <= x1; x++) gother[y][x]++;
 }
 
 static void grid_unlink(int i)
 {
     int c = gcell[i];
     int16_t *pp;
+    if (gkind[i]) gsum_out(i);
     if (c < 0) {
         if (c == GCELL_FAR) { gfar--; gcell[i] = NOONE; }
         return;
@@ -1125,8 +1165,8 @@ static void grid_dirty(int i)
 static void grid_flush(void)
 {
     while (gdhead >= 0) {
-        int i = gdhead, cx, cy, w, h, solid;
-        int32_t ib[4];
+        int i = gdhead, cx, cy, w, h, solid, block = 0;
+        int32_t ib[4], sl, st, sr, sb;
         double l, t, r, b;
         gdhead = gdnext[i];
         gond[i] = 0;
@@ -1135,10 +1175,16 @@ static void grid_flush(void)
         if (pin_ibox(i, ib)) {
             cx = ib[0] >> 4; cy = ib[1] >> 4;
             w = ((ib[2] - ib[0]) >> 4) + 1; h = ((ib[3] - ib[1]) >> 4) + 1;
+            sl = ib[0]; st = ib[1]; sr = ib[2]; sb = ib[3];
+            block = (ib[0] & 15) == 0 && (ib[1] & 15) == 0 && ib[2] == ib[0] + 16 && ib[3] == ib[1] + 16 &&
+                    cx >= 0 && cx < GRID_W && cy >= 0 && cy < GRID_H;
         } else if (pin_bbox(i, &l, &t, &r, &b) && l > -30000 && l < 30000 && t > -30000 && t < 30000 &&
                    r - l < 30000 && b - t < 30000) {
             cx = dfloor(l) >> 4; cy = dfloor(t) >> 4;
             w = (dfloor(r - l) >> 4) + 2; h = (dfloor(b - t) >> 4) + 2;
+            sl = dfloor(l); st = dfloor(t); sr = dfloor(r) + 1; sb = dfloor(b) + 1;
+            if (sr < sl + 1) sr = sl + 1;                 /* (a box with r < l: its cells still counted) */
+            if (sb < st + 1) sb = st + 1;
         } else {
             if (bbkind(i) != BB_NOSPR && obj_is(PW.in[i].obj, OBJ_oSolid)) {
                 gcell[i] = GCELL_FAR;             /* a box far out (|side| >= 30000): not in a cell */
@@ -1157,6 +1203,9 @@ static void grid_flush(void)
         cx = clampi(cx, 0, GRID_W - 1);
         cy = clampi(cy, 0, GRID_H - 1);
         if (solid) {
+            if (block) gsum_in(i, cx, cy, cx, cy, 1);     /* (cx, cy in the grid: not clamped) */
+            else gsum_in(i, clampi((sl - 1) >> 4, 0, GRID_W - 1), clampi((st - 1) >> 4, 0, GRID_H - 1),
+                         clampi(sr >> 4, 0, GRID_W - 1), clampi(sb >> 4, 0, GRID_H - 1), 0);
             gcell[i] = (int16_t)(cy * GRID_W + cx);
             gnext[i] = ghead[cy][cx];
             ghead[cy][cx] = (int16_t)i;
@@ -1442,9 +1491,57 @@ int collision_line_i(int32_t x1, int32_t y1, int32_t x2, int32_t y2, int obj, in
    answers whether one is hit with the same line_hit test. A box of [l, r] x [t, b] in cell (cx, cy) reaches cell
    cx + gmaxw at most; line_hit needs l <= hx and r > lx (and in y), so the hits are in the cells
    (lx >> 4) - gmaxw .. hx >> 4 (clamped as the cells are). q == 2 keeps the creation-order scan (its touches) */
+#ifdef PLAY_STATS
+#include <stdio.h>
+#include <stdlib.h>
+#endif
+/* the cell summary of the line's own cells (oSolid family, after grid_flush): 1 when a usable cell block is crossed
+   by the axis-aligned line (line_hit's integer path hits it), 0 when no other entry reaches these cells and every
+   cell block there is a sure miss (no instance is hit), -1 when the scan has to decide */
+static int line_summary(const struct lq *q, int obj, int prec, int notme_self)
+{
+    int sure = 1, x, y, k;
+    int x0 = clampi(q->lx >> 4, 0, GRID_W - 1), xe = clampi(q->hx >> 4, 0, GRID_W - 1);
+    int y0 = clampi(q->ly >> 4, 0, GRID_H - 1), ye = clampi(q->hy >> 4, 0, GRID_H - 1);
+    for (y = y0; y <= ye; y++)
+        for (x = x0; x <= xe; x++) {
+            int n = gfull[y][x];
+            if (gother[y][x]) sure = 0;
+            if (n == 0) continue;
+            k = gfblk[y][x];
+            if (k == notme_self || (obj != OBJ_oSolid && !obj_is(PW.in[k].obj, obj)) ||
+                q->hx < x * 16 || q->lx > x * 16 + 15 || q->hy < y * 16 || q->ly > y * 16 + 15) {
+                if (n > 1) sure = 0;                      /* k is a miss; another block may not be */
+                continue;
+            }
+            if (q->axis && (!prec || !precise(k))) return 1;
+            sure = 0;
+        }
+    return sure ? 0 : -1;
+}
+
+/* the grid scan: a box of [l, r] x [t, b] in cell (cx, cy) reaches cell cx + gmaxw at most; line_hit needs l <= hx
+   and r > lx (and in y), so the hits are in the cells (lx >> 4) - gmaxw .. hx >> 4 (clamped as the cells are) */
+static int line_scan(struct qctx *c, int obj, int notme_self)
+{
+    int x0, xe, y0, ye, x, y, k;
+    x0 = clampi((c->lq.lx >> 4) - gmaxw, 0, GRID_W - 1);
+    xe = clampi(c->lq.hx >> 4, 0, GRID_W - 1);
+    y0 = clampi((c->lq.ly >> 4) - gmaxh, 0, GRID_H - 1);
+    ye = clampi(c->lq.hy >> 4, 0, GRID_H - 1);
+    /* the line's own cells first (a hit there ends the scan); every grid instance is alive (unlinked when it dies) */
+    for (y = ye; y >= y0; y--)
+        for (x = xe; x >= x0; x--)
+            for (k = ghead[y][x]; k >= 0; k = gnext[k]) {
+                PWST(visit, 1);
+                if (k != notme_self && line_hit(k, c) && (obj == OBJ_oSolid || obj_is(PW.in[k].obj, obj))) return 1;
+            }
+    return 0;
+}
+
 int collision_line_any_i(int32_t x1, int32_t y1, int32_t x2, int32_t y2, int obj, int prec, int notme_self)
 {
-    int q = pcol_query(obj), x0, xe, y0, ye, x, y, k;
+    int q = pcol_query(obj), r;
     struct qctx c;
     PWST(line, 1);
     if (q < 0) return 0;
@@ -1457,18 +1554,27 @@ int collision_line_any_i(int32_t x1, int32_t y1, int32_t x2, int32_t y2, int obj
     if (q != 1 || obj < 0 || !obj_is(obj, OBJ_oSolid)) return line_run(&c, q, 0) != NOONE;
     grid_flush();
     if (gfar) return line_run(&c, q, 0) != NOONE;
-    x0 = clampi((c.lq.lx >> 4) - gmaxw, 0, GRID_W - 1);
-    xe = clampi(c.lq.hx >> 4, 0, GRID_W - 1);
-    y0 = clampi((c.lq.ly >> 4) - gmaxh, 0, GRID_H - 1);
-    ye = clampi(c.lq.hy >> 4, 0, GRID_H - 1);
-    /* the line's own cells first (a hit there ends the scan); every grid instance is alive (unlinked when it dies) */
-    for (y = ye; y >= y0; y--)
-        for (x = xe; x >= x0; x--)
-            for (k = ghead[y][x]; k >= 0; k = gnext[k]) {
-                PWST(visit, 1);
-                if (k != notme_self && line_hit(k, &c) && (obj == OBJ_oSolid || obj_is(PW.in[k].obj, obj))) return 1;
-            }
-    return 0;
+    r = line_summary(&c.lq, obj, prec, notme_self);
+#ifdef PLAY_STATS
+    if (r >= 0 && r != line_scan(&c, obj, notme_self)) {   /* the host builds check every summary answer */
+        fprintf(stderr, "line_summary %d differs from the scan: %d %d %d %d obj %d notme %d\n", r, (int)x1, (int)y1,
+                (int)x2, (int)y2, obj, notme_self);
+        {
+            int cx = clampi(c.lq.lx >> 4, 0, GRID_W - 1), cy = clampi(c.lq.ly >> 4, 0, GRID_H - 1), k = gfblk[cy][cx];
+            int32_t ib[4] = { 0, 0, 0, 0 };
+            int ok = pin_ibox(k, ib);
+            fprintf(stderr, "cell %d %d full %d other %d blk %d obj %s alive %d gcell %d gkind %d ibox %d %d %d %d %d\n",
+                    cx, cy, gfull[cy][cx], gother[cy][cx], k, objdefs[PW.in[k].obj].name, PW.in[k].alive, gcell[k],
+                    gkind[k], ok, ib[0], ib[1], ib[2], ib[3]);
+            fprintf(stderr, "blk cell %d %d; list:", gox0[k], goy0[k]);
+            for (k = ghead[cy][cx]; k >= 0; k = gnext[k]) fprintf(stderr, " %d(%s k%d)", k, objdefs[PW.in[k].obj].name, gkind[k]);
+            fprintf(stderr, "\n");
+        }
+        abort();
+    }
+#endif
+    if (r >= 0) return r;
+    return line_scan(&c, obj, notme_self);
 }
 
 /* a rectangle query: its sides rounded (floor(v + 0.5)) once */
