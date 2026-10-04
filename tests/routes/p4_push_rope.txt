@@ -1,0 +1,22 @@
+# P4: seed 365: push a block into a shaft, follow it down, throw a rope up, climb it up and down
+20 -
+33 R
+20 -
+10 R
+14 -
+7 L
+3 -
+2 R
+12 -
+1 R
+12 -
+1 R
+12 -
+1 O
+40 -
+2 J
+1 U
+61 U
+10 -
+63 D
+20 -

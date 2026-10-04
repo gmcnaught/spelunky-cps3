@@ -1,0 +1,21 @@
+# P4: seed 1: jump a hole, pick up a jar, throw it at a wall (it breaks), whip both ways, throw a rope up
+20 -
+15 R
+13 -
+18 RJ
+7 -
+3 D
+1 DA
+3 D
+8 -
+1 R
+4 -
+1 A
+40 -
+1 A
+20 -
+1 LA
+20 -
+1 O
+40 -
+30 -

@@ -64,7 +64,9 @@ int gen_room_for_level(void);
    stands. Returns 0, or -1 when gen_untranslated was set (GML not translated was reached). */
 int gen_level(int32_t next_id);
 
-/* object Create / Destroy events (genobj.c) */
+/* object Create / Destroy events (genobj.c); gen_not_level: the room is not a level (isLevel() false: no gems in
+   bricks), for the transition rooms */
+extern int gen_not_level;
 int instance_create(int x, int y, int obj);
 void gen_create_event(int i);   /* run instance i's Create event (room instances) */
 void instance_destroy(int i);

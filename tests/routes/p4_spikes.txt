@@ -1,0 +1,11 @@
+# P4: seed 58: drop next to spikes, jump onto them (death), the game-over screen, attack twice (to rHighscores)
+20 -
+19 R
+8 -
+4 RJ
+10 -
+60 -
+1 A
+60 -
+1 A
+10 -

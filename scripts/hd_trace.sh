@@ -23,6 +23,9 @@ if [ "$1" = --rng-probe ]; then PROBE=1; ROUTE=; SEED=; NAME=rng_probe
 elif [ "$1" = --gen ]; then PROBE=; GEN=$2; NAME=${3:-$(basename "$2" .txt)}
 else PROBE=; ROUTE=$1; SEED=$2; NAME=${3:-${1}_s$2}; fi
 T=${TIMEOUT:-1800}
+# the X screen decides the game's view width (oScreen Create: w = round(240 * aspect), hborder w / 2): 1280x720
+# gives HD's widescreen 427 x 240 view; XVFB_SCREEN=1280x960x24 gives the 4:3 320 x 240 view of the CPS3 port (P4)
+XS=${XVFB_SCREEN:-1280x720x24}
 GAME=refs/hd/linux-arm64
 [ -f "$GAME/assets/game.unx" ] || { echo "missing $GAME/assets/game.unx"; exit 1; }
 docker image inspect spelunky-hd-runner >/dev/null 2>&1 || docker build -q -t spelunky-hd-runner docker/hd-runner
@@ -45,7 +48,7 @@ GENLAST=
 [ -z "$GEN" ] && [ -z "$PROBE" ] && GENLAST=trc_done.txt
 start=$(date +%s)
 docker run --rm --platform linux/arm64 -v "$PWD/$RUN:/r" -w /r/game spelunky-hd-runner sh -c "
-  Xvfb :99 -screen 0 1280x720x24 -nolisten tcp >/dev/null 2>&1 &
+  Xvfb :99 -screen 0 $XS -nolisten tcp >/dev/null 2>&1 &
   for i in 1 2 3 4 5 6 7 8 9 10; do [ -e /tmp/.X11-unix/X99 ] && break; sleep 0.5; done
   mkdir -p /tmp/.config && ln -s /r/config /tmp/.config/SpelunkyClassicHD
   if [ -n \"$GENLAST\" ]; then

@@ -87,12 +87,14 @@ static void swim_check(struct inst *p)
     if (collision_point(p->x, p->y, OBJ_oWater) != INST_NONE) p->flags |= IF_SWIMMING;
 }
 
-/* the terrain blocks' gem / item roll (oBrick :9-14, oLush :7-13, oDark :7-12, oTemple :8-14) */
+/* the terrain blocks' gem / item roll (oBrick :9-14, oLush :7-13, oDark :7-12, oTemple :8-14); isLevel() is
+   true except in the transition rooms the play loop builds with this code (gen_not_level, src/game/ptrans.c) */
+int gen_not_level;
 static void block_gems(int i, int a, int b, int c)
 {
     const struct inst *p = &W.in[i];
     int x = p->x, y = p->y, o;
-    if (x > 1 && x < G.roomW - 16 && y > 1 && y < G.roomH - 16) {               /* isLevel() is true */
+    if (!gen_not_level && x > 1 && x < G.roomW - 16 && y > 1 && y < G.roomH - 16) {
         if (RAND(1, a) == 1) instance_create(x + 8, y + 8, OBJ_oSapphireBig);
         else if (RAND(1, b) == 1) instance_create(x + 8, y + 8, OBJ_oEmeraldBig);
         else if (RAND(1, c) == 1) instance_create(x + 8, y + 8, OBJ_oRubyBig);

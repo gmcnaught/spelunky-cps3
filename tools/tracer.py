@@ -26,6 +26,13 @@ Method from ../maldita.castilla-cps3/tools/tracer.py. Changes, all GML compiled 
   - oGamepad Begin Step (new): the trace starts at the first Begin Step in rLevel (route step t = 0 is the Step
     that follows). A phase-0 record is written at the first Begin Step in each room (the room's state after
     every Create / Room Start: in rLevel, the generated level, oGame Create -> scrInitLevel -> scrLevelGen).
+  - TRACE_NOENEMY=1 (P4): at the first Begin Step in a level room (rLevel, rLevel2, rLevel3, rOlmec), before its
+    phase-0 record, `with (o) instance_destroy(id, false)` for o in NOENEMY_OBJS (oEnemy and its children, which
+    include the shopkeepers; oDamsel; oFakeBones): no Destroy events run. tests/routes/p4_*.txt and
+    scripts/p4_trace.sh use it; the C play loop (src/game/prun.c enemies_out) removes the same objects.
+  - TRACE_EVLOG=1 (probe runs only): every object event except Draw and oGamepad / oScreen / oIntro's appends
+    id * 4096 + k to global.trc_evl (k: the names file's "C k <object> <event>" lines); the record writes the
+    list since the last record. Used to determine the runner's event and instance order.
   - TRACE_SHOT=r1,r2,...: oGamepad Post-Draw (new) saves application_surface after record r (shot_gml).
   - oGamepad End Step (new): a phase-1 record each step. The buffer is saved every 50 records as
     trc_<k>.bin (buffer_save_ext; then rewound). After route steps + TAIL (default 30) or MAX_STEPS records:
@@ -41,7 +48,7 @@ Route file: lines "<steps> <keys>"; keys a string of letters or "-" for none; "#
 
 Trace format (little-endian; the chunks concatenated in order, scripts/hd_trace.sh):
   record header
-    u32  magic 0x31545053 ("SPT1")
+    u32  magic 0x33545053 ("SPT3")
     u8   phase           0 = first Begin Step in a room, 1 = End Step
     s32  rec             record number (0, 1, ...; both phases)
     s32  t               route steps done (the End Step of route step t writes t + 1)
@@ -51,6 +58,8 @@ Trace format (little-endian; the chunks concatenated in order, scripts/hd_trace.
     f64  seed            random_get_seed()
     f64  plife, bombs, rope, money    global.plife / bombs / rope / money (-1e9 if not a number)
     u32  n               instances that follow (with (all), the runner's instance order)
+    f64  view x, view y  camera_get_view_x / _y(view_camera[0])   (SPT3; view_xview[0] is not updated by the runner)
+    f64  time            oGame.time (-1e9 without an oGame)       (SPT3)
   per instance
     s32  id
     s16  object_index    (names file O lines)
@@ -65,11 +74,17 @@ Trace format (little-endian; the chunks concatenated in order, scripts/hd_trace.
     f64  alarm[k]        for each set bit, k ascending
     u8   vel flags       bit 0: the instance has xVel, bit 1: yVel (variable_instance_exists)
     f64  xVel, yVel      when present (-1e9 if not a number)
+    f64  image_speed                                              (SPT3)
+    u32  var mask        bit k: TRACE_VARS[k] exists and is numeric (SPT3)
+    f64  value           for each set bit, k ascending            (SPT3)
   phase-0 records only, after the instances: the room's tile_add tiles (tiles_gml: legacy tile elements of
   every layer, layer_get_all() order then element order)
     u32  count
     per tile: string background name (NUL-terminated), f64 left, top, w, h, x, y, depth (the layer's depth)
-  (Magic "SPT1" traces, before 2026-10-03 P3: no image_xscale..visible fields and no tiles; decode reads both.)
+  after the instances (and tiles), every record (SPT3):
+    u32  count, s32 entries      TRACE_EVLOG's event log (count 0 without TRACE_EVLOG)
+  Magic "SPT3" (0x33545053, P4). "SPT2": no view, time, image_speed, vars or event log. "SPT1" (before
+  2026-10-03 P3): also no image_xscale..visible fields and no tiles. decode reads all three.
 Names file (<out.droid>.names): one line per resource, "O <index> <name>", "S ...", "R ...".
 """
 import os
@@ -85,8 +100,18 @@ DOTNET = 'mcr.microsoft.com/dotnet/sdk:10.0'
 KEYS = {'R': (1, 'right'), 'L': (2, 'left'), 'U': (4, 'up'), 'D': (8, 'down'), 'J': (16, 'jump'),
         'A': (32, 'attack'), 'I': (64, 'item'), 'N': (128, 'run'), 'B': (256, 'bomb'), 'O': (512, 'rope'),
         'F': (1024, 'flare'), 'P': (2048, 'pay'), 'S': (4096, 'start')}
-MAGIC = 0x32545053   # "SPT2" (SPT1: without the drawing fields and tiles; still decoded)
+MAGIC = 0x33545053   # "SPT3" (SPT2: without view / time / image_speed / vars / event log; SPT1: without the
+MAGIC2 = 0x32545053  #  drawing fields and tiles; both still decoded)
 MAGIC1 = 0x31545053
+# SPT3 per-instance variables (bit k of the var mask: TRACE_VARS[k] exists and converts to a number by real())
+TRACE_VARS = ['state', 'xAcc', 'yAcc', 'held', 'armed', 'status', 'fallTimer', 'stunTimer', 'dead', 'stunned',
+              'jumpTime', 'whipping', 'hangCount', 'ladderTimer', 'pushTimer', 'runHeld', 'life', 'holdItem',
+              'timer', 'counter', 'grav', 'gravityIntensity', 'safe', 'bounced', 'invincible', 'facing', 'cost',
+              'myGrav', 'kJumped', 'jumpButtonReleased', 'trigger', 'value']
+# TRACE_NOENEMY=1: objects destroyed (instance_destroy(id, false): no Destroy event) at the first Begin Step in each
+# level room, before the phase-0 record (P4: the player without enemies). oEnemy covers every enemy (shopkeepers
+# included); oDamsel walks on her own; oFakeBones turns into a skeleton when the player comes near
+NOENEMY_OBJS = ['oEnemy', 'oDamsel', 'oFakeBones']
 CHUNK = 50
 TAIL = int(os.environ.get('TRACE_TAIL', 30))
 MAX_STEPS = int(os.environ.get('TRACE_MAX', 20000))
@@ -131,7 +156,11 @@ def record(phase):
     buffer_write(b, buffer_f64, {num('global.money')});
     var npos = buffer_tell(b);
     buffer_write(b, buffer_u32, 0);
+    buffer_write(b, buffer_f64, camera_get_view_x(view_camera[0]));
+    buffer_write(b, buffer_f64, camera_get_view_y(view_camera[0]));
+    buffer_write(b, buffer_f64, instance_exists(oGame) ? {num('oGame.time')} : {BAD});
     var n = 0;
+    var vn = [{', '.join('"' + v + '"' for v in TRACE_VARS)}];
     with (all)
     {{
         n += 1;
@@ -164,9 +193,27 @@ def record(phase):
         buffer_write(b, buffer_u8, vf);
         if (vf & 1) buffer_write(b, buffer_f64, {num('xVel')});
         if (vf & 2) buffer_write(b, buffer_f64, {num('yVel')});
+        buffer_write(b, buffer_f64, image_speed);
+        var vm = 0;
+        var vv = [];
+        for (var k = 0; k < array_length(vn); k++)
+        {{
+            vv[k] = 0;
+            if (variable_instance_exists(id, vn[k]))
+            {{
+                var v = variable_instance_get(id, vn[k]);
+                try {{ if (is_numeric(v) || is_bool(v) || typeof(v) == "ref") {{ vv[k] = real(v); vm |= (1 << k); }} }}
+                catch (e) {{ }}
+            }}
+        }}
+        buffer_write(b, buffer_u32, vm);
+        for (var k = 0; k < array_length(vn); k++) if (vm & (1 << k)) buffer_write(b, buffer_f64, vv[k]);
     }}
     buffer_poke(b, npos, buffer_u32, n);
     {tiles_gml() if phase == 0 else ''}
+    buffer_write(b, buffer_u32, global.trc_evn);
+    for (var k = 0; k < global.trc_evn; k++) buffer_write(b, buffer_s32, global.trc_evl[k]);
+    global.trc_evn = 0;
     global.trc_rec += 1;
 }}
 '''
@@ -224,6 +271,10 @@ def gml(segs, seed):
         ends.append(str(t))
         masks.append(str(m))
     reseed = '' if os.environ.get('TRACE_RESEED') == '0' else f'random_set_seed({seed});'
+    noenemy = ''
+    if os.environ.get('TRACE_NOENEMY') == '1':
+        noenemy = ('if (room == rLevel || room == rLevel2 || room == rLevel3 || room == rOlmec)\n{\n' +
+                   ''.join(f'    with ({o}) instance_destroy(id, false);\n' for o in NOENEMY_OBJS) + '}')
     create = f'''
 global.trc_phase = 0;
 global.trc_on = 0;
@@ -235,6 +286,8 @@ global.trc_chunk = 0;
 global.trc_seg = 0;
 global.trc_lastroom = -1;
 global.trc_buf = -1;
+global.trc_evl = [];
+global.trc_evn = 0;
 global.trc_ends = [{', '.join(ends) or '0'}];
 global.trc_masks = [{', '.join(masks) or '0'}];
 '''
@@ -283,6 +336,7 @@ if (!global.trc_on) exit;
 if (room != global.trc_lastroom)
 {{
     global.trc_lastroom = room;
+    {noenemy}
     {record(0)}
 }}
 '''
@@ -349,7 +403,30 @@ g.QueueAppend("gml_Object_oGamepad_Create_0", {q(create)});
 g.QueueReplace("gml_Object_oGamepad_Step_0", {q(step)});
 g.QueueReplace("gml_Object_oGamepad_Step_1", {q(begin)});
 g.QueueReplace("gml_Object_oGamepad_Step_2", {q(end)});
-{shots}g.Import();
+{shots}{evlog_csx() if os.environ.get('TRACE_EVLOG') == '1' else ''}
+File.WriteAllText({q(names)}, sb.ToString());
+g.Import();
+'''
+
+
+def evlog_csx():
+    """TRACE_EVLOG=1 (probe runs only: every logged entry is decompiled and recompiled): every object event
+    except Draw, oGamepad's, oScreen's and oIntro's gets a first statement appending id * 4096 + k to the record's
+    event log while the trace is on; the names file gets "C <k> <code entry>" lines"""
+    return '''
+int evk = 0;
+foreach (var c in Data.Code)
+{
+    if (c.ParentEntry != null) continue;
+    var nm = c.Name.Content;
+    var m = System.Text.RegularExpressions.Regex.Match(nm, "^gml_Object_(.+)_(Step|Alarm|Collision|Other|Create|Destroy)_");
+    if (!m.Success) continue;
+    var o = m.Groups[1].Value;
+    if (o == "oGamepad" || o == "oScreen" || o == "oIntro") continue;
+    sb.Append($"C {evk} {nm}\\n");
+    g.QueuePrepend(nm, "if (variable_global_exists(\\"trc_on\\") && global.trc_on) { global.trc_evl[global.trc_evn] = real(id) * 4096 + " + evk + "; global.trc_evn += 1; }\\n");
+    evk++;
+}
 '''
 
 
@@ -429,7 +506,7 @@ g.Import();
 
 
 def load_names(path):
-    names = {'O': {}, 'S': {}, 'R': {}}
+    names = {'O': {}, 'S': {}, 'R': {}, 'C': {}}
     for line in open(path):
         k, i, n = line.rstrip('\n').split(' ', 2)
         names[k][int(i)] = n
@@ -443,11 +520,15 @@ def records(data):
     while o < len(data):
         h = H.unpack_from(data, o)
         o += H.size
-        if h[0] not in (MAGIC, MAGIC1):
+        if h[0] not in (MAGIC, MAGIC2, MAGIC1):
             raise ValueError(f'bad magic at {o - H.size}')
-        v2 = h[0] == MAGIC
+        v2 = h[0] != MAGIC1
+        v3 = h[0] == MAGIC
         hd = dict(zip(['magic', 'phase', 'rec', 't', 'input', 'room', 'currLevel', 'seed', 'plife', 'bombs',
                        'rope', 'money', 'n'], h))
+        if v3:
+            hd['xview'], hd['yview'], hd['time'] = struct.unpack_from('<3d', data, o)
+            o += 24
         insts = []
         for _ in range(hd['n']):
             iid, obj, x, y, spr, img = struct.unpack_from('<ihddhd', data, o)
@@ -473,8 +554,16 @@ def records(data):
                     o += 8
                 else:
                     vel.append(None)
-            insts.append(dict(id=iid, obj=obj, x=x, y=y, spr=spr, img=img, alarms=alarms, xVel=vel[0], yVel=vel[1],
-                              draw=draw))
+            ins = dict(id=iid, obj=obj, x=x, y=y, spr=spr, img=img, alarms=alarms, xVel=vel[0], yVel=vel[1],
+                       draw=draw, vars={})
+            if v3:
+                ins['ispd'], vm = struct.unpack_from('<dI', data, o)
+                o += 12
+                for k, nm in enumerate(TRACE_VARS):
+                    if vm & (1 << k):
+                        ins['vars'][nm] = struct.unpack_from('<d', data, o)[0]
+                        o += 8
+            insts.append(ins)
         hd['tiles'] = []
         if v2 and hd['phase'] == 0:
             (tn,) = struct.unpack_from('<I', data, o)
@@ -485,6 +574,12 @@ def records(data):
                 o = e + 1
                 hd['tiles'].append((bg,) + struct.unpack_from('<7d', data, o))
                 o += 56
+        hd['ev'] = []
+        if v3:
+            (ne,) = struct.unpack_from('<I', data, o)
+            o += 4
+            hd['ev'] = list(struct.unpack_from(f'<{ne}i', data, o))
+            o += 4 * ne
         yield hd, insts
 
 
@@ -502,7 +597,9 @@ def decode(path, names_path, steps=None, inst=True):
         print(f"rec {hd['rec']} phase {hd['phase']} t {hd['t']} input {hd['input']} "
               f"room {names['R'].get(hd['room'], hd['room'])} level {g(hd['currLevel'])} seed {g(hd['seed'])} "
               f"life {g(hd['plife'])} bombs {g(hd['bombs'])} rope {g(hd['rope'])} money {g(hd['money'])} "
-              f"n {hd['n']}")
+              f"n {hd['n']}" + (f" view {g(hd['xview'])} {g(hd['yview'])} time {g(hd['time'])}" if 'xview' in hd else ''))
+        for e in hd['ev']:
+            print(f"  ev {e >> 12} {names['C'].get(e & 4095, e & 4095)}")
         if not inst:
             continue
         for i in insts:
@@ -512,8 +609,11 @@ def decode(path, names_path, steps=None, inst=True):
             dr = '' if d is None else (f" sc {g(d['xscale'])} {g(d['yscale'])} ang {g(d['angle'])} "
                                        f"blend {d['blend']:06x} alpha {g(d['alpha'])} depth {g(d['depth'])} "
                                        f"vis {d['visible']}")
+            ext = ''
+            if 'ispd' in i:
+                ext = f" ispd {g(i['ispd'])}" + ''.join(f" {k}={g(v)}" for k, v in i['vars'].items())
             print(f"  {i['id']} {names['O'].get(i['obj'], i['obj'])} {g(i['x'])} {g(i['y'])} "
-                  f"{names['S'].get(i['spr'], i['spr'])} {g(i['img'])}{dr}{(' ' + al) if al else ''}{vel}")
+                  f"{names['S'].get(i['spr'], i['spr'])} {g(i['img'])}{dr}{(' ' + al) if al else ''}{vel}{ext}")
         for t in hd['tiles']:
             print(f"  tile {t[0]} {' '.join(g(v) for v in t[1:])}")
 
