@@ -18,7 +18,8 @@
  * divide unit (DIVU) in two 29-bit quotient steps; compares on the bit patterns. Other operands take a general
  * path (unpack, 64-bit significand with sticky bit, one rounding).
  *
- * SOFTFP_ASM: add and subtract from softfp_sh2.S (its fast path in assembly; this file's add for the rest).
+ * SOFTFP_ASM: binary64 / binary32 add and subtract and the binary64 compares from softfp_sh2.S (its fast paths in
+ * assembly; this file's adds for the rest).
  * SOFTFP_HOST: the functions are named sf_* and divide in C (the host test); SOFTFP_SFNAMES: named sf_* on the SH-2
  * (tests/softfp, beside libgcc's); otherwise __adddf3 ... (libgcc's names). */
 #include <stdint.h>
@@ -416,12 +417,14 @@ static inline int cmp_d(f64 a, f64 b, int nanres)
     return ((a > b) ^ sa) ? 1 : -1;
 }
 
+#ifndef SOFTFP_ASM                                  /* SOFTFP_ASM: softfp_sh2.S's */
 HOT int SF(eqdf2)(f64 a, f64 b) { return cmp_d(a, b, 1); }
 HOT int SF(nedf2)(f64 a, f64 b) { return cmp_d(a, b, 1); }
 HOT int SF(ltdf2)(f64 a, f64 b) { return cmp_d(a, b, 1); }
 HOT int SF(ledf2)(f64 a, f64 b) { return cmp_d(a, b, 1); }
 HOT int SF(gtdf2)(f64 a, f64 b) { return cmp_d(a, b, -1); }
 HOT int SF(gedf2)(f64 a, f64 b) { return cmp_d(a, b, -1); }
+#endif
 HOT int SF(unorddf2)(f64 a, f64 b) { return isnan_d(a) || isnan_d(b); }
 
 HOT f64 SF(floatsidf)(int32_t v)                   /* exact */
@@ -528,7 +531,12 @@ static f32 qnan_f(f32 a) { return a | 0x400000u; }
    subnormals included */
 static f32 add_f_wide(f32 a, f32 b) { return SF(truncdfsf2)(SF(adddf3)(SF(extendsfdf2)(a), SF(extendsfdf2)(b))); }
 
-HOT f32 SF(addsf3)(f32 a, f32 b)
+#ifdef SOFTFP_ASM                                   /* softfp_sh2.S's add comes here for what it leaves out */
+#define ADDF_C softfp_addsf3_c
+#else
+#define ADDF_C SF(addsf3)
+#endif
+HOT f32 ADDF_C(f32 a, f32 b)
 {
     uint32_t ua = a & 0x7fffffffu, ub = b & 0x7fffffffu;
     if (ua > F_INF) return qnan_f(a);
@@ -570,7 +578,9 @@ HOT f32 SF(addsf3)(f32 a, f32 b)
     if (e >= 0xff) return (a & 0x80000000u) | F_INF;
     return (a & 0x80000000u) | ((uint32_t)e << 23) | (m & 0x7fffffu);
 }
+#ifndef SOFTFP_ASM
 HOT f32 SF(subsf3)(f32 a, f32 b) { return SF(addsf3)(a, b ^ 0x80000000u); }
+#endif
 
 HOT f32 SF(mulsf3)(f32 a, f32 b)
 {

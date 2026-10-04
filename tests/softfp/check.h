@@ -7,7 +7,7 @@
 #include "cases.h"
 
 struct cs_case { uint64_t a, b; };
-/* (double operations: 3% of the pairs are carry / sticky shapes, below) */
+/* (3% of the double pairs are carry / sticky shapes, 3% long cancellations one binade apart; floats too) */
 
 static inline uint64_t canon_d(uint64_t r) { return ((r & 0x7fffffffffffffffull) > 0x7ff0000000000000ull) ? 0x7ff8000000000000ull : r; }
 static inline uint32_t canon_f(uint32_t r) { return ((r & 0x7fffffffu) > 0x7f800000u) ? 0x7fc00000u : r; }
@@ -19,6 +19,13 @@ static inline struct cs_case cs_case_for(int op)
     switch (op) {
     case OP_EXT: case OP_FADD: case OP_FSUB: case OP_FMUL: case OP_FDIV: case OP_FEQ: case OP_FNE: case OP_FLT:
     case OP_FLE: case OP_FGT: case OP_FGE: case OP_F2I:
+        if (cs_u32(100) < 3) {                       /* the same shape in binary32 */
+            uint32_t ex = 2 + cs_u32(250), s = cs_u32(2) << 31;
+            c.a = s | (ex << 23) | ((uint32_t)cs_next() & ((1u << cs_u32(23)) - 1));
+            c.b = (s ^ 0x80000000u) | ((ex - 1) << 23) |
+                  ((0x7fffffu - ((uint32_t)cs_next() & ((1u << cs_u32(23)) - 1))) | cs_u32(2));
+            break;
+        }
         c.a = cs_f1();
         c.b = cs_f2((uint32_t)c.a);
         break;
@@ -34,6 +41,14 @@ static inline struct cs_case cs_case_for(int op)
             uint32_t d = 32 + cs_u32(32), lo = cs_u32(32);
             c.b = s | ((ex > d ? ex - d : 1) << 52) | (uint64_t)(cs_next() & ((1ull << lo) - 1)) | ((uint64_t)cs_u32(4) << 50);
             if (cs_u32(4) == 0) c.b ^= 0x8000000000000000ull;
+            break;
+        }
+        if (cs_u32(100) < 3) {                       /* a long cancellation one binade apart: a = 2^e (1 + small),
+                                                        b = -2^(e - 1) (2 - small) with its last bits set */
+            uint64_t ex = 2 + cs_u32(2000), s = (uint64_t)cs_u32(2) << 63;
+            c.a = s | (ex << 52) | (cs_next() & ((1ull << cs_u32(52)) - 1));
+            c.b = (s ^ 0x8000000000000000ull) | ((ex - 1) << 52) |
+                  ((0x000fffffffffffffull - (cs_next() & ((1ull << cs_u32(52)) - 1))) | cs_u32(2));
             break;
         }
         c.a = cs_d1();
