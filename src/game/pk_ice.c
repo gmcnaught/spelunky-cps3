@@ -10,8 +10,8 @@
  * PEN whipped; oYeti sightCounter -> PEN sightCounter; oYetiKing attackTimer -> PEN hit; oUFO shift / shiftToggle /
  * alerted -> PEN turnTimer / throwCount / startled; oAlienBoss psychicRecover -> PEN firing; oAlienEject dir ->
  * PE facing; oThinIce thickness, oDarkFall timeFall -> PE counter; oPsychicCreate dir -> PE direction.
- * oYeti's type is T_CAVEMAN: every GML test of type "Yeti" (oEnemy Step :81 :122 :182 :186, oItem Step :247 :251)
- * is in a list with "Caveman" and runs the same code, which penemy.c keys on T_CAVEMAN.
+ * type: the GML strings as enum ptype (T_YETI, T_YETIKING, T_UFO, T_ALIEN, T_ALIENBOSS): penemy.c's oEnemy / oItem
+ * Step branches test them (a thrown item or enemy hitting a UFO or the alien boss: pen_hit_common).
  * oDrip (oIce / oIceBlock Destroy, oThinIce, oIceBottom) is package B's object: created here, run there. */
 #include "pint.h"
 #include "penemy.h"
@@ -98,7 +98,7 @@ static void yeti_create(int i)        /* objects/oYeti/Create_0.gml (oEnemy's ra
     setCollisionBounds(i, 2, 0, sprw(i) - 2, sprh(i));
     PE(p)->xVel = N(2.5);
     p->ispd = (img_t)0.5;
-    p->type = T_CAVEMAN;                                           /* "Yeti" (see the top) */
+    p->type = T_YETI;
     PE(p)->hp = 5;
     p->invincible = 0;
     PE(p)->status = 0;
@@ -325,7 +325,8 @@ static void yetiking_create(int i)    /* objects/oYetiKing/Create_0.gml (oEnemy'
     setCollisionBounds(i, 6, 0, 26, 32);
     PE(p)->xVel = N(2.5);
     p->ispd = (img_t)0.25;
-    PE(p)->hp = 30;                                                /* type "Yeti King": oEnemy's default branches */
+    p->type = T_YETIKING;
+    PE(p)->hp = 30;
     p->invincible = 0;
     PE(p)->heavy = 1;
     PE(p)->status = 0;
@@ -488,6 +489,7 @@ static void ufo_create(int i, int shiftToggle)                     /* objects/oU
 {
     struct pin *p = &PX(i);
     pen_enemy_create(i);
+    p->type = T_UFO;
     p->ispd = (img_t)0.5;
     setCollisionBounds(i, 4, 2, 12, 14);
     PE(p)->xVel = 0;
@@ -630,6 +632,7 @@ static void alien_create(int i)                                    /* objects/oA
     setCollisionBounds(i, 2, 6, 14, 16);
     PE(p)->xVel = N(2.5);
     p->ispd = (img_t)0.5;
+    p->type = T_ALIEN;
     PE(p)->hp = 1;
     p->invincible = 0;
     PE(p)->status = 0;
@@ -766,6 +769,7 @@ static void alienboss_create(int i)                                /* objects/oA
     setCollisionBounds(i, 0, 0, 32, 32);
     PE(p)->xVel = N(2.5);
     p->ispd = (img_t)0.25;
+    p->type = T_ALIENBOSS;
     PE(p)->hp = 10;
     p->invincible = 0;
     PE(p)->status = 0;
@@ -1426,7 +1430,7 @@ static int ev_collision_ice(int i, int o)
     case OBJ_oLaser:
         if (obj_is(oo, OBJ_oSolid)) laser_solid(i, o);
         else if (obj_is(oo, OBJ_oEnemy)) {
-            if (oo != OBJ_oUFO && PX(o).invincible == 0) {
+            if (PX(o).type != T_UFO && PX(o).invincible == 0) {
                 ray_hurt(o);
                 pin_create(PX(i).x, PX(i).y, OBJ_oLaserExplode);
                 pin_destroy(i);
@@ -1440,7 +1444,7 @@ static int ev_collision_ice(int i, int o)
         return 1;
     case OBJ_oPsychicWave:
         if (obj_is(oo, OBJ_oEnemy)) {
-            if (oo != OBJ_oAlienBoss && PX(o).invincible == 0) ray_hurt(o);
+            if (PX(o).type != T_ALIENBOSS && PX(o).invincible == 0) ray_hurt(o);
         } else {                                                       /* Collision_oDamsel */
             if (!PX(o).invincible) {
                 ray_hurt(o);
@@ -1496,35 +1500,6 @@ static int ev_destroy_ice(int i)
 
 /* gameStepEvent's moving solids (penemy.c pen_moving_solids): oDarkFall's viscidTop (Create :2) */
 int pice_msolid(int s) { return PX(s).obj == OBJ_oDarkFall ? 1 : -1; }
-
-/* penemy.c pen_hit_common's untranslated types (site 5010): a thrown item (arg 0: oItem Step :297-317) or a
-   stunned enemy (arg 1: oEnemy Step :232-250) hitting e. 1: handled */
-int pice_enemy(int site, int e, int arg)
-{
-    struct pin *o = &PX(e);
-    if (site != 5010) return 0;
-    if (o->obj == OBJ_oAlienBoss) {
-        if (PE(o)->status != 99 && o->spr != GSPR_sAlienBossHurt) {
-            scrCreateBlood(e, o->x + PI(8), o->y + PI(8), 1);
-            o = &PX(e);
-            PE(o)->hp -= 1;
-            pin_set_sprite(e, GSPR_sAlienBossHurt);
-            o->ispd = (img_t)0.8;
-            snd_play(SND_xhit);                                                /* oItem :305, oEnemy :240 */
-        }
-        return 1;
-    }
-    if (o->obj == OBJ_oUFO) {
-        pin_create(o->x + PI(8), o->y + PI(8), OBJ_oExplosion);
-        snd_play(SND_xexplosion);                                              /* oItem :311, oEnemy :246 */
-        if (RAND(1, 3) == 1) pin_create(PX(e).x + PI(8), PX(e).y + PI(8), OBJ_oAlienEject);
-        PG.ufos += 1;
-        PG.kills += 1;
-        if (arg) pin_destroy(e);                                       /* oEnemy's; oItem's is commented out */
-        return 1;
-    }
-    return 0;
-}
 
 int pice_ev(int ev, int i, int arg)
 {
