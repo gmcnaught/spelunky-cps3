@@ -27,7 +27,7 @@ usage: jtcost.py [--route R] [--step N] [--consts review|fit] trace nm.txt"""
 import sys, re, bisect, collections, os
 
 args = sys.argv[1:]
-opt = {'--route': '?', '--step': '?', '--consts': os.getenv('JTCOST_CONSTS', 'review')}
+opt = {'--route': '?', '--step': '?', '--consts': os.getenv('JTCOST_CONSTS', 'fit')}
 while args and args[0] in opt:
     opt[args[0]] = args[1]; args = args[2:]
 if len(args) != 2 or opt['--consts'] not in ('review', 'fit'): sys.exit(__doc__)
