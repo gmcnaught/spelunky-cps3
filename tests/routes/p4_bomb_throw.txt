@@ -1,0 +1,15 @@
+# P4 (pcol.c): throw bombs both ways from the start, backing off each time; blasts with several blocks (and the
+# start's items) in one collision pass. Seed 3: scripts/p4_trace.sh p4_bomb_throw 3
+45 -       # the level's fade-in
+3  L       # face left
+1  B       # throw a bomb
+30 R       # back off
+90 -
+3  R
+1  B       # throw right
+30 L
+90 -
+1  D
+1  DB      # drop one at the feet
+30 RN
+90 -
