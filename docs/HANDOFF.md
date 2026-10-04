@@ -1,0 +1,81 @@
+# Handoff, 2026-10-04 16:45
+
+Main is e264467. The grid build ships (PLAN §1). Gates:
+- exact build: build/gates.sh and build/ctall.sh, record-equal to the runner traces;
+- grid build: scripts/equiv_check.sh;
+- SH-2: checksums equal to the host build;
+- tests/ramcheck.ld: at least 32 KB of stack.
+
+Process:
+- **MAME:** only through scripts/mame.sh (headless docker).
+- **MiSTer:** .62 (root@192.168.20.62), one agent at a time, handed out by the lead.
+- **Gating:** speed work is gated in batches: a short exactness argument per commit, the full suite once per batch, bisect on failure.
+- **Gate scope:** every merge check also links tests/game (the ramcheck) and runs playsh2.
+
+## 1. Merge blocker: main fails the ramcheck link
+
+On e264467, tests/game (built like game_check, HUD=1 -O2, PIN 1792) ends .bss at 0x0207a4c4, about 23 KB of stack, against the 32 KB check. The playsh2 JT variant (main RAM only) overflows RAM by 22 KB. The largest main-RAM items are inst_mem 129,024 B (generator and play instances, `PW.in = inst_mem`, hot, so it stays), pin_ext 89,600, ents 12,288 and pin_en 9,728.
+
+draw1's fix is uncommitted in worktree `.claude/worktrees/agent-ac1fab3d8977bc40f` (branch worktree-agent-ac1fab3d8977bc40f, on e264467). Modified files: docs/DRAW.md, src/draw/draw.c, src/game/play.h, tests/game/sprbss.ld, tests/playsh2/Makefile, tests/playsh2/main.c, tests/ramcheck.ld; new file tests/playsh2/jtcold.ld. The plan:
+
+1. **Done and gated by draw1:** tests/game/sprbss.ld puts cold arrays in sprite RAM area A:
+   - the generator-only lists in inst.c: with_pool, gw_inext, gw_iprev, ghome, gw_ohead, gw_otail, gw_live;
+   - the attract-only lpos_id, lpos and w_alive.
+
+   .bss is then 454,072 (54.7 KB of stack); playsh2 6,851/6,851; gametime unchanged.
+2. **To finish:** draw.c's claim arrays (cnext, ccell, ctile, bnext, bpos; 17.9 KB) go to DRAW_CACHE_SECTION. They are touched only for instances whose draw state changed. Expected stack: 72.6 KB, or about 54.6 KB with perf3's batch.
+3. **playsh2 JT variant:** tests/playsh2/jtcold.ld moves generator-only arrays (the R-tree nodes rn 55.5 KB, gtiles 16 KB, inst.c lists; 89 KB in all) to sprite RAM, and main.c's ram_init clears them. That leaves 68 KB of stack. Generation timings then include sprite-RAM accesses.
+4. **Lead's addition:** the grid build doesn't use the R-tree (rn) at play time. If it is only used by generation or by the exact build, compile it out of the grid build (PCOL_EXACT only) or place it in sprite RAM in every build. Check against src/game/pcolgrid.h's hooks first.
+
+Gate it with:
+- gates.sh, ctall and equiv_check;
+- the tests/game link plus MAME frames (scripts/game_check.sh p4_exit559);
+- playsh2 checksums;
+- gametime.
+
+## 2. Waiting on the ramcheck fix (committed on branches, gated on the host)
+
+- **pk-lake** (branch worktree-agent-a9d8cd3f06c7d548a, on e264467):
+  - 97504f7: the oTransition lake roll and probLake;
+  - 1026aa3: playhost --room rLevel3 and its globals;
+  - 347969f: oJaws, c_swamp_lakejaws and a tests/equiv_accept.txt line (blood made in a different collision order; blood is not COSMETIC because the kapala and the vampire use it);
+  - 219e129: c_swamp_lake (the natural level-6 lake, seed 121013091).
+
+  Both lake routes are record-equal on playhost and playhost_nc without the EXT workaround. Its full gates, ctall and equiv rerun were in progress when it was stopped.
+- **perf3 batch 1** (branch worktree-agent-a69ec85fed9f74a42, on e264467): ca44b8b A (resting skip, grid only), 1b0b230 D (step claimant table), 742980e (A guard for EXT_SCRATCH), e3ef748 E (xprevious for moved instances), fe9c74e F (integer sqrt), 16f21ca (gver/gclock 16-bit), ab18e2d (rst 128 entries).
+  - SH-2 grid mean step 260,119 -> 180,294 MAME clocks (-30.7 %), 6851/6851 checksums.
+  - Per commit: A -47.0 K, D -13.2 K, E -9.9 K, F -9.7 K.
+  - Main-RAM stores per step: 27,940 base -> 21,139 with A -> 19,188 with D.
+  - RAM cost: about 18 KB, less after 16f21ca / ab18e2d.
+  - The full host gates of the batch, and its ramcheck, were not finished.
+
+## 3. Uncommitted or lost work
+
+- **draw1, darkness translation:**
+  - Covers oLevel Create :16-17 and Step :110-136 (PLEV.darkness), oPlayer1 :74-147 distToNearestLightSource (initial 999), and oFlare distToPlayer, with float-rounded distances.
+  - draw1 reported 0 differences against the traced darkness / distLight on g_p7_dark_s18, c_items_flare_s69 and c_jungle_scarab_s615.
+  - The edits are not in its worktree now. The edit scripts are copied to build/handoff/ (from the lead's scratchpad) (`ed_dark.py`, `ed_dark2.py`, `darkcmp.py`, `darktr.py`); they target the old worktree path. The gate output is in `gates_dark.txt`.
+  - Still to do after it: the p7_dark MAME run against the runner's 6 shots, which needs tests/game's nodark option (now on main).
+- **draw1, cimg model fix:** tools/drawmodel.py rebuilds an oItem's price-tag counter (cimg) from the record history. It matched the traced cimg on all 612 records of g_p5_shop_s96 and c_items_dice_s191, and p5_caveman went from 115 to 0 differing frames. The scripts `ed_cimg.py`, `ed_cimg2.py` and `cimgchk.py` are in build/handoff/. Not in the worktree.
+- **draw1, queued:** cps3v_vblank busy-waits for the sprite-list DMA (../cps3-testgame/sdk/src/cps3v.c:226). Measure the wait with a real list on .62; if it's material, start the DMA and check its status at the next VBlank. Do it in our code, not the SDK.
+- **jtmodel** (worktree agent-a52ae5f4b5e11b230, uncommitted): scripts/jtmodel.sh, scripts/lua/jtmodel.lua and tools/jtmodel.py are new, and it changed scripts/mame.sh and scripts/playsh2_jt.sh.
+  - Its rebuilds of equiv's jtcps3 builds (899ce76 grid/exact, 01a2559 -Os) reproduced all 54 MAME step means.
+  - Counting runs (3 cache models, misses split code / literal pool / rodata / RAM, per-symbol loads and stores) were in progress.
+  - Its task: a per-function jtcps3 cost model fitted to docs/EQUIV.md's 54 points; a ranking of arrays by loads and stores per step to place hot data in cached main RAM and cold data in sprite RAM; and evaluation of the stack in the 2 KB cache-RAM mode, -Os, and code placement.
+
+## 4. Facts the next agents need
+
+- jtcps3 versus MAME (cps3-testgame ttest):
+  - 32-bit store 6.06 clocks;
+  - main-RAM load 1.5 on a cache hit, 7.5 on a miss;
+  - back-to-back MUL.L 6.37;
+  - SIMM 1 code past the cache 2.5x;
+  - cache-RAM mode 1.5;
+  - one 4 KB unified cache.
+
+  The step costs 3.9x (exact) to 4.2x (grid) MAME clocks on jtcps3. jtcps3 budget: step ≤ about 0.525 M per 2-frame pair, which is about 146-154 K MAME. The grid at e264467 is about 260 K, and perf3's batch brings it to 180 K.
+- Character DMA: art is loaded once at boot; it isn't a CPU lever. Sprite RAM is uncached, so use it only for cold data. Character RAM can't take CPU writes while the display is on.
+- Frame checks: on routes the grid takes off the trace, use EXACT=1.
+- Disk: the 2026-10-04 incident filled the host disk and broke the colima VM, fixed by restart and fstrim. Never write full dumps; aggregate or delete outputs.
+
+Saved copies (ignored dir build/handoff/): draw1_ramfix.patch (draw1's uncommitted diff on e264467) and jtcold.ld; jtmodel.patch and jtmodel_new.tar (jtmodel's uncommitted diff and new files); the darkness and cimg edit scripts.
