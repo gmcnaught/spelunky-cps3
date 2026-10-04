@@ -15,6 +15,22 @@ int pcontent_ev(int ev, int i, int arg)
            pitems_ev(ev, i, arg);
 }
 
+WEAK int pjungle_msolid(int s) { (void)s; return -1; }
+WEAK int pswamp_msolid(int s) { (void)s; return -1; }
+WEAK int pice_msolid(int s) { (void)s; return -1; }
+WEAK int ptemple_msolid(int s) { (void)s; return -1; }
+WEAK int pitems_msolid(int s) { (void)s; return -1; }
+
+int pcontent_msolid(int s)
+{
+    int v = pjungle_msolid(s);
+    if (v < 0) v = pswamp_msolid(s);
+    if (v < 0) v = pice_msolid(s);
+    if (v < 0) v = ptemple_msolid(s);
+    if (v < 0) v = pitems_msolid(s);
+    return v;
+}
+
 #define SITE(name) WEAK int name(int site, int i, int arg) { (void)i; (void)arg; PUNTR(site); return 0; }
 SITE(pjungle_player)
 SITE(pjungle_world)

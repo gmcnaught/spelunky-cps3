@@ -26,6 +26,16 @@ int ptemple_ev(int ev, int i, int arg);
 int pitems_ev(int ev, int i, int arg);
 int pcontent_ev(int ev, int i, int arg);             /* the five in order: 1 when one ran the event */
 
+/* pX_msolid(s): the oMovingSolid instance s in gameStepEvent's loop (penemy.c pen_moving_solids, which moves every
+   oMovingSolid the same way) is package X's: its viscidTop (0 / 1); -1 when it is not X's. pcontent_msolid asks the
+   five in order; -1 from all: the caller sets PUNTR(5050) */
+int pjungle_msolid(int s);
+int pswamp_msolid(int s);
+int pice_msolid(int s);
+int ptemple_msolid(int s);
+int pitems_msolid(int s);
+int pcontent_msolid(int s);
+
 int pjungle_player(int site, int i, int arg);        /* 2010 / 2016 monkey on the player; 2020 spears */
 int pjungle_world(int site, int i, int arg);         /* 1011 tiki torch on a destroyed block; 1017 snake from a jar */
 int pswamp_player(int site, int i, int arg);         /* 2009 / 2032 / 2036 swimming; 2002 / 2003 / 2007 / 2011 / 2030 cape physics */

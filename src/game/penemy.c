@@ -11,6 +11,7 @@
 #include "../snd/sndgame.h"                     /* the GML sound calls (src/snd) */
 #include "pmath.h"
 #include "pcontent.h"                            /* P7 content packages (docs/CONTENT.md) */
+#include "pcol.h"                                /* pcol_query / pcol_touch (line_solid) */
 
 enum { E_STUNNED = 98, E_DEAD = 99, E_LEFT = 0, E_RIGHT = 1 };
 
@@ -1373,11 +1374,14 @@ static int isCollisionRectangle(double a0, double a1, double a2, double a3, doub
 }
 
 /* isCollisionCharacterTop / Right / Left / Bottom (s): collision_line from the character's bounds against the
-   solid s (an instance id: here its object, with s the only one of it) */
+   solid s (an instance id): the object's query as collision_line_p makes it (UpdateTree; the creation-order scan
+   touches s), then s's own line test (several instances of the object: smash traps, dark-fall blocks) */
 static int line_solid(int s, double x1, double y1, double x2, double y2)
 {
-    int pi = pl();
-    return collision_line_p(x1, y1, x2, y2, PX(s).obj, 1, pi) == s;
+    int q = pcol_query(PX(s).obj);
+    if (q < 0) return 0;
+    if (q == 2) pcol_touch(s);
+    return pw_test_line(s, x1, y1, x2, y2, 1);
 }
 static int cct(int s, int d)
 {
@@ -1404,7 +1408,9 @@ static int ccb(int s, int d)
     return line_solid(s, dround(lb), dround(tb - d), dround(rb - 1), dround(tb - d));
 }
 
-static int viscidTop_of(int s) { return PX(s).obj == OBJ_oBoulder; }
+/* the moving solid's viscidTop (the boulder's 1); another object's from its package (pcontent_msolid), -1 when
+   none translates it */
+static int viscidTop_of(int s) { return PX(s).obj == OBJ_oBoulder ? 1 : pcontent_msolid(s); }
 
 void pen_moving_solids(void)
 {
@@ -1419,7 +1425,7 @@ void pen_moving_solids(void)
         num xVelFrac, yVelFrac;
         int32_t xi = 0, yi = 0;
         if (!p->alive) continue;
-        if (p->obj != OBJ_oBoulder) PUNTR(5050);
+        if (viscidTop_of(s) < 0) PUNTR(5050);                                 /* P7 hook (pcontent_msolid) */
         PE(p)->xVel += PE(p)->xAcc;
         PE(p)->yVel += PE(p)->yAcc;
         if (approximatelyZero(PE(p)->xVel)) PE(p)->xVel = 0;
@@ -1457,7 +1463,7 @@ void pen_moving_solids(void)
                 if (xi > 0) {
                     brk = 0;
                     for (; p->x < mstXPrev + PI(xi); pin_setx(p, p->x + (PI(1)))) {
-                        if (viscidTop_of(s) && cct(s, 1) && (viscidOk == 1 || viscidOk == 2)) {
+                        if (viscidTop_of(s) > 0 && cct(s, 1) && (viscidOk == 1 || viscidOk == 2)) {
                             if (!isCollisionRight(c, 1)) { pin_setx(q, q->x + (PI(1))); viscidOk = 2; }
                         } else if (ccr(s, 1)) {
                             if (isCollisionRight(c, 1)) { brk = 1; break; }
@@ -1469,7 +1475,7 @@ void pen_moving_solids(void)
                 if (xi < 0) {
                     brk = 0;
                     for (; p->x > mstXPrev + PI(xi); pin_setx(p, p->x - (PI(1)))) {
-                        if (viscidTop_of(s) && cct(s, 1) && (viscidOk == 1 || viscidOk == 2)) {
+                        if (viscidTop_of(s) > 0 && cct(s, 1) && (viscidOk == 1 || viscidOk == 2)) {
                             if (!isCollisionLeft(c, 1)) { pin_setx(q, q->x - (PI(1))); viscidOk = 2; }
                         } else if (ccl(s, 1)) {
                             if (isCollisionLeft(c, 1)) { brk = 1; break; }
@@ -1480,7 +1486,7 @@ void pen_moving_solids(void)
                 }
                 if (yi > 0) {
                     for (; p->y < mstYPrev + PI(yi); pin_sety(p, p->y + (PI(1)))) {
-                        if (viscidTop_of(s) && cct(s, 2)) {
+                        if (viscidTop_of(s) > 0 && cct(s, 2)) {
                             pin_sety(p, p->y + (PI(5)));
                             if (!isCollisionBottom(c, 1)) pin_sety(q, q->y + (PI(1)));
                             pin_sety(p, p->y - (PI(5)));
