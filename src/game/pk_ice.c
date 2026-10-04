@@ -1522,29 +1522,8 @@ int pice_enemy(int site, int e, int arg)
     return 0;
 }
 
-/* package B's oDrip, until pk_swamp.c translates it (pcontent_ev asks B first: this is then never reached; remove
-   it then). objects/oDrip/Create_0.gml: oRubblePiece's Create, type "Drip"; its Step: oRubblePiece's */
-static int drip_standin(int ev, int i)
-{
-    struct pin *p = &PX(i);
-    if (p->obj != OBJ_oDrip) return 0;
-    if (ev == FEV_CREATE) {
-        p->type = T_NONE;
-        PE(p)->xVel = 0;
-        PE(p)->yVel = 0;
-        PE(p)->yAcc = N(0.6);
-        return 1;
-    }
-    if (ev == FEV_STEP) {
-        rubblepiece_step(i);
-        return 1;
-    }
-    return 0;
-}
-
 int pice_ev(int ev, int i, int arg)
 {
-    if (drip_standin(ev, i)) return 1;
     switch (ev) {
     case FEV_CREATE: return ev_create_ice(i, arg);
     case FEV_STEP: return ev_step_ice(i);
