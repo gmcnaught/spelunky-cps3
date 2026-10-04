@@ -34,8 +34,8 @@
 #include "playtables.h"
 
 /* play slots (PIN_DEAD the last): generated levels up to 1,404 instances (lake), 1,537 slots after 300 idle steps
-   on a lake level, play adds up to 117 on the routes; tests/game: .data + .bss 473 KB of 512, 50 KB left for the
-   stack (docs/DRAW.md section 6).
+   on a lake level, play adds up to 117 on the routes; tests/game: .data + .bss 450 KB of 512, 72 KB left for the
+   stack, the cold arrays in sprite RAM (docs/DRAW.md section 6).
    The line stays bare: the test scripts set it by sed (PIN=n) */
 #define PIN_MAX 1792
 #define NOONE (-1)

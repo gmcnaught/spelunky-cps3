@@ -50,10 +50,11 @@ ifeq ($(BENCH),1)
 SRCS   += bench.c
 CFLAGS += -DBENCH=1
 endif
-# JT=1: the jtcps3 variant (scripts/playsh2_jt.sh): main RAM only (no sprbss.ld), results on screen (bigtext.c)
+# JT=1: the jtcps3 variant (scripts/playsh2_jt.sh): main RAM but the generation-only arrays (jtcold.ld, not sprbss.ld),
+# results on screen (bigtext.c)
 ifeq ($(JT),1)
 SRCS   += bigtext.c
-CFLAGS := -Ibuild/jt $(if $(JTNAME),'-DJT_NAME="$(JTNAME)"') $(filter-out -Wl$(comma)-T$(comma)sprbss.ld,$(CFLAGS)) -DJT=1   # build/jt: jobs.h, jt_expect.h
+CFLAGS := -Ibuild/jt $(if $(JTNAME),'-DJT_NAME="$(JTNAME)"') $(filter-out -Wl$(comma)-T$(comma)sprbss.ld,$(CFLAGS)) -Wl,-T,jtcold.ld -DJT=1   # build/jt: jobs.h, jt_expect.h
 endif
 # OSFILES="a.c b.c": those files of the snapshot compiled -Os (the rest -O2); LAYOUT=<linker script>: code built with
 # -ffunction-sections and linked with that script (mklayout.py: hot functions first in SIMM 1)

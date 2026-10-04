@@ -180,8 +180,11 @@ static uint8_t mfull;
    whose frame is that cell's tile (chead, then cnext); the one drawn first (largest draw key: the newest) is the
    cell's tile in mwant unless a tile_add tile has the cell; the others (texc) are drawn as sprites over it */
 static int16_t chead[NMAPS][MAPC_MAX] DRAW_MAPS_SECTION;
-static int16_t cnext[PIN_MAX], ccell[PIN_MAX];   /* ccell: m * MAPC_MAX + cell, -1 when not on a cell */
-static uint16_t ctile[PIN_MAX];
+/* (the per-instance claim arrays are touched only for instances whose draw state changed: DRAW_CACHE_SECTION, sprite
+   RAM in the test builds, keeps main RAM for the play state) */
+static int16_t cnext[PIN_MAX] DRAW_CACHE_SECTION, ccell[PIN_MAX] DRAW_CACHE_SECTION;   /* ccell: m * MAPC_MAX + cell, -1
+                                                                                         when not on a cell */
+static uint16_t ctile[PIN_MAX] DRAW_CACHE_SECTION;
 /* oItem's cimg (its Draw event's price-tag frame counter; the play code keeps oDamsel's only): per instance slot,
    with the id it belongs to; counted at each draw_frame for every visible item with a price, as the Draw event is
    run for every visible instance */
@@ -846,7 +849,8 @@ static int16_t cand_list[PIN_MAX];
    origin (clamped), so that a frame looks only at the blocks around the screen */
 #define BLK_W 16
 #define BLK_H 16
-static int16_t bhead[BLK_H][BLK_W], bnext[PIN_MAX], bpos[PIN_MAX];   /* bpos: by * BLK_W + bx, -1 none */
+static int16_t bhead[BLK_H][BLK_W];
+static int16_t bnext[PIN_MAX] DRAW_CACHE_SECTION, bpos[PIN_MAX] DRAW_CACHE_SECTION;   /* bpos: by * BLK_W + bx, -1 none */
 static uint32_t cand[CAND_W];
 static uint8_t hb8[256];                           /* the highest set bit of a byte */
 /* in a block: a local sprite, not an oItem (its Draw event counts the price tag's frames on every frame) */

@@ -174,17 +174,13 @@ void *memset(void *d, int c, unsigned long n)
     return d;
 }
 
-#ifndef JT
-extern char __sprbss_start[] __asm__("__sprbss_start"), __sprbss_end[] __asm__("__sprbss_end");
-#endif
+extern char __sprbss_start[] __asm__("__sprbss_start"), __sprbss_end[] __asm__("__sprbss_end");   /* JT: jtcold.ld */
 static void __attribute__((noinline)) ram_init(void)
 {
     uint32_t *d = (uint32_t *)__data_start, *s = (uint32_t *)__data_load;
     while (d < (uint32_t *)__data_end) *d++ = *s++;
     for (d = (uint32_t *)__bss_start; d < (uint32_t *)__bss_end; d++) *d = 0;
-#ifndef JT
     for (d = (uint32_t *)__sprbss_start; d < (uint32_t *)__sprbss_end; d++) *d = 0;
-#endif
 }
 
 #ifdef JT

@@ -238,8 +238,24 @@ Changes (src/game, harnesses):
   a PIN_DEAD slot. Checked with an ASan playhost at PIN_MAX 1411 / INST_MAX 1410 / EXT_MAX 150: the lake level
   fills every slot, Olmec and c_swamp_vampkill run out of ext, all three run to the end with no ASan report.
 - **RAM check:** tests/ramcheck.ld, linked into tests/game, gametime and playsh2 (both variants): .bss must end
-  32 KB below the stack top. tests/game at PIN_MAX 1792: .data 14.0 K + .bss 458.5 K, 50 KB left for the stack;
-  PIN_MAX 3000 fails the link.
+  32 KB below the stack top; PIN_MAX 3000 fails the link. Correction (after the merge, e264467): the "50 KB left"
+  above was measured before EXT_MAX 448 and main's grid / perf2 arrays; e264467's tests/game ended .bss at
+  0x0207a4c4 (23 KB of stack) and the playsh2 JT variant overflowed main RAM by 22 KB. inst_mem (129 KB) cannot
+  leave main RAM: the play instances are that memory (pworld.c PW.in). Fix, cold arrays only:
+  - tests/game/sprbss.ld (tests/game, gametime): the generator's lists (inst.c with_pool, gw_*, ghome), the front
+    end's layer order (front.c lpos, lpos_id, w_alive);
+  - draw.c's per-instance claim arrays (cnext, ccell, ctile, bnext, bpos: touched for changed instances only) in
+    DRAW_CACHE_SECTION;
+  - tests/playsh2/jtcold.ld (JT variant): the arrays used only while generating (pcol.c rn, the R-tree nodes:
+    play-time collisions use the grid; gtiles; inst.c's lists), cleared by main.c. Its generation timings then
+    include sprite-RAM accesses; step timings do not. tests/game already kept rn in sprite RAM.
+
+  Result: tests/game .data 14.0 K + .bss 436.2 K, 72 KB left for the stack; playsh2 JT .bss to 0x0206efb4, 68 KB.
+  Stack left (bytes, 0x02080000 - __bss_end): tests/game 74,000, gametime 66,240, playsh2 81,104, playsh2 JT 69,708.
+  gametime's step / draw means unchanged (game 1 223,289 / 40,017; game 2 263,855 / 34,843 MAME clocks).
+  The R-tree (rn) stays in every build: the generator uses it (gmode, bit-exact), and the grid build's play reads
+  rn[rroot].level in query_e (ShouldUseFastCollision); it is already in sprite RAM in tests/game, gametime and both
+  playsh2 variants.
 - **Route options for the game program:** game_cfg nodark / room / globals (src/main/game.c), filled from the
   route's `# nodark`, `# room`, `# globals` lines by tests/game/mkroute.py (tests/game and gametime), as playhost's
   options; room also takes rLevel2 / rLevel3 (the cabinet keeps -1: the level's own room).
