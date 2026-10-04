@@ -1,0 +1,14 @@
+# P7 reference (docs/CONTENT.md package E, items): a seed-29 level-2 Kali altar defiled by a bomb: rubble, the punishment (oKaliHead spiders)
+# seed 29
+# level 2
+30 -
+8 R
+10 RJ
+4 R
+8 RJ
+10 R
+5 -
+1 DB
+12 LJ
+30 L
+150 -
