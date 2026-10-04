@@ -1327,6 +1327,11 @@ void ev_collision(int self, int other)
                 trap_fire(self, other);
         }
         break;
+    case OBJ_oFlame:                                                           /* objects/oFlame/Collision_oWater.gml */
+        if (!obj_is(oo, OBJ_oWater)) { PUNTR(1096); break; }
+        pin_create(PX(self).x, PX(self).y, OBJ_oSmokePuff);
+        pin_destroy(self);
+        break;
     case OBJ_oExplosion:
         if (obj_is(oo, OBJ_oSolid)) explosion_solid(self, other);
         else if (obj_is(oo, OBJ_oItem)) {
