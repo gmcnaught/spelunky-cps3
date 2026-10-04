@@ -258,3 +258,135 @@ Included from perf1's list (measured on main + grid):
 - owner table for ev_step: D.
 
 perf1's moveTo int-loop patch is equivalent to perf2's draft and goes into C.
+
+## Handoff (perf2, 2026-10-04)
+
+### Corrected baseline
+
+The profile and the 269 K figure above were measured on a cherry-pick of the old grid commit. That build lacks
+58756ab's fix: HandleCollision's search goes through search_run. So it ran no collision events, and its
+equiv_check failed on most routes.
+
+The real grid baseline is **main 58756ab: 281,254 MAME clocks mean step** (6851/6851 checksums). The exact build is
+371.6 K.
+
+The subsystem shares above are still roughly right, apart from the collision-event pass. The 50 % target is
+therefore about 140 K. The jtcps3 pair fit needs a step of 146-154 K MAME (see Target).
+
+### Done: B (0fc7933 on this branch)
+
+**What it does** (src/game/pworld.c):
+- Each solid-grid cell keeps two counts (gfull / gfblk / gother, filled by gsum_in / gsum_out from grid_flush and
+  grid_unlink):
+  - exact 16 x 16 blocks;
+  - other oSolid entries that may reach the cell.
+- collision_line_any_i, through line_summary, answers from the line's own cells:
+  - a usable block on an axis line is a hit;
+  - no other entry and no usable block is a sure miss;
+  - anything else goes to line_scan, the old scan.
+- PLAY_STATS host builds compare every summary answer with the scan and abort on a difference. There were 0 across
+  all routes.
+
+**Mix.** About 29 % summary hits, 71 % sure misses. Only p5_idol scans (2 % of its line queries).
+
+**SH-2.**
+- Grid: 281,254 -> 261,257 (**-20.0 K**; estimate 35-50 K).
+- Exact: 371.6 K -> 351.3 K.
+- 6851/6851 checksums in both builds.
+
+**Gates.**
+- Exact build: routes 19/19 in both host builds, p4 5/5, gen 9/9, colprobe 0, snd 19/19, c_* 48/48, fullreg
+  640/640.
+- EQUIV 72/72.
+- SH-2: 0 warnings; libgcc helpers unchanged.
+
+**Why it saved less than estimated.** The line queries are now cheap, but their callers still pay:
+- ibounds / pin_xy_int / pos_int decoding the float position;
+- the bbkind box cache;
+- the pcol_query flush.
+
+Item C (int positions) removes the decode.
+
+### At-rest measurements (grid host build, routes p5_* and p4_items)
+
+| Code | Share of Step calls that reach the terrain part | Share of terrain runs that end in their start state |
+|---|---|---|
+| Treasure (treasure_step) | about 20 % (the rest leave at `inview && state == 1`) | 99.3 % |
+| Items (item_step) | | about 98 % |
+| Jars | | 0 % as first measured |
+
+**Jar state issue.** jar_step clears colTop / colLeft / colRight / colBot at its top, before `held`. A snapshot
+taken after that clear never equals the end state (colBot 0 -> 1). Taking the start snapshot before the clear
+fixes it: the flags are outputs only. A's jar code does this. rest_skip is called before the clear, and the skip
+keeps the flags as they are.
+
+### Implemented, not gated: A (branch perf2-A-wip, 102fa89, on top of 0fc7933)
+
+**Measured.**
+- SH-2 grid: 261,257 -> **214,280 (-47.0 K**; estimate 45-60 K). 6851/6851 checksums.
+- The grid host build with the skip, against the same build with `-DPLAY_NOREST` (scratch script gridreg.sh): 74/74
+  route files and 640/640 runs give identical stdout. The one exception is R-line column 15, play_dops, a cost
+  counter.
+
+**Code.**
+
+pworld.c on perf2-A-wip:
+- gclock and gver (line 46). They are bumped in gsum_in / gsum_out and in grid_reset.
+- pw_rest_clock (line 1154).
+- pw_rest_still (line 1158): grid_flush, then no gfar, then every cell of the region has gver ≤ the given clock.
+- pw_watch / pw_watch_end: count the pw_changed calls on one instance.
+
+pobj.c on perf2-A-wip:
+- The rest block starts at line 543. It is compiled only without PCOL_EXACT, PLAY_FIXED, NUM_IS_CLASS and
+  PLAY_NOREST; otherwise the stubs at line 623 run the full Step.
+- rst[EXT_MAX] is indexed by the pin_ext record and checked against the instance id.
+- rest_get / rest_ne compare x, y, xVel, yVel, myGrav, the four col flags, stuck and status by their bits.
+- rest_region is the box ± 3 px, x and y included.
+- rest_skip (line 582), rest_begin, rest_end. rest_end records the state only when it equals the start state,
+  xVel = yVel = +0, and the position is whole.
+
+The hooks:
+- **item_step (line 629).**
+  - The chain after `held` is skipped; T_BOMB and T_ARROW are excluded.
+  - The lava part of branch :69 moved after the chain, as `if (br)`. Same order: it was the branch's last
+    statement.
+- **jar_step (line 757).** The skip jumps to `lava:` (line 812) with `destroy` restored from the record.
+- **treasure_step (line 835).** The skip jumps to `terrain_done:` (line 870). Depth and lava still run.
+
+**Proof per object.** The terrain part reads only:
+- the instance fields listed in rest_get;
+- the object and the collision offsets;
+- oSolid-family queries within ± 2 px of the box.
+
+And:
+- **Velocity:** with xVel = yVel = +0, moveTo moves nothing and does not read play_time.
+- **No other effects:** no RNG draws, no globals, no other instances' fields. The item :69 branch's sticky-bomb and
+  arrow paths are excluded by type.
+- **Writes the skip must replay:**
+  - pin_setx / pin_sety marks, as one pin_changed_ when the full run made any;
+  - `destroy` for jars;
+  - the branch taken for items (lava only after :69).
+- **Exact build:** keeps the full Step, because a skip moves the R-tree's flush.
+
+**Still to do before A can be committed.**
+1. Exact-build gates on perf2-A-wip. They should be unchanged: the code is compiled out under PCOL_EXACT.
+2. scripts/equiv_check.sh on perf2-A-wip.
+3. The SH-2 compile check: 0 warnings, same helpers. RAM: rst[400] at about 40 bytes is 16 KB. Check it fits
+   (PIN 1000).
+4. Squash and write a real commit message.
+
+**Possible extensions.** Same pattern for oRock / oChest if they are not already covered (they go through
+item_step). Enemies are not covered.
+
+### Not started
+
+D, E, F and C, in that order. The designs are above.
+
+Notes for whoever continues:
+- **SH-2 runs:**
+  - rsync src/, tests/, test/, scripts/, docker/, build/gen and build/snd, plus cps3-testgame/sdk and tools, into
+    a plain directory under the main checkout's build/. That is perf2's scratch psh2.sh.
+  - Run scripts/playsh2_check.sh there with SOFTFP=1 GAME_REV=WORKTREE GAME_DIR=src/game.
+  - MAME goes through scripts/mame.sh.
+- **The SH-2 compile check:** run `make -C test/host sh2` in the cps3-dev container on that copy. Compare the
+  warnings and the `nm -u` shift helpers with main.
