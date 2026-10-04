@@ -85,13 +85,15 @@ struct pin_ext {
     int16_t counter, fallCount, burnTimer, fired, facing, state, status, cimg, yOff, hp;
     int16_t trapID, enemyID;  /* instance indices (NOONE) */
     int16_t xAct;
+    int16_t en;             /* its struct pin_en (0: the shared zeros) */
     num px, py;             /* oRopeThrow px, py */
     double direction;       /* oArrow */
     double alpha;           /* image_alpha (oSmokePuff: life / 12) */
     int8_t lbo, tbo, rbo, bbo; /* setCollisionBounds offsets */
     uint8_t etype, style;
     uint8_t hasGun;         /* oShopkeeper (the drawing reads it) */
-    int16_t en;             /* its struct pin_en (0: the shared zeros) */
+    pos xprev;              /* xprevious, kept for oPlayer1 only (prun.c play_step 2; yprevious is never read); with en
+                               moved up, the SH-2's 200 bytes are kept */
 };
 
 /* the enemies' variables (penemy.c, pdamsel.c, pshop.c: oEnemy / oDamsel Create's, oEnemySight's motion), in a
@@ -114,7 +116,6 @@ struct pin {
     uint8_t alive, persistent;
     PIN_RO uint8_t visible;
     PIN_RO pos x, y;
-    pos xprev, yprev;                       /* kept for oPlayer1 only (prun.c play_step 2) */
     PIN_RO float depth;     /* a float in the runner (-99999991 reads -99999992) */
     PIN_RO img_t img;       /* image_index */
     img_t ispd;             /* image_speed */
@@ -129,8 +130,8 @@ struct pin {
 };
 
 
-/* PW.in and the generator's W.in are the same memory (pworld.c inst_mem): struct pin is struct inst's size and the
-   loaders (play_level_start, play_transition_start) write play instance i only after reading generator instance k
+/* PW.in and the generator's W.in are the same memory (pworld.c inst_mem): struct pin (64 bytes) is not larger than
+   struct inst (72) and the loaders (play_level_start, play_transition_start) write play instance i only after reading generator instance k
    >= i. Nothing reads W during play */
 struct pworld {
     struct pin *in;

@@ -1767,7 +1767,7 @@ void pl_collision(int i, int other)
     } else if (obj_is(PX(other).obj, OBJ_oPushBlock)) {
         double dx = PTOD(p->x) - (PTOD(PX(other).x) + 8), dy = PTOD(p->y) - (PTOD(PX(other).y) + 8);
         if (dx * dx + dy * dy < 121 && p->y >= PX(other).y)
-            pin_setx(p, p->xprev);
+            pin_setx(p, PE(p)->xprev);
     }
 }
 
