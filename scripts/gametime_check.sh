@@ -15,8 +15,6 @@ git archive "${GAME_REV:-HEAD}" src/game | tar -x -C "$G" --strip-components=2
 cp build/gen/objects.[ch] build/gen/gentables.[ch] build/gen/playtables.[ch] "$G/"
 sed -i '' "s/^#define PIN_MAX 4096\$/#define PIN_MAX ${PIN:-1000}/" "$G/play.h"
 grep -q "^#define PIN_MAX ${PIN:-1000}\$" "$G/play.h"
-# the hooks src/front needs (as scripts/game_check.sh: tests/game/front_hooks.patch until src/game has them)
-grep -q "front_ev" "$G/pobj.c" || patch -s -d "$G" -p3 < tests/game/front_hooks.patch
 touch "$G/stamp"
 python3 tools/drawtables.py refs/hd/src build/gen >/dev/null
 MK="OUT=build/run/elf ROUTE=$R SEED=$S LEVEL=$L MONEY=$M ENEMIES=$E ROUTE2=$R2 SEED2=$S2 LEVEL2=$L2 MONEY2=$M2 ENEMIES2=$E2 ATTRACT_FRAMES=${ATTRACT_FRAMES:-3600}"

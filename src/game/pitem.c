@@ -3,6 +3,7 @@
  * flare crate lying in a level or a shop (not their use), Kali's altar standing. */
 #include "pint.h"
 #include "penemy.h"
+#include "pcontent.h"                            /* P7 content packages (docs/CONTENT.md) */
 
 int pitem_create(int i, int fromgen)
 {
@@ -59,12 +60,12 @@ int pitem_step(int i)
         view_read();
         if (DGT(x, PW.xview - 20) && DLT(x, PW.xview + 320 + 4) && DGT(y, PW.yview - 20) && DLT(y, PW.yview + 240 + 4) &&
             collision_point_p(x, y + 16, OBJ_oSolid, 0, NOONE) == NOONE)
-            PUNTR(8002);                                               /* its Destroy (Kali's punishment): P7 */
+            pitems_world(8002, i, 0);                                               /* its Destroy (Kali's punishment): P7 */
         return 1;
     }
     case OBJ_oFlareCrate:                                              /* objects/oFlareCrate/Step_0.gml */
         item_step(i);
-        if (collision_point_p(PTOD(PX(i).x), PTOD(PX(i).y), OBJ_oWater, 1, i) != NOONE) PUNTR(8001);
+        if (collision_point_p(PTOD(PX(i).x), PTOD(PX(i).y), OBJ_oWater, 1, i) != NOONE) pswamp_world(8001, i, 0);
         return 1;
     }
     return 0;

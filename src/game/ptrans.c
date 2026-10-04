@@ -9,6 +9,7 @@
 #include "pint.h"
 #include "../snd/sndgame.h"                     /* the GML sound calls (src/snd) */
 #include "pmsg.h"                                /* the HUD messages (trMessages) */
+#include "pcontent.h"                            /* P7 content packages (docs/CONTENT.md) */
 
 struct ptrans { int32_t drawLoot, drawPosX, drawPosY, moneyCount; uint8_t hurryup, isLoot, isKills; };
 static struct ptrans TR;
@@ -38,9 +39,9 @@ static void transition_create(int i)
     TR.isLoot = 0;
     TR.isKills = 0;
     pmsg_clear();                                                              /* :13 global.message1 / 2 = "" */
-    if (PG.hasCape) PUNTR(4001);
+    if (PG.hasCape) pitems_world(4001, i, 0);
     if (G.currLevel - 1 < 1) PUNTR(4002);                                      /* scrClearGlobals: not reached */
-    if (G.kaliPunish >= 2) PUNTR(4003);
+    if (G.kaliPunish >= 2) pitems_world(4003, i, 0);
     PE(p)->alarm[0] = 10;                                                          /* :48 */
     PE(p)->alarm[1] = 30;
     if (PG.xdamsels > 0) pin_create(PI(176 + 8), PI(176 + 8), OBJ_oDamselKiss);   /* :52 (P5) */

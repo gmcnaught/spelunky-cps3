@@ -7,7 +7,14 @@
 #include "pint.h"
 #include "../snd/sndgame.h"                     /* the GML sound calls (src/snd) */
 #include "pmsg.h"                                /* the HUD messages (trMessages) */
+#include "front.h"                                     /* P8: the front end's hooks (src/front/front.h) */
+/* the hooks' defaults for builds without src/front (no front room ever runs) */
+__attribute__((weak)) uint8_t front_on;
+__attribute__((weak)) int16_t front_view_obj = -1, front_hborder = 160;
+__attribute__((weak)) int front_ev(int ev, int i, int arg) { (void)ev; (void)i; (void)arg; return 0; }
+__attribute__((weak)) int front_room(int room) { (void)room; return 0; }
 #include "penemy.h"                  /* P5 hooks: enemies, damsel, shop (each marked "P5 hook") */
+#include "pcontent.h"                            /* P7 content packages (docs/CONTENT.md) */
 
 struct pgame PGAME;
 struct plevel PLEV;
@@ -123,6 +130,7 @@ static void create_solid(struct pin *p)
 
 void ev_create(int i)
 {
+    if (front_on && front_ev(FEV_CREATE, i, 0)) return;                                 /* P8 hook */
     struct pin *p = &PX(i);
     if (pen_create(i, play_in_gen_init) || pdam_create(i, play_in_gen_init) || pshop_create(i, play_in_gen_init) ||
         pitem_create(i, play_in_gen_init))
@@ -192,7 +200,7 @@ void ev_create(int i)
     case OBJ_oDice:                                                            /* objects/oDice/Create_0.gml */
         item(i, T_DICE, -6, 0, 6, 8, -1);
         PE(p)->heavy = 1;
-        if (!play_in_gen_init) PUNTR(1002);                                    /* value = rand(1, 6): P5 (shops) */
+        if (!play_in_gen_init) pitems_world(1002, i, 0);                                    /* value = rand(1, 6): P5 (shops) */
         break;
     case OBJ_oLampItem:
         item(i, T_LAMP, -4, -4, 4, 4, -1);
@@ -285,10 +293,10 @@ void ev_create(int i)
         PE(p)->yVel = 0;
         PE(p)->yAcc = N(0.6);
         break;
-    case OBJ_oBone: PUNTR(1001); break;
+    case OBJ_oBone: pitems_world(1001, i, 0); break;
     default:
         if (ptrans_create(i)) break;
-        if (pobj[p->obj].ev & EV_CREATE)
+        if ((pobj[p->obj].ev & EV_CREATE) && !pcontent_ev(FEV_CREATE, i, 0))               /* P7 hook */
             PUNTR(1000);
         break;
     }
@@ -373,8 +381,8 @@ static void destroy_solid(int i)
         obj = instance_place_p(i, PTOD(p->x) + 8, PTOD(p->y) - 1, OBJ_oSpikes);
         if (obj != NOONE) pin_destroy(obj);
     }
-    if (collision_point_p(PTOD(p->x) + 8, PTOD(p->y) - 1, OBJ_oTikiTorch, 0, NOONE) != NOONE) PUNTR(1011);
-    if (collision_point_p(PTOD(p->x) + 8, PTOD(p->y) - 1, OBJ_oGrave, 0, NOONE) != NOONE) PUNTR(1012);
+    if (collision_point_p(PTOD(p->x) + 8, PTOD(p->y) - 1, OBJ_oTikiTorch, 0, NOONE) != NOONE) pjungle_world(1011, i, 0);
+    if (collision_point_p(PTOD(p->x) + 8, PTOD(p->y) - 1, OBJ_oGrave, 0, NOONE) != NOONE) pswamp_world(1012, i, 0);
     if (collision_point_p(PTOD(p->x) + 8, PTOD(p->y) + 18, OBJ_oLampRed, 0, NOONE) != NOONE) PUNTR(1013);
     if (collision_point_p(PTOD(p->x) + 8, PTOD(p->y) + 18, OBJ_oLamp, 0, NOONE) != NOONE) {
         obj = instance_place_p(i, PTOD(p->x) + 8, PTOD(p->y) + 16, OBJ_oLamp);
@@ -400,7 +408,7 @@ static void destroy_jar_like(int i, int skull)
     snd_play(SND_xbreak);                                                      /* oJar / oSkull Destroy :4 */
     pin_create(p->x, p->y, OBJ_oSmokePuff);
     if (skull) {
-        PUNTR(1015);                                                            /* oBone pieces */
+        pitems_world(1015, i, skull);                                                            /* oBone pieces */
         return;
     }
     {
@@ -422,8 +430,8 @@ static void destroy_jar_like(int i, int skull)
     else if (RAND(1, 12) == 1) pin_create(p->x, p->y, OBJ_oEmeraldBig);
     else if (RAND(1, 12) == 1) pin_create(p->x, p->y, OBJ_oSapphireBig);
     else if (RAND(1, 12) == 1) pin_create(p->x, p->y, OBJ_oRubyBig);
-    else if (RAND(1, 6) == 1) PUNTR(1016);                                     /* a spider: P5 */
-    else if (RAND(1, 12) == 1) PUNTR(1017);                                    /* a snake: P5 */
+    else if (RAND(1, 6) == 1) pitems_world(1016, i, skull);                                     /* a spider: P5 */
+    else if (RAND(1, 12) == 1) pjungle_world(1017, i, skull);                                    /* a snake: P5 */
     if (PE(p)->held) {
         PL.holdItem = NOONE;
         G.pickupItem = PICK_NONE;                                              /* oPlayer1.pickupItem = "" */
@@ -432,6 +440,7 @@ static void destroy_jar_like(int i, int skull)
 
 void ev_destroy(int i)
 {
+    if (front_on && front_ev(FEV_DESTROY, i, 0)) return;                                 /* P8 hook */
     struct pin *p = &PX(i);
     int o = p->obj;
     if (pen_destroy(i) || pdam_destroy(i)) return;                             /* P5 hook */
@@ -440,9 +449,9 @@ void ev_destroy(int i)
             if (PE(p)->held) PL.holdItem = NOONE;                                  /* action_inherited: oItem */
             destroy_jar_like(i, o == OBJ_oSkull);
         } else if (o == OBJ_oBomb) {                                           /* oBomb Destroy (no inherit) */
-            if (PE(p)->enemyID != NOONE) PUNTR(1018);
+            if (PE(p)->enemyID != NOONE) pitems_world(1018, i, 0);
         } else if (o == OBJ_oDamsel || o == OBJ_oDice || o == OBJ_oFlare || o == OBJ_oFlareCrate) {
-            PUNTR(1019);
+            pitems_world(1019, i, 0);
         } else if (PE(p)->held)                                                    /* objects/oItem/Destroy_0.gml */
             PL.holdItem = NOONE;
         return;
@@ -502,7 +511,7 @@ void ev_destroy(int i)
                 destroy_solid(i);
                 if (o != OBJ_oSolid) PUNTR(1020);
             }
-        } else if (pobj[o].ev & EV_DESTROY)
+        } else if ((pobj[o].ev & EV_DESTROY) && !pcontent_ev(FEV_DESTROY, i, 0))           /* P7 hook */
             PUNTR(1021);
         break;
     }
@@ -574,7 +583,7 @@ void item_step(int i)
         }
         NOPS(12);
         if (PE(p)->sticky && p->type == T_BOMB && p->spr == GSPR_sBombArmed) {     /* :113 */
-            PUNTR(1031);
+            pitems_world(1031, i, 0);
         } else if (p->type == T_ARROW && NGT(NABS(PE(p)->xVel), N(6))) {
             if (PE(p)->colLeft) {
                 pin_setx(p, p->x - (PI(2)));
@@ -597,11 +606,11 @@ void item_step(int i)
             PE(p)->myGrav = N(0.6);
         }
         if (collision_rect_p(PTOD(p->x) - 3, PTOD(p->y) - 3, PTOD(p->x) + 3, PTOD(p->y) + 3, OBJ_oLava, 0, NOONE) != NOONE)
-            PUNTR(1032);
+            ptemple_world(1032, i, 0);
         else
             PE(p)->myGrav = N(0.6);
         if (collision_point_p(PTOD(p->x), PTOD(p->y) - 5, OBJ_oLava, 0, NOONE) != NOONE && p->type != T_SCEPTRE)
-            PUNTR(1032);
+            ptemple_world(1032, i, 0);
     } else {                                                                   /* :187 */
         PE(p)->colLeft = PE(p)->colRight = PE(p)->colBot = PE(p)->colTop = 0;
         if (isCollisionLeft(i, 1)) PE(p)->colLeft = 1;
@@ -617,7 +626,7 @@ void item_step(int i)
         }
     }
     if (p->type == T_BOMB && PE(p)->sticky) {                                      /* :217 */
-        PUNTR(1033);
+        pitems_world(1033, i, 0);
     } else if (NGT(NABS(PE(p)->xVel), N(2)) || NGT(NABS(PE(p)->yVel), N(2))) {
         double x = PTOD(p->x), y = PTOD(p->y);
         pen_item_hit_enemy(i);                                                 /* P5 hook (:233) */
@@ -676,7 +685,7 @@ static void jar_step(int i, int skull)
         pin_setdepth(p, 100);
         if (collision_rect_p(PTOD(p->x) - 3, PTOD(p->y) - 3, PTOD(p->x) + 3, PTOD(p->y) + 3, OBJ_oLava, 0, NOONE) != NOONE ||
             collision_point_p(PTOD(p->x), PTOD(p->y) - 5, OBJ_oLava, 0, NOONE) != NOONE)
-            PUNTR(1036);
+            ptemple_world(1036, i, skull);
         NOPS(12);
     }
     {
@@ -732,7 +741,7 @@ static void treasure_step(int i)
     NOPS(8);
     if (collision_rect_p(PTOD(p->x) - 3, PTOD(p->y) - 3, PTOD(p->x) + 3, PTOD(p->y) + 3, OBJ_oLava, 0, NOONE) != NOONE ||
         collision_point_p(PTOD(p->x), PTOD(p->y) - 5, OBJ_oLava, 0, NOONE) != NOONE)
-        PUNTR(1039);
+        ptemple_world(1039, i, 0);
 }
 
 /* objects/oDetritus/Step_0.gml (returns 0 if it destroyed itself) */
@@ -746,7 +755,7 @@ void detritus_step(int i)
     if (NGT(PE(p)->life, N(0))) PE(p)->life -= N(1);
     else pin_destroy(i);
     moveTo(i, PE(p)->xVel, PE(p)->yVel, 0, 0);
-    if (collision_point_p(PTOD(p->x), PTOD(p->y) - 4, OBJ_oLava, 0, NOONE) != NOONE) PUNTR(1040);
+    if (collision_point_p(PTOD(p->x), PTOD(p->y) - 4, OBJ_oLava, 0, NOONE) != NOONE) ptemple_world(1040, i, 0);
     if (PE(p)->bounce) {
         if (NLT(PE(p)->yVel, N(6))) PE(p)->yVel += PE(p)->grav;
         if (isCollisionTop(i, 1) && NLT(PE(p)->yVel, N(0))) PE(p)->yVel = NMUL(-PE(p)->yVel, N(0.8));
@@ -770,7 +779,7 @@ static void rubble_step(int i)
     NOPS(3);
     x = PTOD(p->x);
     y = PTOD(p->y);
-    if (collision_point_p(x, y, OBJ_oWaterSwim, 0, NOONE) != NOONE) PUNTR(1041);
+    if (collision_point_p(x, y, OBJ_oWaterSwim, 0, NOONE) != NOONE) pswamp_world(1041, i, 0);
     else if (collision_point_p(x, y, OBJ_oLava, 0, NOONE) != NOONE) pin_destroy(i);
     if (collision_point_p(x, y, OBJ_oSolid, 0, NOONE) != NOONE) pin_destroy(i);
     view_read();
@@ -785,7 +794,7 @@ static void bomb_step(int i)
     item_step(i);
     if (p->spr == GSPR_sBombArmed) pin_setdepth(p, 49);
     if (PE(p)->sticky) pin_setdepth(p, 1);
-    if (PE(p)->armed && instance_exists_p(OBJ_oShopkeeper)) PUNTR(1042);
+    if (PE(p)->armed && instance_exists_p(OBJ_oShopkeeper)) pitems_world(1042, i, 0);
 }
 
 /* objects/oRopeThrow/Step_0.gml (after oItem's) */
@@ -853,7 +862,7 @@ static void goldidol_step(int i)
         if (isLevel()) {
             if (!PE(p)->held && collision_point_p(PTOD(p->x), PTOD(p->y) + 4, OBJ_oBrickSmooth, 0, NOONE) != NOONE &&
                 instance_exists_p(OBJ_oShopkeeper) && G.thiefLevel == 0 && !G.murderer)
-                PUNTR(1043);
+                pitems_world(1043, i, 0);
         }
         if (!PE(p)->colBot && PE(p)->trigger)
             PE(p)->trigger = 0;
@@ -919,7 +928,7 @@ static void game_step(int i)
     struct pin *g = &PX(i);
     gameStepEvent();
     if (!instance_exists_p(OBJ_oXMarket)) PG.udjatBlink = 0;
-    else PUNTR(1051);
+    else pitems_world(1051, i, 0);
     if (G.gameStart && instance_exists_p(OBJ_oCharacter) && isLevel()) {      /* :13 */
         if (!PL.dead) {
             PG.time += 30;
@@ -934,10 +943,10 @@ static void game_step(int i)
         }
         if (isLevel() && !isRoomIs(R_rOlmec) && G.currLevel > 1 && !PG.hasCrown && PG.xtime > 150000 &&
             !PG.ghostExists && !spr_is_exit_g(PX(PL.idx).spr))
-            PUNTR(1052);
+            pswamp_world(1052, i, 0);
     }
     if (G.checkWater) {                                                        /* :64 */
-        if (instance_exists_p(OBJ_oWater)) PUNTR(1053);
+        if (instance_exists_p(OBJ_oWater)) pswamp_world(1053, i, 0);
         G.checkWater = 0;                                                      /* waterCounter == 0 */
     }
     if (instance_exists_p(OBJ_oPlayer1) && PL.dead) {                          /* :127 game over */
@@ -978,6 +987,7 @@ static void level_step(int i)
 
 void ev_step(int i)
 {
+    if (front_on && front_ev(FEV_STEP, i, 0)) return;                                 /* P8 hook */
     struct pin *p = &PX(i);
     if (pen_step(i) || pdam_step(i) || pshop_step(i) || pitem_step(i)) return; /* P5 hook */
     switch (p->obj) {
@@ -1032,9 +1042,9 @@ void ev_step(int i)
         if (NLE(PE(p)->life, N(1))) pin_destroy(i);
         break;
     case OBJ_oRope:
-        if (collision_point_p(PTOD(p->x) + 12, PTOD(p->y), OBJ_oLava, 0, NOONE) != NOONE && PE(p)->burnTimer == 0) PUNTR(1056);
+        if (collision_point_p(PTOD(p->x) + 12, PTOD(p->y), OBJ_oLava, 0, NOONE) != NOONE && PE(p)->burnTimer == 0) ptemple_world(1056, i, 0);
         if (PE(p)->burnTimer > 1) PE(p)->burnTimer -= 1;
-        else if (PE(p)->burnTimer == 1) PUNTR(1056);
+        else if (PE(p)->burnTimer == 1) ptemple_world(1056, i, 0);
         break;
     case OBJ_oArrowTrapLeft: case OBJ_oArrowTrapLeftLit: case OBJ_oArrowTrapRight: case OBJ_oArrowTrapRightLit:
         break;                                                                 /* firing = false; the rest commented */
@@ -1051,22 +1061,22 @@ void ev_step(int i)
         if (obj_is(p->obj, OBJ_oTreasure)) treasure_step(i);
         else if (obj_is(p->obj, OBJ_oItem)) {
             if (p->obj == OBJ_oDice) {                                         /* objects/oDice/Step_0.gml */
-                if (inview(i, 16)) PUNTR(1064);                                /* :1-208: P5 (shops) */
+                if (inview(i, 16)) pitems_world(1064, i, 0);                                /* :1-208: P5 (shops) */
                 if (NGT(NABS(PE(p)->yVel), N(2)) || NGT(NABS(PE(p)->xVel), N(2))) {          /* :210 */
                     pin_set_sprite(i, GSPR_sDiceRoll);
                     PE(p)->value = RAND(1, 6);
                 } else if (isCollisionBottom(i, 1)) {
                     static const int16_t dice[6] = { GSPR_sDice1, GSPR_sDice2, GSPR_sDice3, GSPR_sDice4,
                                                      GSPR_sDice5, GSPR_sDice6 };
-                    if (PE(p)->rolling && NEQ(PE(p)->yVel, N(0))) PUNTR(1065);
+                    if (PE(p)->rolling && NEQ(PE(p)->yVel, N(0))) pitems_world(1065, i, 0);
                     pin_set_sprite(i, dice[(PE(p)->value >= 1 && PE(p)->value <= 5) ? PE(p)->value - 1 : 5]);
                 }
             } else if (p->obj == OBJ_oDamsel || p->obj == OBJ_oFlare || p->obj == OBJ_oFlareCrate ||
                 p->obj == OBJ_oLockedChest || p->obj == OBJ_oMattock || p->obj == OBJ_oWebCannon)
-                PUNTR(1060);
+                pitems_world(1060, i, 0);
             else
                 item_step(i);
-        } else
+        } else if (!pcontent_ev(FEV_STEP, i, 0))                                       /* P7 hook */
             PUNTR(1061);
         break;
     }
@@ -1074,21 +1084,23 @@ void ev_step(int i)
 
 void ev_end_step(int i)
 {
+    if (front_on && front_ev(FEV_END_STEP, i, 0)) return;                                 /* P8 hook */
     struct pin *p = &PX(i);
     switch (p->obj) {
     case OBJ_oPlayer1: pl_end_step(i); break;
     case OBJ_oBomb:                                                            /* objects/oBomb/Step_2.gml */
         if (PE(p)->enemyID != NOONE && !PX(PE(p)->enemyID).alive) PE(p)->enemyID = NOONE;
-        if (PE(p)->enemyID != NOONE) PUNTR(1062);
+        if (PE(p)->enemyID != NOONE) pitems_world(1062, i, 0);
         break;
     case OBJ_oGamepad: break;
-    default: PUNTR(1063); break;
+    default: if (!pcontent_ev(FEV_END_STEP, i, 0)) PUNTR(1063); break;            /* P7 hook */
     }
 }
 
 /* ---- Alarms ---------------------------------------------------------------------------------------------- */
 void ev_alarm(int i, int a)
 {
+    if (front_on && front_ev(FEV_ALARM, i, a)) return;                                 /* P8 hook */
     struct pin *p = &PX(i);
     int o = p->obj;
     if (o == OBJ_oPlayer1) { pl_alarm(i, a); return; }
@@ -1109,7 +1121,7 @@ void ev_alarm(int i, int a)
             PE(p)->safe = 0;
         break;
     case OBJ_oArrow:
-        if (a == 1) PUNTR(1070);                                               /* bomb arrows */
+        if (a == 1) pitems_world(1070, i, a);                                               /* bomb arrows */
         else if (a == 2) PE(p)->safe = 0;                                          /* objects/oArrow/Alarm_2.gml */
         break;
     case OBJ_oArrowTrapLeft: case OBJ_oArrowTrapLeftLit:
@@ -1130,7 +1142,7 @@ void ev_alarm(int i, int a)
         }
         break;
     case OBJ_oArrowTrapRight: case OBJ_oArrowTrapRightLit:
-        if (a == 0) PUNTR(1071);
+        if (a == 0) pitems_world(1071, i, a);
         else if (a == 1 && !isRoomIs(R_rLevelEditor)) {                        /* objects/oArrowTrapRight/Alarm_1.gml */
             int x = PFLOOR(p->x), xAct = x + 16, n = 100, obj;
             while (collision_point_p(xAct, PTOD(p->y) + 8, OBJ_oSolid, 0, NOONE) == NOONE && n > 0) {
@@ -1179,7 +1191,7 @@ void ev_alarm(int i, int a)
     default:
         if (ptrans_alarm(i, a)) break;
         if (obj_is(o, OBJ_oItem) && a == 2) PE(p)->safe = 0;                       /* objects/oItem/Alarm_2.gml */
-        else PUNTR(1073);
+        else if (!pcontent_ev(FEV_ALARM, i, a)) PUNTR(1073);                          /* P7 hook */
         break;
     }
 }
@@ -1187,6 +1199,7 @@ void ev_alarm(int i, int a)
 /* ---- Animation End --------------------------------------------------------------------------------------- */
 void ev_animend(int i)
 {
+    if (front_on && front_ev(FEV_ANIMEND, i, 0)) return;                                 /* P8 hook */
     /* the room's first frame animates the enemies before TRACE_NOENEMY removes them at its Begin Step: their
        Animation End events only change their own status / sprite (oShopkeeper, oDamsel, oFakeBones, ...) */
     if (play_noenemy && PW.room_new &&
@@ -1200,7 +1213,7 @@ void ev_animend(int i)
         pin_destroy(i);
         break;
     default:
-        if (!ptrans_animend(i)) PUNTR(1080);
+        if (!ptrans_animend(i) && !pcontent_ev(FEV_ANIMEND, i, 0)) PUNTR(1080);       /* P7 hook */
         break;
     }
 }
@@ -1288,6 +1301,7 @@ static void explosion_item(int self, int other)
 
 void ev_collision(int self, int other)
 {
+    if (front_on && front_ev(FEV_COLLISION, self, other)) return;                                 /* P8 hook */
     int so = PX(self).obj, oo = PX(other).obj;
     if (pen_collision(self, other) || pdam_collision(self, other) || pshop_collision(self, other) ||
         pitem_collision(self, other))
@@ -1357,23 +1371,26 @@ void ev_collision(int self, int other)
             }
             pin_destroy(self);
         } else
-            PUNTR(1094);
+            ptemple_world(1094, self, other);
         break;
-    case OBJ_oLockedChest: PUNTR(1095); break;
-    default: PUNTR(1096); break;
+    case OBJ_oLockedChest: pitems_world(1095, self, other); break;
+    default: if (!pcontent_ev(FEV_COLLISION, self, other)) PUNTR(1096); break;    /* P7 hook */
     }
 }
 
 void ev_draw(int i)
 {
+    if (front_on && front_ev(FEV_DRAW, i, 0)) return;                                 /* P8 hook */
     if (PX(i).obj == OBJ_oPlayer1) pl_draw(i);
     else if (pen_draw(i) || pdam_draw(i) || pshop_draw(i)) return;             /* P5 hook */
+    else if (pcontent_ev(FEV_DRAW, i, 0)) return;                              /* P7 hook */
     else ptrans_draw(i);
 }
 
 void ev_outside(int i)
 {
+    if (front_on && front_ev(FEV_OUTSIDE, i, 0)) return;                                 /* P8 hook */
     if (PX(i).obj == OBJ_oPushBlock) pin_destroy(i);                           /* objects/oPushBlock/Other_0.gml */
     else if (pen_outside(i)) return;                                           /* P5 hook */
-    else PUNTR(1097);
+    else if (!pcontent_ev(FEV_OUTSIDE, i, 0)) PUNTR(1097);                     /* P7 hook */
 }

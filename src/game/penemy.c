@@ -10,6 +10,7 @@
 #include "penemy.h"
 #include "../snd/sndgame.h"                     /* the GML sound calls (src/snd) */
 #include "pmath.h"
+#include "pcontent.h"                            /* P7 content packages (docs/CONTENT.md) */
 
 enum { E_STUNNED = 98, E_DEAD = 99, E_LEFT = 0, E_RIGHT = 1 };
 
@@ -340,8 +341,8 @@ void pen_parent_step(int i)
         }
         PEN(p)->burning -= 1;
     }
-    if (CP(X(i) + dfloor(sprw(i) / 2.0), Y(i) - 1, OBJ_oLava)) PUNTR(5012);                   /* :63 */
-    if (CP(X(i) + dfloor(sprw(i) / 2.0), Y(i) + sprh(i) - 2, OBJ_oLava)) PUNTR(5012);
+    if (CP(X(i) + dfloor(sprw(i) / 2.0), Y(i) - 1, OBJ_oLava)) ptemple_world(5012, i, 0);                   /* :63 */
+    if (CP(X(i) + dfloor(sprw(i) / 2.0), Y(i) + sprh(i) - 2, OBJ_oLava)) ptemple_world(5012, i, 0);
     if (collision_rect_p(X(i) + 2, Y(i) + 2, X(i) + 14, Y(i) + 14, OBJ_oSpearsLeft, 0, NOONE) != NOONE) PUNTR(5013);
     if (CP(X(i) + 8, Y(i) + 16, OBJ_oSpikes) && NGT(PE(p)->yVel, N(2))) {  /* :108 */
         int spikes = instance_place_p(i, X(i) + 8, Y(i) + 14, OBJ_oSpikes);
@@ -359,7 +360,7 @@ void pen_parent_step(int i)
     }
     if (PE(p)->status >= 98) {                                             /* :131 sacrifice */
         if (!PE(p)->held && NEQ(PE(p)->xVel, N(0)) && NEQ(PE(p)->yVel, N(0))) {
-            if (CP(X(i) + 8, Y(i) + 16, OBJ_oSacAltarLeft)) PUNTR(5014);
+            if (CP(X(i) + 8, Y(i) + 16, OBJ_oSacAltarLeft)) pitems_world(5014, i, 0);
         } else
             PEN(p)->sacCount = 20;
     }
@@ -963,7 +964,7 @@ int pen_step(int i)
     case OBJ_oSplash: case OBJ_oEnemySight: return 1;                  /* no Step */
     }
     if (obj_is(p->obj, OBJ_oEnemy) && p->obj != OBJ_oShopkeeper) {
-        PUNTR(5003);
+        if (!pcontent_ev(FEV_STEP, i, 0)) PUNTR(5003);                                       /* P7 hook */
         return 1;
     }
     return 0;
@@ -1067,7 +1068,7 @@ int pen_animend(int i)
         return 1;
     }
     if (obj_is(p->obj, OBJ_oEnemy) && pobj[p->obj].ev & EV_ANIMEND && p->obj != OBJ_oShopkeeper) {
-        PUNTR(5004);
+        if (!pcontent_ev(FEV_ANIMEND, i, 0)) PUNTR(5004);                                    /* P7 hook */
         return 1;
     }
     return 0;
@@ -1262,7 +1263,7 @@ int pen_collision(int self, int other)
             so == OBJ_oGiantSpiderHang || so == OBJ_oSkeleton) {
             if (obj_is(oo, OBJ_oCharacter)) enemy_hit_player(self, other);
             else enemy_whipped(self, other);
-        } else
+        } else if (!pcontent_ev(FEV_COLLISION, self, other))                               /* P7 hook */
             PUNTR(5005);
         return 1;
     }

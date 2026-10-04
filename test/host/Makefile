@@ -9,12 +9,13 @@ OUT := $(ROOT)/build/host
 SRC := $(ROOT)/src/game/rng.c $(ROOT)/src/game/inst.c $(ROOT)/src/game/gen.c $(ROOT)/src/game/genroom.c \
        $(ROOT)/src/game/genobj.c $(ROOT)/src/game/genent.c $(GEN)/objects.c $(GEN)/gentables.c
 CFLAGS ?= -std=c99 -O2 -Wall -Wextra -Wno-unused-parameter
-INC := -I$(ROOT)/src/game -I$(GEN) -I$(ROOT)/../cps3-testgame/sdk/include -I$(ROOT)/build/snd -DSND_LOG
+INC := -I$(ROOT)/src/game -I$(ROOT)/src/front -I$(GEN) -I$(ROOT)/../cps3-testgame/sdk/include -I$(ROOT)/build/snd -DSND_LOG
 
 PSRC := $(ROOT)/src/game/pworld.c $(ROOT)/src/game/pscript.c $(ROOT)/src/game/pobj.c $(ROOT)/src/game/pplayer.c \
         $(ROOT)/src/game/prun.c $(ROOT)/src/game/pcol.c $(ROOT)/src/game/ptrans.c $(GEN)/playtables.c \
         $(ROOT)/src/game/penemy.c $(ROOT)/src/game/pdamsel.c $(ROOT)/src/game/pshop.c $(ROOT)/src/game/pmath.c \
-        $(ROOT)/src/game/pitem.c $(ROOT)/src/game/pmsg.c $(ROOT)/src/snd/snd.c
+        $(ROOT)/src/game/pitem.c $(ROOT)/src/game/pmsg.c $(ROOT)/src/game/pcontent.c \
+        $(addprefix $(ROOT)/src/game/,pk_jungle.c pk_swamp.c pk_ice.c pk_temple.c pk_items.c) $(ROOT)/src/snd/snd.c
 # host only (stdio): the SDK voice stubs and the SND lines (not in the sh2 objects)
 HSRC := sndhost.c
 

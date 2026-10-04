@@ -4,6 +4,7 @@
 #include "penemy.h"
 #include "pcol.h"
 #include "../snd/sndgame.h"                     /* the GML sound calls (src/snd) */
+#include "front.h"                                     /* P8: the front end's hooks (src/front/front.h) */
 static void start_music(void);
 
 struct gamepad GP;
@@ -98,9 +99,10 @@ void view_set_y(int32_t y)
 
 static void view_update(void)
 {
-    int i = instance_first_p(OBJ_oPlayer1);
+    int i = front_on ? (front_view_obj >= 0 ? instance_first_p(front_view_obj) : NOONE)   /* P8 hook */
+                     : instance_first_p(OBJ_oPlayer1);
     if (i != NOONE) {
-        int32_t x = PFLOOR(PX(i).x), y = PFLOOR(PX(i).y), hb = 160, vb = PW.vborder;
+        int32_t x = PFLOOR(PX(i).x), y = PFLOOR(PX(i).y), hb = front_on ? front_hborder : 160, vb = PW.vborder;
         if (x - hb < PW.xview) PW.xview = x - hb;
         else if (x + hb > PW.xview + 320) PW.xview = x + hb - 320;
         if (y - vb < PW.yview) PW.yview = y - vb;
@@ -329,7 +331,7 @@ static int room_change(void)
         play_transition_start(r);
     else if (r == R_rLevel || r == R_rLevel2 || r == R_rLevel3 || r == R_rOlmec)
         play_level_start(PW.next_id);
-    else
+    else if (!(front_on && front_room(r)))                                     /* P8 hook */
         return r;
     PW.room_new = 1;
     return 0;

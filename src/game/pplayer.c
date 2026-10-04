@@ -8,6 +8,7 @@
 #include "penemy.h"
 #include "../snd/sndgame.h"                     /* the GML sound calls (src/snd) */
 #include "pmsg.h"                                /* the HUD messages (trMessages) */
+#include "pcontent.h"                            /* P7 content packages (docs/CONTENT.md) */
 
 struct player PL;
 
@@ -271,7 +272,7 @@ static void characterStepEvent(int i)
 
     /* LADDERS :195 */
     if (PL.state == CLIMBING) {
-        if (instance_exists_p(OBJ_oCape)) PUNTR(2002);
+        if (instance_exists_p(OBJ_oCape)) pswamp_player(2002, i, 0);
         PL.kJumped = 0;
         PL.ladderTimer = 10;
         PL.ladder = collision_point_p(PTOD(p->x), PTOD(p->y), OBJ_oLadder, 0, NOONE);
@@ -340,7 +341,7 @@ static void characterStepEvent(int i)
     if (PL.kJumpReleased && platformCharacterIs(IN_AIR))
         PL.kJumped = 1;
     else if (platformCharacterIs(ON_GROUND)) {
-        if (instance_exists_p(OBJ_oCape)) PUNTR(2003);
+        if (instance_exists_p(OBJ_oCape)) pswamp_player(2003, i, 0);
         PL.kJumped = 0;
     }
 
@@ -364,9 +365,9 @@ static void characterStepEvent(int i)
         PL.jumpTime = 0;
         PE(p)->grav = PL.gravNorm;
     } else if (PG.hasCape && PL.kJumpPressed && PL.kJumped && platformCharacterIs(IN_AIR)) {
-        PUNTR(2005);
+        pitems_player(2005, i, 0);
     } else if (PG.hasJetpack && PL.kJump && PL.kJumped && platformCharacterIs(IN_AIR) && PL.jetpackFuel > 0) {
-        PUNTR(2006);
+        pitems_player(2006, i, 0);
     } else if (platformCharacterIs(ON_GROUND) && PL.kJumpPressed && PL.fallTimer == 0) {   /* :352 */
         if (NGT(PE(p)->xVel, N(3)) || NLT(PE(p)->xVel, N(-3))) {
             PE(p)->yAcc += NMULI(PL.initialJumpAcc, 2);
@@ -459,7 +460,7 @@ static void characterStepEvent(int i)
     if (PL.hangCount > 0) PL.hangCount -= 1;                                    /* :506 */
 
     if (PL.state == HANGING) {                                                 /* :508 */
-        if (instance_exists_p(OBJ_oCape)) PUNTR(2007);
+        if (instance_exists_p(OBJ_oCape)) pswamp_player(2007, i, 0);
         PL.kJumped = 0;
         if (PL.kDown && PL.kJumpPressed) {
             PE(p)->grav = PL.gravNorm;
@@ -572,7 +573,7 @@ static void characterStepEvent(int i)
                 PL.xVelLimit = N(3);
                 p->ispd = (img_t)0.8;
             } else if ((PL.kLeft || PL.kRight) && PG.downToRun) {
-                PUNTR(2008);
+                pitems_player(2008, i, 0);
             } else {
                 PE(p)->xVel = NMUL(PE(p)->xVel, N(0.8));
                 if (NLT(PE(p)->xVel, N(0.5))) PE(p)->xVel = 0;
@@ -592,7 +593,7 @@ static void characterStepEvent(int i)
             PL.yFric = N(0.2);
             PL.fallTimer = 0;
         } else if (collision_point_p(PTOD(p->x), PTOD(p->y), OBJ_oWater, 1, NOONE) != NOONE) {
-            PUNTR(2009);
+            pswamp_player(2009, i, 0);
         } else {
             PL.swimming = 0;
             PL.yFric = N(1);
@@ -621,7 +622,7 @@ static void characterStepEvent(int i)
                 if (PX(PL.holdItem).type == T_GOLDIDOL) pin_sety(&PX(PL.holdItem), PX(PL.holdItem).y - (PI(8)));
                 scrDropItem(N(-1), N(-4));
             }
-            if (instance_exists_p(OBJ_oMonkey)) PUNTR(2010);
+            if (instance_exists_p(OBJ_oMonkey)) pjungle_player(2010, i, 0);
         } else if (PL.state == DUCKING && NLT(NABS(PE(p)->xVel), N(3)) && PL.facing == RIGHT &&
                    collision_point_p(x, y + 9, OBJ_oSolid, 0, NOONE) != NOONE &&
                    collision_point_p(x + 1, y + 9, OBJ_oSolid, 0, NOONE) == NOONE && PL.kRight) {
@@ -630,7 +631,7 @@ static void characterStepEvent(int i)
                 if (PX(PL.holdItem).type == T_GOLDIDOL) pin_sety(&PX(PL.holdItem), PX(PL.holdItem).y - (PI(8)));
                 scrDropItem(N(1), N(-4));
             }
-            if (instance_exists_p(OBJ_oMonkey)) PUNTR(2010);
+            if (instance_exists_p(OBJ_oMonkey)) pjungle_player(2010, i, 0);
         }
     }
     if (PL.state == DUCKTOHANG) {                                              /* :870 */
@@ -640,7 +641,7 @@ static void characterStepEvent(int i)
         PE(p)->grav = 0;
     }
     if (instance_exists_p(OBJ_oParachute)) PL.yFric = N(0.5);                  /* :882 */
-    if (instance_exists_p(OBJ_oCape)) PUNTR(2011);
+    if (instance_exists_p(OBJ_oCape)) pswamp_player(2011, i, 0);
     if (PL.pushTimer > 100) PL.pushTimer = 100;
 
     /* limits the acceleration :894 */
@@ -656,7 +657,7 @@ static void characterStepEvent(int i)
     PE(p)->xVel = NMUL(PE(p)->xVel, PL.xFric);                                         /* :909 */
     PE(p)->yVel = NMUL(PE(p)->yVel, PL.yFric);
     NOPS(10);
-    if (instance_exists_p(OBJ_oBall)) PUNTR(2012);                             /* :913 */
+    if (instance_exists_p(OBJ_oBall)) pitems_player(2012, i, 0);                             /* :913 */
     if (!PL.dead && !PL.stunned) {                                             /* :943 */
         if (NGT(PE(p)->xVel, PL.xVelLimit)) PE(p)->xVel = PL.xVelLimit;
         else if (NLT(PE(p)->xVel, -PL.xVelLimit)) PE(p)->xVel = -PL.xVelLimit;
@@ -929,7 +930,7 @@ static void exit_level(int i)
     snd_play(SND_xsteps);
     if (collision_point_p(PTOD(p->x), PTOD(p->y), OBJ_oXMarket, 0, NOONE) != NOONE) G.genBlackMarket = 1;
     if (collision_point_p(PTOD(p->x), PTOD(p->y), OBJ_oXGold, 0, NOONE) != NOONE) G.cityOfGold = 1;
-    if (instance_exists_p(OBJ_oMonkey)) PUNTR(2016);
+    if (instance_exists_p(OBJ_oMonkey)) pjungle_player(2016, i, 0);
 }
 
 static void hurt_logic(int i)
@@ -968,7 +969,7 @@ static void hurt_logic(int i)
     if (collision_rect_p(x - 8, y - 8, x + 8, y + 8, OBJ_oRock, 0, NOONE) != NOONE) {    /* :1508 */
         obj = instance_nearest_p(x, y, OBJ_oRock);
         if (obj != NOONE && NGT(NABS(PE(&PX(obj))->xVel), N(4)) && !PE(&PX(obj))->safe && !PL.stunned && !PL.dead) {
-            if (PG.hasMitt && PL.holdItem == NOONE) PUNTR(2017);
+            if (PG.hasMitt && PL.holdItem == NOONE) pitems_player(2017, i, 0);
             else {
                 if (PG.plife > 0) PG.plife -= 2;
                 PE(p)->xVel = PE(&PX(obj))->xVel;
@@ -980,9 +981,9 @@ static void hurt_logic(int i)
             }
         }
     }
-    if (collision_rect_p(x - 8, y - 8, x + 8, y + 8, OBJ_oLaser, 0, NOONE) != NOONE) PUNTR(2018);
+    if (collision_rect_p(x - 8, y - 8, x + 8, y + 8, OBJ_oLaser, 0, NOONE) != NOONE) pice_player(2018, i, 0);
     if (collision_rect_p(x - 8, y - 8, x + 8, y + 8, OBJ_oPsychicWave, 0, NOONE) != NOONE && !PL.stunned && !PL.dead)
-        PUNTR(2019);
+        pice_player(2019, i, 0);
     if (collision_rect_p(x - 8, y - 8, x + 8, y + 8, OBJ_oExplosion, 0, NOONE) != NOONE) {   /* :1584 */
         int ex;
         PG.plife -= 10;
@@ -998,10 +999,10 @@ static void hurt_logic(int i)
     x = PTOD(p->x);
     y = PTOD(p->y);
     obj = collision_rect_p(x - 6, y - 6, x + 6, y + 7, OBJ_oSpearsLeft, 0, NOONE);  /* :1599 */
-    if (obj != NOONE) PUNTR(2020);
-    if (collision_rect_p(x - 6, y - 6, x + 6, y + 7, OBJ_oSmashTrap, 0, NOONE) != NOONE) PUNTR(2021);
+    if (obj != NOONE) pjungle_player(2020, i, obj);
+    if (collision_rect_p(x - 6, y - 6, x + 6, y + 7, OBJ_oSmashTrap, 0, NOONE) != NOONE) ptemple_player(2021, i, 0);
     obj = collision_rect_p(x - 2, y - 9, x + 2, y - 7, OBJ_oCeilingTrap, 0, NOONE);
-    if (obj != NOONE && PE(&PX(obj))->status > 0) PUNTR(2022);
+    if (obj != NOONE && PE(&PX(obj))->status > 0) ptemple_player(2022, i, obj);
     PL.colSpikes = 0;                                                          /* :1652 */
     if (collision_rect_p(x - 4, y - 4, x + 4, y + 8, OBJ_oSpikes, 0, NOONE) != NOONE) PL.colSpikes = 1;
     if (PL.colSpikes && PL.dead) {
@@ -1029,7 +1030,7 @@ void pl_step(int i)
     if (PG.plife > 99) PG.plife = 99;                                          /* :8 */
     if (PG.bombs > 99) PG.bombs = 99;
     if (PG.rope > 99) PG.rope = 99;
-    if (PG.hasCape) PUNTR(2030);
+    if (PG.hasCape) pswamp_player(2030, i, 0);
     if (PL.redColor > 0) {                                                     /* :20 kapala */
         if (PL.redToggle) PL.redColor -= 5;
         else if (PL.redColor < 20) PL.redColor += 5;
@@ -1060,7 +1061,7 @@ void pl_step(int i)
     } else
         PL.whoaTimer = PL.whoaTimerMax;
     if (PL.firing > 0) PL.firing -= 1;                                         /* :174 */
-    if (collision_point_p(PTOD(p->x), PTOD(p->y), OBJ_oWaterSwim, 1, NOONE) != NOONE) PUNTR(2032);
+    if (collision_point_p(PTOD(p->x), PTOD(p->y), OBJ_oWaterSwim, 1, NOONE) != NOONE) pswamp_player(2032, i, 0);
     if (PL.burning > 0) {                                                      /* :188 */
         if (RAND(1, 5) == 1) {
             int yb = RAND(4, 12);                                              /* arguments: last first */
@@ -1069,7 +1070,7 @@ void pl_step(int i)
         }
         PL.burning -= 1;
     }
-    if (collision_point_p(PTOD(p->x), PTOD(p->y) + 6, OBJ_oLava, 0, NOONE) != NOONE) PUNTR(2033);
+    if (collision_point_p(PTOD(p->x), PTOD(p->y) + 6, OBJ_oLava, 0, NOONE) != NOONE) ptemple_player(2033, i, 0);
     if (PG.hasJetpack && platformCharacterIs(ON_GROUND)) PL.jetpackFuel = 50;
     if (PTOD(p->y) > PW.room_h + 16 && !PL.dead) {                             /* :221 */
         PG.plife -= 99;
@@ -1098,7 +1099,7 @@ void pl_step(int i)
         if (NGT(PE(p)->yVel, N(0)) && PL.state != CLIMBING) {                             /* :254 */
             PL.fallTimer += 1;
             if (PL.fallTimer > 16) PL.wallHurt = 0;
-            if (PG.hasParachute && !PL.stunned && PL.fallTimer > 14) PUNTR(2034);
+            if (PG.hasParachute && !PL.stunned && PL.fallTimer > 14) pitems_player(2034, i, 0);
         } else if (platformCharacterIs(ON_GROUND) && PL.fallTimer > 16 &&
                    collision_rect_p(PTOD(p->x) - 8, PTOD(p->y) - 8, PTOD(p->x) + 8, PTOD(p->y) + 8, OBJ_oSpringTrap, 0, NOONE) == NOONE) {
             int obj;                                                           /* :269 LONG DROP */
@@ -1118,9 +1119,9 @@ void pl_step(int i)
             snd_play(SND_xthud);                                               /* :289 */
         } else {
             PL.fallTimer = 0;
-            if (instance_exists_p(OBJ_oParachute)) PUNTR(2035);
+            if (instance_exists_p(OBJ_oParachute)) pitems_player(2035, i, 0);
         }
-        if (PL.swimming && collision_point_p(PTOD(p->x), PTOD(p->y), OBJ_oLava, 0, NOONE) == NOONE) PUNTR(2036);
+        if (PL.swimming && collision_point_p(PTOD(p->x), PTOD(p->y), OBJ_oLava, 0, NOONE) == NOONE) pswamp_player(2036, i, 0);
         else PL.bubbleTimer = PL.bubbleTimerMax;
         if (PL.state != DUCKTOHANG && !PL.stunned && !PL.dead && !spr_is_exit(p->spr)) {   /* :318 */
             PL.bounced = 0;
@@ -1176,7 +1177,7 @@ void pl_step(int i)
     /* the whip :417 */
     if (spr_is_attack(p->spr) && PL.facing == LEFT && DGT(p->img, 4) && instance_number_p(OBJ_oWhip) == 0) {
         if (PL.holdItem != NOONE) {
-            if (PX(PL.holdItem).type == T_MACHETE || PX(PL.holdItem).type == T_MATTOCK) PUNTR(2037);
+            if (PX(PL.holdItem).type == T_MACHETE || PX(PL.holdItem).type == T_MATTOCK) pitems_player(2037, i, 0);
         } else if (G.isTunnelMan) PUNTR(2038);
         else {
             int obj = pin_create(p->x - PI(16), p->y, OBJ_oWhip);
@@ -1185,7 +1186,7 @@ void pl_step(int i)
         }
     } else if (spr_is_attack(p->spr) && PL.facing == RIGHT && DGT(p->img, 4) && instance_number_p(OBJ_oWhip) == 0) {
         if (PL.holdItem != NOONE) {
-            if (PX(PL.holdItem).type == T_MACHETE || PX(PL.holdItem).type == T_MATTOCK) PUNTR(2037);
+            if (PX(PL.holdItem).type == T_MACHETE || PX(PL.holdItem).type == T_MATTOCK) pitems_player(2037, i, 0);
         } else if (G.isTunnelMan) PUNTR(2038);
         else {
             int obj = pin_create(p->x + PI(16), p->y, OBJ_oWhip);
@@ -1195,10 +1196,10 @@ void pl_step(int i)
     }
     if (PL.holdItem != NOONE) {                                                /* :484 */
         if (PX(PL.holdItem).type == T_MACHETE || PX(PL.holdItem).type == T_MATTOCK) {
-            if (spr_is_attack(p->spr) && DLT(p->img, 2)) PUNTR(2039);
+            if (spr_is_attack(p->spr) && DLT(p->img, 2)) pitems_player(2039, i, 0);
         }
     } else if (p->spr == GSPR_sTunnelAttackL && DLT(p->img, 2) && instance_number_p(OBJ_oMattockPre) == 0) {
-        PUNTR(2040);
+        pitems_player(2040, i, 0);
     } else if (spr_is_attack(p->spr) && PL.facing == LEFT && DLT(p->img, 2) && instance_number_p(OBJ_oWhipPre) == 0) {
         int obj = pin_create(p->x + PI(16), p->y, OBJ_oWhipPre);
         pin_set_sprite(obj, GSPR_sWhipPreL);
@@ -1230,7 +1231,7 @@ void pl_step(int i)
         if (PL.kUp && PL.kAttackPressed && collision_point_p(x, y, OBJ_oCrate, 0, NOONE) != NOONE)   /* :614 */
             open_crate(i);
         if (PL.kUp && PL.kAttackPressed && collision_point_p(x, y, OBJ_oFlareCrate, 0, NOONE) != NOONE)
-            PUNTR(2042);
+            pitems_player(2042, i, 0);
         if (!PL.dead && !PL.stunned && !PL.whipping && collision_point_p(x, y, OBJ_oXStart, 0, NOONE) != NOONE &&
             PL.kUp && platformCharacterIs(ON_GROUND) && !spr_is_exit(p->spr))
             PUNTR(2043);
@@ -1349,7 +1350,7 @@ void pl_step(int i)
             snd_play(SND_xthrow);                                              /* :1132 */
         }
     } else if (isLevel() && PL.kBombPressed && PG.bombs > 0 && !PL.whipping && PL.bowArmed) {
-        PUNTR(2044);
+        pitems_player(2044, i, 0);
     } else if (isLevel() && PL.kBombPressed && PG.bombs > 0 && !PL.whipping) {  /* :1141 */
         int obj = pin_create(p->x, p->y, OBJ_oBomb);
         struct pin *o = &PX(obj);
@@ -1401,7 +1402,7 @@ void pl_step(int i)
                             scrShake(100);
                             PE(&PX(h))->trigger = 0;
                         } else
-                            PUNTR(2046);
+                            ptemple_player(2046, i, 0);
                     } else if (PX(h).type == T_DAMSEL) {                       /* :1290 (P5) */
                         if (PE(&PX(h))->status == 4) {
                             PL.holdItem = NOONE;                       /* holdItem = 0; holdItem.held = false */
@@ -1422,7 +1423,7 @@ void pl_step(int i)
     if (isLevel() && PL.active && PL.kPayPressed && !PL.dead && !PL.stunned) { /* :1327 */
         pshop_pay(i);                                                          /* P5 hook (:1329) */
     }
-    if (PL.kAttack && PL.bowArmed && NLT(PL.bowStrength, N(12))) PUNTR(2050);      /* :1431 */
+    if (PL.kAttack && PL.bowArmed && NLT(PL.bowStrength, N(12))) pitems_player(2050, i, 0);      /* :1431 */
     if (PL.kAttackReleased && PL.bowArmed) scrFireBow();
     hurt_logic(i);                                                             /* :1450 */
     if ((PL.dead || PL.stunned) && PL.holdItem != NOONE) {                     /* :1684 */
@@ -1436,7 +1437,7 @@ void pl_step(int i)
         drop_or_switch();
     }
     if (PL.dead || PL.stunned) {                                               /* :1708 */
-        if (instance_exists_p(OBJ_oParachute)) PUNTR(2052);
+        if (instance_exists_p(OBJ_oParachute)) pitems_player(2052, i, 0);
         if (PL.whipping) {
             int16_t w[64];
             int n, k;
@@ -1482,7 +1483,7 @@ void pl_step(int i)
     if (PL.dead && PL.deadCounter > 0) PL.deadCounter -= 1;                    /* :1818 */
     if (isLevel()) {
         if (!PL.dead && PG.plife < 1) {
-            if (PG.hasAnkh) PUNTR(2054);
+            if (PG.hasAnkh) pitems_player(2054, i, 0);
             else {
                 PG.plife = 0;
                 PG.drawHUD = 0;
@@ -1511,7 +1512,7 @@ void pl_step(int i)
         PG.collectCounter -= 1;
     {
         double x = PTOD(p->x), y = PTOD(p->y);
-        if (PL.holdItem != NOONE && PX(PL.holdItem).type == T_BOW) PUNTR(2055);
+        if (PL.holdItem != NOONE && PX(PL.holdItem).type == T_BOW) pitems_player(2055, i, 0);
         if (collision_rect_p(x - 8, y - 8, x + 8, y + 8, OBJ_oTreasure, 0, NOONE) != NOONE && !PL.dead && !PL.stunned) {   /* :1964 */
             int gem = instance_nearest_p(x, y, OBJ_oTreasure);
             if (PE(&PX(gem))->canCollect) {
@@ -1693,7 +1694,7 @@ void pl_alarm(int i, int a)
         if (G.lake) pmsg_str("YOU HEAR RUSHING WATER...", "", 200);
         else if (G.sacrificePit) pmsg_str("I CAN HEAR PRAYERS TO KALI!", "", 200);
         break;
-    case 10: PUNTR(2060); break;
+    case 10: pitems_player(2060, i, a); break;
     case 11:
         if (PL.holdArrow > 0) {
             PL.holdArrowToggle = !PL.holdArrowToggle;
@@ -1752,7 +1753,7 @@ void pl_animend(int i)
             else if (G.levelType == 3 || G.levelType == 4) play_goto_room = R_rTransition4;
             else play_goto_room = R_rTransition1;
         } else
-            PUNTR(2061);
+            ptemple_player(2061, i, 0);
         G.cleanSolids = 1;
     }
 }
@@ -1762,7 +1763,7 @@ void pl_collision(int i, int other)
 {
     struct pin *p = &PX(i);
     if (obj_is(PX(other).obj, OBJ_oBlood)) {
-        if (PG.hasKapala && PE(&PX(other))->collectible) PUNTR(2062);
+        if (PG.hasKapala && PE(&PX(other))->collectible) pitems_player(2062, i, other);
     } else if (obj_is(PX(other).obj, OBJ_oPushBlock)) {
         double dx = PTOD(p->x) - (PTOD(PX(other).x) + 8), dy = PTOD(p->y) - (PTOD(PX(other).y) + 8);
         if (dx * dx + dy * dy < 121 && p->y >= PX(other).y)
@@ -1846,7 +1847,7 @@ void scrUseItem(void)
         }
     } else if (o->type == T_MACHETE || o->type == T_MATTOCK || o->type == T_PISTOL || o->type == T_SCEPTRE ||
                o->type == T_WEBCANNON || o->type == T_TELEPORTER || o->type == T_BOW || o->type == T_SHOTGUN) {
-        PUNTR(2070);
+        pitems_player(2070, PL.idx, 0);
         return;
     } else {                                                                   /* :594 throw */
         if (o->type == T_DAMSEL) {                                             /* scrUseItem :596 (P5) */
@@ -1893,7 +1894,7 @@ void scrUseItem(void)
                 }
             }
         }
-        if (PG.hasMitt && !scrPlayerIsDucking(i)) PUNTR(2072);
+        if (PG.hasMitt && !scrPlayerIsDucking(i)) pitems_player(2072, PL.idx, 0);
         if (o->spr == GSPR_sBombArmed) scrHoldItem(PL.pickupItemType);
         else PL.holdItem = NOONE;
         snd_play(SND_xthrow);                                                  /* :679 */

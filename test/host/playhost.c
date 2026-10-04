@@ -2,7 +2,9 @@
  * tools/tracer.py's runner writes one (phase 0: the room's first Begin Step; phase 1: oGamepad's End Step), for
  * tools/playcmp.py.
  *
- *   build/host/playhost <route.txt> <seed> [--nextid N] [--tail N] [--level N] [--money M] [--enemies] > out.txt
+ *   build/host/playhost <route.txt> <seed> [--nextid N] [--tail N] [--level N] [--money M] [--enemies]
+ *                       [--global name=value,...] [--room rLevel|rOlmec] [--nodark 0] > out.txt
+ *   --global / --room / --nodark: tools/tracer.py TRACE_GLOBALS / TRACE_ROOM / TRACE_NODARK (the c_* routes' lines)
  *   --enemies: keep the enemies (P5 references, no TRACE_NOENEMY); --level: start on level N (TRACE_LEVEL)
  *
  * Output per record:
@@ -136,6 +138,34 @@ static const char *const pwname[NPW] = { "bbox", "bbox_int", "visit", "point", "
                                          "with", "dist", "nearest", "snap", "snapv", "anim" };
 #endif
 
+/* --global name=value,... (tools/tracer.py TRACE_GLOBALS, set before the level starts): the globals the c_* routes
+   use; "~" is a space in a string */
+static int set_global(const char *kv)
+{
+    char k[32], v[64];
+    const char *e = strchr(kv, '=');
+    int n, x;
+    if (!e || e - kv >= (int)sizeof k) return 0;
+    memcpy(k, kv, e - kv); k[e - kv] = 0;
+    strncpy(v, e + 1, sizeof v - 1); v[sizeof v - 1] = 0;
+    for (n = 0; v[n]; n++) if (v[n] == '~') v[n] = ' ';
+    x = atoi(v);
+    if (!strcmp(k, "pickupItem")) {
+        for (n = 0; n < PICK_COUNT; n++)
+            if (!strcmp(pickup_names[n], v)) { G.pickupItem = (uint8_t)n; return 1; }
+        return 0;
+    }
+#define GI(name, dst) if (!strcmp(k, name)) { dst = x; return 1; }
+    GI("madeMoai", G.madeMoai) GI("arrows", PG.arrows) GI("bombs", PG.bombs) GI("rope", PG.rope)
+    GI("plife", PG.plife) GI("money", PG.money) GI("hasJetpack", PG.hasJetpack) GI("hasCape", PG.hasCape)
+    GI("hasParachute", PG.hasParachute) GI("hasMitt", PG.hasMitt) GI("hasGloves", PG.hasGloves)
+    GI("hasSpringShoes", PG.hasSpringShoes) GI("hasSpikeShoes", PG.hasSpikeShoes) GI("hasKapala", PG.hasKapala)
+    GI("hasAnkh", PG.hasAnkh) GI("hasCompass", PG.hasCompass) GI("hasStickyBombs", PG.hasStickyBombs)
+    GI("hasUdjatEye", PG.hasUdjatEye) GI("hasCrown", PG.hasCrown) GI("hasJordans", PG.hasJordans)
+#undef GI
+    return 0;
+}
+
 int main(int argc, char **argv)
 {
     FILE *f;
@@ -144,7 +174,8 @@ int main(int argc, char **argv)
     int nsteps = 0, k, tail = 30, r;
     long seed;
     int32_t nextid = 110325;
-    int level = 1, money = 0;
+    int level = 1, money = 0, nodark = -1;
+    const char *globals = NULL, *room = NULL;
     if (argc < 3) {
         fprintf(stderr, "usage: playhost <route.txt> <seed> [--nextid N] [--tail N]\n");
         return 2;
@@ -155,6 +186,9 @@ int main(int argc, char **argv)
         else if (!strcmp(argv[k], "--tail")) tail = atoi(argv[++k]);
         else if (!strcmp(argv[k], "--level")) level = atoi(argv[++k]);
         else if (!strcmp(argv[k], "--money")) money = atoi(argv[++k]);
+        else if (!strcmp(argv[k], "--global")) globals = argv[++k];
+        else if (!strcmp(argv[k], "--room")) room = argv[++k];
+        else if (!strcmp(argv[k], "--nodark")) nodark = atoi(argv[++k]);
     }
     for (k = 3; k < argc; k++)
         if (!strcmp(argv[k], "--enemies")) play_noenemy = 0;
@@ -183,9 +217,21 @@ int main(int argc, char **argv)
     PG.bombs = 4;
     PG.rope = 4;
     PG.money = money;
+    if (nodark >= 0) G.noDarkLevel = (uint8_t)nodark;                  /* TRACE_NODARK */
+    if (globals) {                                                     /* TRACE_GLOBALS */
+        char b[256], *t;
+        strncpy(b, globals, sizeof b - 1); b[sizeof b - 1] = 0;
+        for (t = strtok(b, ","); t; t = strtok(NULL, ","))
+            if (!set_global(t)) { fprintf(stderr, "playhost: --global %s: not known\n", t); return 2; }
+    }
     rng_seed(&g_rng, (uint32_t)seed);
     sndhost_init();
     play_level_start(nextid);
+    if (room && strcmp(room, "rLevel") &&                              /* TRACE_ROOM: the level's own room */
+        !(!strcmp(room, "rOlmec") && PW.room == R_rOlmec)) {
+        fprintf(stderr, "playhost: --room %s: the level starts in another room (only rLevel, and rOlmec on level 16)\n", room);
+        return 2;
+    }
     for (k = 0; k < nsteps + tail; k++) {
         t_done = k;                                /* the phase-0 record comes before the step's input */
         {   /* collision tree cost (pcol.c): per-step totals and maxima, printed at the end */

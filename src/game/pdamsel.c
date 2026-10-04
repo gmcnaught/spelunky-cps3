@@ -5,6 +5,7 @@
 #include "pint.h"
 #include "penemy.h"
 #include "../snd/sndgame.h"                     /* the GML sound calls (src/snd) */
+#include "pcontent.h"                            /* P7 content packages (docs/CONTENT.md) */
 
 enum { D_IDLE = 0, D_RUN = 1, D_THROWN = 2, D_YELL = 3, D_EXIT = 4, D_SLAVE = 5, D_KISS = 6, D_DEAD = 99 };
 
@@ -195,7 +196,7 @@ static void damsel_step(int i)
     }
     if (PE(p)->status == D_THROWN || PE(p)->status == D_DEAD) {                /* :311 sacrifice */
         if (!PE(p)->held && NEQ(PE(p)->xVel, N(0)) && NEQ(PE(p)->yVel, N(0))) {
-            if (CP(X(i), Y(i) + 8, OBJ_oSacAltarLeft)) PUNTR(6012);
+            if (CP(X(i), Y(i) + 8, OBJ_oSacAltarLeft)) pitems_world(6012, i, 0);
         } else
             PEN(p)->sacCount = 20;
     }

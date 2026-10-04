@@ -25,7 +25,7 @@ if [ -n "${SNAP_SED:-}" ]; then sed -i '' "$SNAP_SED" "$G/$SNAP_FILE"; fi
 sed -n '/^struct pin_ext {/,/^};/p' "$G/play.h" | grep -q "alpha" && echo "#define ALPHA_IN_EXT 1" > "$G/snapcfg.h" || : > "$G/snapcfg.h"
 scripts/dmake.sh $T OUT=build/$V OPT="${OPT:--O2}" PROF=${PROF:-0} PROF_KIND=${PROF_KIND:-3} PROF_SKIP=${PROF_SKIP:-1} PROF_WRAP=${PROF_WRAP:-0} SOFTFP=${SOFTFP:-0} ATTR=${ATTR:-0} FPCHECK=${FPCHECK:-0} >/dev/null
 # host reference (the same core.c and jobs.h; one process per job)
-cc -std=c99 -O2 -ffp-contract=off -w -I$T -I$B -I$G -o $B/host $T/host.c $T/core.c $T/sndstub.c src/snd/snd.c -Isrc/snd -I../cps3-testgame/sdk/include $G/*.c -lm   # no contraction: as the SH-2 (pcol.c's fused operations are explicit fmaf)
+cc -std=c99 -O2 -ffp-contract=off -w -I$T -I$B -I$G -o $B/host $T/host.c $T/core.c $T/sndstub.c src/snd/snd.c -Isrc/snd -Isrc/front -I../cps3-testgame/sdk/include $G/*.c -lm   # no contraction: as the SH-2 (pcol.c's fused operations are explicit fmaf)
 N=$($B/host --count); j=0; : > "$O/host.txt"
 while [ $j -lt $N ]; do $B/host $j >> "$O/host.txt"; j=$((j + 1)); done
 [ "${ATTR:-0}" = 1 ] && export PSH2_ATTR=$(($(grep -c "^    OBJ_" $G/objects.h) - 1))   # OBJ_COUNT

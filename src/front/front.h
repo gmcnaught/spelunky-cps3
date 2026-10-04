@@ -17,7 +17,7 @@
  *                            horizontal border; [game] view_update() follows front_view_obj instead of oPlayer1
  *                            while front_on (the vertical border is PW.vborder as in the levels).
  *
- * tests/game/front_hooks.patch is the src/game side, applied to the build snapshot until src/game carries it.
+ * The src/game side: pobj.c (the ev_* entry points, the weak defaults for builds without src/front), prun.c.
  *
  * Everything an attract room does to the gameplay state is listed in front.c's header (the RNG, globals). */
 #ifndef FRONT_H

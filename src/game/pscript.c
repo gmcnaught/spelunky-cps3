@@ -2,6 +2,7 @@
 #include "pint.h"
 #include "../snd/sndgame.h"                     /* the GML sound calls (src/snd) */
 #include "pmsg.h"                                /* the HUD messages (trMessages) */
+#include "pcontent.h"                            /* P7 content packages (docs/CONTENT.md) */
 
 double prandom(double n)
 {
@@ -396,7 +397,7 @@ void scrDropItem(num xv, num yv)
 
 void scrFireBow(void)
 {
-    PUNTR(3001);                                  /* the bow: not in P4's routes */
+    pitems_player(3001, PL.idx, 0);                                  /* the bow: not in P4's routes */
 }
 
 /* scripts/scrStealItem */
@@ -435,7 +436,7 @@ void scrStealItem(void)
     case T_UDJATEYE: case T_ANKH: case T_CROWN: case T_KAPALA: case T_PASTE: case T_PARACHUTE: case T_SPECTACLES:
     case T_GLOVES: case T_MITT: case T_COMPASS: case T_SPRINGSHOES: case T_SPIKESHOES: case T_JORDANS: case T_CAPE:
     case T_JETPACK:
-        PUNTR(3002);                              /* the equipment pickups: P5 */
+        pitems_player(3002, PL.idx, 0);                              /* the equipment pickups: P5 */
         return;
     case T_MACHETE: case T_MATTOCK: case T_PISTOL: case T_WEBCANNON: case T_TELEPORTER: case T_SHOTGUN: case T_BOW:
         if (PE(&PX(h))->cost > 0) {                     /* :229-293 */
