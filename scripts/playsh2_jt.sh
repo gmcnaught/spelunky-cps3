@@ -40,7 +40,7 @@ VN=$(echo "${V:-BASE}" | tr a-z_ A-Z-)
 scripts/dmake.sh $T OUT=build/jt/elf$V JT=1 SOFTFP=1 OSFILES="${OSFILES:-}" $LO JTNAME=$VN >/dev/null
 scripts/dmake.sh $T OUT=build/jt/elf$V JT=1 SOFTFP=1 OSFILES="${OSFILES:-}" $LO JTNAME=$VN PROG=pjt$V \
   TITLE="Spelunky SH-2 timing $VN" mister >/dev/null
-PSH2_OUT="$O/jt.txt" PSH2_NJOBS=$NJ mame sfiii3na -rompath "$J/elf$V/mame" -skip_gameinfo -nothrottle -sound none \
+PSH2_OUT="$O/jt.txt" PSH2_NJOBS=$NJ scripts/mame.sh sfiii3na -rompath "$J/elf$V/mame" -skip_gameinfo -nothrottle -sound none \
   -video none -seconds_to_run 3000 -cfg_directory "$O/w/cfg" -nvram_directory "$O/w/nvram" -snapshot_directory "$O/snap" \
   -diff_directory "$O/w/diff" -state_directory "$O/w/sta" -inipath "$O/w" -autoboot_script scripts/lua/playsh2_jt.lua \
   >"$O/mame.log" 2>&1 || true

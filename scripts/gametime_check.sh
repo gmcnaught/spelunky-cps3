@@ -20,7 +20,7 @@ python3 tools/drawtables.py refs/hd/src build/gen >/dev/null
 MK="OUT=build/run/elf ROUTE=$R SEED=$S LEVEL=$L MONEY=$M ENEMIES=$E ROUTE2=$R2 SEED2=$S2 LEVEL2=$L2 MONEY2=$M2 ENEMIES2=$E2 ATTRACT_FRAMES=${ATTRACT_FRAMES:-3600}"
 scripts/dmake.sh $T $MK >"$O/make.log" 2>&1 || { tail -20 "$O/make.log"; exit 1; }
 scripts/dmake.sh $T $MK mister >>"$O/make.log" 2>&1
-GT_OUT="$O/gt.txt" mame sfiii3na -rompath "$O/elf/mame" -skip_gameinfo -nothrottle -sound none -video none \
+GT_OUT="$O/gt.txt" scripts/mame.sh sfiii3na -rompath "$O/elf/mame" -skip_gameinfo -nothrottle -sound none -video none \
   -seconds_to_run ${SECONDS_TO_RUN:-6000} -cfg_directory "$O/w/cfg" -nvram_directory "$O/w/nvram" \
   -snapshot_directory "$O/snap" -diff_directory "$O/w/diff" -state_directory "$O/w/sta" -inipath "$O/w" \
   -autoboot_script scripts/lua/gametime.lua >"$O/mame.log" 2>&1 || true

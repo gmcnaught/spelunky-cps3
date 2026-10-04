@@ -32,7 +32,7 @@ scripts/dmake.sh $T OUT=build/$R${HUD:+_hud$HUD}${DARK:+_dark$DARK}${ATTRACT:+_a
 # the MiSTer set (zip + MRA) is built and kept in $O/elf/mister
 [ -n "$HOLD" ] && { scripts/dmake.sh $T OUT=build/$R${HUD:+_hud$HUD}${DARK:+_dark$DARK}${ATTRACT:+_attract$ATTRACT}_hold/elf HUD=${HUD:-1} ROUTE=$R SEED=$S SNAPS=$RECS LEVEL=$L MONEY=$M ENEMIES=$E OPT="${OPT:--O2}" DPROF=${DPROF:-0} ${ATTRACT:+ATTRACT=$ATTRACT} HOLD=$HOLD TITLE="Spelunky frame check $R" mister >>"$O/make.log" 2>&1 || { tail -20 "$O/make.log"; exit 1; }; }
 n=$(echo "$RECS" | tr ',' '\n' | grep -c .)
-GAME_OUT="$O/out.txt" GAME_NSNAPS=$n mame sfiii3na -rompath "$O/elf/mame" -skip_gameinfo -nothrottle -sound none \
+GAME_OUT="$O/out.txt" GAME_NSNAPS=$n scripts/mame.sh sfiii3na -rompath "$O/elf/mame" -skip_gameinfo -nothrottle -sound none \
   -video none -seconds_to_run ${SECONDS_TO_RUN:-20000} -cfg_directory "$O/w/cfg" -nvram_directory "$O/w/nvram" \
   -snapshot_directory "$O/snap" -diff_directory "$O/w/diff" -state_directory "$O/w/sta" -inipath "$O/w" \
   -autoboot_script scripts/lua/gamesnap.lua >"$O/mame.log" 2>&1 || true

@@ -10,7 +10,7 @@ N=${CASES:-500000}
 cc -std=c99 -O2 -ffp-contract=off -Wall -Wextra -DSOFTFP_HOST -I$T -o $B/host $T/host.c src/sh2/softfp.c
 $B/host $N > "$O/host.txt" || true
 scripts/dmake.sh $T -B CASES=$N >/dev/null    # -B: the SH-2 build must use this run's CASES
-SOFTFP_OUT="$O/sh2.txt" mame sfiii3na -rompath "$B/mame" -skip_gameinfo -nothrottle -sound none -video none \
+SOFTFP_OUT="$O/sh2.txt" scripts/mame.sh sfiii3na -rompath "$B/mame" -skip_gameinfo -nothrottle -sound none -video none \
   -seconds_to_run 20000 -cfg_directory "$O/w/cfg" -nvram_directory "$O/w/nvram" -snapshot_directory "$O/w/snap" \
   -diff_directory "$O/w/diff" -state_directory "$O/w/sta" -inipath "$O/w" -autoboot_script scripts/lua/softfp.lua \
   >"$O/mame.log" 2>&1 || true

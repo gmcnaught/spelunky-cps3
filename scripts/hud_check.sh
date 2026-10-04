@@ -12,7 +12,7 @@ B=tests/hud/build; O=$B/run; rm -rf "$O"; mkdir -p "$O/w"
 python3 tools/hudcheck.py expect tests/hud/cases.json refs/hd/src "$B/expect"
 n=$(python3 -c "import json; print(len(json.load(open('tests/hud/cases.json'))))")
 F=$(seq 0 $((n - 1)) | while read k; do printf '%d,' $((120 * k + 60)); done)
-SNAP_FRAMES=$F mame sfiii3na -rompath "$B/mame" -skip_gameinfo -nothrottle -sound none -video none \
+SNAP_FRAMES=$F scripts/mame.sh sfiii3na -rompath "$B/mame" -skip_gameinfo -nothrottle -sound none -video none \
   -seconds_to_run 60 -cfg_directory "$O/w/cfg" -nvram_directory "$O/w/nvram" -snapshot_directory "$O/snap" \
   -diff_directory "$O/w/diff" -state_directory "$O/w/sta" -inipath "$O/w" -autoboot_script scripts/lua/snap.lua \
   >"$O/mame.log" 2>&1 || true

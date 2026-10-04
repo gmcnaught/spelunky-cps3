@@ -29,7 +29,7 @@ cc -std=c99 -O2 -ffp-contract=off -w -I$T -I$B -I$G -o $B/host $T/host.c $T/core
 N=$($B/host --count); j=0; : > "$O/host.txt"
 while [ $j -lt $N ]; do $B/host $j >> "$O/host.txt"; j=$((j + 1)); done
 [ "${ATTR:-0}" = 1 ] && export PSH2_ATTR=$(($(grep -c "^    OBJ_" $G/objects.h) - 1))   # OBJ_COUNT
-PSH2_OUT="$O/sh2.txt" mame sfiii3na -rompath "$E/mame" -skip_gameinfo -nothrottle -sound none -video none \
+PSH2_OUT="$O/sh2.txt" scripts/mame.sh sfiii3na -rompath "$E/mame" -skip_gameinfo -nothrottle -sound none -video none \
   -seconds_to_run ${SECONDS_TO_RUN:-40000} -cfg_directory "$O/w/cfg" -nvram_directory "$O/w/nvram" \
   -snapshot_directory "$O/w/snap" -diff_directory "$O/w/diff" -state_directory "$O/w/sta" -inipath "$O/w" \
   -autoboot_script scripts/lua/playsh2.lua >"$O/mame.log" 2>&1 || true
