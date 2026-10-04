@@ -123,23 +123,34 @@ static inline int pg_overlap(int e)
     return pg_overlap_f(e);
 }
 
-/* the search: s_r, s_cb, s_ctx set by pcol_search / pcol_search_i */
+/* the search: s_r, s_cb, s_ctx set by pcol_search / pcol_search_i. The cell span (pg_cells' values) and an integer
+   s_r's sides are kept in registers; the cells are read in the same order, so pg_buf gets the same entries in the same
+   order. s_r does not change during the collection (pg_overlap_f only computes s_k) */
 static void pgrid_search(void)
 {
-    int c[4], x, y, n = 0, k, j, e;
-    if (s_r.w) pg_cells(s_r.r, 1, c);
-    else {
+    int x0, y0, x1, y1, x, y, n = 0, k, j, e;
+    const int sw = s_r.w;
+    const rk a0 = s_r.r[0], a1 = s_r.r[1], a2 = s_r.r[2], a3 = s_r.r[3];
+    if (sw) {
+        x0 = pg_clampx(a0 >> PCOL_GRID_SHIFT); y0 = pg_clampy(a1 >> PCOL_GRID_SHIFT);
+        x1 = pg_clampx(a2 >> PCOL_GRID_SHIFT); y1 = pg_clampy(a3 >> PCOL_GRID_SHIFT);
+    } else {
         if (!s_kv) s_keys();
-        pg_cells(s_k, 0, c);
+        x0 = pg_bsearch(s_k[0], pg_bx, PGRID_W); y0 = pg_bsearch(s_k[1], pg_by, PGRID_H);
+        x1 = pg_bsearch(s_k[2], pg_bx, PGRID_W); y1 = pg_bsearch(s_k[3], pg_by, PGRID_H);
     }
-    if (c[0] > 0) c[0]--;
-    if (c[1] > 0) c[1]--;
-    for (y = c[1]; y <= c[3]; y++)
-        for (x = c[0]; x <= c[2]; x++)
-            for (e = pg_head[y * PGRID_W + x]; e >= 0; e = pg_next[e]) {
+    if (x0 > 0) x0--;
+    if (y0 > 0) y0--;
+    for (y = y0; y <= y1; y++) {
+        const int16_t *h = &pg_head[y * PGRID_W + x0];
+        for (x = x0; x <= x1; x++, h++)
+            for (e = *h; e >= 0; e = pg_next[e]) {
+                const rk *r = er[e];
                 PCST(pcol_st.visits++);
-                if (pg_overlap(e)) pg_buf[n++] = (int16_t)e;
+                if ((erw[e] & sw) ? !(a0 > r[2] || r[0] > a2 || a1 > r[3] || r[1] > a3) : pg_overlap_f(e))
+                    pg_buf[n++] = (int16_t)e;
             }
+    }
     for (e = pg_big; e >= 0; e = pg_next[e]) {
         PCST(pcol_st.visits++);
         if (pg_overlap(e)) pg_buf[n++] = (int16_t)e;
