@@ -720,8 +720,7 @@ static void ball_step(int i)
         PE(p)->xVel = 0;
 }
 
-/* objects/oChain/Step_0.gml; linkVal in counter (the generator's chains, made by oLevel Create in creation order
-   with linkVal 1-4, arrive with 0: their rank among the chains) */
+/* objects/oChain/Step_0.gml; linkVal in counter */
 static void chain_step(int i)
 {
     struct pin *p = &PX(i);
@@ -729,11 +728,6 @@ static void chain_step(int i)
     if (b == NOONE) {
         pin_destroy(i);
         return;
-    }
-    if (PE(p)->counter == 0) {
-        int k, r = 1;
-        for (k = pw_ohead[OBJ_oChain]; k != NOONE && k != i; k = pw_inext[k]) r++;
-        PE(p)->counter = (int16_t)r;
     }
     if (pl == NOONE) return;
     pin_setx(p, P(X(b) + ((X(pl) - X(b)) / 4) * PE(p)->counter));
@@ -805,9 +799,6 @@ static void sticky_fly(int i)
 }
 
 /* ---- Kali ------------------------------------------------------------------------------------------------- */
-/* global.favor, global.kaliGift (scrClearGlobals: 0) */
-static double kali_favor;
-static int kali_gift;
 
 /* scripts/scrGetFavorMsg; y: the caller's */
 static const char *scrGetFavorMsg(double y)
@@ -815,39 +806,39 @@ static const char *scrGetFavorMsg(double y)
     const char *m2 = "";
     int alt = instance_first_p(OBJ_oSacAltarRight), obj = NOONE;
     pos ax = alt != NOONE ? PX(alt).x : 0, ay = P(y - 8);
-    if (DLE(kali_favor, -8)) m2 = "SHE SEEMS VERY ANGRY WITH YOU!";
-    else if (DLT(kali_favor, 0)) m2 = "SHE SEEMS ANGRY WITH YOU.";
-    else if (DEQ(kali_favor, 0)) m2 = "SHE HAS FORGIVEN YOU!";
-    else if (DGE(kali_favor, 32)) {
-        if (kali_gift >= 3 && DGE(kali_favor, 32 + (kali_gift - 2) * 16)) {
+    if (DLE(G.favor, -8)) m2 = "SHE SEEMS VERY ANGRY WITH YOU!";
+    else if (DLT(G.favor, 0)) m2 = "SHE SEEMS ANGRY WITH YOU.";
+    else if (DEQ(G.favor, 0)) m2 = "SHE HAS FORGIVEN YOU!";
+    else if (DGE(G.favor, 32)) {
+        if (G.kaliGift >= 3 && DGE(G.favor, 32 + (G.kaliGift - 2) * 16)) {
             m2 = "YOU FEEL INVIGORATED!";
-            kali_gift += 1;
+            G.kaliGift += 1;
             PG.plife += RAND(4, 8);
-        } else if (kali_gift >= 3)
+        } else if (G.kaliGift >= 3)
             m2 = "SHE SEEMS ECSTATIC WITH YOU!";
         else if (PG.bombs < 80) {
             m2 = "YOUR SATCHEL FEELS VERY FULL NOW!";
-            kali_gift = 3;
+            G.kaliGift = 3;
             PG.bombs = 99;
         } else {
             m2 = "YOU FEEL INVIGORATED!";
-            kali_gift += 1;
+            G.kaliGift += 1;
             PG.plife += RAND(4, 8);
         }
-    } else if (DGE(kali_favor, 16)) {
-        if (kali_gift >= 2) m2 = "SHE SEEMS VERY HAPPY WITH YOU!";
+    } else if (DGE(G.favor, 16)) {
+        if (G.kaliGift >= 2) m2 = "SHE SEEMS VERY HAPPY WITH YOU!";
         else {
             m2 = "SHE BESTOWS A GIFT UPON YOU!";
-            kali_gift = 2;
+            G.kaliGift = 2;
             obj = pin_create(ax, ay, OBJ_oKapala);
             PE(&PX(obj))->cost = 0;
             PE(&PX(obj))->forSale = 0;
         }
-    } else if (DGE(kali_favor, 8)) {
-        if (kali_gift >= 1) m2 = "SHE SEEMS HAPPY WITH YOU.";
+    } else if (DGE(G.favor, 8)) {
+        if (G.kaliGift >= 1) m2 = "SHE SEEMS HAPPY WITH YOU.";
         else {
             m2 = "SHE BESTOWS A GIFT UPON YOU!";
-            kali_gift = 1;
+            G.kaliGift = 1;
             if (alt != NOONE) {
                 int n, m;
                 obj = pin_create(ax, ay, OBJ_oPoof);
@@ -879,7 +870,7 @@ static const char *scrGetFavorMsg(double y)
                 PE(&PX(obj))->forSale = 0;
             }
         }
-    } else if (DGT(kali_favor, 0))
+    } else if (DGT(G.favor, 0))
         m2 = "SHE SEEMS PLEASED WITH YOU.";
     return m2;
 }
@@ -910,12 +901,12 @@ static void sacrifice(int i, int damsel)
     scrCreateBlood(i, P(x), P(y), 3);
     p = &PX(i);
     m1 = damsel ? "KALI ACCEPTS YOUR SACRIFICE!" : "KALI ACCEPTS THE SACRIFICE!";
-    if (DLE(kali_favor, -8))
+    if (DLE(G.favor, -8))
         m1 = damsel ? "KALI DEVOURS YOUR SACRIFICE!" : "KALI DEVOURS THE SACRIFICE!";
     else if (PE(p)->status == 98)
-        kali_favor += damsel ? fav * 1.5 : fav;
+        G.favor += damsel ? fav * 1.5 : fav;
     else
-        kali_favor += damsel ? fav : fav / 2;
+        G.favor += damsel ? fav : fav / 2;
     pmsg_str(m1, scrGetFavorMsg(Y(i)), 200);
     PG.shake = 10;
     pin_destroy(i);
@@ -941,7 +932,7 @@ static void altar_destroy(int i)
         int n, k, pl = PL.idx;
         pmsg_str("YOU DARE DEFILE MY ALTAR?", "I WILL PUNISH YOU!", 200);
         scrShake(10);
-        kali_favor -= 16;
+        G.favor -= 16;
         if (G.kaliPunish == 0) {
             n = pw_with(OBJ_oKaliHead, w, 64);
             for (k = 0; k < n; k++) if (PX(w[k]).alive) PE(&PX(w[k]))->alarm[0] = 1;
@@ -1483,7 +1474,11 @@ int pitems_ev(int ev, int i, int arg)
         if (ev == FEV_STEP) { ball_step(i); return 1; }
         break;
     case OBJ_oChain:
-        if (ev == FEV_CREATE) { p->type = T_OTHER; PE(p)->counter = 2; return 1; }   /* "Chain"; linkVal = 2 */
+        if (ev == FEV_CREATE) {                                                /* "Chain"; linkVal = 2 */
+            p->type = T_OTHER;                                                 /* (generated: oLevel Create's 1-4) */
+            PE(p)->counter = (int16_t)(arg && play_gen_inst ? play_gen_inst->linkval : 2);
+            return 1;
+        }
         if (ev == FEV_STEP) { chain_step(i); return 1; }
         break;
     case OBJ_oCrystalSkull:
