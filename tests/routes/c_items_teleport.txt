@@ -1,0 +1,13 @@
+# P7 reference (docs/CONTENT.md package E, items): the teleporter used right, up, left, right (TRACE_GLOBALS=pickupItem=Teleporter)
+# seed 559
+# level 1
+# globals pickupItem=Teleporter
+30 -
+1 A
+30 -
+1 UA
+30 -
+1 LA
+30 -
+1 RA
+30 -

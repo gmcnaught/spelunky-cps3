@@ -1,0 +1,17 @@
+# P7 reference (docs/CONTENT.md package E, items): the jetpack route with a parachute: it opens on the way down (TRACE_GLOBALS=hasJetpack=1,hasParachute=1)
+# seed 559
+# level 1
+# globals hasJetpack=1,hasParachute=1
+30 -
+4 J
+4 -
+50 J
+60 -
+4 RJ
+4 R
+40 RJ
+60 -
+4 LJ
+4 L
+40 LJ
+80 -

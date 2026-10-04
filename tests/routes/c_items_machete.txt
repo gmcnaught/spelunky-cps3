@@ -1,0 +1,15 @@
+# P7 reference (docs/CONTENT.md package E, items): the machete swung, then dropped while ducking (TRACE_GLOBALS=pickupItem=Machete)
+# seed 559
+# level 1
+# globals pickupItem=Machete
+30 -
+1 A
+30 -
+12 R
+1 A
+30 -
+1 LA
+30 -
+4 D
+1 DA
+30 -

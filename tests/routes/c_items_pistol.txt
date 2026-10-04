@@ -1,0 +1,12 @@
+# P7 reference (docs/CONTENT.md package E, items): the pistol fired right, left, after a walk right (TRACE_GLOBALS=pickupItem=Pistol)
+# seed 559
+# level 1
+# globals pickupItem=Pistol
+30 -
+1 A
+40 -
+1 LA
+40 -
+12 R
+1 A
+60 -

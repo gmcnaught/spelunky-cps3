@@ -661,7 +661,7 @@ static void flare_step(int i)
     item_step(i);
     p = &PX(i);
     /* distToPlayer = distance_to_object(oPlayer1): the dark level's light (drawing) */
-    if (collision_point_p(X(i), Y(i), OBJ_oWater, 1, i) != NOONE) {
+    if (collision_point_p(X(i), Y(i), OBJ_oWater, 0, NOONE) != NOONE) {
         pin_create(p->x, p->y, OBJ_oSplash);
         snd_play(SND_xsplash);                                                 /* :6 */
         p = &PX(i);
