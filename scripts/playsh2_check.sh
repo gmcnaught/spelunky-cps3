@@ -23,6 +23,14 @@ grep -q "^#define PIN_MAX ${PIN:-1792}\$" "$G/play.h"; touch "$G/stamp"
 # shipping build's collision grid (src/game/pcolgrid.h). GRID_SHIFT=<n>: grid cells of 2^n px (default 4)
 if [ "${EXACT:-0}" = 1 ]; then { echo "#define PCOL_EXACT 1"; cat "$G/pcol.c"; } > "$G/pcol.tmp" && mv "$G/pcol.tmp" "$G/pcol.c"; fi
 if [ -n "${GRID_SHIFT:-}" ]; then { echo "#define PCOL_GRID_SHIFT $GRID_SHIFT"; cat "$G/pcol.c"; } > "$G/pcol.tmp" && mv "$G/pcol.tmp" "$G/pcol.c"; fi
+# UNITY=1: the hot play files compiled as one translation unit (cross-file inlining; the toolchain has no LTO):
+# build/g/punity.c includes them (UNITY_FILES, in this order) and they are renamed .inc
+if [ "${UNITY:-0}" = 1 ]; then
+  : > "$G/punity.c"
+  for f in ${UNITY_FILES:-pworld.c pscript.c prun.c pobj.c pcol.c pplayer.c penemy.c}; do
+    mv "$G/$f" "$G/${f%.c}.inc"; echo "#include \"${f%.c}.inc\"" >> "$G/punity.c"
+  done
+fi
 # SNAP_FILE / SNAP_SED: an experimental edit of the snapshot (measurements only; src/game is never touched)
 if [ -n "${SNAP_SED:-}" ]; then sed -i '' "$SNAP_SED" "$G/$SNAP_FILE"; fi
 # snapcfg.h (tests/playsh2/core.c): where the snapshot keeps alpha

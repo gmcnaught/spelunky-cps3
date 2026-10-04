@@ -112,7 +112,7 @@ static int nalloc(void)
     return n;
 }
 
-static void nfree(int n)
+static void rnode_free(int n)
 {
     rfreel[rnfree++] = (int16_t)n;
     rnused--;
@@ -608,11 +608,11 @@ static int remove_rect(const struct rbr *r, int id)
             insert_rect(&rn[t].b[k], rn[t].level);
             nrelist = save;
         }
-        nfree(t);
+        rnode_free(t);
     }
     if (rn[rroot].count == 1 && rn[rroot].level > 0) {
         int t = rn[rroot].b[0].id;
-        nfree(rroot);
+        rnode_free(rroot);
         rroot = (int16_t)t;
     }
     return 0;
@@ -785,7 +785,7 @@ static void obj_count(int obj, int d)
 static uint8_t gmode;                  /* a level is being generated: entries are generator instances */
 static uint8_t ef[ENT_MAX];
 static int16_t dn[ENT_MAX], dp[ENT_MAX], tn[ENT_MAX], tp[ENT_MAX];
-static int16_t dhead = -1, thead = -1;
+static int16_t dhead = -1, tchead = -1;
 static rk er[ENT_MAX][4];           /* the rectangle the entry was put in with (RemoveRect's search key) */
 static uint8_t erw[ENT_MAX];           /* its form (struct rbr w) */
 #include "pcolgrid.h"                   /* the shipping build's play-time grid (PCOL_EXACT: the tree) */
@@ -827,7 +827,7 @@ static void dlist_front(int e)
 static void tlist_remove(int e)
 {
     if (!(ef[e] & EF_ONT)) return;
-    if (tp[e] >= 0) tn[tp[e]] = tn[e]; else thead = tn[e];
+    if (tp[e] >= 0) tn[tp[e]] = tn[e]; else tchead = tn[e];
     if (tn[e] >= 0) tp[tn[e]] = tp[e];
     ef[e] &= (uint8_t)~EF_ONT;
 }
@@ -836,9 +836,9 @@ static void tlist_front(int e)
 {
     tlist_remove(e);
     tp[e] = -1;
-    tn[e] = thead;
-    if (thead >= 0) tp[thead] = (int16_t)e;
-    thead = (int16_t)e;
+    tn[e] = tchead;
+    if (tchead >= 0) tp[tchead] = (int16_t)e;
+    tchead = (int16_t)e;
     ef[e] |= EF_ONT;
 }
 
@@ -1205,7 +1205,7 @@ static void room_reset(void)
         ef[e] = 0;
         epass[e] = EPASS_NONE;
     }
-    dhead = thead = -1;
+    dhead = tchead = -1;
     npend = 0;
     nstk = 0;
     for (o = 0; o < OBJ_COUNT; o++) {
@@ -1291,7 +1291,7 @@ static void gen_load(void)
         dn[i] = GMAP(dn[w]); dp[i] = GMAP(dp[w]); tn[i] = GMAP(tn[w]); tp[i] = GMAP(tp[w]);
     }
     dhead = GMAP(dhead);
-    thead = GMAP(thead);
+    tchead = GMAP(tchead);
 #undef GMAP
     for (e = n; e < ENT_MAX; e++) { ef[e] = 0; epass[e] = EPASS_NONE; }
     nstk = 0;                                     /* the stale stack, renamed: the stale ones in order */
@@ -1447,8 +1447,8 @@ void pcol_handle(void)
     static int16_t keep[PIN_MAX];
     npairs = 0;
     flush();
-    while (thead >= 0) {
-        int s = thead;
+    while (tchead >= 0) {
+        int s = tchead;
         tlist_remove(s);
         if (edead(s) || !PW.in[s].alive) continue;
         /* the search rectangle of its box: as pcol_search with ebbox's floats (rset_f takes whole ones as ints) */
