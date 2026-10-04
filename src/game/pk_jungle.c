@@ -887,8 +887,8 @@ static int jungle_destroy(int i)
         }
         return 1;
     case OBJ_oScarab:                                                /* objects/oScarab/Destroy_0.gml */
-        /* other.x / other.y: the scarab itself here (Unknown: the runner's other when the destroy comes from a
-           collision event) */
+        /* other.x / other.y: taken as the scarab itself (not verified by a route: none destroys a scarab; in the
+           runner `other` would be the collision partner when the destroy comes from a collision event) */
         for (k = 0; k < 3; k++) {
             int yy = RAND(0, 4), xx = RAND(0, 4);
             pin_create(PX(i).x + PI(6 + xx), PX(i).y + PI(6 + yy), OBJ_oFlareSpark);
@@ -1198,10 +1198,18 @@ int pjungle_world(int site, int i, int arg)
         else if (PE(p)->colRight) pin_create(p->x - PI(16), p->y - PI(8), OBJ_oSnake);
         else pin_create(p->x - PI(8), p->y - PI(8), OBJ_oSnake);
         return 1;
-    case 5010: if (p->obj != OBJ_oManTrap) break; mantrap_hit(i, arg); return 1;
-    case 5011: firefrog_water(i); return 1;
-    case 5013: enemy_spears(i); return 1;
     }
     PUNTR(site);
+    return 0;
+}
+
+/* penemy.c's enemy sites (pcontent.h pX_enemy): 0 leaves the site to the next package */
+int pjungle_enemy(int site, int e, int arg)
+{
+    switch (site) {
+    case 5010: if (PX(e).obj != OBJ_oManTrap) return 0; mantrap_hit(e, arg); return 1;
+    case 5011: firefrog_water(e); return 1;
+    case 5013: enemy_spears(e); return 1;
+    }
     return 0;
 }
