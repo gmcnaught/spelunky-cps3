@@ -169,3 +169,26 @@ Next (batch 3, perf3-b2): c329716 PE(p) by a shift (exto in struct pin's pad): 5
 solid_hline_any 14.4 K, mark_e + cupdate_at 24.7 K, pin_ibox 10.3 K (546 stack stores: 1.1).
 The modelled goal (≤ 525 K) is met on both steps; the review constants read ~10 % under the measured ratio
 (EQUIV 4.21 vs model 3.84), so the goal is not declared until 0.3's hardware run.
+
+### 0.3 hardware calibration, batch 2 (14fb59a, JT build, MiSTer .62 jtcps3, 2026-10-04): goal NOT met
+
+PASS 23/23. Step mean per route, jtcps3 clocks measured / MAME (SOFTFP playsh2 of the same code) / ratio:
+
+| Route | jtcps3 | MAME | ratio | | Route | jtcps3 | MAME | ratio |
+|---|---|---|---|---|---|---|---|---|
+| p4_exit559 | 509,550 | 130,177 | 3.91 | | p5_buy | **734,759** | 207,738 | 3.54 |
+| p4_hang_ladder | 522,737 | 136,982 | 3.82 | | p5_caveman | **915,828** | 212,777 | 4.30 |
+| p4_items | 522,840 | 138,260 | 3.78 | | p5_cavestun | **697,784** | 169,169 | 4.12 |
+| p4_spikes | 326,209 | 76,634 | 4.26 | | p5_giant | **798,295** | 197,011 | 4.05 |
+| p4_push_rope | 497,343 | 123,238 | 4.04 | | p5_idol | **713,765** | 167,043 | 4.27 |
+| p1_walk | **615,170** | 156,087 | 3.94 | | p5_l3spider | **574,670** | 133,444 | 4.31 |
+| p4_bomb_drop | **696,976** | 177,513 | 3.93 | | p5_l4 | **717,564** | 176,234 | 4.07 |
+| p4_bomb_throw | 487,024 | 113,724 | 4.28 | | p5_shop | **724,057** | 168,776 | 4.29 |
+| | | | | | p5_snakes | **667,815** | 154,041 | 4.34 |
+| | | | | | p5_spider | **598,286** | 159,235 | 3.76 |
+
+Mean of means 628,926 jtcps3 (grid 899ce76: 1.248 M). 12 of 18 routes are over 0.525 M; p5_caveman needs -43 %.
+Model check (model / MAME clocks on the traced step against the measured route ratio): review constants 3.16 (p4) and
+2.89 (p5) against 3.91 and 4.34 measured: 19 % and 33 % low. jtmodel's fit constants 3.84 and 3.44: 2 % and 21 % low.
+**From here jtcost's metric is the fit constant set** (still low on enemy routes: refit with this table pending), and
+the MAME proxy is about 130 K MAME clocks per route mean (0.525 M / ~4.05).
