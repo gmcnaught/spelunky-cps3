@@ -15,6 +15,7 @@ __attribute__((weak)) int front_ev(int ev, int i, int arg) { (void)ev; (void)i; 
 __attribute__((weak)) int front_room(int room) { (void)room; return 0; }
 #include "penemy.h"                  /* P5 hooks: enemies, damsel, shop (each marked "P5 hook") */
 #include "pcontent.h"                            /* P7 content packages (docs/CONTENT.md) */
+#include "pcol.h"                                /* pcol_quiet (the resting-object skip) */
 
 struct pgame PGAME;
 struct plevel PLEV;
@@ -524,10 +525,129 @@ void ev_destroy(int i)
 }
 
 /* ---- Step events ---------------------------------------------------------------------------------------- */
+/* Resting objects (docs/PERF2.md A; the grid build only: -DPCOL_EXACT runs every Step in full, as the R-tree's
+ * history depends on when the dirty list is flushed). The terrain part of an item's, a treasure's or a jar's Step
+ * (isCollision*, moveTo, the velocity and position updates: rest_phys below) is a function of
+ *   - the instance's x, y, xVel, yVel, myGrav, colLeft / Right / Bot / Top, stuck, status (compared by their bits),
+ *   - its object and collision offsets (fixed for the instance),
+ *   - and the oSolid-family entries of the solid grid in the cells around its box (the queries reach at most 2 px
+ *     outside the box: x, y move at most 1 px in it; the grid's cells summary changes when such an entry is put in
+ *     or taken out: pworld.c gver),
+ * with xVel = yVel = +0 (moveTo then moves nothing: no play_time dependence). When a full run of it ended in the
+ * state it started from (a fixed point) and none of those inputs changed since, the next run does the same: the
+ * same query answers and the same writes, so it ends in the same state. The skip replays its observable effects:
+ * the setters' change marks (one pw_changed when the run made any: the draw mark, the box cache, the collision
+ * entry's dirty / test-list marks; the grid build's searches do not depend on when an entry is flushed) and the
+ * outcome flags the caller reads (destroy, the branch taken). The checks: the grid host build with and without the
+ * skip (-DPLAY_NOREST) gives the same records on every route. */
+#if !defined(PCOL_EXACT) && !defined(PLAY_FIXED) && !defined(NUM_IS_CLASS) && !defined(PLAY_NOREST)
+#define PLAY_REST 1
+#ifndef REST_MAX
+#define REST_MAX 256             /* rst[] entries (a power of 2): instance p's is rst[p->ext & (REST_MAX - 1)] */
+#endif
+struct rest_st { float x, y; double xv, yv, mg; uint8_t cl, cr, cb, ct, stuck; int16_t status; };
+/* a fixed point (rest_end): xVel = yVel = +0 there, so only the other fields are kept; myGrav by its bits. Two
+   instances whose records share an entry take it in turn (the id tells them apart: the other one's full run) */
+struct rest { int32_t id; uint32_t clk, mgh, mgl; float x, y; int16_t status; uint8_t cl, cr, cb, ct, stuck, ok, chg, out; };
+static struct rest rst[REST_MAX];
+static struct rest_st rest_s0;
+
+static void rest_get(const struct pin *p, struct rest_st *o)
+{
+    const struct pin_ext *e = PE(p);
+    o->x = p->x; o->y = p->y; o->xv = e->xVel; o->yv = e->yVel; o->mg = e->myGrav;
+    o->cl = e->colLeft; o->cr = e->colRight; o->cb = e->colBot; o->ct = e->colTop; o->stuck = e->stuck;
+    o->status = e->status;
+}
+
+/* the region of the terrain part's queries: the box +- 3 px, x, y included (the items' collision_point) */
+static int rest_region(const struct pin *p, int32_t *b)
+{
+    const struct pin_ext *e = PE(p);
+    int32_t x, y;
+    if (!fwhole(p->x, &x) || !fwhole(p->y, &y)) return 0;
+    b[0] = x + (e->lbo < 0 ? e->lbo : 0) - 3; b[1] = y + (e->tbo < 0 ? e->tbo : 0) - 3;
+    b[2] = x + (e->rbo > 0 ? e->rbo : 0) + 3; b[3] = y + (e->bbo > 0 ? e->bbo : 0) + 3;
+    return 1;
+}
+
+static uint32_t fb(float f) { union { float f; uint32_t u; } v; v.f = f; return v.u; }
+static uint64_t db(double d) { union { double d; uint64_t u; } v; v.d = d; return v.u; }
+static int rest_ne(const struct rest_st *a, const struct rest_st *b)   /* by the bits */
+{
+    return fb(a->x) != fb(b->x) || fb(a->y) != fb(b->y) || db(a->xv) != db(b->xv) || db(a->yv) != db(b->yv) ||
+           db(a->mg) != db(b->mg) || a->cl != b->cl || a->cr != b->cr || a->cb != b->cb || a->ct != b->ct ||
+           a->stuck != b->stuck || a->status != b->status;
+}
+
+static int dbits0(double d) { union { double d; uint64_t u; } v; v.d = d; return v.u == 0; }
+
+/* c is the fixed point r keeps (by the bits) */
+static int rest_is(const struct rest_st *c, const struct rest *r)
+{
+    uint64_t m = db(c->mg);
+    return fb(c->x) == fb(r->x) && fb(c->y) == fb(r->y) && dbits0(c->xv) && dbits0(c->yv) &&
+           (uint32_t)(m >> 32) == r->mgh && (uint32_t)m == r->mgl && c->cl == r->cl && c->cr == r->cr &&
+           c->cb == r->cb && c->ct == r->ct && c->stuck == r->stuck && c->status == r->status;
+}
+
+/* 1: the terrain part is skipped (*out: the outcome its last full run left); 0: run it between rest_begin and
+   rest_end */
+static int rest_skip(int i, uint8_t *out)
+{
+    struct pin *p = &PX(i);
+    struct rest *r = &rst[p->ext & (REST_MAX - 1)];
+    struct rest_st c;
+    int32_t b[4];
+    if (!r->ok || r->id != p->id || pcol_quiet()) return 0;
+    rest_get(p, &c);
+    if (!rest_is(&c, r) || !rest_region(p, b) || !pw_rest_still(b[0], b[1], b[2], b[3], r->clk))
+        return 0;
+    if (r->chg) pin_changed_(p);
+    *out = r->out;
+    return 1;
+}
+
+static void rest_begin(int i)
+{
+    rest_get(&PX(i), &rest_s0);
+    pw_watch(i);
+}
+
+static void rest_end(int i, uint8_t out)
+{
+    struct pin *p = &PX(i);
+    struct rest *r = &rst[p->ext & (REST_MAX - 1)];
+    struct rest_st c;
+    int32_t b[4];
+    uint32_t n = pw_watch_end();
+    uint64_t m;
+    if (r->id == p->id) r->ok = 0;                    /* another instance's record stays */
+    if (!p->alive || !p->ext) return;
+    rest_get(p, &c);
+    if (rest_ne(&c, &rest_s0) || !dbits0(c.xv) || !dbits0(c.yv) || !rest_region(p, b)) return;
+    r->ok = 1;
+    r->id = p->id;
+    m = db(c.mg); r->mgh = (uint32_t)(m >> 32); r->mgl = (uint32_t)m;
+    r->x = c.x; r->y = c.y; r->status = c.status;
+    r->cl = c.cl; r->cr = c.cr; r->cb = c.cb; r->ct = c.ct; r->stuck = c.stuck;
+    r->chg = n != 0;
+    r->out = out;
+    r->clk = pw_rest_clock();
+}
+#else
+#define PLAY_REST 0
+static int rest_skip(int i, uint8_t *out) { (void)i; (void)out; return 0; }
+static void rest_begin(int i) { (void)i; }
+static void rest_end(int i, uint8_t out) { (void)i; (void)out; }
+#endif
+
 /* objects/oItem/Step_0.gml */
 void item_step(int i)
 {
     struct pin *p = &PX(i);
+    uint8_t br = 0;
+    int rest = 0;
     if (!(inview(i, 16) || p->type == T_ROPE))
         return;
     pin_setdepth(p, G.hasSpectacles ? 51 : 101);                                      /* :5 */
@@ -561,7 +681,11 @@ void item_step(int i)
         }
         pin_setdepth(p, 1);
         if (PL.holdItem == NOONE) PE(p)->held = 0;
-    } else if (collision_point_p(PTOD(p->x), PTOD(p->y), OBJ_oSolid, 0, NOONE) == NOONE) {   /* :69 */
+    } else if (p->type != T_BOMB && p->type != T_ARROW && rest_skip(i, &br)) {
+        /* the terrain part as its last full run (rest_skip); the lava tests below still run */
+    } else if (rest = p->type != T_BOMB && p->type != T_ARROW, rest ? rest_begin(i) : (void)0,
+               collision_point_p(PTOD(p->x), PTOD(p->y), OBJ_oSolid, 0, NOONE) == NOONE) {   /* :69 */
+        br = 1;
         moveTo(i, PE(p)->xVel, PE(p)->yVel, 0, 0);
         PE(p)->colLeft = PE(p)->colRight = PE(p)->colBot = PE(p)->colTop = 0;
         if (isCollisionLeft(i, 1)) PE(p)->colLeft = 1;
@@ -611,12 +735,7 @@ void item_step(int i)
             else pin_sety(p, p->y + (PI(1)));
             PE(p)->myGrav = N(0.6);
         }
-        if (collision_rect_p(PTOD(p->x) - 3, PTOD(p->y) - 3, PTOD(p->x) + 3, PTOD(p->y) + 3, OBJ_oLava, 0, NOONE) != NOONE)
-            ptemple_world(1032, i, 0);
-        else
-            PE(p)->myGrav = N(0.6);
-        if (collision_point_p(PTOD(p->x), PTOD(p->y) - 5, OBJ_oLava, 0, NOONE) != NOONE && p->type != T_SCEPTRE)
-            ptemple_world(1032, i, 0);
+        if (rest) rest_end(i, 1);
     } else {                                                                   /* :187 */
         PE(p)->colLeft = PE(p)->colRight = PE(p)->colBot = PE(p)->colTop = 0;
         if (isCollisionLeft(i, 1)) PE(p)->colLeft = 1;
@@ -630,6 +749,16 @@ void item_step(int i)
             PE(p)->xVel = 0;
             PE(p)->yVel = 0;
         }
+        if (rest) rest_end(i, 0);
+    }
+    if (br) {                                                                  /* :171-185 (branch :69) */
+        p = &PX(i);
+        if (collision_rect_p(PTOD(p->x) - 3, PTOD(p->y) - 3, PTOD(p->x) + 3, PTOD(p->y) + 3, OBJ_oLava, 0, NOONE) != NOONE)
+            ptemple_world(1032, i, 0);
+        else
+            PE(p)->myGrav = N(0.6);
+        if (collision_point_p(PTOD(p->x), PTOD(p->y) - 5, OBJ_oLava, 0, NOONE) != NOONE && p->type != T_SCEPTRE)
+            ptemple_world(1032, i, 0);
     }
     if (p->type == T_BOMB && PE(p)->sticky) {                                      /* :217 */
         pitems_world(1033, i, 0);
@@ -646,6 +775,13 @@ static void jar_step(int i, int skull)
 {
     struct pin *p = &PX(i);
     int destroy = 0;
+    uint8_t out;
+    if (!PE(p)->held && rest_skip(i, &out)) {       /* the terrain part as its last full run (rest_skip) */
+        destroy = out;
+        pin_setdepth(p, 100);
+        goto lava;
+    }
+    if (!PE(p)->held) rest_begin(i);
     PE(p)->colTop = PE(p)->colLeft = PE(p)->colRight = PE(p)->colBot = 0;
     if (PE(p)->held) {
         struct pin *pl = &PX(PL.idx);
@@ -688,7 +824,9 @@ static void jar_step(int i, int skull)
             pin_sety(p, p->y - (PI(1)));
             PE(p)->yVel = 0;
         }
+        rest_end(i, (uint8_t)destroy);
         pin_setdepth(p, 100);
+    lava:
         if (collision_rect_p(PTOD(p->x) - 3, PTOD(p->y) - 3, PTOD(p->x) + 3, PTOD(p->y) + 3, OBJ_oLava, 0, NOONE) != NOONE ||
             collision_point_p(PTOD(p->x), PTOD(p->y) - 5, OBJ_oLava, 0, NOONE) != NOONE)
             ptemple_world(1036, i, skull);
@@ -714,8 +852,11 @@ static void jar_step(int i, int skull)
 static void treasure_step(int i)
 {
     struct pin *p = &PX(i);
+    uint8_t out;
     if (!(inview(i, 16) && PE(p)->state == 1))
         return;
+    if (rest_skip(i, &out)) goto terrain_done;
+    rest_begin(i);
     PE(p)->colLeft = PE(p)->colRight = PE(p)->colBot = 0;
     if (isCollisionLeft(i, 1)) PE(p)->colLeft = 1;
     if (isCollisionRight(i, 1)) PE(p)->colRight = 1;
@@ -742,6 +883,8 @@ static void treasure_step(int i)
         if (!PE(p)->colRight) pin_setx(p, p->x + (PI(1)));
     } else if (PE(p)->colRight)
         pin_setx(p, p->x - (PI(1)));
+    rest_end(i, 0);
+terrain_done:
     if (G.hasSpectacles || PG.hasUdjatEye) pin_setdepth(p, 0);
     else pin_setdepth(p, 101);
     NOPS(8);

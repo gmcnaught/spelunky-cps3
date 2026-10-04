@@ -313,6 +313,12 @@ int collision_line_i(int32_t x1, int32_t y1, int32_t x2, int32_t y2, int obj, in
 int collision_rect_i(int32_t x1, int32_t y1, int32_t x2, int32_t y2, int obj, int prec, int notme_self);
 int collision_line_any_i(int32_t x1, int32_t y1, int32_t x2, int32_t y2, int obj, int prec, int notme_self); /* != NOONE */
 int pin_xy_int(int i, int32_t *x, int32_t *y);    /* x, y as ints when both are whole numbers */
+/* the resting-object skip (pobj.c): the solid summary's change clock, whether a region's cells kept still since a
+   clock value, and a count of pw_changed calls on one instance */
+uint32_t pw_rest_clock(void);
+int pw_rest_still(int32_t l, int32_t t, int32_t r, int32_t b, uint32_t since);
+void pw_watch(int i);
+uint32_t pw_watch_end(void);
 int instance_place_p(int self, double px, double py, int obj);
 #define place_meeting_p(self, px, py, obj) (instance_place_p((self), (px), (py), (obj)) != NOONE)
 int instance_nearest_p(double px, double py, int obj);

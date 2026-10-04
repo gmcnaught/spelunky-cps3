@@ -44,6 +44,11 @@ static uint8_t gfull[GRID_H][GRID_W];
 static int16_t gfblk[GRID_H][GRID_W];
 static uint16_t gother[GRID_H][GRID_W];
 static uint8_t gkind[PIN_MAX], gox0[PIN_MAX], goy0[PIN_MAX], gox1[PIN_MAX], goy1[PIN_MAX];   /* 1 block, 2 other */
+/* the resting-object skip (pobj.c, the grid build): gclock counts the summary's changes, gver is a cell's last one
+   (an oSolid-family entry put in or taken out of the cells it may reach) */
+static uint32_t gclock = 1, gver[GRID_H][GRID_W];
+static int16_t watch_i = NOONE;                  /* pw_changed calls on watch_i are counted in watch_n */
+static uint32_t watch_n;
 
 /* ---- per-object instance lists: the alive instances of each object in creation order (index order), and the
    alive count of each object with its descendants. Linked at pin_add, unlinked when alive goes to 0 ------------ */
@@ -254,6 +259,7 @@ void pw_draw_dirty_clear(void)
 /* a setter changed x / y / sprite / mask / scale / angle (play.h pin_changed_) */
 void pw_changed(int i)
 {
+    if (i == watch_i) watch_n++;
     pw_draw_mark(i);
     PW.in[i].bbk = 0;
     grid_dirty(i);
@@ -1122,6 +1128,9 @@ static void grid_reset(void)
         for (x = 0; x < GRID_W; x++) { ghead[y][x] = thead[y][x] = NOONE; gfull[y][x] = 0; gother[y][x] = 0; }
     for (x = 0; x < PIN_MAX; x++) gkind[x] = 0;
     gdhead = NOONE;
+    gclock++;                                     /* every cell changed (the rest records of pobj.c) */
+    for (y = 0; y < GRID_H; y++)
+        for (x = 0; x < GRID_W; x++) gver[y][x] = gclock;
     gmaxw = gmaxh = tmaxw = tmaxh = 1;
     gfar = 0;
 }
@@ -1129,8 +1138,10 @@ static void grid_reset(void)
 static void gsum_out(int i)
 {
     int x, y;
+    gclock++;
     if (gkind[i] == 1) {
         x = gox0[i]; y = goy0[i];
+        gver[y][x] = gclock;
         if (--gfull[y][x] && gfblk[y][x] == i) {        /* another block of the cell stands for it (in its list) */
             int k;
             for (k = ghead[y][x]; k >= 0 && (k == i || gkind[k] != 1); k = gnext[k]) {}
@@ -1138,7 +1149,7 @@ static void gsum_out(int i)
         }
     } else
         for (y = goy0[i]; y <= goy1[i]; y++)
-            for (x = gox0[i]; x <= gox1[i]; x++) gother[y][x]--;
+            for (x = gox0[i]; x <= gox1[i]; x++) { gother[y][x]--; gver[y][x] = gclock; }
     gkind[i] = 0;
 }
 
@@ -1146,15 +1157,38 @@ static void gsum_in(int i, int x0, int y0, int x1, int y1, int block)
 {
     int x, y;
     gox0[i] = (uint8_t)x0; goy0[i] = (uint8_t)y0; gox1[i] = (uint8_t)x1; goy1[i] = (uint8_t)y1;
+    gclock++;
     if (block) {
+        gver[y0][x0] = gclock;
         gkind[i] = 1;
         if (gfull[y0][x0]++ == 0) gfblk[y0][x0] = (int16_t)i;
         return;
     }
     gkind[i] = 2;
     for (y = y0; y <= y1; y++)
-        for (x = x0; x <= x1; x++) gother[y][x]++;
+        for (x = x0; x <= x1; x++) { gother[y][x]++; gver[y][x] = gclock; }
 }
+
+/* the summary's change clock (solid changes still pending get a later one when they are applied) */
+uint32_t pw_rest_clock(void) { return gclock; }
+
+/* no oSolid-family entry was put in or taken out of the cells of [l, r] x [t, b] (clamped as the queries clamp)
+   after clock `since`, and none is far out (the line queries' tree fallback) */
+int pw_rest_still(int32_t l, int32_t t, int32_t r, int32_t b, uint32_t since)
+{
+    int x, y, x0, x1, y0, y1;
+    grid_flush();
+    if (gfar) return 0;
+    x0 = clampi(l >> 4, 0, GRID_W - 1); x1 = clampi(r >> 4, 0, GRID_W - 1);
+    y0 = clampi(t >> 4, 0, GRID_H - 1); y1 = clampi(b >> 4, 0, GRID_H - 1);
+    for (y = y0; y <= y1; y++)
+        for (x = x0; x <= x1; x++)
+            if (gver[y][x] > since) return 0;
+    return 1;
+}
+
+void pw_watch(int i) { watch_i = (int16_t)i; watch_n = 0; }
+uint32_t pw_watch_end(void) { watch_i = NOONE; return watch_n; }
 
 static void grid_unlink(int i)
 {
