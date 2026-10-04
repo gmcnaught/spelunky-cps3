@@ -102,7 +102,34 @@ def load(trace, names_path, rec, recs=None):
     if state is None:
         raise SystemExit(f'record {rec} not in {trace}')
     state[0]['blinkToggle'] = blink_toggles(names, seen)[rec]
+    state[0]['olmecIntro'] = olmec_intro(names, seen)
     return names, tiles, state[0], state[1], nxt
+
+
+def olmec_intro(names, recs, fired=False):
+    """rOlmec: the view follows oOlmec (hborder 0) from its Create until its Alarm_5 (:1-4: oPlayer1, hborder
+    display_w / 2), i.e. while no record so far has had oOlmec's alarm 5 at 0 (the step it fired)"""
+    hd = recs[-1][0] if recs else None
+    if fired or not hd or names['R'].get(hd['room'], '') != 'rOlmec':
+        return False
+    for h, insts in recs:
+        if names['R'].get(h['room'], '') != 'rOlmec':
+            continue
+        for i in insts:
+            if names['O'][i['obj']] == 'oOlmec' and i['alarms'].get(5) == 0:
+                return False
+    return True
+
+
+def room_bg(hd, names):
+    """the room background: scrInitLevel :140-143 sets bgTemple when global.levelType is 3 (levels 13-16; rOlmec's
+    own layer is bgTemple too); bgCave otherwise; rIntro's backgroundNight"""
+    rname = names['R'].get(hd['room'], '')
+    if rname in ROOM_BG:
+        return ROOM_BG[rname]
+    if rname == 'rOlmec' or (rname in LEVEL_ROOMS and 13 <= int(hd.get('currLevel', 0)) <= 16):
+        return 'bgTemple'
+    return 'bgCave'
 
 
 def room_size(rname):
@@ -123,13 +150,15 @@ def view_after(hd, insts, names):
     vx, vy = int(hd['xview']), int(hd['yview'])
     W, H = room_size(rname)
     vb = 96 if rname in LEVEL_ROOMS else 0
-    target = 'oPlayer1'
+    target, hb = 'oPlayer1', 160
     if rname in VIEW_TARGET:
         target, vb = VIEW_TARGET[rname]
+    if hd.get('olmecIntro'):                   # oOlmec Create :37-40: view_object oOlmec, hborder 0, until Alarm_5
+        target, hb = 'oOlmec', 0
     for i in insts:
         if names['O'][i['obj']] == target:
             import math
-            x, y, hb = math.floor(i['x']), math.floor(i['y']), 160
+            x, y = math.floor(i['x']), math.floor(i['y'])
             if x - hb < vx:
                 vx = x - hb
             elif x + hb > vx + 320:
@@ -445,7 +474,7 @@ def view555(g, names, tiles, hd, insts, kind, art=None):
     h = hd.get('hud') or {}
     front = h if h.get('fadeLevel', -1e9) > -1e8 else None
     v.px = compose555(drawables(names, tiles, insts, g, kind, hd.get('blinkToggle', -1), dark_a8(hd), front), g, vx, vy,
-                      bgname=ROOM_BG.get(rname, 'bgCave'))
+                      bgname=room_bg(hd, names))
     if art:
         hudcheck.model(hud_case(hd, insts, names, vx, vy), art, 320, v)
         for text, x, y, yel in trans_text(hd, insts, names) + scores_text(hd, insts, names):
@@ -506,8 +535,11 @@ def hostcmp(trace, names_path, gen, d, hud):
     tiles, total, bad, skip = [], 0, 0, []
     recs = list(tracer.records(open(trace, 'rb').read()))
     bts = blink_toggles(names, recs)
+    olm_fired = False
     for k, (hd, insts) in enumerate(recs):
         hd['blinkToggle'] = bts[hd['rec']]
+        hd['olmecIntro'] = olmec_intro(names, [(hd, insts)], olm_fired)   # olm_fired: alarm 5 seen at 0 before
+        olm_fired = olm_fired or (names['R'].get(hd['room'], '') == 'rOlmec' and not hd['olmecIntro'])
         if hd['phase'] == 0:
             tiles = hd['tiles']
         r = hd['rec']

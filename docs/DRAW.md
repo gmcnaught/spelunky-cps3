@@ -254,10 +254,16 @@ For the oJaws work (the lake boss has no Step: untranslated 5003 on every lake l
 `tests/routes/l_lake8.txt` runs the first in the game program. The host tracer can start only in rLevel / rOlmec,
 so these levels have no runner trace yet.
 
-c_temple_olmec in MAME against the model: 62-63 K px differ at rec 100-300. The model draws bgCave and follows
-the player; rOlmec's background is bgTemple (refs/hd/src/rooms/rOlmec, as draw.c draws it) and oOlmec's Create
-makes the view follow oOlmec (:37-40). Both are tools/drawmodel.py gaps (not fixed here); the content traces have
-no runner frames for rOlmec to confirm the camera.
+c_temple_olmec in MAME against the model differed by 62-63 K px at rec 100-300: tools/drawmodel.py drew bgCave and
+followed the player. Fixed in the model: the background is bgTemple in rOlmec and on levels 13-16 (scrInitLevel
+:140-143, levelType 3; draw.c's rule), and in rOlmec the view follows oOlmec with hborder 0 until oOlmec's Alarm_5
+has fired (Create :37-40, Alarm_5 :1-4; the trace shows alarm 5 at 0 on that step, rec 437). Now 0 px at rec 100,
+200, 300. The content traces have no runner frames for rOlmec, so this rests on the GML and the trace's view.
+
+tests/game builds the shipping collision grid since main's 58756ab (scripts/game_check.sh EXACT=1: the R-tree).
+Routes the grid takes off the trace (c_swamp_drain from rec 139, docs/EQUIV.md) then differ from the model in
+MAME with no draw error: c_swamp_drain rec 180 / 240 / 300 differ 268 / 976 / 56 K px on the grid build, 0 / 0 / 0
+with EXACT=1.
 
 ## Observed / Inferred / Unknown
 
