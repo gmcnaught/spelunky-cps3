@@ -1,9 +1,8 @@
 # P4: oTransition Draw GUI sets global.noDarkLevel (the seconds part of the level time <= 20; ptrans.c
 # ptrans_draw_gui). Seed 559: throw a bomb right and wait, then p4_exit559's inputs: the level-1 time's seconds part is
 # over 20 at the exit, and level 2 (after the transition room) is a dark level in the C generator.
-# KNOWN DIFFERENCE (as at 37d330a, before this route's purpose): record 595, the runner's arrow from the trap at
-# 128,432 hits the falling player (life 3 -> 1, stunned), the C arrow passes; the route is not a gate until that is
-# fixed. scripts/p4_trace.sh p4_darkexit 559
+# Record 595: the arrow from the trap at 128,432 hits the falling player (life 3 -> 1, stunned): the rotated arrow's
+# bbox and the runner's float rectangle / line tests (7f854d9). Gate: scripts/p4_trace.sh p4_darkexit 559
 45 -       # the level's fade-in
 3  R
 1  B       # throw a bomb right

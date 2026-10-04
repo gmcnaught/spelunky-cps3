@@ -3,6 +3,8 @@
 #include "pint.h"
 #include "penemy.h"
 #include "pcol.h"
+#include "../snd/sndgame.h"                     /* the GML sound calls (src/snd) */
+static void start_music(void);
 
 struct gamepad GP;
 struct pglobals PG;
@@ -274,6 +276,7 @@ void play_level_start(int32_t next_id)
     PG.ghostExists = 0;
     PG.drawHUD = 1;
     PLEV.musicFade = 0;
+    if (snd_music_on) start_music();                                           /* :20 */
     for (k = 0; k < PW.n; k++)
         if (PX(k).alive && PE(&PX(k))->held && PL.idx != NOONE) {                    /* the item scrHoldItem gave */
             PL.holdItem = k;
@@ -288,6 +291,23 @@ void play_level_start(int32_t next_id)
     play_rooms_entered++;
     PW.room_new = 1;
     pcol_load_done();
+}
+
+/* scripts/startMusic for a level (global.music: snd_music_on; global.musicVol 15, scrInit's): the room is a level here,
+   oLoadLevel never exists */
+static void start_music(void)
+{
+    static const int16_t mus[4] = { SND_mCave, SND_mLush, SND_mIce, SND_mTemple };
+    int s;
+    snd_start_music();
+    if (!snd_music_on) return;
+    if (PW.room == R_rOlmec) {
+        if (!(PL.idx != NOONE && PL.active)) return;
+        s = SND_mBoss;
+    } else
+        s = mus[G.levelType >= 1 && G.levelType <= 3 ? G.levelType : 0];
+    snd_music(s, 1);
+    snd_volume(s, 2000 + 8000 * (15 / 18.0));
 }
 
 /* ---- one step -------------------------------------------------------------------------------------------- */

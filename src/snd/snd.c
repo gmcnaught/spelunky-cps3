@@ -7,6 +7,12 @@
 #define FX_FIRST 1
 
 uint8_t snd_music_on;
+#ifdef SND_LOG
+void (*snd_log)(int kind, int s, double arg);
+#define LOG(k, s, a) do { if (snd_log) snd_log((k), (s), (a)); } while (0)
+#else
+#define LOG(k, s, a) ((void)0)                   /* CPS3 builds: no log, no cost */
+#endif
 
 /* round(0x4000 * (2000 + 8000 * (v / 18)) / 10000) */
 const uint16_t snd_level_gain[18] = {
@@ -102,7 +108,7 @@ void snd_frame(void)
         voice_off_mask(m);
 }
 
-int snd_audio_play(int s, int prio, int loop)
+static int audio_play(int s, int prio, int loop)
 {
     int k;
     if ((unsigned)s >= SND_COUNT)
@@ -128,15 +134,30 @@ int snd_audio_play(int s, int prio, int loop)
     return k;
 }
 
-void snd_play(int s) { snd_audio_play(s, SND_PRIO_EFFECT, 0); }
+int snd_audio_play(int s, int prio, int loop)
+{
+    LOG(SNDK_AUDIO_PLAY, s, prio * 2 + (loop ? 1 : 0));
+    return audio_play(s, prio, loop);
+}
+
+void snd_play(int s)
+{
+    LOG(SNDK_PLAY_SOUND, s, 0);
+    audio_play(s, SND_PRIO_EFFECT, 0);
+}
+
+static int is_playing(int s);
 
 void snd_music(int s, int loop)
 {
-    if (snd_music_on && !snd_is_playing(s))
-        snd_audio_play(s, SND_PRIO_MUSIC, loop);
+    LOG(SNDK_PLAY_MUSIC, s, loop ? 1 : 0);
+    if (snd_music_on && !is_playing(s))
+        audio_play(s, SND_PRIO_MUSIC, loop);
 }
 
-int snd_is_playing(int s)
+int snd_is_playing(int s) { return is_playing(s); }
+
+static int is_playing(int s)
 {
     for (int k = 0; k < NVOICE; k++)
         if (voice[k].left != 0 && voice[k].snd == s)
@@ -144,7 +165,15 @@ int snd_is_playing(int s)
     return 0;
 }
 
+static void stop(int s);
+
 void snd_stop(int s)
+{
+    LOG(SNDK_STOP_SOUND, s, 0);
+    stop(s);
+}
+
+static void stop(int s)
 {
     uint16_t m = 0;
     for (int k = 0; k < NVOICE; k++)
@@ -156,18 +185,21 @@ void snd_stop(int s)
 
 void snd_stop_music(void)
 {
+    LOG(SNDK_STOP_ALL_MUSIC, -1, 0);
     if (voice[SND_MUSIC_VOICE].left != 0)
         voice_off_mask(vbit[SND_MUSIC_VOICE]);
 }
 
 void snd_stop_all(void)
 {
+    LOG(SNDK_STOP_ALL, -1, 0);
     voice_off_mask(0xffff);
 }
 
 /* paused: step 0 holds the position, volume 0 silences the held sample; frames stop counting */
 void snd_pause_all(void)
 {
+    LOG(SNDK_PAUSE_ALL, -1, 0);
     for (int k = 0; k < NVOICE; k++)
         if (voice[k].left != 0 && !voice[k].paused) {
             voice[k].paused = 1;
@@ -178,6 +210,7 @@ void snd_pause_all(void)
 
 void snd_resume_all(void)
 {
+    LOG(SNDK_RESUME_ALL, -1, 0);
     for (int k = 0; k < NVOICE; k++)
         if (voice[k].paused) {
             int s = voice[k].snd;
@@ -188,7 +221,20 @@ void snd_resume_all(void)
 }
 
 /* audio_sound_gain(asset, g, 0): new and playing instances (paused ones take it at resume) */
-void snd_gain(int s, uint16_t reg)
+static void gain_set(int s, uint16_t reg);
+
+void snd_gain(int s, uint16_t reg) { gain_set(s, reg); }
+
+/* setSoundVol: sound_volume(s, v / 10000) = audio_sound_gain at v / 10000 */
+void snd_volume(int s, double v)
+{
+    LOG(SNDK_SET_VOL, s, v);
+    gain_set(s, (uint16_t)(v * (SND_GAIN_ONE / 10000.0) + 0.5));
+}
+
+void snd_start_music(void) { LOG(SNDK_START_MUSIC, -1, 0); }
+
+static void gain_set(int s, uint16_t reg)
 {
     if ((unsigned)s >= SND_COUNT)
         return;

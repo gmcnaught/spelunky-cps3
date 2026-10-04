@@ -822,6 +822,7 @@ static void ebbox(int e, float dx, float dy, float *o)
 static int edead(int e) { return (ef[e] & EF_PEND) != 0; }
 
 void pcol_box(int i, float *o) { ebbox(i, 0, 0, o); }
+void pcol_sincosf(float a, float *s, float *c) { sincos_f(a, s, c); }
 
 /* CollisionUpdate: take the entry out (if in) and put it in with its current box */
 static void cupdate_at(int e, float dx, float dy)

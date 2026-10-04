@@ -55,4 +55,17 @@ void snd_stop_all(void);
 void snd_pause_all(void);
 void snd_resume_all(void);
 void snd_gain(int s, uint16_t reg);
+/* setSoundVol(s, v) (v the GML volume argument, 0 .. 10000) and the startMusic() call itself (the game runs its
+   body: playMusic / setSoundVol through these functions) */
+void snd_volume(int s, double v);
+void snd_start_music(void);
+
+/* the call log (tests: test/host/playhost prints it as tools/sndcmp.py's SND lines): each function above, as the
+   game calls it, reports the GML call it stands for first (SNDK_*: tools/tracer.py SND_KINDS; calls made inside
+   these functions are not reported, as the runner's trace logs only the scripts and the builtins the GML calls) */
+enum { SNDK_PLAY_SOUND = 1, SNDK_PLAY_MUSIC, SNDK_START_MUSIC, SNDK_STOP_ALL_MUSIC, SNDK_SET_VOL, SNDK_STOP_SOUND,
+       SNDK_PAUSE_ALL, SNDK_RESUME_ALL, SNDK_STOP_ALL, SNDK_AUDIO_PLAY };
+#ifdef SND_LOG                                  /* host builds only (test/host, tests/game/host.c) */
+extern void (*snd_log)(int kind, int s, double arg);   /* s: enum snd or -1; arg as sndcmp's (0 if none) */
+#endif
 #endif

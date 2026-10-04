@@ -5,6 +5,8 @@
  * Objects or branches P4 does not reach set play_untranslated (codes 1xxx).
  */
 #include "pint.h"
+#include "../snd/sndgame.h"                     /* the GML sound calls (src/snd) */
+#include "pmsg.h"                                /* the HUD messages (trMessages) */
 #include "penemy.h"                  /* P5 hooks: enemies, damsel, shop (each marked "P5 hook") */
 
 struct pgame PGAME;
@@ -237,6 +239,7 @@ void ev_create(int i)
     /* effects */
     case OBJ_oExplosion:
         p->ispd = (img_t)0.8;
+        snd_play(SND_xexplosion);                                              /* objects/oExplosion/Create_0.gml :3 */
         scrShake(5);
         break;
     case OBJ_oBlood:
@@ -394,6 +397,7 @@ static void destroy_jar_like(int i, int skull)
 {
     struct pin *p = &PX(i);
     if (!PE(p)->breakPieces) return;
+    snd_play(SND_xbreak);                                                      /* oJar / oSkull Destroy :4 */
     pin_create(p->x, p->y, OBJ_oSmokePuff);
     if (skull) {
         PUNTR(1015);                                                            /* oBone pieces */
@@ -897,6 +901,7 @@ static void gameStepEvent(void)
                 NOPS(2);
                 for (; DLT(PTOD(p->y), PTOD(yMPrev) + NTOD(PE(p)->yVel)); pin_sety(p, p->y + (PI(1)))) {
                     if (place_meeting_p(j, PTOD(p->x), PTOD(p->y) + 1, OBJ_oSolid)) {
+                        if (NGT(PE(p)->yVel, PE(p)->myGrav)) snd_play(SND_xthud);     /* :258 */
                         PE(p)->yVel = 0;
                         break;
                     }
@@ -923,8 +928,10 @@ static void game_step(int i)
     }
     if (instance_exists_p(OBJ_oPlayer1)) {                                     /* :45 ghost */
         if (isLevel() && !isRoomIs(R_rOlmec) && G.currLevel > 1 && !PG.hasCrown && PG.xtime > 120000 &&
-            !spr_is_exit_g(PX(PL.idx).spr))
+            !spr_is_exit_g(PX(PL.idx).spr) && !PLEV.musicFade) {
             PLEV.musicFade = 1;
+            pmsg_str("A CHILL RUNS UP YOUR SPINE...", "LET'S GET OUT OF HERE!", 200);   /* :56 */
+        }
         if (isLevel() && !isRoomIs(R_rOlmec) && G.currLevel > 1 && !PG.hasCrown && PG.xtime > 150000 &&
             !PG.ghostExists && !spr_is_exit_g(PX(PL.idx).spr))
             PUNTR(1052);
@@ -1217,6 +1224,7 @@ static void trap_fire(int self, int other)
             PE(&PX(ar))->xVel = N(8);
         }
         PE(&PX(t))->fired += 1;
+        snd_play(SND_xarrowtrap);                                              /* oArrowTrapTest/Collision_* :22-25 */
     }
     pin_destroy(self);
 }
@@ -1328,6 +1336,7 @@ void ev_collision(int self, int other)
         if (obj_is(oo, OBJ_oWhip)) {                                           /* objects/oJar/Collision_oWhip.gml */
             struct pin *p = &PX(self);
             int k;
+            snd_play(SND_xbreak);                                              /* :1 */
             pin_create(p->x, p->y, OBJ_oSmokePuff);
             for (k = 0; k < 3; k++) {
                 int piece = pin_create(PX(self).x - PI(2), PX(self).y - PI(2), OBJ_oRubbleSmall);

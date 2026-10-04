@@ -1,9 +1,9 @@
---- a/src/game/pobj.c	2026-10-04 03:40:20
-+++ b/src/game/pobj.c	2026-10-04 03:40:32
-@@ -5,6 +5,12 @@
-  * Objects or branches P4 does not reach set play_untranslated (codes 1xxx).
-  */
+--- a/src/game/pobj.c
++++ b/src/game/pobj.c
+@@ -7,6 +7,12 @@
  #include "pint.h"
+ #include "../snd/sndgame.h"                     /* the GML sound calls (src/snd) */
+ #include "pmsg.h"                                /* the HUD messages (trMessages) */
 +#include "front.h"                                     /* P8: the front end's hooks (src/front/front.h) */
 +/* the hooks' defaults for builds without src/front (no front room ever runs) */
 +__attribute__((weak)) uint8_t front_on;
@@ -13,7 +13,7 @@
  #include "penemy.h"                  /* P5 hooks: enemies, damsel, shop (each marked "P5 hook") */
  
  struct pgame PGAME;
-@@ -121,6 +127,7 @@
+@@ -123,6 +129,7 @@
  
  void ev_create(int i)
  {
@@ -21,7 +21,7 @@
      struct pin *p = &PX(i);
      if (pen_create(i, play_in_gen_init) || pdam_create(i, play_in_gen_init) || pshop_create(i, play_in_gen_init) ||
          pitem_create(i, play_in_gen_init))
-@@ -428,6 +435,7 @@
+@@ -432,6 +439,7 @@
  
  void ev_destroy(int i)
  {
@@ -29,7 +29,7 @@
      struct pin *p = &PX(i);
      int o = p->obj;
      if (pen_destroy(i) || pdam_destroy(i)) return;                             /* P5 hook */
-@@ -971,6 +979,7 @@
+@@ -978,6 +986,7 @@
  
  void ev_step(int i)
  {
@@ -37,7 +37,7 @@
      struct pin *p = &PX(i);
      if (pen_step(i) || pdam_step(i) || pshop_step(i) || pitem_step(i)) return; /* P5 hook */
      switch (p->obj) {
-@@ -1067,6 +1076,7 @@
+@@ -1074,6 +1083,7 @@
  
  void ev_end_step(int i)
  {
@@ -45,7 +45,7 @@
      struct pin *p = &PX(i);
      switch (p->obj) {
      case OBJ_oPlayer1: pl_end_step(i); break;
-@@ -1082,6 +1092,7 @@
+@@ -1089,6 +1099,7 @@
  /* ---- Alarms ---------------------------------------------------------------------------------------------- */
  void ev_alarm(int i, int a)
  {
@@ -53,7 +53,7 @@
      struct pin *p = &PX(i);
      int o = p->obj;
      if (o == OBJ_oPlayer1) { pl_alarm(i, a); return; }
-@@ -1180,6 +1191,7 @@
+@@ -1187,6 +1198,7 @@
  /* ---- Animation End --------------------------------------------------------------------------------------- */
  void ev_animend(int i)
  {
@@ -61,7 +61,7 @@
      /* the room's first frame animates the enemies before TRACE_NOENEMY removes them at its Begin Step: their
         Animation End events only change their own status / sprite (oShopkeeper, oDamsel, oFakeBones, ...) */
      if (play_noenemy && PW.room_new &&
-@@ -1280,6 +1292,7 @@
+@@ -1288,6 +1300,7 @@
  
  void ev_collision(int self, int other)
  {
@@ -69,7 +69,7 @@
      int so = PX(self).obj, oo = PX(other).obj;
      if (pen_collision(self, other) || pdam_collision(self, other) || pshop_collision(self, other) ||
          pitem_collision(self, other))
-@@ -1357,6 +1370,7 @@
+@@ -1366,6 +1379,7 @@
  
  void ev_draw(int i)
  {
@@ -77,7 +77,7 @@
      if (PX(i).obj == OBJ_oPlayer1) pl_draw(i);
      else if (pen_draw(i) || pdam_draw(i) || pshop_draw(i)) return;             /* P5 hook */
      else ptrans_draw(i);
-@@ -1364,6 +1378,7 @@
+@@ -1373,6 +1387,7 @@
  
  void ev_outside(int i)
  {
@@ -85,17 +85,17 @@
      if (PX(i).obj == OBJ_oPushBlock) pin_destroy(i);                           /* objects/oPushBlock/Other_0.gml */
      else if (pen_outside(i)) return;                                           /* P5 hook */
      else PUNTR(1097);
---- a/src/game/prun.c	2026-10-04 03:40:20
-+++ b/src/game/prun.c	2026-10-04 03:40:20
-@@ -3,6 +3,7 @@
- #include "pint.h"
+--- a/src/game/prun.c
++++ b/src/game/prun.c
+@@ -4,6 +4,7 @@
  #include "penemy.h"
  #include "pcol.h"
+ #include "../snd/sndgame.h"                     /* the GML sound calls (src/snd) */
 +#include "front.h"                                     /* P8: the front end's hooks (src/front/front.h) */
+ static void start_music(void);
  
  struct gamepad GP;
- struct pglobals PG;
-@@ -96,9 +97,10 @@
+@@ -98,9 +99,10 @@
  
  static void view_update(void)
  {
@@ -108,7 +108,7 @@
          if (x - hb < PW.xview) PW.xview = x - hb;
          else if (x + hb > PW.xview + 320) PW.xview = x + hb - 320;
          if (y - vb < PW.yview) PW.yview = y - vb;
-@@ -305,7 +307,7 @@
+@@ -328,7 +330,7 @@
          play_transition_start(r);
      else if (r == R_rLevel || r == R_rLevel2 || r == R_rLevel3 || r == R_rOlmec)
          play_level_start(PW.next_id);

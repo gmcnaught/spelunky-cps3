@@ -76,3 +76,38 @@ replace, loop past mLush's end, the music flag, `musVictory` once to its end). M
 
 A changed script (the priority-2 `xhit` at frame 246 made priority 10) fails the event check. `scripts/sound_check.sh`
 (the jukebox) still passes after `tools/sndcheck.py`'s audio model moved into `synth()`.
+
+## 5. Pending sites (src/game's sound calls and HUD messages, 2026-10-04)
+
+src/game makes the GML's sound calls through `src/snd` (`src/snd/sndgame.h`; each call carries its GML file:line) and
+keeps the HUD messages in `src/game/pmsg.{h,c}`. Gate: `scripts/snd_check.sh` (tools/sndcmp.py against the TRACE_SND
+traces of `scripts/snd_traces.sh`, plus tools/playcmp.py), 19/19 routes equal. The sites below are not in the C yet:
+add each one when the branch or object around it is translated, at the same place in the code.
+
+Never run in HD (inside `/* */`): characterSprite :86, :148; oArrowTrapLeft / oArrowTrapRight Step :41.
+
+Untranslated branches (PUNTR in src/game):
+
+- oPlayer1 Step: :183 splash (oWaterSwim), :200 flame (lava), :425 :431 :440 :458 :464 :473 whips (machete,
+  mattock, tunnel man), :1282 thump (the non-mines idol trap), :1438-1439 audio_is_playing / audio_stop_sound
+  (xbowpull), :1530 :1558 :1578 hurt (mitt rock, laser, psychic wave), :1866 teleport (ankh), :1957 pickup (flare
+  crate). Alarm_10 jetpack. KeyPress_8 stopAllMusic. Collision_oBlood :12 kiss (kapala).
+- scrFireBow :39 :52 :72 (incl. the xbowpull stop); scrUseItem :258 :273 :316 :329 :377 :395 :483 :521 :572 :590
+  (weapons, teleporter, bow).
+- oEnemy Step :94 :102 (spears, smash trap), :141 sacrifice, :246 UFO; oItem Step :182 :311 (lava, UFO), :294 :305
+  (tomb lord, alien boss); oJar Step :98 (lava); oDamsel Step :138 (spears), :321 (sacrifice).
+- oDice Step (the dice house); oFlare / oFlareCrate Step splash; oPDummy Alarm_1 click (big chest).
+
+Objects with no translated events: oAlienBoss, oUFO, oYeti, oYetiKing (its :114 audio_is_playing gate), oVampire,
+oHawkman, oManTrap, oMagmaMan, oMonkey, oFrog, oFireFrog, oZombie, oTombLord, oScarab, oSpringTrap, oGame Alarm_2
+(blink sounds), oGame Step's audio_pause_all / audio_resume_all / audio_stop_all (pause menu, game end). oSkull Step
+:126 :136 go with oJar's hit code (penemy.c pen_jar_hit) if oSkull runs it.
+
+HUD messages not yet set: genobj.c's generation-time scrShopkeeperAnger (a shop wall destroyed while generating),
+oPlayer1 Step :1863 (ankh revive), oEnemy Step :143-160 and oDamsel Step :323-340 (sacrifice, scrGetFavorMsg),
+oMsgSign (tutorial), oPlayer1 Other_7 :124 (rTutorial's messageTimer = 0). global.bloodLevel stays 0 until the
+kapala is translated.
+
+audio_is_playing: the runner's answer depends on its audio thread under the container's null sink, not on the steps
+(p4_push_rope recorded three times: xpush at records 24 and 33 once, at 24 only twice). A trace that differs only
+there is re-recorded (tools/sndcmp.py's docstring).

@@ -9,6 +9,7 @@
  *   R <rec> <phase> <t> <room> <level> <life> <bombs> <rope> <money> <xview> <yview> <time> <untranslated> <dops>
  *   I <id> <object> <x> <y> <sprite|-> <image_index> <xscale> <yscale> <angle> <alpha> <depth> <visible>
  *     <alarms k=v,...|-> <xVel> <yVel> <image_speed> [name=value ...]
+ *   SND <kind> <asset> <arg>   the sound calls (src/snd's log, test/host/sndhost.c) before the record they belong to
  * Doubles as %.17g. oGamepad (the tracer's instance) is left out.
  */
 #include <stdio.h>
@@ -16,6 +17,8 @@
 #include <string.h>
 #include "pint.h"
 #include "pcol.h"
+#include "../../src/snd/snd.h"
+void sndhost_init(void);                         /* sndhost.c: src/snd, its call log as SND lines */
 
 static int rec, t_done;
 
@@ -181,6 +184,7 @@ int main(int argc, char **argv)
     PG.rope = 4;
     PG.money = money;
     rng_seed(&g_rng, (uint32_t)seed);
+    sndhost_init();
     play_level_start(nextid);
     for (k = 0; k < nsteps + tail; k++) {
         t_done = k;                                /* the phase-0 record comes before the step's input */
@@ -190,6 +194,7 @@ int main(int argc, char **argv)
             struct pw_stats w0 = pw_st;
 #endif
             r = play_step(k < nsteps ? masks[k] : 0, rec_cb);
+            snd_frame();                           /* a frame of the sounds' play time per step */
 #ifdef PLAY_STATS
             {
                 const uint32_t *a = (const uint32_t *)&w0, *c = (const uint32_t *)&pw_st;

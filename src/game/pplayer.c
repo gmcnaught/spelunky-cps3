@@ -6,6 +6,8 @@
  */
 #include "pint.h"
 #include "penemy.h"
+#include "../snd/sndgame.h"                     /* the GML sound calls (src/snd) */
+#include "pmsg.h"                                /* the HUD messages (trMessages) */
 
 struct player PL;
 
@@ -23,6 +25,7 @@ void pl_init_from_gen(int i)
     struct pin *p = &PX(i);
     PL.idx = i;
     PL.bet = 0;                                                                /* oPlayer1 Create :38 (P5) */
+    pmsg_player_reset();                                                       /* :103 */
     /* characterCreateEvent :7-117 */
     PL.hangCount = 0;
     PL.runHeld = 0;
@@ -382,6 +385,7 @@ static void characterStepEvent(int i)
             PL.yAccLimit = N(6);
             PE(p)->grav = PL.gravNorm;
         }
+        snd_play(SND_xjump);                                                   /* characterStepEvent :378 */
         PL.pushTimer = 0;
         PL.state = FALLING;
         PL.jumpButtonReleased = 0;
@@ -765,8 +769,11 @@ static void open_chest(int i)
             PE(&PX(obj))->yVel = N(-2);
             pin_set_sprite(obj, GSPR_sBombArmed);
             PE(&PX(obj))->alarm[1] = 40;
+            snd_play(SND_xtrap);                                               /* :580 */
         } else {
-            int reps = RAND(3, 4);
+            int reps;
+            snd_play(SND_xchestopen);                                          /* :583 */
+            reps = RAND(3, 4);
             for (k = 0; k < reps; k++) {
                 n = RAND(1, 3);
                 obj = NOONE;
@@ -831,6 +838,7 @@ static void open_crate(int i)
     else if (RAND(1, 2) == 1) obj = pin_create(cx, cy, OBJ_oRopePile);
     else obj = pin_create(cx, cy, OBJ_oBombBag);
     PE(&PX(obj))->cost = 0;
+    snd_play(SND_xpickup);                                                     /* :640 */
     if (chest == PL.holdItem) {
         PL.holdItem = NOONE;
         PL.pickupItemType = T_NONE;
@@ -852,6 +860,7 @@ static void exit_level(int i)
             PG.money += PE(&PX(h))->value * (G.levelType + 1);
             if (PX(h).spr == GSPR_sCrystalSkull) PG.skulls += 1;
             else PG.idols += 1;
+            snd_play(SND_xcoin);                                               /* :781 */
             pin_create(p->x, p->y - PI(8), OBJ_oBigCollect);
             pin_destroy(h);
             PL.holdItem = NOONE;
@@ -867,6 +876,7 @@ static void exit_level(int i)
                 PE(&PX(h))->held = 0;
                 PE(&PX(h))->xVel = 0;
                 PE(&PX(h))->yVel = 0;
+                snd_play(SND_xsteps);                                          /* :805 */
                 pin_setdepth(&PX(h), 1000);
                 PE(&PX(h))->active = 0;
                 PL.holdItem = NOONE;
@@ -915,6 +925,8 @@ static void exit_level(int i)
     if (G.thiefLevel > 0) G.thiefLevel -= 1;
     if (G.currLevel == 1) G.currLevel += PL.firstLevelSkip;
     else G.currLevel += PL.levelSkip;
+    snd_stop_music();                                                          /* :881 */
+    snd_play(SND_xsteps);
     if (collision_point_p(PTOD(p->x), PTOD(p->y), OBJ_oXMarket, 0, NOONE) != NOONE) G.genBlackMarket = 1;
     if (collision_point_p(PTOD(p->x), PTOD(p->y), OBJ_oXGold, 0, NOONE) != NOONE) G.cityOfGold = 1;
     if (instance_exists_p(OBJ_oMonkey)) PUNTR(2016);
@@ -936,6 +948,7 @@ static void hurt_logic(int i)
         PG.plife -= 99;
         PL.active = 0;
         PE(p)->yVel = N(-3);
+        snd_play(SND_xdie);                                                    /* :1476 */
         scrCreateBlood(i, p->x, p->y, 3);
         pin_setvisible(p, 0);
     }
@@ -947,6 +960,7 @@ static void hurt_logic(int i)
             PE(p)->yVel = N(-4);
             scrCreateBlood(i, p->x, p->y, 3);
             pin_destroy(obj);
+            snd_play(SND_xhurt);                                               /* :1502 */
             PL.stunned = 1;
             PL.stunTimer = 20;
         }
@@ -960,6 +974,7 @@ static void hurt_logic(int i)
                 PE(p)->xVel = PE(&PX(obj))->xVel;
                 PE(p)->yVel = N(-4);
                 scrCreateBlood(i, p->x, p->y, 3);
+                snd_play(SND_xhurt);                                           /* :1530 */
                 PL.stunned = 1;
                 PL.stunTimer = 20;
             }
@@ -1038,6 +1053,7 @@ void pl_step(int i)
             PE(&PX(h))->held = 0;
             if (PL.facing == LEFT) PE(&PX(h))->xVel = N(-2);
             else PE(&PX(h))->xVel = N(2);
+            if (PX(h).type == T_DAMSEL) snd_play(SND_xdamsel);                 /* :158 */
             if (PX(h).type == T_BOW && PL.bowArmed) scrFireBow();
             drop_or_switch();
         }
@@ -1068,6 +1084,8 @@ void pl_step(int i)
             PL.holdItem = NOONE;
             PL.pickupItemType = T_NONE;
         }
+        snd_play(SND_xthud);                                                   /* :237 */
+        snd_play(SND_xdie);
     }
     if (PL.active) {                                                           /* :241 */
         if (PL.stunTimer > 0 && (p->spr == GSPR_sStunL || p->spr == GSPR_sDamselStunL || p->spr == GSPR_sTunnelStunL)) {
@@ -1097,6 +1115,7 @@ void pl_step(int i)
             PE(&PX(obj))->xVel = N(-0.4);
             obj = pin_create(p->x + PI(4), p->y + PI(6), OBJ_oPoof);
             PE(&PX(obj))->xVel = N(0.4);
+            snd_play(SND_xthud);                                               /* :289 */
         } else {
             PL.fallTimer = 0;
             if (instance_exists_p(OBJ_oParachute)) PUNTR(2035);
@@ -1162,6 +1181,7 @@ void pl_step(int i)
         else {
             int obj = pin_create(p->x - PI(16), p->y, OBJ_oWhip);
             pin_set_sprite(obj, GSPR_sWhipLeft);
+            snd_play(SND_xwhip);                                               /* :446 */
         }
     } else if (spr_is_attack(p->spr) && PL.facing == RIGHT && DGT(p->img, 4) && instance_number_p(OBJ_oWhip) == 0) {
         if (PL.holdItem != NOONE) {
@@ -1170,6 +1190,7 @@ void pl_step(int i)
         else {
             int obj = pin_create(p->x + PI(16), p->y, OBJ_oWhip);
             pin_set_sprite(obj, GSPR_sWhipRight);
+            snd_play(SND_xwhip);                                               /* :479 */
         }
     }
     if (PL.holdItem != NOONE) {                                                /* :484 */
@@ -1314,6 +1335,7 @@ void pl_step(int i)
                     PE(o)->xVel = 0;
                     PE(o)->yVel = 0;
                     PG.rope -= 1;
+                    snd_play(SND_xthrow);                                      /* :1119 */
                 }
             }
         } else {
@@ -1324,6 +1346,7 @@ void pl_step(int i)
             PE(&PX(obj))->xVel = 0;
             PE(&PX(obj))->yVel = N(-12);
             PG.rope -= 1;
+            snd_play(SND_xthrow);                                              /* :1132 */
         }
     } else if (isLevel() && PL.kBombPressed && PG.bombs > 0 && !PL.whipping && PL.bowArmed) {
         PUNTR(2044);
@@ -1346,6 +1369,7 @@ void pl_step(int i)
             PE(o)->yVel = N(3);
         }
         PG.bombs -= 1;
+        snd_play(SND_xthrow);                                                  /* :1178 */
     } else if (PL.holdItem == NOONE) {                                         /* :1180 */
         if (PL.kAttackPressed && PL.state != DUCKING && PL.state != DUCKTOHANG && !PL.whipping &&
             p->spr != GSPR_sPExit && p->spr != GSPR_sDamselExit) {
@@ -1442,6 +1466,7 @@ void pl_step(int i)
                 for (k = 0; k < 3; k++) pin_create(p->x, p->y, OBJ_oBlood);
                 PG.plife -= 1;
                 PL.wallHurt -= 1;
+                snd_play(SND_xhurt);                                           /* :1795 */
             }
         }
         if (isCollisionBottom(i, 1) && !PL.bounced) {                          /* :1799 */
@@ -1462,8 +1487,10 @@ void pl_step(int i)
                 PG.plife = 0;
                 PG.drawHUD = 0;
                 PL.dead = 1;
+                snd_play(SND_xdie);                                            /* :1890 */
             }
         }
+        if (PL.dead) snd_stop_music();                                         /* :1896 */
     }
     if (!PL.dead && PL.invincible > 0) PL.invincible -= 1;                     /* :1903 */
     if (PL.blink > 0) {
@@ -1505,6 +1532,10 @@ void pl_step(int i)
                 case T_BIGRUBY: PG.bigrubies += 1; break;
                 case T_DIAMOND: PG.diamonds += 1; break;
                 }
+                switch (PX(gem).type) {                                        /* :1987 coin */
+                case T_GOLDCHUNK: case T_GOLDNUGGET: case T_GOLDBAR: case T_GOLDBARS: snd_play(SND_xcoin); break;
+                default: snd_play(SND_xgem); break;
+                }
                 pin_destroy(gem);
             }
         }
@@ -1516,6 +1547,8 @@ void pl_step(int i)
                 d = pin_create(PX(obj).x, PX(obj).y - PI(14), OBJ_oItemsGet);
                 pin_set_sprite(d, GSPR_sBombsGet);
                 pin_destroy(obj);
+                snd_play(SND_xpickup);                                         /* :2003 / :2019 */
+                pmsg_player_str("YOU GOT 3 MORE BOMBS!", "", 120);
             }
         }
         if (collision_rect_p(x - 8, y - 8, x + 8, y + 8, OBJ_oBombBox, 0, NOONE) != NOONE && !PL.dead && !PL.stunned) {
@@ -1526,6 +1559,8 @@ void pl_step(int i)
                 d = pin_create(PX(obj).x, PX(obj).y - PI(14), OBJ_oItemsGet);
                 pin_set_sprite(d, GSPR_sBombsGet);
                 pin_destroy(obj);
+                snd_play(SND_xpickup);                                         /* :2003 / :2019 */
+                pmsg_player_str("YOU GOT 12 MORE BOMBS!", "", 120);
             }
         }
         if (collision_rect_p(x - 8, y - 8, x + 8, y + 8, OBJ_oRopePile, 0, NOONE) != NOONE && !PL.dead && !PL.stunned) {
@@ -1536,6 +1571,8 @@ void pl_step(int i)
                 d = pin_create(PX(obj).x, PX(obj).y - PI(15), OBJ_oItemsGet);
                 pin_set_sprite(d, GSPR_sRopeGet);
                 pin_destroy(obj);
+                snd_play(SND_xpickup);                                         /* :2035 */
+                pmsg_player_str("YOU GOT 3 MORE ROPES!", "", 120);
             }
         }
         if (collision_point_p(x, y, OBJ_oExit, 0, NOONE) != NOONE) {           /* :2042 */
@@ -1547,6 +1584,7 @@ void pl_step(int i)
                     if (PG.collectCounter > 100) PG.collectCounter = 100;
                     if (PX(h).spr == GSPR_sCrystalSkull) PG.skulls += 1;
                     else PG.idols += 1;
+                    snd_play(SND_xcoin);                                       /* :2055 */
                     pin_create(p->x, p->y - PI(8), OBJ_oBigCollect);
                     pin_destroy(h);
                     PL.holdItem = NOONE;
@@ -1562,6 +1600,7 @@ void pl_step(int i)
                         PE(&PX(h))->held = 0;
                         PE(&PX(h))->xVel = 0;
                         PE(&PX(h))->yVel = 0;
+                        snd_play(SND_xsteps);                                  /* :2078 */
                         pin_setdepth(&PX(h), 1000);
                         PE(&PX(h))->active = 0;
                         PE(&PX(h))->canPickUp = 0;
@@ -1593,24 +1632,67 @@ void pl_alarm(int i, int a)
     switch (a) {
     case 0:                                                                    /* Alarm_0: messages */
         if (!isRoomIs(R_rTutorial)) {
-            if (G.darkLevel || G.blackMarket) PE(p)->alarm[1] = 210;
-            else if (G.snakePit) {
-            } else if (G.cemetary) { if (G.lake) PE(p)->alarm[1] = 210; }
-            else if (G.lake || G.yetiLair || G.alienCraft) {
-            } else if (G.cityOfGold) { if (G.sacrificePit) PE(p)->alarm[1] = 210; }
+            if (G.darkLevel) {
+                if (PG.hasCrown) pmsg_player_str("THE HEDJET SHINES BRIGHTLY.", "", 200);
+                else pmsg_player_str("I CAN'T SEE A THING!", "I'D BETTER USE THESE FLARES!", 200);
+                PE(p)->alarm[1] = 210;
+                break;
+            }
+            if (G.blackMarket) {
+                pmsg_player_str("WELCOME TO THE BLACK MARKET!", "", 200);
+                PE(p)->alarm[1] = 210;
+                break;
+            }
+            if (G.snakePit) { pmsg_player_str("I HEAR SNAKES... I HATE SNAKES!", "", 200); break; }
+            if (G.cemetary) {
+                pmsg_player_str("THE DEAD ARE RESTLESS!", "", 200);
+                if (G.lake) PE(p)->alarm[1] = 210;
+                break;
+            }
+            if (G.lake) { pmsg_player_str("I CAN HEAR RUSHING WATER...", "", 200); break; }
+            if (G.yetiLair) { pmsg_player_str("IT SMELLS LIKE WET FUR IN HERE!", "", 200); break; }
+            if (G.alienCraft) { pmsg_player_str("THERE'S A PSYCHIC PRESENCE HERE!", "", 200); break; }
+            if (G.cityOfGold) {
+                pmsg_player_str("IT'S THE LEGENDARY CITY OF GOLD!", "", 200);
+                if (G.sacrificePit) PE(p)->alarm[1] = 210;
+                break;
+            }
+            if (G.sacrificePit) { pmsg_player_str("I CAN HEAR PRAYERS TO KALI!", "", 200); break; }
         }
+        pmsg_player_again(200);                                                /* :56 message1 / 2 as they are */
         break;
     case 1:
         if (!isRoomIs(R_rTutorial)) {
-            if (G.snakePit) {
-            } else if (G.cemetary && G.darkLevel) { if (G.lake) PE(p)->alarm[4] = 210; }
-            else if (G.lake || G.yetiLair || G.alienCraft) {
-            } else if (G.cityOfGold) { if (G.sacrificePit) PE(p)->alarm[4] = 210; }
+            if (G.snakePit) { pmsg_player_str("I HEAR SNAKES... I HATE SNAKES!", "", 200); break; }
+            if (G.cemetary && G.darkLevel) {
+                pmsg_player_str("THE DEAD ARE RESTLESS!", "", 200);
+                if (G.lake) PE(p)->alarm[4] = 210;
+                break;
+            }
+            if (G.lake) { pmsg_player_str("I CAN HEAR RUSHING WATER...", "", 200); break; }
+            if (G.yetiLair) { pmsg_player_str("THERE'S A PSYCHIC PRESENCE HERE!", "", 200); break; }   /* sic */
+            if (G.alienCraft) { pmsg_player_str("IT'S THE LEGENDARY CITY OF GOLD!", "", 200); break; } /* sic */
+            if (G.cityOfGold) {
+                pmsg_player_str("IT'S THE LEGENDARY CITY OF GOLD!", "", 200);
+                if (G.sacrificePit) PE(p)->alarm[4] = 210;
+                break;
+            }
+            if (G.sacrificePit) { pmsg_player_str("I CAN HEAR PRAYERS TO KALI!", "", 200); break; }
         }
+        pmsg_player_again(200);                                                /* :42 */
         break;
-    case 2: PL.climbSndToggle = !PL.climbSndToggle; break;
-    case 3: PL.walkSndToggle = !PL.walkSndToggle; break;
-    case 4: break;
+    case 2:
+        snd_play(PL.climbSndToggle ? SND_xclimb1 : SND_xclimb2);
+        PL.climbSndToggle = !PL.climbSndToggle;
+        break;
+    case 3:                                   /* global.sndStep1 / sndStep2: never assigned (initMusic): undefined */
+        snd_play(-1);
+        PL.walkSndToggle = !PL.walkSndToggle;
+        break;
+    case 4:                                                                    /* Alarm_4 */
+        if (G.lake) pmsg_str("YOU HEAR RUSHING WATER...", "", 200);
+        else if (G.sacrificePit) pmsg_str("I CAN HEAR PRAYERS TO KALI!", "", 200);
+        break;
     case 10: PUNTR(2060); break;
     case 11:
         if (PL.holdArrow > 0) {
@@ -1760,6 +1842,7 @@ void scrUseItem(void)
                 PE(o)->yVel = N(-12);
             }
             scrHoldItem(PL.pickupItemType);
+            snd_play(SND_xthrow);                                              /* scrUseItem :119 */
         }
     } else if (o->type == T_MACHETE || o->type == T_MATTOCK || o->type == T_PISTOL || o->type == T_SCEPTRE ||
                o->type == T_WEBCANNON || o->type == T_TELEPORTER || o->type == T_BOW || o->type == T_SHOTGUN) {
@@ -1770,6 +1853,7 @@ void scrUseItem(void)
             PE(o)->status = 2;
             PE(o)->counter = PEN(o)->stunMax;
             pin_sety(o, o->y - (PI(4)));
+            snd_play(SND_xdamsel);                                             /* :601 */
         }
         PE(o)->held = 0;
         PE(o)->safe = 1;
@@ -1812,6 +1896,7 @@ void scrUseItem(void)
         if (PG.hasMitt && !scrPlayerIsDucking(i)) PUNTR(2072);
         if (o->spr == GSPR_sBombArmed) scrHoldItem(PL.pickupItemType);
         else PL.holdItem = NOONE;
+        snd_play(SND_xthrow);                                                  /* :679 */
     }
     if (PL.kDown && PL.holdItem != NOONE) {                                    /* :679 */
         pin_setx(&PX(PL.holdItem), p->x);

@@ -4,6 +4,7 @@
  */
 #include "pint.h"
 #include "penemy.h"
+#include "../snd/sndgame.h"                     /* the GML sound calls (src/snd) */
 
 enum { D_IDLE = 0, D_RUN = 1, D_THROWN = 2, D_YELL = 3, D_EXIT = 4, D_SLAVE = 5, D_KISS = 6, D_DEAD = 99 };
 
@@ -75,6 +76,7 @@ static void damsel_step(int i)
         PE(p)->status = D_EXIT;
         PE(p)->xVel = 0;
         PE(p)->yVel = 0;
+        snd_play(SND_xsteps);                                                  /* :19 */
         pin_setdepth(p, 1000);
         PE(p)->active = 0;
         PE(p)->canPickUp = 0;
@@ -89,6 +91,7 @@ static void damsel_step(int i)
             pin_create(p->x, p->y, OBJ_oSplash);
             p = &PX(i);
             PEN(p)->swimming = 1;
+            snd_play(SND_xsplash);                                             /* :39 */
         }
         PE(p)->myGrav = N(0.2);
     } else {
@@ -105,6 +108,7 @@ static void damsel_step(int i)
                 PG.damselsKilled += 1;
                 PG.kills += 1;
             }
+            snd_play(SND_xdamsel);                                             /* :66 */
             pin_destroy(i);
         }
         if (PEN(p)->burning > 0) {
@@ -135,8 +139,10 @@ static void damsel_step(int i)
             (PE(p)->status != D_THROWN || isCollisionBottom(i, 1)))
             PUNTR(6011);
     }
-    if (!PE(p)->held && NGT(PE(p)->yVel, N(2)) && PE(p)->status != D_THROWN)      /* :144 */
+    if (!PE(p)->held && NGT(PE(p)->yVel, N(2)) && PE(p)->status != D_THROWN) {    /* :144 */
         PE(p)->status = D_THROWN;
+        snd_play(SND_xdamsel);                                                 /* :148 */
+    }
     if (PE(p)->held)
         PE(p)->facing = (int16_t)PL.facing;                               /* oCharacter.facing */
     else if (PE(p)->status == D_SLAVE) {
@@ -146,6 +152,7 @@ static void damsel_step(int i)
         if (p->spr == GSPR_sDamselKissL && DEQ(p->img, 7)) {
             if (PE(p)->facing == LEFT) pin_create(p->x - PI(8), p->y - PI(8), OBJ_oHeart);
             else pin_create(p->x + PI(8), p->y - PI(8), OBJ_oHeart);
+            snd_play(SND_xkiss);                                               /* :175 */
         }
     } else if (PE(p)->status == D_IDLE) {
         pin_set_sprite(i, GSPR_sDamselLeft);
@@ -153,6 +160,7 @@ static void damsel_step(int i)
         else {
             PE(p)->status = D_YELL;
             pin_set_sprite(i, GSPR_sDamselYellL);
+            snd_play(SND_xdamsel);                                             /* :203 */
         }
     } else if (PE(p)->status == D_YELL) {
         if (DEQ(p->img, 4)) pin_create(p->x, p->y - PI(16), OBJ_oYellHelp);
@@ -199,8 +207,10 @@ int pdam_step(int i)
     switch (p->obj) {
     case OBJ_oDamsel: damsel_step(i); return 1;
     case OBJ_oDamselKiss:                                              /* objects/oDamselKiss/Step_0.gml */
-        if (p->spr == GSPR_sDamselKissL && DEQ(p->img, 7))
+        if (p->spr == GSPR_sDamselKissL && DEQ(p->img, 7)) {
             pin_create(p->x - PI(8), p->y - PI(8), OBJ_oHeart);
+            snd_play(SND_xkiss);                                               /* :5 */
+        }
         return 1;
     case OBJ_oHeart: pin_sety(p, p->y - (PI(1))); return 1;                          /* objects/oHeart/Step_0.gml */
     }
@@ -248,6 +258,8 @@ int pdam_collision(int self, int other)
     if (PE(p)->status != D_THROWN && (PE(p)->status < D_EXIT || PE(p)->status == D_SLAVE || PE(p)->status == D_KISS) && PEN(p)->hit == 0) {
         PE(p)->yVel = N(-2);
         PEN(p)->hit = 10;
+        snd_play(SND_xhit);                                                    /* :17 */
+        snd_play(SND_xdamsel);
         if (PE(p)->forSale) scrShopkeeperAnger(self, 3);
     }
     return 1;
@@ -308,6 +320,7 @@ void pen_item_hit_damsel(int it)
             PEN(o)->hit = 10;
             PE(o)->xVel = NMUL(PE(&PX(it))->xVel, N(0.3));
             if (PX(it).type == T_ARROW || PX(it).type == T_FISHBONE) pin_destroy(it);
+            snd_play(SND_xhit);                                                /* oItem Step :367 */
             if (PE(o)->forSale) scrShopkeeperAnger(it, 3);
         }
     }

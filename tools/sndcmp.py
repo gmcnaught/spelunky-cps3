@@ -15,6 +15,11 @@ C log format (e.g. test/host/playhost printing them; one line per call, in call 
     R <rec> ...                  playhost's record line (only the first two fields are read)
 The SND lines before a record line belong to that record, as the runner logs the calls made since the previous
 record. The calls are compared in order: kind and asset exactly, arg within 1e-6 (relative).
+
+audio_is_playing gates a few calls (moveTo's xpush, the bow's xbowpull, the yeti king's xyetiyell). The runner's
+answer depends on its audio thread under the container's null sink, not on the steps: Observed, p4_push_rope seed 365
+recorded three times gave xpush at records 24 and 33 once and at 24 only twice (src/snd's voice model: 24 only, the
+asset's 0.62 s). A trace that differs there is re-recorded, not matched.
 """
 import os
 import sys

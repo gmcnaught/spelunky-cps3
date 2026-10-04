@@ -4,6 +4,7 @@
 #include "pint.h"
 #include "draw.h"
 #include "front.h"
+#include "pmsg.h"
 #include "game.h"
 
 struct game_cfg game_cfg = { 0, 0, 30, 0, 1, 0, 1 };
@@ -31,6 +32,7 @@ void game_begin(void)
 {
     front_stop();
     gen_new_game();
+    PMSG.bloodLevel = 0;                          /* scrClearGlobals :50 */
     G.currLevel = game_cfg.level;
     PG.plife = 4;
     PG.bombs = 4;

@@ -4,6 +4,11 @@
 #include "pcol.h"
 #include "inst.h"                 /* GRID_W, GRID_H: the solid grid covers the generator's level grid */
 
+/* the runner's float arithmetic as written (the precise collision code below follows its instruction order) */
+#ifdef __clang__
+#pragma STDC FP_CONTRACT OFF
+#endif
+
 /* the generator's instances, then the play instances in the same memory (play.h struct pworld) */
 #define INST_MEM_N (PIN_MAX > INST_MAX ? PIN_MAX : INST_MAX)
 typedef char pin_size_is_inst_size[sizeof(struct pin) == sizeof(struct inst) ? 1 : -1];
@@ -591,37 +596,6 @@ static int dfloor_int(double v, int32_t *o)
     return 1;
 }
 
-/* the precise mask bit of instance i at room pixel (px, py) (inside its bbox) */
-static int mask_at(int i, double px, double py)
-{
-    const struct pin *p = &PW.in[i];
-    int s = spr_of(p), f, mw, cx, cy;
-    const struct gsprcol *c = &gsprcol[s];
-    const struct psprite *ps = &psprite[s];
-    double sx, sy;
-    if (c->kind != 1 || ps->nmasks == 0)
-        return 1;
-    f = 0;
-    if (ps->nmasks > 1) {
-        f = (int)p->img;
-        if (f < 0) f = 0;
-        f %= ps->nmasks;
-    }
-    sx = (px - PTOD(p->x)) / p->xscale + c->xo;
-    sy = (py - PTOD(p->y)) / p->yscale + c->yo;
-    cx = dfloor(sx) - c->l;
-    cy = dfloor(sy) - c->t;
-    mw = c->r - c->l + 1;
-    if (cx < 0 || cy < 0 || cx >= mw || cy > c->b - c->t)
-        return 0;
-    {
-        int bpr = (mw + 7) >> 3;
-        const uint8_t *m = pmaskdata + ps->maskoff + f * bpr * (c->b - c->t + 1);
-        static const uint8_t bit[8] = { 0x80, 0x40, 0x20, 0x10, 0x08, 0x04, 0x02, 0x01 };  /* no variable shift */
-        return (m[cy * bpr + (cx >> 3)] & bit[cx & 7]) != 0;
-    }
-}
-
 static int precise(int i)
 {
     int s = spr_of(&PW.in[i]);
@@ -632,6 +606,325 @@ static int match(int k, int obj, int notme_self)
 {
     PWST(visit, 1);
     return PW.in[k].alive && k != notme_self && (obj == -2 ? 1 : obj_is(PW.in[k].obj, obj));
+}
+
+/* sqrtf correctly rounded (the runner's sqrtss), without libm: an integer square root of the mantissa scaled to an
+   even exponent, rounded to nearest (no tie can occur for a square root of a float). x >= 0 and finite here */
+static float sqrtf_exact(float x)
+{
+    union { float f; uint32_t u; } v;
+    uint32_t e, m;
+    uint64_t n, r, b, q;
+    int ex;
+    v.f = x;
+    if ((v.u & 0x7fffffffu) == 0) return x;
+    e = (v.u >> 23) & 0xff;
+    m = v.u & 0x7fffff;
+    if (e == 0) { ex = -149; while (!(m & 0x800000)) { m <<= 1; ex--; } } else { m |= 0x800000; ex = (int)e - 150; }
+    /* x = m * 2^ex, m in [2^23, 2^24): n = m * 2^24 (2^25 for an odd ex), x = n * 2^ex with ex even */
+    n = (uint64_t)m << 24;
+    ex -= 24;
+    if (ex & 1) { n <<= 1; ex--; }
+    r = 0;
+    for (b = (uint64_t)1 << 30; b; b >>= 1)        /* r = floor(sqrt(n)), n < 2^49: 24 or 25 bits */
+        if ((r + b) * (r + b) <= n) r += b;
+    if (r >= ((uint64_t)1 << 24)) {                 /* 25 bits: drop one, round on it and the remainder */
+        q = r >> 1;
+        if ((r & 1) && (r * r < n || (q & 1))) q++;
+        ex = ex / 2 + 1;
+    } else {                                        /* 24 bits: round up when sqrt(n) > r + 0.5 */
+        q = r;
+        if (n - r * r > r) q++;
+        ex = ex / 2;
+    }
+    v.f = (float)q;                                 /* q <= 2^24: exact */
+    while (ex > 0) { v.f *= 2.0f; ex--; }
+    while (ex < 0) { v.f *= 0.5f; ex++; }
+    return v.f;
+}
+
+/* ---- precise collision of two instances, as the runner computes it (libyoyo, CInstance::Collision_Instance:
+   SeparatingAxisCollision when one is rotated, then CSprite::PreciseCollision; all in float) ------------------- */
+struct pcinst {
+    float x, y, xs, ys, ang, bl, bt, br, bb;   /* position, scales, image_angle, the instance's bounding box */
+    float xo, yo, ml, mt, mr, mb;               /* the sprite's origin and mask box */
+    int bpr;
+    const uint8_t *mask;                        /* NULL: the sprite has no mask (its box counts) */
+};
+
+static int pcinst_of(int i, double dx, double dy, struct pcinst *q)
+{
+    const struct pin *p = &PW.in[i];
+    int s = spr_of(p);
+    const struct gsprcol *c;
+    const struct psprite *ps;
+    double l, t, r, b;
+    if (s < 0 || !pin_bbox(i, &l, &t, &r, &b)) return 0;
+    c = &gsprcol[s];
+    ps = &psprite[s];
+    q->x = (float)(PTOD(p->x) + dx); q->y = (float)(PTOD(p->y) + dy);
+    q->xs = p->xscale; q->ys = p->yscale; q->ang = p->angle;
+    q->bl = (float)(l + dx); q->bt = (float)(t + dy); q->br = (float)(r + dx); q->bb = (float)(b + dy);
+    q->xo = (float)c->xo; q->yo = (float)c->yo;
+    q->ml = (float)c->l; q->mt = (float)c->t; q->mr = (float)c->r; q->mb = (float)c->b;
+    q->bpr = ((c->r - c->l + 1) + 7) >> 3;
+    q->mask = 0;
+    if (c->kind == 1 && ps->nmasks > 0) {
+        int f = 0;
+        if (ps->nmasks > 1) {
+            int fi = (int)p->img;                   /* cvttss2si, then the positive modulo */
+            f = fi % ps->nmasks;
+            if (f < 0) f += ps->nmasks;
+        }
+        q->mask = pmaskdata + ps->maskoff + f * q->bpr * (c->b - c->t + 1);
+    }
+    return 1;
+}
+
+static int pc_bit(const struct pcinst *q, float lx, float ly)
+{
+    int cx = (int)(lx - q->ml), cy = (int)(ly - q->mt);
+    static const uint8_t bit[8] = { 0x80, 0x40, 0x20, 0x10, 0x08, 0x04, 0x02, 0x01 };
+    return (q->mask[cy * q->bpr + (cx >> 3)] & bit[cx & 7]) != 0;
+}
+
+#define PC_ROWS 64                              /* rows of a precise overlap computed once (taller: the plain loop) */
+
+static int pc_bit_i(const struct pcinst *q, int x, int y)
+{
+    static const uint8_t bit[8] = { 0x80, 0x40, 0x20, 0x10, 0x08, 0x04, 0x02, 0x01 };
+    int cx = x - (int)q->ml, cy = y - (int)q->mt;
+    return (q->mask[cy * q->bpr + (cx >> 3)] & bit[cx & 7]) != 0;
+}
+
+/* getPoints: the corners of the rotated mask box */
+static void sa_points(const struct pcinst *q, float *pt)
+{
+    float L = (q->ml < q->mr ? q->ml : q->mr) - q->xo, R = (q->ml > q->mr ? q->ml : q->mr) - q->xo + 1.0f;
+    float T, B, a, sn, cs;
+    L = L * q->xs;
+    R = R * q->xs;
+    if (q->mb > q->mt) { T = (q->mt - q->yo) * q->ys; B = (q->mb - q->yo + 1.0f) * q->ys; }
+    else { T = (q->mb - q->yo) * q->ys; B = (q->mt - q->yo + 1.0f) * q->ys; }
+    a = q->ang * -3.14159274101257324f;
+    a = a / 180.0f;
+    pcol_sincosf(a, &sn, &cs);
+    pt[0] = (L * cs + q->x) - T * sn;  pt[1] = L * sn + (T * cs + q->y);
+    pt[2] = (R * cs + q->x) - T * sn;  pt[3] = (T * cs + q->y) + R * sn;
+    pt[4] = (R * cs + q->x) - B * sn;  pt[5] = R * sn + (B * cs + q->y);
+    pt[6] = (L * cs + q->x) - B * sn;  pt[7] = (B * cs + q->y) + L * sn;
+}
+
+/* one axis of sa_checkCollision: the normal of edge e0 -> e1; 0 when it separates */
+static int sa_axis(const float *e0, const float *e1, const float *pa, const float *pb)
+{
+    float dx = e1[0] - e0[0], dy = e1[1] - e0[1], len, ax, ay, mina, maxa, minb, maxb, v;
+    int k;
+    len = sqrtf_exact(dx * dx + dy * dy);
+    ay = dx / len;
+    ax = -dy / len;
+    mina = maxa = pa[0] * ax + pa[1] * ay;
+    for (k = 1; k < 4; k++) {
+        v = pa[2 * k] * ax + pa[2 * k + 1] * ay;
+        if (mina > v) mina = v; else if (v > maxa) maxa = v;
+    }
+    minb = maxb = pb[0] * ax + pb[1] * ay;
+    for (k = 1; k < 4; k++) {
+        v = pb[2 * k] * ax + pb[2 * k + 1] * ay;
+        if (minb > v) minb = v; else if (v > maxb) maxb = v;
+    }
+    return !(minb > maxa) && mina <= maxb;
+}
+
+static int sa_collision(const struct pcinst *a, const struct pcinst *b)
+{
+    float pa[8], pb[8];
+    sa_points(a, pa);
+    sa_points(b, pb);
+    return sa_axis(pa, pa + 2, pa, pb) && sa_axis(pa + 2, pa + 4, pa, pb) &&
+           sa_axis(pb, pb + 2, pa, pb) && sa_axis(pb + 2, pb + 4, pa, pb);
+}
+
+static int rotated_eps(float ang) { double d = ang; return d > GML_EPS || d < -GML_EPS; }
+
+/* CSprite::PreciseCollision (A: this sprite) */
+static int precise_collision(const struct pcinst *A, const struct pcinst *B)
+{
+    float bl = A->bl > B->bl ? A->bl : B->bl, bt = A->bt > B->bt ? A->bt : B->bt;
+    float br = A->br < B->br ? A->br : B->br, bb = A->bb < B->bb ? A->bb : B->bb;
+    float x0, y0, x1, y1, xc, yc, ixA, ixB, iyA, iyB;
+    float arA = A->mr + 1.0f, abA = A->mb + 1.0f, arB = B->mr + 1.0f, abB = B->mb + 1.0f;
+    int rA, rB;
+    if (A->xs == 0 || A->ys == 0 || B->xs == 0 || B->ys == 0) return 0;
+    x0 = (float)((int)(bl + 32768.0f) - 32768) + 0.5f;
+    y0 = (float)((int)(bt + 32768.0f) - 32768) + 0.5f;
+    x1 = (float)(32768 - (int)(32768.0f - br));
+    y1 = (float)(32768 - (int)(32768.0f - bb));
+    ixA = 1.0f / A->xs; ixB = 1.0f / B->xs; iyA = 1.0f / A->ys; iyB = 1.0f / B->ys;
+    rA = rotated_eps(A->ang);
+    rB = rotated_eps(B->ang);
+    if (!rA && !rB) {
+        float lxA, lxB;
+        int16_t rowA[PC_ROWS], rowB[PC_ROWS];
+        int n = 0, k;
+        if (!(x1 > x0)) return 0;
+        /* the rows' sprite rows first (each a function of yc alone, the same operations as the runner's inner loop):
+           -1 outside the mask box (or, with a mask, its truncated row outside it), else that row */
+        for (yc = y0; y1 > yc && n < PC_ROWS; yc = yc + 1.0f, n++) {
+            float lyA = (yc - A->y) * iyA + A->yo, lyB = (yc - B->y) * iyB + B->yo, ty;
+            rowA[n] = -1;
+            if (!(A->mt > lyA || lyA >= abA)) {
+                ty = (float)(int)lyA;
+                rowA[n] = (int16_t)(!A->mask ? 0 : (A->mt > ty || ty > A->mb) ? -1 : (int)ty);
+            }
+            rowB[n] = -1;
+            if (!(B->mt > lyB || lyB >= abB)) {
+                ty = (float)(int)lyB;
+                rowB[n] = (int16_t)(!B->mask ? 0 : (B->mt > ty || ty > B->mb) ? -1 : (int)ty);
+            }
+        }
+        if (!(y1 > yc)) {                            /* all rows fit */
+            lxB = (x0 - B->x) * ixB + B->xo;
+            lxA = (x0 - A->x) * ixA + A->xo;
+            for (xc = x0; x1 > xc; xc = xc + 1.0f, lxB = lxB + ixB, lxA = lxA + ixA) {
+                int okA, okB, cA, cB;
+                float tA, tB;
+                if (A->ml > lxA || lxA >= arA || B->ml > lxB || lxB >= arB) continue;
+                tA = (float)(int)lxA; tB = (float)(int)lxB;
+                okA = !(A->ml > tA) && !(tA > A->mr);
+                okB = !(B->ml > tB) && !(tB > B->mr);
+                if ((A->mask && !okA) || (B->mask && !okB)) continue;
+                cA = (int)tA; cB = (int)tB;
+                for (k = 0; k < n; k++) {
+                    if (rowA[k] < 0 || rowB[k] < 0) continue;
+                    if (A->mask && !pc_bit_i(A, cA, rowA[k])) continue;
+                    if (!B->mask || pc_bit_i(B, cB, rowB[k])) return 1;
+                }
+            }
+            return 0;
+        }
+    }
+    if (!rA && !rB) {
+        float lxA, lxB;
+        if (!(x1 > x0)) return 0;
+        lxB = (x0 - B->x) * ixB + B->xo;
+        lxA = (x0 - A->x) * ixA + A->xo;
+        for (xc = x0; x1 > xc; xc = xc + 1.0f, lxB = lxB + ixB, lxA = lxA + ixA) {
+            int okA, okB;
+            float tA, tB;
+            if (A->ml > lxA || lxA >= arA || B->ml > lxB || lxB >= arB || !(y1 > y0)) continue;
+            tA = (float)(int)lxA; tB = (float)(int)lxB;
+            okA = !(A->ml > tA) && !(tA > A->mr);
+            okB = !(B->ml > tB) && !(tB > B->mr);
+            for (yc = y0; y1 > yc; yc = yc + 1.0f) {
+                float lyA = (yc - A->y) * iyA + A->yo, lyB, ty;
+                if (A->mt > lyA || lyA >= abA) continue;
+                if (A->mask) {
+                    if (!okA) continue;
+                    ty = (float)(int)lyA;
+                    if (A->mt > ty || ty > A->mb || !pc_bit(A, tA, ty)) continue;
+                }
+                lyB = (yc - B->y) * iyB + B->yo;
+                if (B->mt > lyB || lyB >= abB) continue;
+                if (!B->mask) return 1;
+                if (!okB) continue;
+                ty = (float)(int)lyB;
+                if (B->mt > ty || ty > B->mb) continue;
+                if (pc_bit(B, tB, ty)) return 1;
+            }
+        }
+        return 0;
+    }
+    {
+        float sA = 0, cA = 0, sB = 0, cB = 0;
+        if (rA) { float a = A->ang * -3.14159274101257324f; a = a / 180.0f; pcol_sincosf(a, &sA, &cA); }
+        if (rB) { float a = B->ang * -3.14159274101257324f; a = a / 180.0f; pcol_sincosf(a, &sB, &cB); }
+        for (xc = x0; x1 > xc; xc = xc + 1.0f) {
+            float dxA, dxB, nA, nB;
+            if (!rA) {
+                float l = (xc - A->x) * ixA + A->xo;
+                if (A->ml > l || l >= arA) continue;
+            }
+            if (!rB) {
+                float l = (xc - B->x) * ixB + B->xo;
+                if (B->ml > l || l >= arB) continue;
+            }
+            if (!(y1 > y0)) continue;
+            dxA = xc - A->x; nA = dxA * -sA;
+            dxB = xc - B->x; nB = dxB * -sB;
+            for (yc = y0; y1 > yc; yc = yc + 1.0f) {
+                float dy = yc - A->y, lxA, lyA, lxB, lyB, t;
+                if (rA) {
+                    lxA = (cA * dxA + sA * dy) * ixA + A->xo;
+                    if (A->ml > lxA || lxA >= arA) continue;
+                    dy = dy * cA + nA;
+                } else
+                    lxA = (xc - A->x) * ixA + A->xo;
+                lyA = dy * iyA + A->yo;
+                if (A->mt > lyA || lyA >= abA) continue;
+                if (A->mask) {
+                    float tx = (float)(int)lxA;
+                    if (A->ml > tx || tx > A->mr) continue;
+                    t = (float)(int)lyA;
+                    if (A->mt > t || t > A->mb || !pc_bit(A, tx, t)) continue;
+                }
+                dy = yc - B->y;
+                if (rB) {
+                    lxB = (cB * dxB + sB * dy) * ixB + B->xo;
+                    if (B->ml > lxB || lxB >= arB) continue;
+                    dy = dy * cB + nB;
+                } else
+                    lxB = (xc - B->x) * ixB + B->xo;
+                lyB = dy * iyB + B->yo;
+                if (B->mt > lyB || lyB >= abB) continue;
+                if (!B->mask) return 1;
+                {
+                    float tx = (float)(int)lxB;
+                    if (B->ml > tx || tx > B->mr) continue;
+                    t = (float)(int)lyB;
+                    if (B->mt > t || t > B->mb) continue;
+                    if (pc_bit(B, tx, t)) return 1;
+                }
+            }
+        }
+        return 0;
+    }
+}
+
+/* CSprite::PreciseCollisionPoint (non-compatibility mode): the point in the sprite's frame (the instance at its
+   truncated position, rotated back by image_angle unless |angle| < 1e-4), floor, inside the mask box, the bit */
+static int precise_point(int i, float px, float py)
+{
+    const struct pin *p = &PW.in[i];
+    int s = spr_of(p), f = 0;
+    const struct gsprcol *c = &gsprcol[s];
+    const struct psprite *ps = &psprite[s];
+    float X = (float)(int32_t)PTOD(p->x), Y = (float)(int32_t)PTOD(p->y), xs = p->xscale, ys = p->yscale;
+    float ang = p->angle, lx, dyv, ly;
+    int bpr, cx, cy;
+    static const uint8_t bit[8] = { 0x80, 0x40, 0x20, 0x10, 0x08, 0x04, 0x02, 0x01 };
+    if (c->kind != 1 || ps->nmasks == 0) return 1;
+    if ((ang < 0 ? -ang : ang) < 9.99999974737875e-05f) {
+        lx = (float)dfloor((px - X) / xs + (float)c->xo);
+        dyv = py - Y;
+    } else {
+        float a = ang * -3.14159274101257324f, sn, cs, dx = px - X, dy = py - Y;
+        a = a / 180.0f;
+        pcol_sincosf(a, &sn, &cs);
+        lx = (float)dfloor((cs * dx + sn * dy) / xs + (float)c->xo);
+        dyv = dy * cs - sn * dx;
+    }
+    if ((float)c->l > lx || lx > (float)c->r) return 0;
+    ly = (float)dfloor(dyv / ys + (float)c->yo);
+    if ((float)c->t > ly || ly > (float)c->b) return 0;
+    if (ps->nmasks > 1) {
+        f = (int)p->img % ps->nmasks;
+        if (f < 0) f += ps->nmasks;
+    }
+    bpr = ((c->r - c->l + 1) + 7) >> 3;
+    cx = (int)(lx - (float)c->l);
+    cy = (int)(ly - (float)c->t);
+    return (pmaskdata[ps->maskoff + f * bpr * (c->b - c->t + 1) + cy * bpr + (cx >> 3)] & bit[cx & 7]) != 0;
 }
 
 /* a point query: px >= l && px < r with l, r whole is floor(px) >= l && floor(px) < r */
@@ -659,7 +952,7 @@ static int point_hit(int k, const struct pq *q, int prec)
         if (!(q->px >= l && q->px < r && q->py >= t && q->py < b))
             return 0;
     }
-    return !prec || !precise(k) || mask_at(k, q->px, q->py);
+    return !prec || !precise(k) || precise_point(k, (float)q->px, (float)q->py);
 }
 
 /* ---- the solid grid: every alive instance of the oSolid family with a sprite, in the 16 px cell of its box's
@@ -799,33 +1092,6 @@ int (collision_point_p)(double px, double py, int obj, int prec, int notme_self)
     return NOONE;
 }
 
-/* segment against the half-open box [l, r) x [t, b): Liang-Barsky with the open sides pulled in by 1e-9 */
-static int seg_box(double x1, double y1, double x2, double y2, double l, double t, double r, double b,
-                   double *t0o, double *t1o)
-{
-    double t0 = 0, t1 = 1, dx = x2 - x1, dy = y2 - y1;
-    double pp[4], qq[4];
-    int k;
-    r -= 1e-9;
-    b -= 1e-9;
-    pp[0] = -dx; qq[0] = x1 - l;
-    pp[1] = dx;  qq[1] = r - x1;
-    pp[2] = -dy; qq[2] = y1 - t;
-    pp[3] = dy;  qq[3] = b - y1;
-    for (k = 0; k < 4; k++) {
-        if (pp[k] == 0) {
-            if (qq[k] < 0) return 0;
-        } else {
-            double u = qq[k] / pp[k];
-            if (pp[k] < 0) { if (u > t1) return 0; if (u > t0) t0 = u; }
-            else { if (u < t0) return 0; if (u < t1) t1 = u; }
-        }
-    }
-    *t0o = t0;
-    *t1o = t1;
-    return 1;
-}
-
 /* a line query with whole-number ends: their bounding box, and whether the line is axis-aligned */
 struct lq { int iok, axis; int32_t lx, ly, hx, hy; };
 
@@ -855,7 +1121,7 @@ struct qctx { int obj, notme, prec, self, hit; double x1, y1, x2, y2, dx, dy; st
 /* CInstance::Collision_Line against the bounding box (non-compatibility mode, floats): outside the segment's own
    box; else the segment, its ends ordered in x, clipped to [left, right - 1e-5] and missing when both clipped ends
    are above top or both below bottom */
-static int line_box_f(float x1, float y1, float x2, float y2, float l, float t, float r, float b)
+static int line_box_f(float x1, float y1, float x2, float y2, float l, float t, float r, float b, float *o)
 {
     float xa, ya, xb, yb;
     if ((x1 < x2 ? x1 : x2) >= r || l > (x1 > x2 ? x1 : x2) || (y1 < y2 ? y1 : y2) >= b || t > (y1 > y2 ? y1 : y2))
@@ -867,16 +1133,69 @@ static int line_box_f(float x1, float y1, float x2, float y2, float l, float t, 
         xa = l;
     }
     r = r + -1.0e-5f;
-    if (xb > r)
+    if (xb > r) {
         yb = yb + ((yb - ya) * (r - xb)) / (xb - xa);
+        xb = r;
+    }
     if (t > ya && t > yb) return 0;
     if (ya > b && yb > b) return 0;
+    if (o) { o[0] = xa; o[1] = ya; o[2] = xb; o[3] = yb; }
     return 1;
+}
+
+/* CSprite::PreciseCollisionLine: the clipped segment (o: x1 y1 x2 y2) a pixel at a time along its longer axis
+   (whole steps from the bbox side or the end, the other coordinate interpolated), each point rotated back and
+   divided by the scale, floored, inside the mask box, the bit; a single point is PreciseCollisionPoint */
+static int precise_line(int k, const float *o)
+{
+    struct pcinst A;
+    float sn, cs, a, x1 = o[0], y1 = o[1], x2 = o[2], y2 = o[3], lo_x, lo_y, hi_x, hi_y, slope, v, end, ns;
+    double l, t, r, b;
+    if (!pcinst_of(k, 0, 0, &A)) return 0;
+    if (!A.mask) return 1;
+    if (x1 == x2 && y1 == y2) return precise_point(k, x1, y1);
+    pin_bbox(k, &l, &t, &r, &b);
+    a = A.ang * -3.14159274101257324f;
+    a = a / 180.0f;
+    pcol_sincosf(a, &sn, &cs);
+    ns = -sn;
+    if (!((x2 - x1 < 0 ? x1 - x2 : x2 - x1) >= (y2 - y1 < 0 ? y1 - y2 : y2 - y1))) {
+        if (y1 > y2) { hi_x = x1; hi_y = y1; lo_x = x2; lo_y = y2; }
+        else { hi_x = x2; hi_y = y2; lo_x = x1; lo_y = y1; }
+        v = (float)t > lo_y ? (float)t : lo_y;
+        end = (float)b < hi_y ? (float)b : hi_y;
+        if (end < v) return 0;
+        slope = (hi_x - lo_x) / (hi_y - lo_y);
+        for (; !(end < v); v = v + 1.0f) {
+            float dx = ((v - lo_y) * slope + lo_x) - A.x, dy = v - A.y, tx, ty;
+            tx = (float)(int32_t)dfloor((cs * dx + sn * dy) / A.xs + A.xo);
+            if (A.ml > tx || tx > A.mr) continue;
+            ty = (float)(int32_t)dfloor((cs * dy + dx * ns) / A.ys + A.yo);
+            if (A.mt > ty || ty > A.mb) continue;
+            if (pc_bit(&A, tx, ty)) return 1;
+        }
+        return 0;
+    }
+    if (x1 > x2) { hi_x = x1; hi_y = y1; lo_x = x2; lo_y = y2; }
+    else { hi_x = x2; hi_y = y2; lo_x = x1; lo_y = y1; }
+    v = (float)l > lo_x ? (float)l : lo_x;
+    end = (float)r < hi_x ? (float)r : hi_x;
+    if (!(end >= v)) return 0;
+    slope = (hi_y - lo_y) / (hi_x - lo_x);
+    for (; !(end < v); v = v + 1.0f) {
+        float dx = v - A.x, dy = ((v - lo_x) * slope + lo_y) - A.y, tx, ty;
+        tx = (float)(int32_t)dfloor((cs * dx + sn * dy) / A.xs + A.xo);
+        if (A.ml > tx || tx > A.mr) continue;
+        ty = (float)(int32_t)dfloor((cs * dy + dx * ns) / A.ys + A.yo);
+        if (A.mt > ty || ty > A.mb) continue;
+        if (pc_bit(&A, tx, ty)) return 1;
+    }
+    return 0;
 }
 
 static int line_hit(int k, struct qctx *c)
 {
-    double l, t, r, b, t0, t1, x1, y1, x2, y2;
+    double l, t, r, b, x1, y1, x2, y2;
     const struct lq *q = &c->lq;
     int prec = c->prec;
     int32_t ib[4];
@@ -894,19 +1213,12 @@ static int line_hit(int k, struct qctx *c)
     }
     x1 = c->x1; y1 = c->y1; x2 = c->x2; y2 = c->y2;
     if (!prec || !precise(k))
-        return line_box_f((float)x1, (float)y1, (float)x2, (float)y2, (float)l, (float)t, (float)r, (float)b);
-    if (!seg_box(x1, y1, x2, y2, l, t, r, b, &t0, &t1))
-        return 0;
-    {   /* walk the clipped part a pixel at a time */
-        double dx = x2 - x1, dy = y2 - y1, len = (dx < 0 ? -dx : dx) > (dy < 0 ? -dy : dy) ? (dx < 0 ? -dx : dx) : (dy < 0 ? -dy : dy);
-        int n = (int)((t1 - t0) * len) + 1, s;
-        for (s = 0; s <= n; s++) {
-            double u = t0 + (n ? (t1 - t0) * s / n : 0);
-            double px = x1 + dx * u, py = y1 + dy * u;
-            if (px >= l && px < r && py >= t && py < b && mask_at(k, px, py))
-                return 1;
-        }
-        return 0;
+        return line_box_f((float)x1, (float)y1, (float)x2, (float)y2, (float)l, (float)t, (float)r, (float)b, 0);
+    {
+        float o[4];
+        if (!line_box_f((float)x1, (float)y1, (float)x2, (float)y2, (float)l, (float)t, (float)r, (float)b, o))
+            return 0;
+        return precise_line(k, o);
     }
 }
 
@@ -1008,18 +1320,71 @@ static void rq_init(struct rq *q, double x1, double y1, double x2, double y2)
     }
 }
 
+static int precise_rect(int k, float ql, float qt, float qr, float qb)
+{
+    struct pcinst A;
+    float x0, y0, x1, y1, xc, yc, ixs, iys, arA, abA;
+    if (!pcinst_of(k, 0, 0, &A)) return 0;
+    if (!A.mask) return 1;
+    x0 = (float)((int)((A.bl > ql ? A.bl : ql) + 32768.0f) - 32768) + 0.5f;
+    y0 = (float)((int)((A.bt > qt ? A.bt : qt) + 32768.0f) - 32768) + 0.5f;
+    x1 = (float)(32768 - (int)(32768.0f - (A.br < qr ? A.br : qr)));
+    y1 = (float)(32768 - (int)(32768.0f - (A.bb < qb ? A.bb : qb)));
+    ixs = 1.0f / A.xs; iys = 1.0f / A.ys;
+    arA = A.mr + 1.0f; abA = A.mb + 1.0f;
+    if (!(x1 > x0)) return 0;
+    if (!rotated_eps(A.ang)) {
+        float lx = (x0 - A.x) * ixs + A.xo;
+        for (xc = x0; x1 > xc; xc = xc + 1.0f, lx = lx + ixs) {
+            float tx;
+            if (A.ml > lx || lx >= arA || ql > xc || xc > qr || !(y1 > y0)) continue;
+            tx = (float)(int)lx;
+            for (yc = y0; y1 > yc; yc = yc + 1.0f) {
+                float ly = (yc - A.y) * iys + A.yo, ty;
+                if (A.mt > ly || ly >= abA || A.ml > tx || tx > A.mr) continue;
+                ty = (float)(int)ly;
+                if (A.mt > ty || ty > A.mb || !pc_bit(&A, tx, ty)) continue;
+                if (qt > yc || yc > qb) continue;
+                return 1;
+            }
+        }
+        return 0;
+    }
+    {
+        float a = A.ang * -3.14159274101257324f, sn, cs;
+        a = a / 180.0f;
+        pcol_sincosf(a, &sn, &cs);
+        for (xc = x0; x1 > xc; xc = xc + 1.0f) {
+            float dx, cdx, ndx;
+            if (ql > xc || xc > qr || !(y1 > y0)) continue;
+            dx = xc - A.x; cdx = cs * dx; ndx = dx * -sn;
+            for (yc = y0; y1 > yc; yc = yc + 1.0f) {
+                float dy = yc - A.y, lx, ly, tx, ty;
+                lx = (sn * dy + cdx) * ixs + A.xo;
+                if (A.ml > lx || lx >= arA) continue;
+                ly = (dy * cs + ndx) * iys + A.yo;
+                if (A.mt > ly || ly >= abA) continue;
+                tx = (float)(int)lx;
+                if (A.ml > tx || tx > A.mr) continue;
+                ty = (float)(int)ly;
+                if (A.mt > ty || ty > A.mb || !pc_bit(&A, tx, ty)) continue;
+                if (qt > yc || yc > qb) continue;
+                return 1;
+            }
+        }
+        return 0;
+    }
+}
+
 static int rect_hit(int k, const struct rq *q, int prec)
 {
-    double l, t, r, b, a0, a1, b0, b1;
-    double lx = q->lx, hx = q->hx, ly = q->ly, hy = q->hy;
+    double l, t, r, b;
     int32_t ib[4];
     if (q->iok && pin_ibox(k, ib)) {
         int32_t i0 = q->ilx > ib[0] ? q->ilx : ib[0], i1 = q->ihx < ib[2] ? q->ihx : ib[2];
         int32_t j0 = q->ily > ib[1] ? q->ily : ib[1], j1 = q->ihy < ib[3] ? q->ihy : ib[3];
-        if (!(i0 < i1 && j0 < j1))
-            return 0;
         if (!prec || !precise(k))
-            return 1;
+            return i0 < i1 && j0 < j1;
     }
     if (!pin_bbox(k, &l, &t, &r, &b))
         return 0;
@@ -1037,19 +1402,11 @@ static int rect_hit(int k, const struct rq *q, int prec)
         if (dfloor(c0) == dfloor(c1)) return 0;
         return 1;
     }
-    a0 = lx > l ? lx : l;
-    a1 = hx < r ? hx : r;
-    b0 = ly > t ? ly : t;
-    b1 = hy < b ? hy : b;
-    if (!(a0 < a1 && b0 < b1))
-        return 0;
-    {
-        int px, py;
-        for (py = dfloor(b0); py < b1; py++)
-            for (px = dfloor(a0); px < a1; px++)
-                if (mask_at(k, px + 0.5 - 0.5, py))
-                    return 1;
-        return 0;
+    {   /* CSprite::PreciseCollisionRectangle: pixel centres of the box overlap that lie in the query (closed) */
+        float fl = (float)l, ft = (float)t, fr = (float)r, fb = (float)b;
+        if (q->flx >= fr || fl > q->fhx || q->fly >= fb || ft > q->fhy)
+            return 0;
+        return precise_rect(k, q->flx, q->fly, q->fhx, q->fhy);
     }
 }
 
@@ -1114,6 +1471,82 @@ static int rect_run(struct rq *rq, int q, const float *r, int obj, int prec, int
     return NOONE;
 }
 
+/* CSprite::PreciseCollision's unrotated loop for two instances with integer boxes (BB_INT: scale +-1, angle 0,
+   whole x, y; a moved by whole dx, dy): every value the runner's float loop forms is a half-integer it holds
+   exactly, so the loop runs on doubled integers: pixel centre c + 0.5 of the box overlap, sprite column
+   2 lx = (2c + 1 - 2x) * xscale + 2 xorigin (odd), in the mask box when 2 l <= 2 lx < 2 r + 2, its column
+   trunc(lx) = (2 lx) / 2 (C division truncates as cvttss2si); rows the same */
+struct pci { int32_t x, y; int sx, sy, xo, yo, ml, mt, mr, mb, bpr; const uint8_t *mask; };
+
+static void pci_of(int i, int32_t dx, int32_t dy, struct pci *q)
+{
+    const struct pin *p = &PW.in[i];
+    int s = spr_of(p);
+    const struct gsprcol *c = &gsprcol[s];
+    const struct psprite *ps = &psprite[s];
+    pos_int(p->x, &q->x);
+    pos_int(p->y, &q->y);
+    q->x += dx; q->y += dy;
+    q->sx = p->xscale > 0 ? 1 : -1;
+    q->sy = p->yscale > 0 ? 1 : -1;
+    q->xo = c->xo; q->yo = c->yo;
+    q->ml = c->l; q->mt = c->t; q->mr = c->r; q->mb = c->b;
+    q->bpr = ((c->r - c->l + 1) + 7) >> 3;
+    q->mask = 0;
+    if (c->kind == 1 && ps->nmasks > 0) {
+        int f = 0;
+        if (ps->nmasks > 1) {
+            f = (int)p->img % ps->nmasks;
+            if (f < 0) f += ps->nmasks;
+        }
+        q->mask = pmaskdata + ps->maskoff + f * q->bpr * (c->b - c->t + 1);
+    }
+}
+
+static int pci_bit(const struct pci *q, int cx, int cy)
+{
+    static const uint8_t bit[8] = { 0x80, 0x40, 0x20, 0x10, 0x08, 0x04, 0x02, 0x01 };
+    cx -= q->ml;
+    cy -= q->mt;
+    return (q->mask[cy * q->bpr + (cx >> 3)] & bit[cx & 7]) != 0;
+}
+
+static int precise_collision_int(int a, int32_t dx, int32_t dy, const int32_t *ia, int b, const int32_t *ib)
+{
+    struct pci A, B;
+    int32_t x0, x1, y0, y1, c, r;
+    pci_of(a, dx, dy, &A);
+    pci_of(b, 0, 0, &B);
+    x0 = ia[0] + dx > ib[0] ? ia[0] + dx : ib[0];
+    x1 = ia[2] + dx < ib[2] ? ia[2] + dx : ib[2];
+    y0 = ia[1] + dy > ib[1] ? ia[1] + dy : ib[1];
+    y1 = ia[3] + dy < ib[3] ? ia[3] + dy : ib[3];
+    for (c = x0; c < x1; c++) {
+        int32_t lA = (2 * c + 1 - 2 * A.x) * A.sx + 2 * A.xo, lB = (2 * c + 1 - 2 * B.x) * B.sx + 2 * B.xo;
+        int32_t tA = lA / 2, tB = lB / 2;
+        int okA, okB;
+        if (lA < 2 * A.ml || lA >= 2 * A.mr + 2 || lB < 2 * B.ml || lB >= 2 * B.mr + 2) continue;
+        okA = tA >= A.ml && tA <= A.mr;
+        okB = tB >= B.ml && tB <= B.mr;
+        if ((A.mask && !okA) || (B.mask && !okB)) continue;
+        for (r = y0; r < y1; r++) {
+            int32_t mA = (2 * r + 1 - 2 * A.y) * A.sy + 2 * A.yo, mB, u;
+            if (mA < 2 * A.mt || mA >= 2 * A.mb + 2) continue;
+            if (A.mask) {
+                u = mA / 2;
+                if (u < A.mt || u > A.mb || !pci_bit(&A, tA, u)) continue;
+            }
+            mB = (2 * r + 1 - 2 * B.y) * B.sy + 2 * B.yo;
+            if (mB < 2 * B.mt || mB >= 2 * B.mb + 2) continue;
+            if (!B.mask) return 1;
+            u = mB / 2;
+            if (u < B.mt || u > B.mb) continue;
+            if (pci_bit(&B, tB, u)) return 1;
+        }
+    }
+    return 0;
+}
+
 /* instance a (its bbox moved by dx, dy) against instance b */
 static int overlap_at(int a, double dx, double dy, int b)
 {
@@ -1124,27 +1557,27 @@ static int overlap_at(int a, double dx, double dy, int b)
             return 0;
         if (!precise(a) && !precise(b))
             return 1;
+        return precise_collision_int(a, idx, idy, ia, b, ib);
     }
     if (!pin_bbox(a, &l, &t, &r, &bb) || !pin_bbox(b, &l2, &t2, &r2, &b2))
         return 0;
     l += dx; r += dx; t += dy; bb += dy;
     if (!(l < r2 && l2 < r && t < b2 && t2 < bb))
         return 0;
-    if (!precise(a) && !precise(b))
+    if (!precise(a) && !precise(b)) {
+        /* CInstance::Collision_Instance, neither precise (floats): a miss when the overlap's ends round to the same
+           column (floor(max left + 0.49999), floor(min right + 0.5)), or row */
+        float fl = (float)l, ft = (float)t, fr = (float)r, fb = (float)bb;
+        float gl = (float)l2, gt = (float)t2, gr = (float)r2, gb = (float)b2;
+        if (dfloor((fl > gl ? fl : gl) + 0.49998999f) == dfloor((fr < gr ? fr : gr) + 0.5f)) return 0;
+        if (dfloor((ft > gt ? ft : gt) + 0.49998999f) == dfloor((fb < gb ? fb : gb) + 0.5f)) return 0;
         return 1;
-    {
-        double x0 = l > l2 ? l : l2, x1 = r < r2 ? r : r2, y0 = t > t2 ? t : t2, y1 = bb < b2 ? bb : b2;
-        int px, py;
-        /* pixel centres: a pixel counts when its centre is inside both boxes (Observed: build/trace/p5_shop_s96
-           record 211, a pellet whose box ends at y 256.4 does not hit the block whose top is y 256) (P5) */
-        for (py = dfloor(y0); py < y1; py++) {
-            if (!(py + 0.5 >= y0 && py + 0.5 < y1)) continue;
-            for (px = dfloor(x0); px < x1; px++)
-                if (px + 0.5 >= x0 && px + 0.5 < x1 && mask_at(a, px + 0.5 - dx, py + 0.5 - dy) &&
-                    mask_at(b, px + 0.5, py + 0.5))
-                    return 1;
-        }
-        return 0;
+    }
+    {   /* one precise: SeparatingAxisCollision when either is rotated, then CSprite::PreciseCollision */
+        struct pcinst A, B;
+        if (!pcinst_of(a, dx, dy, &A) || !pcinst_of(b, 0, 0, &B)) return 0;
+        if ((A.ang != 0 || B.ang != 0) && !sa_collision(&A, &B)) return 0;
+        return precise_collision(&A, &B);
     }
 }
 
@@ -1303,3 +1736,30 @@ int pw_with(int obj, int16_t *out, int max)
     }
     return n;
 }
+
+/* tools/colprobe.py (test/host/colprobe.c): the instance-level tests against one instance k (Collision_Point /
+   Rectangle / Line of instance k, Collision_Instance of a and b) */
+int pw_test_point(int k, double px, double py, int prec)
+{
+    struct pq q;
+    pq_init(&q, px, py);
+    return point_hit(k, &q, prec);
+}
+
+int pw_test_rect(int k, double x1, double y1, double x2, double y2, int prec)
+{
+    struct rq q;
+    rq_init(&q, x1, y1, x2, y2);
+    return rect_hit(k, &q, prec);
+}
+
+int pw_test_line(int k, double x1, double y1, double x2, double y2, int prec)
+{
+    struct qctx c;
+    lq_init(&c.lq, x1, y1, x2, y2);
+    c.prec = prec;
+    c.x1 = x1; c.y1 = y1; c.x2 = x2; c.y2 = y2; c.dbl = 1;
+    return line_hit(k, &c);
+}
+
+int pw_test_pair(int a, int b) { return overlap_at(a, 0, 0, b); }

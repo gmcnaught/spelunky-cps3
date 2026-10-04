@@ -1,5 +1,7 @@
 /* GML scripts of the play loop (refs/hd/src/scripts/<name>/<name>.gml; line numbers in comments). */
 #include "pint.h"
+#include "../snd/sndgame.h"                     /* the GML sound calls (src/snd) */
+#include "pmsg.h"                                /* the HUD messages (trMessages) */
 
 double prandom(double n)
 {
@@ -214,8 +216,10 @@ void moveTo(int i, num a0, num a1, int32_t *xio, int32_t *yio)
             if (solidId != NOONE) {
                 if (objdefs[PX(solidId).obj].parent == OBJ_oMoveableSolid && is_character(i)) {
                     /* with solidId: `break` leaves the with, not the for */
-                    if (!place_meeting_p(solidId, PTOD(PX(solidId).x) + 1, PTOD(PX(solidId).y), OBJ_oSolid))
+                    if (!place_meeting_p(solidId, PTOD(PX(solidId).x) + 1, PTOD(PX(solidId).y), OBJ_oSolid)) {
                         pin_setx(&PX(solidId), PX(solidId).x + (PI(1)));
+                        if (!snd_is_playing(SND_xpush)) snd_play(SND_xpush);          /* :59 */
+                    }
                 } else
                     break;
             }
@@ -225,8 +229,10 @@ void moveTo(int i, num a0, num a1, int32_t *xio, int32_t *yio)
             int solidId = getIdCollisionLeft(i, 1);
             if (solidId != NOONE) {
                 if (objdefs[PX(solidId).obj].parent == OBJ_oMoveableSolid && is_character(i)) {
-                    if (!place_meeting_p(solidId, PTOD(PX(solidId).x) - 1, PTOD(PX(solidId).y), OBJ_oSolid))
+                    if (!place_meeting_p(solidId, PTOD(PX(solidId).x) - 1, PTOD(PX(solidId).y), OBJ_oSolid)) {
                         pin_setx(&PX(solidId), PX(solidId).x - (PI(1)));
+                        if (!snd_is_playing(SND_xpush)) snd_play(SND_xpush);          /* :87 */
+                    }
                 } else
                     break;
             }
@@ -397,48 +403,67 @@ void scrFireBow(void)
 void scrStealItem(void)
 {
     int h = PL.holdItem, d;
+    const char *m1 = "", *m2 = "";                /* :304 trMessages(message1, message2, 0, 0, 120) */
     switch (PX(h).type) {
     case T_BOMBBAG:
         PG.bombs += 3;
         d = pin_create(PX(h).x, PX(h).y - PI(14), OBJ_oItemsGet);
         pin_set_sprite(d, GSPR_sBombsGet);
         pin_destroy(h);
+        snd_play(SND_xpickup);                                                 /* :71 / :82 */
         PL.holdItem = NOONE;
+        m1 = "YOU GOT 3 MORE BOMBS!";
         break;
     case T_BOMBBOX:
         PG.bombs += 12;
         d = pin_create(PX(h).x, PX(h).y - PI(14), OBJ_oItemsGet);
         pin_set_sprite(d, GSPR_sBombsGet);
         pin_destroy(h);
+        snd_play(SND_xpickup);                                                 /* :71 / :82 */
         PL.holdItem = NOONE;
+        m1 = "YOU GOT 12 MORE BOMBS!";
         break;
     case T_ROPEPILE:
         PG.rope += 3;
         d = pin_create(PX(h).x, PX(h).y - PI(15), OBJ_oItemsGet);
         pin_set_sprite(d, GSPR_sRopeGet);
         pin_destroy(h);
+        snd_play(SND_xpickup);                                                 /* :103 */
         PL.holdItem = NOONE;
+        m1 = "YOU GOT 3 MORE ROPES!";
         break;
     case T_UDJATEYE: case T_ANKH: case T_CROWN: case T_KAPALA: case T_PASTE: case T_PARACHUTE: case T_SPECTACLES:
     case T_GLOVES: case T_MITT: case T_COMPASS: case T_SPRINGSHOES: case T_SPIKESHOES: case T_JORDANS: case T_CAPE:
     case T_JETPACK:
         PUNTR(3002);                              /* the equipment pickups: P5 */
-        break;
+        return;
     case T_MACHETE: case T_MATTOCK: case T_PISTOL: case T_WEBCANNON: case T_TELEPORTER: case T_SHOTGUN: case T_BOW:
         if (PE(&PX(h))->cost > 0) {                     /* :229-293 */
+            static const struct { int16_t t; const char *a, *b; } wm[7] = {
+                { T_MACHETE, "YOU GOT A MACHETE!", "" }, { T_MATTOCK, "YOU GOT A MATTOCK!", "IT SEEMS A BIT RUSTY." },
+                { T_PISTOL, "YOU GOT A PISTOL!", "" }, { T_WEBCANNON, "YOU GOT A WEB CANNON!", "" },
+                { T_TELEPORTER, "YOU GOT A TELEPORTER!", "" }, { T_SHOTGUN, "YOU GOT A SHOTGUN!", "" },
+                { T_BOW, "YOU GOT THE BOW AND ARROWS!", "" } };
+            int k;
             PE(&PX(h))->cost = 0;
             PE(&PX(h))->forSale = 0;
+            snd_play(SND_xpickup);
+            for (k = 0; k < 7; k++)
+                if (wm[k].t == PX(h).type) { m1 = wm[k].a; m2 = wm[k].b; }
         }
         break;
     case T_DAMSEL:                                /* P5: bought (global.damselsBought: statistics) */
         if (PE(&PX(h))->cost > 0) {
             PE(&PX(h))->cost = 0;
             PE(&PX(h))->forSale = 0;
+            snd_play(SND_xpickup);                                             /* :301 */
+            m1 = "YOU MUST BE IN LOVE!";
         }
         break;
-    default:                                      /* :304 messages only */
+    default:
         break;
     }
+    pmsg_player_str(m1, m2, 120);                                              /* :304 (oPlayer1 runs it) */
 }
 
 /* radtodeg(arctan(a)): fdlibm's s_atan.c (no libm on the SH-2); the runner's libm may differ in the last bit, so

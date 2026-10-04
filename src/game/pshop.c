@@ -5,6 +5,8 @@
  */
 #include "pint.h"
 #include "penemy.h"
+#include "../snd/sndgame.h"                     /* the GML sound calls (src/snd) */
+#include "pmsg.h"                                /* the HUD messages (trMessages) */
 
 enum { S_IDLE = 0, S_WALK = 1, S_ATTACK = 2, S_THROW = 3, S_PATROL = 4, S_FOLLOW = 5, S_STUNNED = 98, S_DEAD = 99 };
 enum { E_LEFT = 0, E_RIGHT = 1 };
@@ -71,11 +73,15 @@ int pshop_create(int i, int fromgen)
 void scrShopkeeperAnger(int self, int k)
 {
     int shp = instance_nearest_p(X(self), Y(self), OBJ_oShopkeeper);
-    (void)k;
     if (shp != NOONE && !PEN(&PX(shp))->edead && !PEN(&PX(shp))->angered) {
+        static const char *const m[5] = { "COME BACK HERE, THIEF!", "DIE, YOU VANDAL!", "TERRORIST!",
+                                          "HEY, ONLY I CAN DO THAT!", "NOW I'M REALLY STEAMED!" };
         PE(&PX(shp))->status = S_ATTACK;
         if (G.thiefLevel > 0) G.thiefLevel += 3;
         else G.thiefLevel += 2;
+        const char *s = G.murderer ? "YOU'LL PAY FOR YOUR CRIMES!" : m[k >= 0 && k < 4 ? k : 4];
+        if (self == PL.idx) pmsg_player_str(s, "", 80);                        /* :22 (message1/2: the caller's) */
+        else pmsg_str(s, "", 80);
     }
 }
 
@@ -115,6 +121,7 @@ static void shoot(int i, int left)
     PE(p)->yVel -= N(1);
     if (left) PE(p)->xVel += N(3);
     else PE(p)->xVel -= N(3);
+    snd_play(SND_xshotgun);                                                    /* :416 / :433 */
     PEN(p)->firing = 30;                                                    /* firingMax */
 }
 
@@ -132,6 +139,93 @@ static void drop_gun(int i)
         PE(p)->hasGun = 0;
     }
 }
+
+/* ---- messages ---------------------------------------------------------------------------------------------- */
+/* oShopkeeper.message2: an instance array that index assignments (message2[k] = ...) extend; the runner keeps the
+   parts beyond the ones written (Observed: build/trace/g_p5_shop_s96 record 176, "PRESS P TO PURCHASE.P": part 3,
+   the pay key, left from the kissing parlour's welcome). Per shopkeeper, by id; Create's message2 = "" (no parts) */
+#define SKM_N 8
+static struct skmsg { int32_t id; int8_t n; uint8_t hl; char part[5][28]; } skm[SKM_N];
+static int skm_next;
+
+static struct skmsg *sk_msg(int i)
+{
+    struct skmsg *m;
+    int k;
+    for (k = 0; k < SKM_N; k++)
+        if (skm[k].id == PX(i).id && skm[k].n >= 0) return &skm[k];
+    m = &skm[skm_next];
+    skm_next = (skm_next + 1) % SKM_N;
+    m->id = PX(i).id;
+    m->n = 0;
+    m->hl = 0;
+    return m;
+}
+
+static void sk_part(struct skmsg *m, int k, const char *s)
+{
+    int j;
+    for (j = 0; s[j] && j < 27; j++) m->part[k][j] = s[j];
+    m->part[k][j] = 0;
+    if (m->n < k + 1) m->n = (int8_t)(k + 1);
+}
+
+/* trMessages(message1, message2, messageHighlights ("": none), message2Highlights, 200) of shopkeeper i */
+static void sk_show(struct skmsg *m, const char *const *m1, int n1)
+{
+    const char *p2[5];
+    int k;
+    for (k = 0; k < m->n; k++) p2[k] = m->part[k];
+    if (m->n == 0) p2[0] = "";
+    pmsg_tr(m1, n1, 0, p2, m->n, m->n ? 1u << m->hl : 0, 200);
+}
+
+/* the pay key's name (scrGetKey(global.keyPayVal): the runner's keyboard setting, P) */
+#define PAY_KEY "P"
+
+/* scripts/scrGetName: round(random_range(1, 32)) */
+static const char *const sk_names[32] = {
+    "AHKMED", "TERRY", "SMITHY", "LEON", "ALI", "ELBERT", "KAO", "DUKE", "TONY", "GUERT", "PANCHO", "EARL", "IVAN",
+    "OLLIE", "SPOONY", "BOB", "RUDY", "JIMBO", "TOR", "WILLY", "HAMISH", "LAZLO", "WANG", "HERBIE", "ANDY", "DONG",
+    "LEMMY", "BARNEY", "LOU", "TARN", "SLASH", "BROM"
+};
+
+/* the item's buyMessage as its Create set it (objects/<o>/Create_0.gml: [desc + " FOR $", string(cost), end]; past
+   level 2 scrShopItemsGen :187 makes it [shopDesc, " FOR $", string(cost), "."], the same text: each shopDesc + " FOR
+   $" is the Create's first part) and the cost then (the item's cost: unchanged since) */
+static const struct { int16_t obj; const char *a, *b; } buymsg[] = {
+    { OBJ_oAnkh, "AN ANKH FOR $", "." }, { OBJ_oBombBag, "A BAG OF 3 BOMBS FOR $", "." },
+    { OBJ_oBombBox, "A BOX OF 12 BOMBS FOR $", "." }, { OBJ_oBow, "BOW AND ARROWS FOR $", "." },
+    { OBJ_oCapePickup, "A CAPE FOR $", "." }, { OBJ_oCompass, "A COMPASS FOR $", "." },
+    { OBJ_oGloves, "CLIMBING GLOVES FOR $", "." }, { OBJ_oJetpack, "JETPACK FOR $", "." },
+    { OBJ_oMachete, "A MACHETE FOR $", "." }, { OBJ_oMattock, "A MATTOCK FOR $", "." },
+    { OBJ_oMitt, "PITCHER'S MITT FOR $", "." }, { OBJ_oParaPickup, "A PARACHUTE FOR $", "." },
+    { OBJ_oPaste, "BOMB PASTE FOR $", "." }, { OBJ_oPistol, "A PISTOL FOR $", "." },
+    { OBJ_oRopePile, "EXTRA ROPE FOR $", "." }, { OBJ_oShotgun, "A SHOTGUN FOR $", "." },
+    { OBJ_oSpectacles, "SPECTACLES FOR $", "." }, { OBJ_oSpikeShoes, "SPIKE SHOES FOR $", "." },
+    { OBJ_oSpringShoes, "SPRINGY SHOES FOR $", "." }, { OBJ_oTeleporter, "A TELEPORTER FOR $", "." },
+    { OBJ_oWebCannon, "A WEB CANNON FOR $", "." },
+    { OBJ_oDamsel, "I'LL LET YOU HAVE HER FOR $", "!" },                       /* oDamsel Create :13 */
+    { OBJ_oJordans, "JORDANS FOR $50000!", 0 },
+    { OBJ_oCrown, "I SHOULDN'T BE SELLING THIS!", 0 }, { OBJ_oKapala, "I SHOULDN'T BE SELLING THIS!", 0 },
+    { OBJ_oSceptre, "I SHOULDN'T BE SELLING THIS!", 0 }, { OBJ_oUdjatEye, "I SHOULDN'T BE SELLING THIS!", 0 },
+};
+
+static int buy_message(int it, const char **part, char *num)
+{
+    unsigned k;
+    for (k = 0; k < sizeof buymsg / sizeof buymsg[0]; k++)
+        if (buymsg[k].obj == PX(it).obj) {
+            part[0] = buymsg[k].a;
+            if (!buymsg[k].b) return 0;                                    /* a plain string */
+            part[1] = pmsg_num(PE(&PX(it))->cost, num);
+            part[2] = buymsg[k].b;
+            return 3;
+        }
+    part[0] = "";                                                          /* oItem's default buyMessage: "" */
+    return 0;
+}
+
 
 /* objects/oShopkeeper/Step_0.gml */
 static void shopkeeper_step(int i)
@@ -162,6 +256,7 @@ static void shopkeeper_step(int i)
     if (PE(p)->status >= S_STUNNED) {                                      /* :26 crushed */
         if (CP(X(i) + 8, Y(i) + 12, OBJ_oSolid)) {
             scrCreateBlood(i, p->x + PI(8), p->y + PI(8), 3);
+            snd_play(SND_xcavemandie);                                         /* :31 */
             p = &PX(i);
             if (PE(p)->hp > 0) {
                 PG.shopkeepers += 1;
@@ -172,6 +267,7 @@ static void shopkeeper_step(int i)
         }
     } else if (!PE(p)->held && CP(X(i) + 8, Y(i) + 8, OBJ_oSolid)) {
         scrCreateBlood(i, p->x + PI(8), p->y + PI(8), 3);
+        snd_play(SND_xcavemandie);                                             /* :45 */
         p = &PX(i);
         if (PE(p)->hp > 0) {
             PG.shopkeepers += 1;
@@ -184,7 +280,19 @@ static void shopkeeper_step(int i)
     p = &PX(i);
     if (PE(p)->status != S_DEAD && PE(p)->status != S_STUNNED && PE(p)->hp < 1) PE(p)->status = S_DEAD;
     dist = distance_to_object_p(i, OBJ_oPlayer1);
-    /* :73 IDLE / FOLLOW: the buy message for a held item (messages only) */
+    if ((PE(p)->status == S_IDLE || PE(p)->status == S_FOLLOW) && PL.holdItem != NOONE &&     /* :73 */
+        PE(&PX(PL.holdItem))->cost > 0) {
+        struct skmsg *m = sk_msg(i);
+        const char *m1[3];
+        char b[12];
+        int n1 = buy_message(PL.holdItem, m1, b);
+        sk_part(m, 0, "PRESS ");
+        sk_part(m, 1, PAY_KEY);
+        sk_part(m, 2, " TO PURCHASE.");
+        m->hl = 1;
+        sk_show(m, m1, n1);
+        p = &PX(i);
+    }
     if (PE(p)->status == S_PATROL || PE(p)->status == S_WALK) {                /* :96 */
         if (!PL.dead && DLT(distance_to_object_p(i, OBJ_oPlayer1), 64) && DLT(PTOD(q->y) - (Y(i) + 8), 16))
             PE(p)->status = S_ATTACK;
@@ -203,8 +311,39 @@ static void shopkeeper_step(int i)
         else if (!PEN(p)->welcomed && scrGetRoomX(PFLOOR(q->x)) == scrGetRoomX(PFLOOR(p->x)) &&
                  scrGetRoomY(PFLOOR(q->y)) == scrGetRoomY(PFLOOR(p->y)))
         {
-            /* the welcome message: scrGetName()'s random_range(1, 32) (one draw) except the Ankh shop's */
-            if (PE(p)->style != SHOP_ANKH) (void)prandom(31);
+            /* :136 the welcome message: scrGetName()'s random_range(1, 32) (one draw) except the Ankh shop's;
+               style "Bomb" never equals tr("BOMB"): the bomb shop says SUPPLY SHOP */
+            struct skmsg *m = sk_msg(i);
+            const char *m1[3] = { "WELCOME TO ", 0, 0 };
+            int n1 = 3;
+            if (PE(p)->style != SHOP_ANKH) m1[1] = sk_names[dround(1 + prandom(31)) - 1];
+            switch (PE(p)->style) {
+            case SHOP_WEAPON: m1[2] = "'S ARMORY!"; break;
+            case SHOP_CLOTHING: m1[2] = "'S CLOTHING SHOP!"; break;
+            case SHOP_RARE: m1[2] = "'S SPECIALTY SHOP!"; break;
+            case SHOP_CRAPS: m1[2] = "'S DICE HOUSE!"; break;
+            case SHOP_KISSING: m1[2] = "'S KISSING PARLOR!"; break;
+            case SHOP_ANKH: m1[0] = "I HAVE SOMETHING SPECIAL..."; n1 = 1; break;
+            default: m1[2] = "'S SUPPLY SHOP!"; break;
+            }
+            if (PE(p)->style == SHOP_CRAPS) {                                  /* :144 */
+                char b[12];
+                sk_part(m, 0, "PRESS ");
+                sk_part(m, 1, PAY_KEY);
+                sk_part(m, 2, " TO BET $");
+                sk_part(m, 3, pmsg_num(1000 + G.currLevel * 500, b));
+                sk_part(m, 4, ".");
+                m->hl = 1;
+            } else if (PE(p)->style == SHOP_KISSING) {                         /* :158 */
+                char b[12];
+                sk_part(m, 0, "$");
+                sk_part(m, 1, pmsg_num(10000 + 5000 * (G.currLevel - 2), b));   /* getKissValue() */
+                sk_part(m, 2, " A KISS. PRESS ");
+                sk_part(m, 3, PAY_KEY);
+                m->hl = 3;
+            } else
+                m->n = 0;                                                      /* message2 = "" */
+            sk_show(m, m1, n1);                                                /* :177 */
             PEN(p)->welcomed = 1;
         }
         if (PE(p)->style == SHOP_CRAPS) {                                  /* :185 */
@@ -343,6 +482,7 @@ static void shopkeeper_step(int i)
                     PE(&PX(obj))->xVel = NI(a - b);
                 }
             }
+            snd_play(SND_xcavemandie);                                         /* :529 */
             p = &PX(i);
             PEN(p)->edead = 1;
         }
@@ -426,6 +566,7 @@ static void shop_hit_player(int i, int c)
             if (DLT(PTOD(o->x), X(i) + 8)) PE(p)->xVel += N(1);
             else PE(p)->xVel -= N(1);
             p->ispd = (img_t)0.5;
+            snd_play(SND_xhit);                                                /* :19 */
         }
     } else if (PL.invincible == 0 && PE(p)->status < S_STUNNED) {
         if (CP(X(i) + 8, Y(i) - 4, OBJ_oSolid)) {
@@ -434,6 +575,7 @@ static void shop_hit_player(int i, int c)
             PE(o)->xVel = DLT(PTOD(o->x), X(i)) ? N(-6) : N(6);
             pin_create(o->x, o->y, OBJ_oBlood);
             if (PG.plife > 0) PG.plife -= 1;
+            snd_play(SND_xhurt);                                               /* :39 */
         } else if (PE(p)->status != S_THROW) {
             PE(p)->status = S_THROW;
             PE(p)->xVel = 0;
@@ -476,6 +618,7 @@ static void bullet_collision(int b, int other)
             pin_create(o->x, o->y, OBJ_oBlood);
             PL.stunned = 1;
             PL.stunTimer = 20;
+            snd_play(SND_xhurt);                                               /* Collision_oCharacter :19 */
             pin_destroy(b);
         }
     } else if (oo == OBJ_oDamsel) {
@@ -494,6 +637,7 @@ static void bullet_collision(int b, int other)
             PE(o)->status = 2;
             PE(o)->counter = 120;
             PE(o)->xVel = NMUL(PE(&PX(b))->xVel, N(0.3));
+            snd_play(SND_xdamsel);                                             /* Collision_oDamsel :21 */
             pin_destroy(b);
         }
     } else if (obj_is(oo, OBJ_oEnemy)) {
@@ -517,10 +661,12 @@ static void bullet_collision(int b, int other)
                 o = &PX(other);
                 if (PE(o)->hp < 0) PEN(o)->bloodLeft -= 1;
             }
+            snd_play(SND_xhit);                                                /* Collision_oEnemy :34 */
             pin_destroy(b);
         }
     } else if (obj_is(oo, OBJ_oSolid)) {
         pin_create(p->x, p->y, OBJ_oSmokePuff);
+        snd_play(SND_xhit);                                                    /* Collision_oSolid :2 */
         pin_destroy(b);
     }
 }
@@ -550,6 +696,7 @@ int pshop_collision(int self, int other)
         if (!PEN(p)->whipped) {
             PE(p)->yVel = N(-2);
             PE(p)->xVel = DLT(X(other), X(self)) ? N(1) : N(-1);
+            snd_play(SND_xhit);                                                /* :15 */
             PEN(p)->whipped = 1;
             PE(p)->alarm[0] = 10;
             PE(p)->status = S_ATTACK;
@@ -578,9 +725,11 @@ void pshop_pay(int i)
             PL.holdItem = NOONE;
             PL.pickupItemType = T_NONE;
             n = 1;
+            pmsg_player_str("YOU HAVEN'T GOT ENOUGH MONEY!", "", 80);                 /* :1346 */
         } else {
             PG.money -= PE(&PX(h))->cost;
             scrStealItem();
+            pmsg_player_str("THANK YOU!", "", 80);                                    /* :1355 */
         }
     }
     shp = instance_first_p(OBJ_oShopkeeper);                           /* oShopkeeper.style: the oldest */
@@ -588,8 +737,19 @@ void pshop_pay(int i)
     else if (PE(&PX(shp))->style == SHOP_CRAPS) {
         if (G.thiefLevel > 0 || G.murderer) {
         } else if (PL.bet == 0 && PG.money >= (1000 + G.currLevel * 500)) {
+            char b[12];
+            const char *m1[3] = { " YOU BET $", 0, "!" };
             PL.bet = 1000 + G.currLevel * 500;
             PG.money -= 1000 + G.currLevel * 500;
+            m1[1] = pmsg_num(1000 + G.currLevel * 500, b);
+            pmsg_player(m1, 3, (const char *const[]){ "NOW ROLL THE DICE!" }, 0, 200);   /* :1374 */
+        } else if (PL.bet > 0)
+            pmsg_player_str("ONE BET AT A TIME!", "PLEASE ROLL THE DICE!", 200);       /* :1380 */
+        else {
+            char b[12];
+            const char *m1[3] = { "YOU NEED $", 0, " TO BET!" };
+            m1[1] = pmsg_num(1000 + G.currLevel * 500, b);
+            pmsg_player(m1, 3, (const char *const[]){ "" }, 0, 200);       /* :1386 */
         }
     }
     if (PE(&PX(shp))->style == SHOP_KISSING && DLT(distance_to_object_p(i, OBJ_oDamsel), 16)) {
@@ -602,7 +762,13 @@ void pshop_pay(int i)
                 pin_set_sprite(obj, GSPR_sDamselKissL);
                 PG.money -= kiss;
                 PG.plife += 1;
+                pmsg_player_str("NOW AIN'T SHE SWEET!", "", 200);                     /* :1416 */
             }
+        } else {
+            char b[12];
+            const char *m1[3] = { "YOU NEED $", 0, "!" };
+            m1[1] = pmsg_num(n == 0 ? kiss : PE(&PX(obj))->cost, b);
+            pmsg_player(m1, 3, (const char *const[]){ "GET OUTTA HERE, DEADBEAT!" }, 0, 200);   /* :1424 */
         }
     }
 }

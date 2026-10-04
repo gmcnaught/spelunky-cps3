@@ -8,6 +8,7 @@
  */
 #include "pint.h"
 #include "penemy.h"
+#include "../snd/sndgame.h"                     /* the GML sound calls (src/snd) */
 #include "pmath.h"
 
 enum { E_STUNNED = 98, E_DEAD = 99, E_LEFT = 0, E_RIGHT = 1 };
@@ -156,6 +157,7 @@ int pen_create(int i, int fromgen)
         PEN(p)->whipped = 10;
         PEN(p)->squirtTimer = (int16_t)RAND(100, 1000);
         PE(p)->status = 0;
+        snd_play(SND_xgiantspider);                                            /* :32 */
         return 1;
     case OBJ_oCaveman:                                                 /* objects/oCaveman/Create_0.gml */
         pen_enemy_create(i);
@@ -264,6 +266,7 @@ int pen_hit_common(int e, int kind)
             PE(o)->status = E_STUNNED;
             PE(o)->counter = PEN(o)->stunTime;
             PE(o)->yVel = N(-6);
+            snd_play(SND_xhit);                                                /* oItem :263, oEnemy :198 */
         }
     } else if (o->type == T_SHOPKEEPER) {
         if (PE(o)->status < 98) {
@@ -272,6 +275,7 @@ int pen_hit_common(int e, int kind)
             PE(o)->hp -= 1;
             PE(o)->yVel = N(-6);
             PE(o)->status = 2;
+            snd_play(SND_xhit);                                                /* :274, :209 */
         }
     } else if (o->type == T_GIANTSPIDER) {
         if (PEN(o)->whipped == 0) {
@@ -279,6 +283,7 @@ int pen_hit_common(int e, int kind)
             o = &PX(e);
             PE(o)->hp -= 1;
             PEN(o)->whipped = 10;
+            snd_play(SND_xhit);                                                /* :284, :219 */
         }
     } else if (o->obj == OBJ_oManTrap || o->obj == OBJ_oVampire || o->obj == OBJ_oYeti || o->obj == OBJ_oHawkman ||
                o->obj == OBJ_oTombLord || o->obj == OBJ_oAlienBoss || o->obj == OBJ_oUFO) {
@@ -287,6 +292,7 @@ int pen_hit_common(int e, int kind)
         blood(e, X(e) + 8, Y(e) + 8, 1);
         o = &PX(e);
         PE(o)->hp -= 1;
+        snd_play(SND_xhit);                                                    /* :324, :258 */
     }
     return 0;
 }
@@ -318,6 +324,7 @@ void pen_parent_step(int i)
             pin_create((pos)(X(i) + dfloor(sprw(i) / 2.0)), p->y, OBJ_oSplash);
             p = &PX(i);
             PEN(p)->swimming = 1;
+            snd_play(SND_xsplash);                                             /* :40 */
         }
         PE(p)->myGrav = PEN(p)->myGravWater;
         if (p->obj == OBJ_oFireFrog) PUNTR(5011);
@@ -461,8 +468,10 @@ static void bat_step(int i)
     dir = 0;
     dist = point_distance_d(x + 8, y + 8, qx, qy);
     if (PE(p)->status == 0) {                                              /* HANG */
-        if (!PL.swimming && !PL.dead && ((DLT(dist, 90) && DGT(qy, y + 16)) || !CP(x + 8, y - 1, OBJ_oSolid)))
+        if (!PL.swimming && !PL.dead && ((DLT(dist, 90) && DGT(qy, y + 16)) || !CP(x + 8, y - 1, OBJ_oSolid))) {
             PE(p)->status = 1;
+            snd_play(SND_xbat);                                                /* :29 */
+        }
         pin_set_sprite(i, GSPR_sBatHang);
     } else if (!PL.swimming && !PL.dead) {
         if (DLT(dist, 160)) {
@@ -576,6 +585,7 @@ static void spider_step(int i)
         PE(p)->xVel = 0;
         PE(p)->yVel = N(0.2);
         pin_create(p->x + PI(8), p->y, OBJ_oSplash);
+        snd_play(SND_xsplash);                                                 /* :92 */
     }
 }
 
@@ -647,6 +657,7 @@ static void giantspider_step(int i)
             pin_set_sprite(i, GSPR_sGiantSpider);
             PE(p)->yVel = NI(-1 * RAND(3, 6));
             PE(p)->xVel = (c != NOONE && DLT(X(c), X(i) + 16)) ? N(-2.5) : N(2.5);
+            snd_play(SND_xspiderjump);                                         /* :108 */
             if (RAND(1, 4) == 1) { PE(p)->status = 0; PE(p)->xVel = 0; PE(p)->yVel = 0; }
         }
     } else if (PE(p)->status != 4)
@@ -703,11 +714,13 @@ static void caveman_step(int i)
     if (PE(p)->status >= E_STUNNED) {                                      /* :18 */
         if (CP(X(i) + 8, Y(i) + 12, OBJ_oSolid)) {
             blood(i, X(i) + 8, Y(i) + 8, 3);
+            snd_play(SND_xcavemandie);                                         /* :23 */
             pin_destroy(i);
         }
     } else if (!PE(p)->held) {
         if (CP(X(i) + 8, Y(i) + 8, OBJ_oSolid)) {
             blood(i, X(i) + 8, Y(i) + 8, 3);
+            snd_play(SND_xcavemandie);                                         /* :32 */
             pin_destroy(i);
         }
     }
@@ -778,6 +791,7 @@ static void caveman_step(int i)
     } else if (PE(p)->status == E_DEAD) {                                  /* :171 */
         if (!PEN(p)->edead) {
             kill_count(i);
+            snd_play(SND_xcavemandie);                                         /* :181 */
             PEN(p)->edead = 1;
         }
         pin_set_sprite(i, GSPR_sCavemanDeadL);
@@ -914,6 +928,7 @@ static void boulder_solid(int i, int o)
             int sp = collision_point_p(X(o) + 8, Y(o) - 1, OBJ_oSpikes, 1, NOONE);   /* instance_position */
             if (sp != NOONE) pin_destroy(sp);
             pin_destroy(o);
+            snd_play(SND_xcrunch);                                             /* :32 */
         }
         p = &PX(i);
         if (NGT(PE(p)->xVel, N(0))) PE(p)->xVel -= N(0.1);
@@ -1007,6 +1022,7 @@ int pen_alarm(int i, int a)
         if (a == 0) {
             pin_set_sprite(i, GSPR_sGTHHole);
             pin_create(p->x, p->y, OBJ_oBoulder);
+            snd_play(SND_xthump);                                              /* :3 */
         }
         return 1;
     }
@@ -1072,6 +1088,7 @@ static void enemy_hit_player(int i, int c)
         } else
             PE(p)->hp -= (int16_t)(1 * (PL.fallTimer / 16 + 1));
         PL.fallTimer = 0;
+        snd_play(SND_xhit);                                                    /* :12 */
     } else if (PL.invincible == 0) {
         PL.blink = 30;
         PL.invincible = 30;
@@ -1080,6 +1097,7 @@ static void enemy_hit_player(int i, int c)
         /* type == "Bat" / "Piranha" / "Vampire": oBat never sets its type (it stays "NONE"; Observed:
            build/trace/p5_buy_s28 record 257, no blood) and the others are not Mines enemies */
         if (p->obj == OBJ_oPiranha || p->obj == OBJ_oVampire) PUNTR(5006);
+        snd_play(SND_xhurt);                                                   /* :57 */
     }
 }
 
@@ -1095,6 +1113,7 @@ static void enemy_whipped(int i, int w)
         p = &PX(i);
         if (PE(p)->hp < 0) PEN(p)->bloodLeft -= 1;
     }
+    snd_play(SND_xhit);                                                        /* :8 */
 }
 
 /* objects/oCaveman/Collision_oCharacter.gml */
@@ -1121,6 +1140,7 @@ static void caveman_hit_player(int i, int c)
             if (DLT(PTOD(o->x), X(i) + 8)) PE(p)->xVel += N(1);
             else PE(p)->xVel -= N(1);
             p->ispd = (img_t)0.5;
+            snd_play(SND_xhit);                                                /* :21 */
         }
     } else if (PL.invincible == 0) {
         if (PE(p)->status < E_STUNNED) {
@@ -1130,6 +1150,7 @@ static void caveman_hit_player(int i, int c)
             PE(o)->xVel = DLT(PTOD(o->x), X(i)) ? N(-6) : N(6);
             pin_create(o->x, o->y, OBJ_oBlood);
             if (PG.plife > 0) PG.plife -= 1;
+            snd_play(SND_xhurt);                                               /* :43 */
         }
     }
 }
@@ -1151,6 +1172,7 @@ static void caveman_whipped(int i, int w)
         PE(p)->yVel = N(-3);
         PE(p)->xVel = DLT(X(w), X(i) + 8) ? N(2) : N(-2);
         p->ispd = (img_t)0.5;
+        snd_play(SND_xhit);                                                    /* :16 */
     }
 }
 
@@ -1170,12 +1192,14 @@ static void giant_hit_player(int i, int c)
             PE(p)->hp -= (int16_t)(1 * (PL.fallTimer / 16 + 1));
         PL.fallTimer = 0;
         pin_create(p->x + PI(16), p->y + PI(24), OBJ_oBlood);
+        snd_play(SND_xhit);                                                    /* :13 */
     } else if (PL.invincible == 0) {
         PL.blink = 30;
         PL.invincible = 30;
         if (DLT(PTOD(o->y), Y(i))) PE(o)->yVel = N(-6);
         PE(o)->xVel = DLT(PTOD(o->x), X(i)) ? N(-6) : N(6);
         if (PG.plife > 0) PG.plife -= 2;
+        snd_play(SND_xhurt);                                                   /* :33 */
     }
 }
 
@@ -1193,6 +1217,7 @@ int pen_collision(int self, int other)
             if (oo == OBJ_oWhip) {
                 PE(&PX(self))->hp -= 1;
                 pin_create(PX(self).x + PI(16), PX(self).y + PI(24), OBJ_oBlood);
+                snd_play(SND_xhit);                                            /* Collision_oWhip :5 */
                 PEN(&PX(self))->whipped = 10;
             } else
                 enemy_whipped(self, other);
@@ -1207,7 +1232,10 @@ int pen_collision(int self, int other)
             for (k = 0; k < n; k++) {
                 int c = w[k];
                 if (!PX(c).alive) continue;
-                if (DLT(distance_to_object_p(c, OBJ_oPlayer1), 100) && PE(&PX(c))->status < 98) PE(&PX(c))->status = 2;
+                if (DLT(distance_to_object_p(c, OBJ_oPlayer1), 100) && PE(&PX(c))->status < 98) {
+                    PE(&PX(c))->status = 2;
+                    snd_play(SND_xalert);                                      /* oEnemySight/Collision_oCharacter :6 */
+                }
             }
             if (instance_exists_p(OBJ_oHawkman)) PUNTR(5030);
         }
@@ -1299,11 +1327,13 @@ int pen_jar_hit(int jar, int skull)
                     PE(o)->status = E_STUNNED;
                     PE(o)->counter = PEN(o)->stunTime;
                     PE(o)->yVel = N(-6);
+                    snd_play(SND_xhit);                                        /* :126 */
                 }
             } else {
                 pin_create(o->x + PI(8), o->y + PI(8), OBJ_oBlood);
                 o = &PX(e);
                 PE(o)->hp -= 1;
+                snd_play(SND_xhit);                                            /* :136 */
             }
             PE(&PX(e))->xVel = NMUL(PE(&PX(jar))->xVel, N(0.3));
         }

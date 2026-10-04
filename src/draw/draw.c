@@ -21,6 +21,7 @@
 #include "fade.h"
 #include "pint.h"
 #include "front.h"
+#include "pmsg.h"
 
 #define UNIT(m)      CPS3V_MAP_UNIT(m)
 #define BLANK        (GFX_FIRST_TILE - 1u)        /* the flash's blank tile (empty tilemap cells) */
@@ -76,7 +77,11 @@ uint8_t draw_hud_on = 1;
 #define I_TRIGGER(i) (pin_ext[PW.in[i].ext].trigger)          /* oDamselKiss: kissed (pdamsel.c) */
 /* globals and other play state read here */
 #define S_DARKLEVEL  (G.darkLevel)
-#define S_DARKNESS   (PLEV.darkness)              /* oLevel.darkness: src/game does not compute it yet (0) */
+#define S_DARKNESS   (PLEV.darkness)
+#define S_BLOODLEVEL (PMSG.bloodLevel)             /* global.bloodLevel */
+#define S_MSGTIMER   (PMSG.timer)                  /* global.messageTimer */
+#define S_MSG1       (PMSG.m1)                     /* global.message1 / 2 as drawn */
+#define S_MSG2       (PMSG.m2)              /* oLevel.darkness: src/game does not compute it yet (0) */
 
 /* ---- float helpers (no soft-float) ------------------------------------------------------------------------ */
 static inline uint32_t fbits(float f) { union { float f; uint32_t u; } c; c.f = f; return c.u; }
@@ -724,7 +729,7 @@ static void transition_out(void)
 /* scrDrawHUD / showMessages' state from the play state (docs/ARCADE.md §4) */
 static void hud_out(void)
 {
-    static struct hud_state h;                    /* messages stay empty: the play code keeps no messages yet */
+    static struct hud_state h;
     int k, game = -1;
     h.visible = PG.drawHUD && PL.idx != NOONE && I_ALIVE(PL.idx);
     h.life = PG.plife;
@@ -741,7 +746,7 @@ static void hud_out(void)
               (PG.hasCape ? HUD_CAPE : 0) | (PG.hasJetpack ? HUD_JETPACK : 0) | (PG.hasCompass ? HUD_COMPASS : 0) |
               (PG.hasParachute ? HUD_PARACHUTE : 0);
     h.udjat_blink = PG.udjatBlink;
-    h.blood_level = 0;                            /* global.bloodLevel: not in the play state yet */
+    h.blood_level = S_BLOODLEVEL;
     h.arrows = PG.arrows;
     for (k = 0; k < PW.n; k++)                    /* oGame.image_index */
         if (I_ALIVE(k) && I_OBJ(k) == OBJ_oGame) { game = k; break; }
@@ -755,7 +760,16 @@ static void hud_out(void)
     }
     h.view_x = PW.xview;
     h.view_y = PW.yview;
-    h.message_timer = 0;
+    h.message_timer = S_MSGTIMER;                 /* showMessages: global.message1 / 2 as drawn (src/game pmsg.h) */
+    for (k = 0; k < 2; k++) {
+        const struct pmsg *m = k ? &S_MSG2 : &S_MSG1;
+        struct hud_msg *d = k ? &h.message2 : &h.message1;
+        int j;
+        for (j = 0; j <= HUD_MSG_MAX && j <= PMSG_MAX; j++) d->text[j] = m->text[j];
+        d->text[HUD_MSG_MAX] = 0;
+        d->yellow[0] = m->yellow[0];
+        d->yellow[1] = m->yellow[1];
+    }
     hud_draw(&h, DRAW_PAL_LIT);
 }
 
@@ -1122,6 +1136,7 @@ void draw_frame(void)
         hud_out();
         transition_out();
     }
+    if (!front_on && pw_ohead[OBJ_oGame] >= 0) pmsg_frame();      /* oGame Draw GUI: showMessages' countdown */
     if (front_on) front_draw_gui();
     PROF(4);
     draw_st.entries = ent_n;

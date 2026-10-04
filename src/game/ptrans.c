@@ -7,6 +7,8 @@
  * RNG in room order; then the instances move to the play world.
  */
 #include "pint.h"
+#include "../snd/sndgame.h"                     /* the GML sound calls (src/snd) */
+#include "pmsg.h"                                /* the HUD messages (trMessages) */
 
 struct ptrans { int32_t drawLoot, drawPosX, drawPosY, moneyCount; uint8_t hurryup, isLoot, isKills; };
 static struct ptrans TR;
@@ -35,6 +37,7 @@ static void transition_create(int i)
     TR.hurryup = 0;
     TR.isLoot = 0;
     TR.isKills = 0;
+    pmsg_clear();                                                              /* :13 global.message1 / 2 = "" */
     if (PG.hasCape) PUNTR(4001);
     if (G.currLevel - 1 < 1) PUNTR(4002);                                      /* scrClearGlobals: not reached */
     if (G.kaliPunish >= 2) PUNTR(4003);
@@ -42,6 +45,7 @@ static void transition_create(int i)
     PE(p)->alarm[1] = 30;
     if (PG.xdamsels > 0) pin_create(PI(176 + 8), PI(176 + 8), OBJ_oDamselKiss);   /* :52 (P5) */
     if (isRoomIs(R_rTransition1x) || isRoomIs(R_rTransition2x) || isRoomIs(R_rTransition3x)) PUNTR(4005);
+    snd_stop_music();                                                          /* :76 */
 }
 
 void play_transition_start(int room)
@@ -243,8 +247,10 @@ static void pdummy_step(int i)
     if (instance_exists_p(OBJ_oTunnelMan)) PUNTR(4020);
     if (PE(p)->status == 0) {                                                      /* TRANSITION */
         if (PTOD(p->x) >= 280) {
-            if (p->spr != GSPR_sPExit && p->spr != GSPR_sDamselExit && p->spr != GSPR_sTunnelExit)
+            if (p->spr != GSPR_sPExit && p->spr != GSPR_sDamselExit && p->spr != GSPR_sTunnelExit) {
+                snd_play(SND_xsteps);                                          /* :49 */
                 pin_set_sprite(i, GSPR_sPExit);
+            }
         } else
             pin_setx(p, p->x + (PI(2)));
     } else if (PE(p)->status != 99)                                                /* STOPPED: nothing */

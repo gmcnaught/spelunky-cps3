@@ -21,12 +21,22 @@
 #include "game.h"
 #include "fade.h"
 #include "front.h"
+#include "../../src/snd/snd.h"
+#include "cps3s.h"
 
 struct shell SH;
 volatile uint32_t vbl_count;
 void main_draw_begin(void) {}
-void snd_play(int s) { (void)s; }                /* the front end's sounds (src/snd is not linked here) */
-int snd_audio_play(int s, int prio, int loop) { (void)s; (void)prio; (void)loop; return 0; }
+/* src/snd/snd.c is linked (the play loop's and the front end's sounds): the SDK's voice registers as no-ops */
+void cps3s_init(void) {}
+void cps3s_voice(int v, uint32_t start, uint32_t end, uint32_t loop, int looped, uint32_t step, int vol_l, int vol_r)
+{
+    (void)v; (void)start; (void)end; (void)loop; (void)looped; (void)step; (void)vol_l; (void)vol_r;
+}
+void cps3s_volume(int v, int vol_l, int vol_r) { (void)v; (void)vol_l; (void)vol_r; }
+void cps3s_step(int v, uint32_t step) { (void)v; (void)step; }
+void cps3s_keys(uint16_t keys) { (void)keys; }
+uint16_t cps3s_keys_now(void) { return 0; }
 void main_draw_end(void) {}
 
 /* ---- the recorder ---- */
@@ -151,6 +161,7 @@ int main(int argc, char **argv)
         gfx = slurp(argv[4], "gfx.bin");
         hud = slurp(argv[4], "hud.bin");
         draw_boot();
+    snd_init(15, 15);
         if (argc > 6) {                           /* host attract <seed> <steps> <gen> - <room>: start there */
             front_rec_cb = 0;
             front_start_at(atoi(argv[6]));
@@ -223,6 +234,7 @@ int main(int argc, char **argv)
     game_cfg.enemies = atoi(argv[5]);
     game_cfg.tail = atoi(argv[6]);
     draw_boot();
+    snd_init(15, 15);
     game_begin();
     for (;;) {
         struct shell_input in = { 0, 0, 0 };

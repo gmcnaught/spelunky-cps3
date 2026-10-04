@@ -18,6 +18,9 @@ R=$1; S=$2; N=$3; RECS=$4; L=${5:-1}; M=${6:-0}; E=${7:-0}
 T=tests/game; B=$T/build; O=$B/$R${HUD:+_hud$HUD}${DARK:+_dark$DARK}${ATTRACT:+_attract$ATTRACT}; rm -rf "$O"; mkdir -p "$O/w"
 G=$B/g; rm -rf "$G"; mkdir -p "$G"
 git archive "${GAME_REV:-HEAD}" src/game | tar -x -C "$G" --strip-components=2
+# GAME_FILES="pplayer.c penemy.c ...": those src/game files from the working tree over the snapshot (uncommitted
+# work in them; the other files stay at GAME_REV)
+for f in $GAME_FILES; do cp "src/game/$f" "$G/$f"; done
 cp build/gen/objects.[ch] build/gen/gentables.[ch] build/gen/playtables.[ch] "$G/"
 sed -i '' "s/^#define PIN_MAX 4096\$/#define PIN_MAX ${PIN:-1000}/" "$G/play.h"
 grep -q "^#define PIN_MAX ${PIN:-1000}\$" "$G/play.h"

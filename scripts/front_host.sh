@@ -15,6 +15,6 @@ grep -q "front_ev" "$F/pobj.c" || patch -s -d "$F" -p3 < tests/game/front_hooks.
 SDK=../cps3-testgame/sdk/include
 cc -std=gnu99 -O2 -ffp-contract=off -w -DDRAW_HOST -I$SDK -I$F -Ibuild/gen -Isrc/draw -Isrc/main -Isrc/hud -Isrc/shell \
   -Isrc/snd -Isrc/front -o build/front/host tests/game/host.c src/main/game.c src/draw/draw.c src/hud/hud.c \
-  src/front/front.c build/gen/sprites.c build/gen/drawtab.c build/gen/fronttables.c $F/*.c -lm
+  src/front/front.c build/gen/sprites.c build/gen/drawtab.c build/gen/fronttables.c src/snd/snd.c $F/*.c -lm
 build/front/host attract $S $N build/gen - $4 2>build/front/host.log | \
   python3 tools/drawmodel.py hostcmp build/trace/$T.bin build/trace/$T.names build/gen - ${HUD:+--hud} ${SAVE:+--save $SAVE}

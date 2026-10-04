@@ -295,7 +295,12 @@ int instance_first_p(int obj);
 int instance_number_p(int obj);
 double distance_to_object_p(int self, int obj);
 double distance_to_instance_p(int self, int other);
-int pin_overlap(int a, int b);                    /* Collision_Instance(a, b): bboxes and precise masks */
+int pin_overlap(int a, int b);
+/* tools/colprobe.py: Collision_Point / Rectangle / Line of instance k, Collision_Instance of a, b */
+int pw_test_point(int k, double px, double py, int prec);
+int pw_test_rect(int k, double x1, double y1, double x2, double y2, int prec);
+int pw_test_line(int k, double x1, double y1, double x2, double y2, int prec);
+int pw_test_pair(int a, int b);                    /* Collision_Instance(a, b): bboxes and precise masks */
 /* with (obj): the matching instances when it starts, newest first except exactly two: oldest first */
 int pw_with(int obj, int16_t *out, int max);
 
