@@ -100,6 +100,31 @@ void cps3v_sprite(int x, int y, int w, int h, uint32_t tile, uint32_t pal, uint3
     }
 }
 
+/* sprite RAM for src/draw's own sublists (draw.c writes the entries there); cps3v_object decodes a record's entries
+   back into the list as MAME's screen_update reads them (position 0, each entry's colour code) */
+uint32_t host_sprram[0x80000 / 4];
+static int wrap10(int v) { return ((v + 512) & 1023) - 512; }
+void cps3v_object(uint32_t addr, uint32_t n, int x, int y, int pal)
+{
+    static const int size[4] = { 8, 1, 2, 4 };
+    uint32_t k;
+    if (x || y || pal >= 0 || (addr & 255)) { fprintf(stderr, "host: cps3v_object %x %d %d %d unsupported\n", addr, x, y, pal); exit(3); }
+    for (k = 0; k < n && nlist < 4096; k++) {
+        const uint32_t *w = &host_sprram[(addr >> 2) + 4 * k];
+        struct lent *e = &list[nlist++];
+        e->band = 0;
+        e->w = size[w[2] & 3];
+        e->h = size[(w[2] >> 2) & 3];
+        if (w[2] != (((uint32_t)(16 * e->h - 1) << 24) | ((uint32_t)(16 * e->w - 1) << 16) | (w[2] & 15)) || w[3] ||
+            !(w[2] & 3) || !(w[2] & 12)) { fprintf(stderr, "host: bad entry %08x %08x %08x %08x\n", w[0], w[1], w[2], w[3]); exit(3); }
+        e->x = wrap10((int)((w[1] >> 16) & 0x3ff) - 8 * e->w + 1);
+        e->y = wrap10(1006 - (int)(w[1] & 0x3ff) - 8 * e->h);
+        e->tile = w[0] >> 17;
+        e->pal = w[0] & 0x1ff;
+        e->flags = w[0] & (CPS3V_FLIPX | CPS3V_FLIPY | CPS3V_BPP6);
+    }
+}
+
 /* ---- composition ---- */
 static uint8_t *gfx, *hud;
 static uint16_t view[240][320];

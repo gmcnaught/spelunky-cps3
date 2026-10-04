@@ -167,6 +167,15 @@ int16_t draw_dark_force = -1;
 static uint16_t mbase[NMAPS][MAPC_MAX] DRAW_MAPS_SECTION;
 static uint16_t mwant[NMAPS][MAPC_MAX] DRAW_MAPS_SECTION;
 static uint16_t mshown[NMAPS][MAPC_MAX] DRAW_MAPS_SECTION;
+/* the cells whose mwant changed since the last draw_vblank (cell_fix): draw_vblank compares those only, so a frame
+   costs nothing for the cells that stay. mfull: every room cell compared (room start, the tile layers changed, the
+   queue full). Rooms of more than 64 cells a side (a 64 x 64 tilemap holds two room cells in one) keep the old way:
+   the cells on screen compared each frame */
+#define MQ_MAX 512
+static uint8_t mqueued[NMAPS][MAPC_MAX] DRAW_MAPS_SECTION;
+static uint16_t mq[MQ_MAX];                       /* m * MAPC_MAX + cell */
+static int mqn;
+static uint8_t mfull;
 /* terrain on the tilemaps, kept up to date from src/game's dirty marks (pw_draw_dirty): per map cell the instances
    whose frame is that cell's tile (chead, then cnext); the one drawn first (largest draw key: the newest) is the
    cell's tile in mwant unless a tile_add tile has the cell; the others (texc) are drawn as sprites over it */
@@ -202,14 +211,65 @@ static struct ent ents[ENT_MAX];
 static uint16_t ord[ENT_MAX];                     /* ents in drawing order */
 
 /* ---- display list helpers --------------------------------------------------------------------------------- */
-static void piece_out(int px, int py, const struct piecedef *pc, int flip)
+/* The frame's sprite entries are written straight into sprite RAM (docs/DRAW.md): a run of entries in draw.c's own
+   sublist area, closed into one main-list record (cps3v_object at position 0, each entry's own colour code) before a
+   tilemap band, the front end's text, the HUD and at 511 entries. Two 16 KB areas used in turn (the SDK's rule for
+   its own sublists: the list on screen is never rewritten), at the end of CPS3V_PRE_A (0x38000-0x3ffff; the test
+   builds keep arrays from the area's start: tests/game/sprbss.ld). The entry words are those of cps3v_sprite (word0
+   tile / flip / colour, word1 position, word2 size). */
+#define RUN_AREA     (CPS3V_PRE_A_END - 0x8000u)  /* .. CPS3V_PRE_A_END */
+#define RUN_SIZE     0x4000u
+#ifdef DRAW_HOST
+extern uint32_t host_sprram[];                    /* tests/game/host.c: sprite RAM, decoded by its cps3v_object */
+#define SPR_AT(a)    (&host_sprram[(a) >> 2])
+typedef uint32_t spr_word;
+#else
+#define SPR_AT(a)    ((volatile uint32_t *)(0x04000000u + (a)))
+typedef volatile uint32_t spr_word;
+#endif
+static uint32_t run_at, run_n, run_end, run_odd;  /* the open run's start (byte), entries; the area's end */
+static spr_word *run_p;                           /* the next entry */
+static uint32_t w2tab[5][5];                      /* word 2 by width and height in tiles (1, 2, 4) */
+
+static void run_begin(void)
 {
-    if (ent_n >= DRAW_ENTRIES_MAX) {
+    run_odd ^= 1;
+    run_at = RUN_AREA + (run_odd ? RUN_SIZE : 0);
+    run_end = run_at + RUN_SIZE;
+    run_n = 0;
+    run_p = SPR_AT(run_at);
+}
+static void run_close(void)
+{
+    if (!run_n) return;
+    cps3v_object(run_at, run_n, 0, 0, -1);
+    run_at = (run_at + run_n * 16 + 255) & ~255u;
+    run_n = 0;
+    run_p = SPR_AT(run_at);
+}
+/* the sprite cps3v_sprite(px, py, w, h, tile, pal, flip) would write */
+static inline __attribute__((always_inline)) void ent_put(int px, int py, unsigned w, unsigned h, uint32_t tile,
+                                                          uint32_t pal, uint32_t flip)
+{
+    spr_word *e;
+    if (ent_n >= DRAW_ENTRIES_MAX || run_at + run_n * 16 + 16 > run_end) {
         draw_st.dropped++;
         return;
     }
-    cps3v_sprite(px, py, pc->w, pc->h, pc->tile, cur_pal, flip ? CPS3V_FLIPX : 0);
+    if (run_n == 511) run_close();
+    e = run_p;
+    e[0] = tile << 17 | flip | pal;
+    e[1] = ((uint32_t)(px + 8 * (int)w - 1) & 0x3ff) << 16 | ((uint32_t)(1006 - py - 8 * (int)h) & 0x3ff);
+    e[2] = w2tab[w][h];
+    e[3] = 0;
+    run_p = e + 4;
+    run_n++;
     ent_n++;
+}
+
+static void piece_out(int px, int py, const struct piecedef *pc, int flip)
+{
+    ent_put(px, py, pc->w, pc->h, pc->tile, cur_pal, flip ? CPS3V_FLIPX : 0);
 }
 
 /* frame f (framedefs) with its origin at screen (x, y); flip: mirrored about x (image_xscale -1) */
@@ -244,12 +304,7 @@ static void collect_out(int k, int x, int y)
 {
     int px = x - HUD_COLLECT_XORIG - ox, py = y - HUD_COLLECT_YORIG - oy;
     if (px >= VIEW_W || py >= SCREEN_H || px <= -16 || py <= -16) return;
-    if (ent_n >= DRAW_ENTRIES_MAX) {
-        draw_st.dropped++;
-        return;
-    }
-    cps3v_sprite(px, py, 1, 1, HUD_TILE_COLLECT(k), cur_pal == DRAW_PAL ? DRAW_PAL_HUDDARK : HUD_PAL, 0);
-    ent_n++;
+    ent_put(px, py, 1, 1, HUD_TILE_COLLECT(k), cur_pal == DRAW_PAL ? DRAW_PAL_HUDDARK : HUD_PAL, 0);
 }
 
 static void band_out(int tm)
@@ -258,6 +313,7 @@ static void band_out(int tm)
         draw_st.dropped++;
         return;
     }
+    run_close();
     cps3v_group();
     cps3v_band(tm, 0, CPS3V_H);
     cps3v_group();
@@ -456,6 +512,7 @@ static void build_room(void)
         mdepth_key[m] = fkey(mdepth[m]);
         for (k = 0; k < MAPC_MAX; k++) mshown[m][k] = 0xffff;   /* every cell written at the next draw_vblank */
     }
+    mfull = 1;
     for (k = 0; k < GTILES_MAX / 32 + 1; k++) tdel[k] = 0;
     build_tiles();
     maps_cleared = 0;
@@ -646,7 +703,8 @@ static void inst_out(int i)
     case DK_PDUMMY: pdummy_out(pi, x, y); break;
     case DK_JAWS: jaws_out(pi, x, y); break;
     case DK_PLAYER: player_out(pi, x, y); break;
-    case DK_FRONT: front_draw(pi, ox, oy); break;   /* src/front: the attract rooms' Draw-event text */
+    case DK_FRONT: run_close(); front_draw(pi, ox, oy); break;   /* src/front: the attract rooms' Draw-event
+                                                                     text (SDK entries: after the run's record) */
     }
 }
 
@@ -816,6 +874,13 @@ static void cell_fix(int m, int c)
             }
         }
     mwant[m][c] = mbase[m][c] ? mbase[m][c] : best >= 0 ? ctile[best] : 0;
+    if (!mqueued[m][c]) {
+        if (mqn < MQ_MAX) {
+            mqueued[m][c] = 1;
+            mq[mqn++] = (uint16_t)(m * MAPC_MAX + c);
+        } else
+            mfull = 1;
+    }
     for (k = chead[m][c]; k >= 0; k = cnext[k])
         if (k == best) texc[k >> 5] &= ~(1u << (k & 31));
         else texc[k >> 5] |= 1u << (k & 31);
@@ -946,6 +1011,13 @@ void draw_boot(void)
     }
     for (k = 1; k < 256; k++) hb8[k] = (uint8_t)(hb8[k >> 1] + (k > 1));
     for (m = 0; m <= NMAPS; m++) cps3v_tilemap(m, 0, 0, UNIT(m), 0);
+    {                                             /* cps3v.c word2: sizes 1, 2, 4 tiles = codes 1, 2, 3 */
+        static const uint8_t code[5] = { 0, 1, 2, 0, 3 };
+        int w, h;
+        for (w = 1; w <= 4; w *= 2)
+            for (h = 1; h <= 4; h *= 2)
+                w2tab[w][h] = ((uint32_t)(16 * h - 1) << 24) | ((uint32_t)(16 * w - 1) << 16) | (code[h] << 2) | code[w];
+    }
     bg_shown = -1;
     built_rooms = -1;
 }
@@ -958,6 +1030,7 @@ void draw_frame(void)
     draw_st.frames++;
     draw_st.todo = draw_st.unsup = draw_st.noart = 0;
     ent_n = 0;
+    run_begin();
     if (built_rooms != play_rooms_entered || built_room != PW.room) build_room();
     if (tiles_dirty) {
         build_tiles();
@@ -1130,6 +1203,7 @@ void draw_frame(void)
         }
     }
     while (band < nmaps) band_out(1 + band++);
+    run_close();
     }
     PROF(3);
     if (draw_hud_on && !front_on) {
@@ -1146,7 +1220,7 @@ void draw_frame(void)
 
 void draw_vblank(void)
 {
-    int m, r, c;
+    int m, r, c, k;
     uint32_t cells = 0;
     if (built_rooms < 0 || !frame_pending) return;
     frame_pending = 0;
@@ -1178,16 +1252,42 @@ void draw_vblank(void)
                     if (m >= nmaps || c >= cols || r >= rows) cps3v_cell(UNIT(1 + m), c, r, BLANK, DRAW_PAL, 0);
         maps_cleared = 1;
     }
-    for (m = 0; m < nmaps; m++)
-        for (r = wr0; r <= wr1; r++) {
-            uint16_t *w = &mwant[m][r * cols], *s = &mshown[m][r * cols];
-            for (c = wc0; c <= wc1; c++)
-                if (w[c] != s[c]) {
-                    s[c] = w[c];
-                    cps3v_cell(UNIT(1 + m), c, r, w[c] ? w[c] : BLANK, DRAW_PAL, 0);
-                    cells++;
-                }
+    if (rows > 64 || cols > 64)                   /* two room cells to a tilemap cell: the cells on screen */
+        for (m = 0; m < nmaps; m++)
+            for (r = wr0; r <= wr1; r++) {
+                uint16_t *w = &mwant[m][r * cols], *s = &mshown[m][r * cols];
+                for (c = wc0; c <= wc1; c++)
+                    if (w[c] != s[c]) {
+                        s[c] = w[c];
+                        cps3v_cell(UNIT(1 + m), c, r, w[c] ? w[c] : BLANK, DRAW_PAL, 0);
+                        cells++;
+                    }
+            }
+    else if (mfull) {                             /* every room cell */
+        for (m = 0; m < nmaps; m++)
+            for (r = 0; r < rows; r++) {
+                uint16_t *w = &mwant[m][r * cols], *s = &mshown[m][r * cols];
+                for (c = 0; c < cols; c++)
+                    if (w[c] != s[c]) {
+                        s[c] = w[c];
+                        cps3v_cell(UNIT(1 + m), c, r, w[c] ? w[c] : BLANK, DRAW_PAL, 0);
+                        cells++;
+                    }
+            }
+    } else
+        for (k = 0; k < mqn; k++) {               /* the cells changed since the last VBlank */
+            int q = mq[k], cc;
+            m = q / MAPC_MAX;
+            cc = q - m * MAPC_MAX;
+            if (m < nmaps && cc < ncells && mwant[m][cc] != mshown[m][cc]) {
+                mshown[m][cc] = mwant[m][cc];
+                cps3v_cell(UNIT(1 + m), cc % cols, cc / cols, mwant[m][cc] ? mwant[m][cc] : BLANK, DRAW_PAL, 0);
+                cells++;
+            }
         }
+    for (k = 0; k < mqn; k++) mqueued[mq[k] / MAPC_MAX][mq[k] % MAPC_MAX] = 0;
+    mqn = 0;
+    mfull = 0;
     draw_st.cells = cells;
     if (frame_a8 != shown_a8) {                   /* the faded palette (tools/darkfade.py table) */
         cps3dma_palette(DARK_FADE_AT + 512u * (uint32_t)frame_a8, DRAW_PAL * 256, 256, 0);
