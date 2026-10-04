@@ -32,10 +32,72 @@ static double sq_err(double s, double d)               /* s * s - d, nearly exac
     return (p - d) + e;
 }
 
+/* sqrt of a positive normal x, correctly rounded (round to nearest even): fdlibm e_sqrt.c's bit-by-bit square root
+   in 32-bit integers, its rounding step in round-to-nearest. Exponent field 1..2046 only (no zero, subnormal,
+   Inf or NaN) */
+static double isqrt_d(double x)
+{
+    const uint32_t sign = 0x80000000u;
+    uint32_t r, t1, s1, ix1, q1, ix0, s0, q, t;
+    int32_t m;
+    ix0 = (uint32_t)hiw(x);
+    ix1 = low(x);
+    m = (int32_t)(ix0 >> 20) - 1023;
+    ix0 = (ix0 & 0x000fffffu) | 0x00100000u;
+    if (m & 1) {                                      /* odd m: double x to make it even */
+        ix0 += ix0 + ((ix1 & sign) >> 31);
+        ix1 += ix1;
+    }
+    m >>= 1;
+    ix0 += ix0 + ((ix1 & sign) >> 31);
+    ix1 += ix1;
+    q = q1 = s0 = s1 = 0;
+    r = 0x00200000u;
+    while (r != 0) {
+        t = s0 + r;
+        if (t <= ix0) {
+            s0 = t + r;
+            ix0 -= t;
+            q += r;
+        }
+        ix0 += ix0 + ((ix1 & sign) >> 31);
+        ix1 += ix1;
+        r >>= 1;
+    }
+    r = sign;
+    while (r != 0) {
+        t1 = s1 + r;
+        t = s0;
+        if (t < ix0 || (t == ix0 && t1 <= ix1)) {
+            s1 = t1 + r;
+            if ((t1 & sign) == sign && (s1 & sign) == 0) s0 += 1;
+            ix0 -= t;
+            if (ix1 < t1) ix0 -= 1;
+            ix1 -= t1;
+            q1 += r;
+        }
+        ix0 += ix0 + ((ix1 & sign) >> 31);
+        ix1 += ix1;
+        r >>= 1;
+    }
+    if ((ix0 | ix1) != 0) {                           /* inexact: round to nearest */
+        if (q1 == 0xffffffffu) { q1 = 0; q += 1; }
+        else q1 += (q1 & 1);
+    }
+    ix0 = (q >> 1) + 0x3fe00000u;
+    ix1 = q1 >> 1;
+    if (q & 1) ix1 |= sign;
+    ix0 += (uint32_t)m << 20;
+    return mkd((int32_t)ix0, ix1);
+}
+
+/* d in [2^-60, 2^101): isqrt_d (docs/PERF2.md F; equal to the C library's sqrt and to the Newton path below on the
+   game's distances and 20 M random inputs of that range). Outside it, Newton then the nearest neighbour */
 double psqrt(double d)
 {
     double s, prev = 0;
     int it;
+    if (((uint32_t)hiw(d) >> 20) - (1023u - 60u) <= 160u) return isqrt_d(d);
     if (d <= 0) return 0;
     s = d > 1 ? d * 0.5 : 1;
     for (it = 0; it < 200 && s != prev; it++) { prev = s; s = 0.5 * (s + d / s); }
