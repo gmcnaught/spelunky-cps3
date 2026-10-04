@@ -153,41 +153,84 @@ static uint32_t fbits(float f) { union { float f; uint32_t u; } v; v.f = f; retu
 
 /* image_index += image_speed x the sprite's speed (pspr_anim: speed / 30.0f for type 0, the frame count, as the
    expressions computed them); a one-frame sprite at image_index +0 advancing exactly 1 (image_speed 1, speed 1)
-   goes 0 -> 1 -> 0 with an Animation End: the same without the float arithmetic */
-static void animate(void)
+   goes 0 -> 1 -> 0 with an Animation End: the same without the float arithmetic. 1: an Animation End event ran */
+static int anim_one(int k)
 {
-    int k, next, ev = 0;
-    int16_t s0 = PW.seq;
-    /* the instances of the step's start, creation order: only an Animation End event creates instances (appended
-       to the list), so the creation number is looked at only after one ran */
-    for (k = pw_ahead; k >= 0 && !(ev && pw_seq[k] >= s0); k = next) {
-        struct pin *p = &PW.in[k];
-        next = pw_anext[k];
-        PWST(anim, 1);
-        if (!p->alive) continue;
-        if (p->spr < 0) {
-            pin_setimg(p, p->img + p->ispd);
-            continue;
+    struct pin *p = &PW.in[k];
+    PWST(anim, 1);
+    if (!p->alive) return 0;
+    if (p->spr < 0) {
+        pin_setimg(p, p->img + p->ispd);
+        return 0;
+    }
+    {
+        const float *an = pspr_anim[p->spr];
+        img_t sp = an[0], fr = an[1];
+        play_cur_obj = p->obj;
+        if (fbits(p->img) == 0 && fbits(p->ispd) == 0x3f800000u && fbits(sp) == 0x3f800000u &&
+            fbits(fr) == 0x3f800000u) {
+            if (pobj[p->obj].ev & EV_ANIMEND) { ev_animend(k); pcol_event_done(k); return 1; }
+            if (pw_ta_is_on(k)) pw_ta_off(k);            /* terrain: nothing to do until a field changes */
+            return 0;
         }
-        {
-            const float *an = pspr_anim[p->spr];
-            img_t sp = an[0], fr = an[1];
-            play_cur_obj = p->obj;
-            if (fbits(p->img) == 0 && fbits(p->ispd) == 0x3f800000u && fbits(sp) == 0x3f800000u &&
-                fbits(fr) == 0x3f800000u) {
-                if (pobj[p->obj].ev & EV_ANIMEND) { ev_animend(k); pcol_event_done(k); ev = 1; }
-                continue;
-            }
-            pin_setimg(p, p->img + p->ispd * sp);
-            if (p->img >= fr) {
-                pin_setimg(p, p->img - fr);
-                if (pobj[p->obj].ev & EV_ANIMEND) { ev_animend(k); pcol_event_done(k); ev = 1; }
-            } else if (p->img < 0) {
-                pin_setimg(p, p->img + fr);
-                if (pobj[p->obj].ev & EV_ANIMEND) { ev_animend(k); pcol_event_done(k); ev = 1; }
-            }
+        pin_setimg(p, p->img + p->ispd * sp);
+        if (p->img >= fr) {
+            pin_setimg(p, p->img - fr);
+            if (pobj[p->obj].ev & EV_ANIMEND) { ev_animend(k); pcol_event_done(k); return 1; }
+        } else if (p->img < 0) {
+            pin_setimg(p, p->img + fr);
+            if (pobj[p->obj].ev & EV_ANIMEND) { ev_animend(k); pcol_event_done(k); return 1; }
         }
     }
+    return 0;
+}
+
+#ifdef PLAY_STATS
+#include <stdio.h>
+#include <stdlib.h>
+/* every terrain instance animate skips does nothing there */
+static void anim_check(void)
+{
+    int k;
+    for (k = pw_ahead; k >= 0; k = pw_anext[k]) {
+        const struct pin *p = &PW.in[k];
+        const float *an;
+        if (pin_needs_ext(p->obj) || pw_ta_is_on(k)) continue;
+        an = p->spr >= 0 ? pspr_anim[p->spr] : 0;
+        if (!an || fbits(p->img) != 0 || fbits(p->ispd) != 0x3f800000u || fbits(an[0]) != 0x3f800000u ||
+            fbits(an[1]) != 0x3f800000u || (pobj[p->obj].ev & EV_ANIMEND)) {
+            fprintf(stderr, "animate: quiet terrain %d (%s) changed\n", k, objdefs[p->obj].name);
+            abort();
+        }
+    }
+}
+#endif
+
+/* the instances of the step's start in creation order (GameMaker's animation pass); the terrain off the list
+   pw_tahead does nothing there, so the walk is the non-terrain list merged with the terrain list by creation
+   number. Only an Animation End event creates instances (appended) or puts terrain back on the list, so the
+   creation number is looked at only after one ran, and the terrain position is found again then. play_cur_obj
+   ends as the full walk leaves it: the object of the last instance with a sprite it looked at */
+static void animate(void)
+{
+    int k, a = pw_nthead, t = pw_tahead, ev = 0;
+    int16_t s0 = PW.seq, lastseq = -1;
+    for (;;) {
+        if (a >= 0 && (t < 0 || pw_seq[a] < pw_seq[t])) { k = a; a = pw_ntnext[k]; }
+        else if (t >= 0) { k = t; t = pw_tanext[k]; }
+        else break;
+        if (ev && pw_seq[k] >= s0) break;
+        if (PW.in[k].alive && PW.in[k].spr >= 0) lastseq = pw_seq[k];
+        if (anim_one(k)) {
+            ev = 1;
+            for (t = pw_tahead; t >= 0 && pw_seq[t] <= pw_seq[k]; t = pw_tanext[t]) {}
+        }
+    }
+    k = pw_last_with_sprite(s0);
+    if (k >= 0 && pw_seq[k] > lastseq) play_cur_obj = PW.in[k].obj;
+#ifdef PLAY_STATS
+    anim_check();
+#endif
 }
 
 /* ---- collision events (HandleCollision): see pcol.c ------------------------------------------------------ */

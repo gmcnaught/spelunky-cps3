@@ -77,18 +77,26 @@ struct pcol_stats pcol_st;
 /* 448 nodes (124 bytes each): the most seen is 421 (olmec, level 16; 260-281 in the mines; playhost over 20 seeds x
    16 levels); running out stops the play loop with untranslated code 9101 */
 #define RT_NODES 448
-/* entries: play instance i is entry i; while a level is generated (gmode), generator instance w is entry w */
-#define ENT_MAX (PIN_MAX > INST_MAX ? PIN_MAX : INST_MAX)
-/* rectangle sides as order-mapped float bits (fkey: signed int order = float order; -0 as +0): the tests and the
-   min / max are integer compares, the area arithmetic takes the floats back (kf) */
+/* entries: play instance i is entry i; while a level is generated (gmode), generator instance w is entry w
+   (ENT_MAX: above) */
+/* rectangle sides in one of two forms (w): w 1, whole numbers below 2^14 in magnitude as ints (the floats' order
+   and, below 2^24, their arithmetic are the ints'); w 0, order-mapped float bits (fkey: signed int order = float
+   order; -0 as +0), whose area arithmetic takes the floats back (kf). Both forms compare with integer compares;
+   two rectangles of different forms are compared as keys (rkey). w sits in the struct's padding */
 typedef int32_t rk;
-struct rbr { rk r[4]; int16_t id; };           /* r: min x, min y, max x, max y; id: child node or entry */
+struct rbr { rk r[4]; int16_t id; int16_t w; }; /* r: min x, min y, max x, max y; id: child node or entry */
+#define WLIM 16384                              /* whole form: |side| < 2^14 */
 struct rnode { int16_t count, level; struct rbr b[RMAX]; };
 static struct rnode rn[RT_NODES];
 static int16_t rfreel[RT_NODES];
 static int rnfree, rnused;
 static int16_t rroot;
 static uint8_t rlock;
+/* links for the in-place update (cupdate_at): the node holding each branch's child (npar) and the leaf holding each
+   entry (eleaf); set wherever a branch is put in a node (add_branch, gen_load's renaming) */
+#define ENT_MAX (PIN_MAX > INST_MAX ? PIN_MAX : INST_MAX)
+static int16_t npar[RT_NODES];
+static int16_t eleaf[ENT_MAX];
 
 static int nalloc(void)
 {
@@ -144,9 +152,43 @@ static float kf(rk k)
     return v.f;
 }
 
-static void keys_of(rk *k, const float *f)
+static rk ikey(int32_t v);
+static int remove_fast(int e);
+
+/* side k of a rectangle as a key, and as a float */
+static rk rkey(const struct rbr *a, int k) { return a->w ? ikey(a->r[k]) : a->r[k]; }
+static float rflt(const struct rbr *a, int k) { return a->w ? (float)a->r[k] : kf(a->r[k]); }
+
+/* a rectangle from whole-number sides: the whole form when they are below 2^14, else keys */
+static void rset_i(struct rbr *o, int32_t l, int32_t t, int32_t r, int32_t b)
 {
-    k[0] = fkey(f[0]); k[1] = fkey(f[1]); k[2] = fkey(f[2]); k[3] = fkey(f[3]);
+    if (l > -WLIM && l < WLIM && t > -WLIM && t < WLIM && r > -WLIM && r < WLIM && b > -WLIM && b < WLIM) {
+        o->r[0] = l; o->r[1] = t; o->r[2] = r; o->r[3] = b;
+        o->w = 1;
+    } else {
+        o->r[0] = ikey(l); o->r[1] = ikey(t); o->r[2] = ikey(r); o->r[3] = ikey(b);
+        o->w = 0;
+    }
+}
+
+static int kint(rk k, int32_t *o);
+
+/* a rectangle from float sides: the whole form when they are whole numbers below 2^14 (kint), else keys */
+static void rset_f(struct rbr *o, const float *f)
+{
+    int32_t i[4];
+    o->r[0] = fkey(f[0]); o->r[1] = fkey(f[1]); o->r[2] = fkey(f[2]); o->r[3] = fkey(f[3]);
+    o->w = 0;
+    if (kint(o->r[0], &i[0]) && kint(o->r[1], &i[1]) && kint(o->r[2], &i[2]) && kint(o->r[3], &i[3])) {
+        o->r[0] = i[0]; o->r[1] = i[1]; o->r[2] = i[2]; o->r[3] = i[3];
+        o->w = 1;
+    }
+}
+
+static void rcopy(struct rbr *o, const struct rbr *a)
+{
+    o->r[0] = a->r[0]; o->r[1] = a->r[1]; o->r[2] = a->r[2]; o->r[3] = a->r[3];
+    o->w = a->w;
 }
 
 /* ---- the area arithmetic (float, the runner's) with an exact integer path: a float that is a whole number below
@@ -212,21 +254,43 @@ static int xv_eq(struct xv *a, struct xv *b)
     return FEQ(xv_f(a), xv_f(b));
 }
 
-/* the area of r: (r[2] - r[0]) * (r[3] - r[1]) in float */
-static void rarea(struct xv *o, const rk *r)
+#if defined(__GNUC__)
+#define PCOL_NOINLINE __attribute__((noinline))
+#define PCOL_INLINE static inline __attribute__((always_inline))
+#else
+#define PCOL_NOINLINE
+#define PCOL_INLINE static inline
+#endif
+
+/* the ints of a key-form rectangle's sides when they are whole numbers below 2^14 */
+static int rints_k(const struct rbr *x, int32_t *i)
 {
-    int32_t a, b, c, d;
-    if (kint(r[0], &a) && kint(r[1], &b) && kint(r[2], &c) && kint(r[3], &d) && xv_small((c - a) * (d - b))) {
-        xv_seti(o, (c - a) * (d - b));
+    return kint(x->r[0], &i[0]) && kint(x->r[1], &i[1]) && kint(x->r[2], &i[2]) && kint(x->r[3], &i[3]);
+}
+
+/* the area of x: (r[2] - r[0]) * (r[3] - r[1]) in float (rarea_slow: not both whole, or a large product) */
+static PCOL_NOINLINE void rarea_slow(struct xv *o, const struct rbr *x)
+{
+    int32_t i[4];
+    if (!x->w && rints_k(x, i) && xv_small((i[2] - i[0]) * (i[3] - i[1]))) {
+        xv_seti(o, (i[2] - i[0]) * (i[3] - i[1]));
         return;
     }
     {
-        float w = kf(r[2]) - kf(r[0]), h = kf(r[3]) - kf(r[1]);
+        float w = rflt(x, 2) - rflt(x, 0), h = rflt(x, 3) - rflt(x, 1);
         xv_setf(o, w * h);
     }
 }
 
-static void rcomb(rk *o, const rk *a, const rk *b);
+PCOL_INLINE void rarea(struct xv *o, const struct rbr *x)
+{
+    if (x->w) {
+        int32_t a = (x->r[2] - x->r[0]) * (x->r[3] - x->r[1]);
+        if (xv_small(a)) { o->i = a; o->k = 1; return; }
+    }
+    rarea_slow(o, x);
+}
+
 
 
 /* w * h - a with one rounding: the arm64 runner's fnmsub (s registers). fmaf, not (float)((double)w * h - a):
@@ -237,60 +301,101 @@ static float fms(float w, float h, float a)
 }
 
 /* the area of the combined rectangle less area (fused: one rounding) */
-static void rcomb_growth(struct xv *res, const rk *a, const rk *b, struct xv *area)
+/* the union of two rectangles not both whole: as keys */
+static PCOL_NOINLINE void rcomb_slow(struct rbr *o, const struct rbr *a, const struct rbr *b)
 {
-    rk o[4];
-    int32_t x0, y0, x1, y1;
-    rcomb(o, a, b);
-    if ((area->k & 1) && kint(o[0], &x0) && kint(o[1], &y0) && kint(o[2], &x1) && kint(o[3], &y1)) {
-        int32_t g = (x1 - x0) * (y1 - y0) - area->i;
+    rk p[4], q[4];
+    int k;
+    for (k = 0; k < 4; k++) { p[k] = rkey(a, k); q[k] = rkey(b, k); }
+    o->r[0] = p[0] < q[0] ? p[0] : q[0];
+    o->r[1] = p[1] < q[1] ? p[1] : q[1];
+    o->r[2] = p[2] > q[2] ? p[2] : q[2];
+    o->r[3] = p[3] > q[3] ? p[3] : q[3];
+    o->w = 0;
+    {   /* the sides taken from whole ones: back to the whole form */
+        int32_t i[4];
+        if (rints_k(o, i)) { o->r[0] = i[0]; o->r[1] = i[1]; o->r[2] = i[2]; o->r[3] = i[3]; o->w = 1; }
+    }
+}
+
+/* the union (o may be a or b) */
+PCOL_INLINE void rcomb(struct rbr *o, const struct rbr *a, const struct rbr *b)
+{
+    if (a->w & b->w) {
+        rk x0 = a->r[0] < b->r[0] ? a->r[0] : b->r[0], y0 = a->r[1] < b->r[1] ? a->r[1] : b->r[1];
+        rk x1 = a->r[2] > b->r[2] ? a->r[2] : b->r[2], y1 = a->r[3] > b->r[3] ? a->r[3] : b->r[3];
+        o->r[0] = x0; o->r[1] = y0; o->r[2] = x1; o->r[3] = y1;
+        o->w = 1;
+    } else
+        rcomb_slow(o, a, b);
+}
+
+static PCOL_NOINLINE void rcomb_growth_slow(struct xv *res, const struct rbr *a, const struct rbr *b,
+                                            struct xv *area)
+{
+    struct rbr o;
+    int32_t i[4];
+    rcomb(&o, a, b);
+    if ((area->k & 1) && (o.w ? (i[0] = o.r[0], i[1] = o.r[1], i[2] = o.r[2], i[3] = o.r[3], 1) : rints_k(&o, i))) {
+        int32_t g = (i[2] - i[0]) * (i[3] - i[1]) - area->i;
         if (xv_small(g)) { xv_seti(res, g); return; }
     }
-    xv_setf(res, fms(kf(o[2]) - kf(o[0]), kf(o[3]) - kf(o[1]), xv_f(area)));
+    xv_setf(res, fms(rflt(&o, 2) - rflt(&o, 0), rflt(&o, 3) - rflt(&o, 1), xv_f(area)));
 }
 
-static void rcomb(rk *o, const rk *a, const rk *b)
+/* the area of the union less area (fused: one rounding); both whole and area an int: the int result */
+PCOL_INLINE void rcomb_growth(struct xv *res, const struct rbr *a, const struct rbr *b, struct xv *area)
 {
-    o[0] = a[0] < b[0] ? a[0] : b[0];
-    o[1] = a[1] < b[1] ? a[1] : b[1];
-    o[2] = a[2] > b[2] ? a[2] : b[2];
-    o[3] = a[3] > b[3] ? a[3] : b[3];
+    if (a->w & b->w & area->k & 1) {
+        rk x0 = a->r[0] < b->r[0] ? a->r[0] : b->r[0], y0 = a->r[1] < b->r[1] ? a->r[1] : b->r[1];
+        rk x1 = a->r[2] > b->r[2] ? a->r[2] : b->r[2], y1 = a->r[3] > b->r[3] ? a->r[3] : b->r[3];
+        int32_t g = (x1 - x0) * (y1 - y0) - area->i;
+        if (xv_small(g)) { res->i = g; res->k = 1; return; }
+    }
+    rcomb_growth_slow(res, a, b, area);
 }
 
-static int roverlap(const rk *a, const rk *b)
+static PCOL_NOINLINE int roverlap_slow(const struct rbr *a, const struct rbr *b)
 {
-    return !(a[0] > b[2] || b[0] > a[2] || a[1] > b[3] || b[1] > a[3]);
+    return !(rkey(a, 0) > rkey(b, 2) || rkey(b, 0) > rkey(a, 2) || rkey(a, 1) > rkey(b, 3) || rkey(b, 1) > rkey(a, 3));
 }
 
-static void rcover(int n, rk *o)
+PCOL_INLINE int roverlap(const struct rbr *a, const struct rbr *b)
+{
+    if (a->w & b->w)
+        return !(a->r[0] > b->r[2] || b->r[0] > a->r[2] || a->r[1] > b->r[3] || b->r[1] > a->r[3]);
+    return roverlap_slow(a, b);
+}
+
+/* the cover of node n's branches into o's sides (o->id is kept) */
+static void rcover(int n, struct rbr *o)
 {
     int k;
     const struct rnode *p = &rn[n];
-    o[0] = p->b[0].r[0]; o[1] = p->b[0].r[1]; o[2] = p->b[0].r[2]; o[3] = p->b[0].r[3];
+    rcopy(o, &p->b[0]);
     for (k = 1; k < p->count; k++)
-        rcomb(o, o, p->b[k].r);
+        rcomb(o, o, &p->b[k]);
 }
 
 /* PartitionVars */
 static struct {
     int8_t part[RMAX + 1];
     int8_t count[2];
-    rk cover[2][4];
+    struct rbr cover[2];
     struct xv area[2];
     struct rbr buf[RMAX + 1];
-    rk cover_split[4];
+    struct rbr cover_split;
     struct xv cover_split_area;
 } pv;
 
 static void classify(int idx, int g)
 {
     pv.part[idx] = (int8_t)g;
-    if (pv.count[g] == 0) {
-        int k;
-        for (k = 0; k < 4; k++) pv.cover[g][k] = pv.buf[idx].r[k];
-    } else
-        rcomb(pv.cover[g], pv.buf[idx].r, pv.cover[g]);
-    rarea(&pv.area[g], pv.cover[g]);
+    if (pv.count[g] == 0)
+        rcopy(&pv.cover[g], &pv.buf[idx]);
+    else
+        rcomb(&pv.cover[g], &pv.buf[idx], &pv.cover[g]);
+    rarea(&pv.area[g], &pv.cover[g]);
     pv.count[g]++;
 }
 
@@ -298,12 +403,12 @@ static void pick_seeds(void)
 {
     struct xv area[RMAX + 1], worst, waste, g, m1;
     int a, b, s0 = -1, s1 = -1, first = 1;
-    for (a = 0; a <= RMAX; a++) rarea(&area[a], pv.buf[a].r);
+    for (a = 0; a <= RMAX; a++) rarea(&area[a], &pv.buf[a]);
     xv_seti(&m1, -1);
     xv_sub(&worst, &m1, &pv.cover_split_area);
     for (a = 0; a < RMAX; a++)
         for (b = a + 1; b <= RMAX; b++) {
-            rcomb_growth(&g, pv.buf[a].r, pv.buf[b].r, &area[a]);
+            rcomb_growth(&g, &pv.buf[a], &pv.buf[b], &area[a]);
             xv_sub(&waste, &g, &area[b]);
             if (xv_gt(&waste, &worst) || (xv_eq(&waste, &worst) && first)) {
                 worst = waste;
@@ -329,8 +434,8 @@ static void choose_partition(void)
         for (idx = 0; idx < total; idx++) {
             struct xv g0, g1, diff;
             if (pv.part[idx] != -1) continue;
-            rcomb_growth(&g0, pv.buf[idx].r, pv.cover[0], &pv.area[0]);
-            rcomb_growth(&g1, pv.buf[idx].r, pv.cover[1], &pv.area[1]);
+            rcomb_growth(&g0, &pv.buf[idx], &pv.cover[0], &pv.area[0]);
+            rcomb_growth(&g1, &pv.buf[idx], &pv.cover[1], &pv.area[1]);
             xv_sub(&diff, &g1, &g0);
             if ((diff.k & 1) ? diff.i >= 0 : fkey(diff.f) >= 0) g = 0;
             else {
@@ -357,31 +462,40 @@ static void choose_partition(void)
 }
 
 /* AddBranch: 1 when the node split (*newn the new node) */
+static void link_in(int n, const struct rbr *br)
+{
+    if (rn[n].level == 0) eleaf[br->id] = (int16_t)n;
+    else npar[br->id] = (int16_t)n;
+}
+
 static int add_branch(const struct rbr *br, int n, int *newn)
 {
     struct rnode *p = &rn[n];
     int k;
     if (p->count < RMAX) {
         p->b[p->count++] = *br;
+        link_in(n, br);
         return 0;
     }
     for (k = 0; k < RMAX; k++) pv.buf[k] = p->b[k];
     pv.buf[RMAX] = *br;
-    for (k = 0; k < 4; k++) pv.cover_split[k] = pv.buf[0].r[k];
-    for (k = 1; k <= RMAX; k++) rcomb(pv.cover_split, pv.cover_split, pv.buf[k].r);
-    rarea(&pv.cover_split_area, pv.cover_split);
+    rcopy(&pv.cover_split, &pv.buf[0]);
+    for (k = 1; k <= RMAX; k++) rcomb(&pv.cover_split, &pv.cover_split, &pv.buf[k]);
+    rarea(&pv.cover_split_area, &pv.cover_split);
     choose_partition();
     *newn = nalloc();
     rn[*newn].level = p->level;
     p->count = 0;
     for (k = 0; k <= RMAX; k++) {
-        struct rnode *t = &rn[pv.part[k] ? *newn : n];
+        int m = pv.part[k] ? *newn : n;
+        struct rnode *t = &rn[m];
         t->b[t->count++] = pv.buf[k];
+        link_in(m, &pv.buf[k]);
     }
     return 1;
 }
 
-static int pick_branch(const rk *r, int n)
+static int pick_branch(const struct rbr *r, int n)
 {
     const struct rnode *p = &rn[n];
     struct xv best_incr, best_area, area, incr;
@@ -389,8 +503,8 @@ static int pick_branch(const rk *r, int n)
     xv_seti(&best_incr, -1);
     xv_seti(&best_area, 0);
     for (k = 0; k < p->count; k++) {
-        rarea(&area, p->b[k].r);
-        rcomb_growth(&incr, r, p->b[k].r, &area);
+        rarea(&area, &p->b[k]);
+        rcomb_growth(&incr, r, &p->b[k], &area);
         if (first || xv_gt(&best_incr, &incr) || (xv_eq(&incr, &best_incr) && xv_gt(&best_area, &area))) {
             best = k;
             best_area = area;
@@ -405,14 +519,14 @@ static int insert_rec(const struct rbr *br, int n, int *newn, int level)
 {
     struct rnode *p = &rn[n];
     if (p->level > level) {
-        int other, idx = pick_branch(br->r, n), child = p->b[idx].id;
+        int other, idx = pick_branch(br, n), child = p->b[idx].id;
         if (!insert_rec(br, child, &other, level)) {
-            rcomb(rn[n].b[idx].r, br->r, rn[n].b[idx].r);
+            rcomb(&rn[n].b[idx], br, &rn[n].b[idx]);
             return 0;
         } else {
             struct rbr nb;
-            rcover(child, rn[n].b[idx].r);
-            rcover(other, nb.r);
+            rcover(child, &rn[n].b[idx]);
+            rcover(other, &nb);
             nb.id = (int16_t)other;
             return add_branch(&nb, n, newn);
         }
@@ -428,10 +542,10 @@ static void insert_rect(const struct rbr *br, int level)
         int nr = nalloc();
         struct rbr b;
         rn[nr].level = (int16_t)(rn[rroot].level + 1);
-        rcover(rroot, b.r);
+        rcover(rroot, &b);
         b.id = rroot;
         add_branch(&b, nr, &dummy);
-        rcover(newn, b.r);
+        rcover(newn, &b);
         b.id = (int16_t)newn;
         add_branch(&b, nr, &dummy);
         rroot = (int16_t)nr;
@@ -450,17 +564,17 @@ static void disconnect(int n, int k)
 }
 
 /* RemoveRectRec: 0 when found and removed */
-static int remove_rec(const rk *r, int id, int n)
+static int remove_rec(const struct rbr *r, int id, int n)
 {
     struct rnode *p = &rn[n];
     int k;
     if (p->level > 0) {
         for (k = 0; k < rn[n].count; k++) {
-            if (!roverlap(r, rn[n].b[k].r)) continue;
+            if (!roverlap(r, &rn[n].b[k])) continue;
             if (!remove_rec(r, id, rn[n].b[k].id)) {
                 int c = rn[n].b[k].id;
                 if (rn[c].count >= RMIN)
-                    rcover(c, rn[n].b[k].r);
+                    rcover(c, &rn[n].b[k]);
                 else {
                     int j;
                     for (j = nrelist; j > 0; j--) relist[j] = relist[j - 1];
@@ -481,7 +595,7 @@ static int remove_rec(const rk *r, int id, int n)
     return 1;
 }
 
-static int remove_rect(const rk *r, int id)
+static int remove_rect(const struct rbr *r, int id)
 {
     nrelist = 0;
     if (remove_rec(r, id, rroot)) return 1;
@@ -506,7 +620,37 @@ static int remove_rect(const rk *r, int id)
 
 static int (*s_cb)(int e, void *ctx);
 static void *s_ctx;
-static rk s_r[4];
+static struct rbr s_r;
+static rk s_k[4];                      /* s_r's sides as keys (s_kv: computed) */
+static uint8_t s_kv;
+static void s_keys(void);
+
+static PCOL_NOINLINE int s_overlap_slow(const struct rbr *b);
+
+/* roverlap(&s_r, b) with s_r's keys at hand */
+PCOL_INLINE int s_overlap(const struct rbr *b)
+{
+    if (b->w & s_r.w)
+        return !(s_r.r[0] > b->r[2] || b->r[0] > s_r.r[2] || s_r.r[1] > b->r[3] || b->r[1] > s_r.r[3]);
+    return s_overlap_slow(b);
+}
+
+static PCOL_NOINLINE int s_overlap_slow(const struct rbr *b)
+{
+    if (b->w) {
+        if (!s_kv) s_keys();
+        return !(s_k[0] > ikey(b->r[2]) || ikey(b->r[0]) > s_k[2] || s_k[1] > ikey(b->r[3]) || ikey(b->r[1]) > s_k[3]);
+    }
+    if (!s_kv) s_keys();
+    return !(s_k[0] > b->r[2] || b->r[0] > s_k[2] || s_k[1] > b->r[3] || b->r[1] > s_k[3]);
+}
+
+static void s_keys(void)
+{
+    int k;
+    for (k = 0; k < 4; k++) s_k[k] = rkey(&s_r, k);
+    s_kv = 1;
+}
 
 static int search_rec(int n)
 {
@@ -514,11 +658,11 @@ static int search_rec(int n)
     pcol_st.visits++;
     if (rn[n].level > 0) {
         for (k = 0; k < rn[n].count; k++)
-            if (roverlap(s_r, rn[n].b[k].r) && !search_rec(rn[n].b[k].id))
+            if (s_overlap(&rn[n].b[k]) && !search_rec(rn[n].b[k].id))
                 return 0;
     } else {
         for (k = 0; k < rn[n].count; k++)
-            if (roverlap(s_r, rn[n].b[k].r) && s_cb && !s_cb(rn[n].b[k].id, s_ctx))
+            if (s_overlap(&rn[n].b[k]) && s_cb && !s_cb(rn[n].b[k].id, s_ctx))
                 return 0;
     }
     return 1;
@@ -546,7 +690,8 @@ static rk ikey(int32_t v)
 
 void pcol_search_i(int32_t l, int32_t t, int32_t r, int32_t b, int (*cb)(int e, void *ctx), void *ctx)
 {
-    s_r[0] = ikey(l); s_r[1] = ikey(t); s_r[2] = ikey(r); s_r[3] = ikey(b);
+    rset_i(&s_r, l, t, r, b);
+    s_kv = 0;
     s_cb = cb;
     s_ctx = ctx;
     rlock = 1;
@@ -557,7 +702,12 @@ void pcol_search_i(int32_t l, int32_t t, int32_t r, int32_t b, int (*cb)(int e, 
 
 void pcol_search(float l, float t, float r, float b, int (*cb)(int e, void *ctx), void *ctx)
 {
-    s_r[0] = fkey(l); s_r[1] = fkey(t); s_r[2] = fkey(r); s_r[3] = fkey(b);
+    {
+        float f[4];
+        f[0] = l; f[1] = t; f[2] = r; f[3] = b;
+        rset_f(&s_r, f);
+        s_kv = 0;
+    }
     s_cb = cb;
     s_ctx = ctx;
     rlock = 1;
@@ -635,6 +785,7 @@ static uint8_t ef[ENT_MAX];
 static int16_t dn[ENT_MAX], dp[ENT_MAX], tn[ENT_MAX], tp[ENT_MAX];
 static int16_t dhead = -1, thead = -1;
 static rk er[ENT_MAX][4];           /* the rectangle the entry was put in with (RemoveRect's search key) */
+static uint8_t erw[ENT_MAX];           /* its form (struct rbr w) */
 static uint8_t epass[ENT_MAX];         /* the HandleCollision pass that entry searched in (EPASS_NONE: none since the
                                           last wrap; pass_no runs 0 .. 254, then every epass is reset) */
 static uint8_t pass_no;
@@ -726,22 +877,39 @@ static int ebbox_int(int e, int32_t *ib)
     }
 }
 
-static rk ikey(int32_t v);
-
 /* CInstance::Compute_BoundingBox (non-compatibility mode), normalized (CollisionUpdate): o = l, t, r, b */
 static void ebbox(int e, float dx, float dy, float *o);
 
-/* the same as keys (the tree's rectangles) */
-static void ebbox_keys(int e, float dx, float dy, rk *k)
+/* the same as a tree rectangle */
+static void ebbox_rect(int e, float dx, float dy, struct rbr *o)
 {
     int32_t ib[4];
     float fr[4];
     if (fkey(dx) == 0 && fkey(dy) == 0 && ebbox_int(e, ib)) {
-        k[0] = ikey(ib[0]); k[1] = ikey(ib[1]); k[2] = ikey(ib[2]); k[3] = ikey(ib[3]);
+        rset_i(o, ib[0], ib[1], ib[2], ib[3]);
         return;
     }
     ebbox(e, dx, dy, fr);
-    keys_of(k, fr);
+    rset_f(o, fr);
+}
+
+static void er_set(int e, const struct rbr *b)
+{
+    er[e][0] = b->r[0]; er[e][1] = b->r[1]; er[e][2] = b->r[2]; er[e][3] = b->r[3];
+    erw[e] = (uint8_t)b->w;
+}
+
+/* RemoveRect of entry e with the rectangle it was put in with; failing that (not found), with the root's cover */
+static void remove_entry(int e)
+{
+    struct rbr r;
+    if (remove_fast(e)) return;
+    r.r[0] = er[e][0]; r.r[1] = er[e][1]; r.r[2] = er[e][2]; r.r[3] = er[e][3];
+    r.w = erw[e];
+    if (remove_rect(&r, e)) {
+        rcover(rroot, &r);
+        remove_rect(&r, e);
+    }
 }
 
 /* Compute_BoundingBox of play instance i as the runner keeps it (floats; rotated by image_angle): pworld.c's boxes
@@ -826,6 +994,28 @@ static int edead(int e) { return (ef[e] & EF_PEND) != 0; }
 void pcol_box(int i, float *o) { ebbox(i, 0, 0, o); }
 void pcol_sincosf(float a, float *s, float *c) { sincos_f(a, s, c); }
 
+/* RemoveRect of entry e when its leaf keeps RMIN or more branches: RemoveRectRec finds e in its leaf (the one
+   holding it: the covers on its path overlap its rectangle) and takes it out by swapping in the leaf's last branch;
+   no node underflows, so nothing is reinserted, and on the way back each node of the path gets its child's cover
+   (rcover). The same here from the leaf up, without the search. 0: not done (the leaf would underflow) */
+static int remove_fast(int e)
+{
+    int n = eleaf[e], k;
+    struct rnode *p = &rn[n];
+    if (p->count <= RMIN) return 0;
+    for (k = 0; k < p->count && p->b[k].id != e; k++) {}
+    if (k == p->count) return 0;
+    disconnect(n, k);
+    while (n != rroot) {
+        int up = npar[n];
+        struct rnode *q = &rn[up];
+        for (k = 0; q->b[k].id != n; k++) {}
+        rcover(n, &q->b[k]);
+        n = up;
+    }
+    return 1;
+}
+
 /* CollisionUpdate: take the entry out (if in) and put it in with its current box */
 static void cupdate_at(int e, float dx, float dy)
 {
@@ -833,19 +1023,15 @@ static void cupdate_at(int e, float dx, float dy)
     if (!(ef[e] & EF_TREE) && edead(e)) return;
     if (rlock) return;
     if (!emember(e)) return;
-    ebbox_keys(e, dx, dy, b.r);
+    ebbox_rect(e, dx, dy, &b);
     if (ef[e] & EF_TREE) {
         pcol_st.removes++;
-        if (remove_rect(er[e], e)) {
-            rk cv[4];
-            rcover(rroot, cv);
-            remove_rect(cv, e);
-        }
+        remove_entry(e);
     }
     b.id = (int16_t)e;
     pcol_st.inserts++;
     insert_rect(&b, 0);
-    er[e][0] = b.r[0]; er[e][1] = b.r[1]; er[e][2] = b.r[2]; er[e][3] = b.r[3];
+    er_set(e, &b);
     ef[e] |= EF_TREE;
 }
 
@@ -1032,11 +1218,7 @@ static void remove_marked(void)
         int e = pend[k];
         if ((ef[e] & EF_TREE) && !many) {
             pcol_st.removes++;
-            if (remove_rect(er[e], e)) {
-                rk cv[4];
-                rcover(rroot, cv);
-                remove_rect(cv, e);
-            }
+            remove_entry(e);
         }
         obj_count(eobj(e), -1);
         entry_clear(e);
@@ -1089,6 +1271,8 @@ static void gen_load(void)
         if (i < 0) continue;
         ef[i] = (uint8_t)((ef[w] & (EF_TREE | EF_STALE | EF_OND | EF_ONT)) | EF_GEN | EF_NOSNAP | EF_USED);
         er[i][0] = er[w][0]; er[i][1] = er[w][1]; er[i][2] = er[w][2]; er[i][3] = er[w][3];
+        erw[i] = erw[w];
+        eleaf[i] = eleaf[w];
         epass[i] = epass[w];
         dn[i] = GMAP(dn[w]); dp[i] = GMAP(dp[w]); tn[i] = GMAP(tn[w]); tp[i] = GMAP(tp[w]);
     }
@@ -1166,11 +1350,11 @@ static int query_e(int obj, int gen)
             if (!alive || edead(ent) || !obj_is(eobj(ent), obj) || (ef[ent] & EF_TREE)) continue;
             if (!gen) sync1(ent);
             ef[ent] &= (uint8_t)~EF_STALE;        /* Compute_BoundingBox(false) */
-            ebbox_keys(ent, 0, 0, b.r);
+            ebbox_rect(ent, 0, 0, &b);
             b.id = (int16_t)ent;
             pcol_st.inserts++;
             insert_rect(&b, 0);
-            er[ent][0] = b.r[0]; er[ent][1] = b.r[1]; er[ent][2] = b.r[2]; er[ent][3] = b.r[3];
+            er_set(ent, &b);
             ef[ent] |= EF_TREE;
         }
     }

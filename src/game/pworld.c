@@ -31,6 +31,8 @@ static int16_t gnext[PIN_MAX], gcell[PIN_MAX], gdnext[PIN_MAX];
 static uint8_t gond[PIN_MAX];
 static int16_t gdhead = NOONE;
 static int gmaxw, gmaxh;
+#define GCELL_FAR (-2)                           /* gcell: an oSolid-family box too far out for the grid */
+static int gfar;                                 /* how many (the grid's line query falls back to the tree then) */
 
 /* ---- per-object instance lists: the alive instances of each object in creation order (index order), and the
    alive count of each object with its descendants. Linked at pin_add, unlinked when alive goes to 0 ------------ */
@@ -59,6 +61,16 @@ static int16_t pw_atail, aprev[PIN_MAX];
 int16_t pw_nthead, pw_ntnext[PIN_MAX];
 static int16_t pw_nttail, ntprev[PIN_MAX];
 static int16_t otail[OBJ_COUNT], iprev[PIN_MAX];
+/* the terrain to animate (prun.c animate): alive terrain instances (pin_needs_ext 0: no events but Create / Destroy)
+   in creation order, pw_tahead then pw_tanext[i], except those animate found doing nothing (a one-frame sprite at
+   image_index +0, image_speed 1: image_index stays 0, no Animation End event). One goes back on the list at any
+   change of its fields (pw_draw_mark: image_index, sprite, visible, depth; pw_changed: x, y, sprite, mask, scales,
+   angle). image_speed has no setter: no code writes a terrain instance's (checked: every image_speed write is to
+   an instance with events or with pin_ext; PLAY_STATS builds check every quiet one after animate). An instance
+   taken off keeps its pw_tanext, so a walk at it continues */
+int16_t pw_tahead, pw_tanext[PIN_MAX];
+static int16_t tatail, taprev[PIN_MAX];
+static uint8_t taon[PIN_MAX];
 static int16_t olive[OBJ_COUNT];
 #define odesc0 obj_desc0
 #define odesc obj_desc
@@ -73,6 +85,8 @@ static void olists_reset(void)
     }
     pw_ahead = pw_atail = NOONE;
     pw_nthead = pw_nttail = NOONE;
+    pw_tahead = tatail = NOONE;
+    for (o = 0; o < PIN_MAX; o++) taon[o] = 0;
     grid_reset();
 }
 
@@ -109,6 +123,7 @@ static void ounlink(int i)
     if (pw_inext[i] >= 0) iprev[pw_inext[i]] = iprev[i]; else otail[o] = iprev[i];
     olive_add(o, -1);
     grid_unlink(i);
+    pw_ta_off(i);
     if (aprev[i] >= 0) pw_anext[aprev[i]] = pw_anext[i]; else pw_ahead = pw_anext[i];
     if (pw_anext[i] >= 0) aprev[pw_anext[i]] = aprev[i]; else pw_atail = aprev[i];
     if (pin_needs_ext(o)) {
@@ -173,8 +188,40 @@ static int16_t ddlist[PIN_MAX];
 static uint8_t ddmark[PIN_MAX];
 static int nddlist;
 
+static void ta_on(int i)
+{
+    int p;
+    if (taon[i] || !PW.in[i].alive || pin_needs_ext(PW.in[i].obj)) return;
+    for (p = tatail; p >= 0 && pw_seq[p] > pw_seq[i]; p = taprev[p]) {}
+    taprev[i] = (int16_t)p;
+    pw_tanext[i] = p >= 0 ? pw_tanext[p] : pw_tahead;
+    if (p >= 0) pw_tanext[p] = (int16_t)i; else pw_tahead = (int16_t)i;
+    if (pw_tanext[i] >= 0) taprev[pw_tanext[i]] = (int16_t)i; else tatail = (int16_t)i;
+    taon[i] = 1;
+}
+
+void pw_ta_off(int i)
+{
+    if (!taon[i]) return;
+    if (taprev[i] >= 0) pw_tanext[taprev[i]] = pw_tanext[i]; else pw_tahead = pw_tanext[i];
+    if (pw_tanext[i] >= 0) taprev[pw_tanext[i]] = taprev[i]; else tatail = taprev[i];
+    taon[i] = 0;
+}
+
+int pw_ta_is_on(int i) { return taon[i]; }
+
+/* the last alive instance older than seq s0 with a sprite (prun.c animate) */
+int pw_last_with_sprite(int16_t s0)
+{
+    int k;
+    for (k = pw_atail; k >= 0; k = aprev[k])
+        if (pw_seq[k] < s0 && PW.in[k].spr >= 0) return k;
+    return NOONE;
+}
+
 void pw_draw_mark(int i)
 {
+    ta_on(i);
     if (ddmark[i]) return;
     ddmark[i] = 1;
     ddlist[nddlist++] = (int16_t)i;
@@ -1015,13 +1062,17 @@ static void grid_reset(void)
         for (x = 0; x < GRID_W; x++) ghead[y][x] = thead[y][x] = NOONE;
     gdhead = NOONE;
     gmaxw = gmaxh = tmaxw = tmaxh = 1;
+    gfar = 0;
 }
 
 static void grid_unlink(int i)
 {
     int c = gcell[i];
     int16_t *pp;
-    if (c < 0) return;
+    if (c < 0) {
+        if (c == GCELL_FAR) { gfar--; gcell[i] = NOONE; }
+        return;
+    }
     pp = c >= GRID_W * GRID_H ? &thead[(c - GRID_W * GRID_H) / GRID_W][(c - GRID_W * GRID_H) % GRID_W]
                               : &ghead[c / GRID_W][c % GRID_W];
     for (; *pp != i; pp = &gnext[*pp]) {}
@@ -1055,8 +1106,13 @@ static void grid_flush(void)
                    r - l < 30000 && b - t < 30000) {
             cx = dfloor(l) >> 4; cy = dfloor(t) >> 4;
             w = (dfloor(r - l) >> 4) + 2; h = (dfloor(b - t) >> 4) + 2;
-        } else
+        } else {
+            if (bbkind(i) != BB_NOSPR && obj_is(PW.in[i].obj, OBJ_oSolid)) {
+                gcell[i] = GCELL_FAR;             /* a box far out (|side| >= 30000): not in a cell */
+                gfar++;
+            }
             continue;                             /* no sprite: never hit */
+        }
         solid = obj_is(PW.in[i].obj, OBJ_oSolid);
         if (solid) {
             if (w > gmaxw) gmaxw = w;
@@ -1342,6 +1398,42 @@ int collision_line_i(int32_t x1, int32_t y1, int32_t x2, int32_t y2, int obj, in
     c.ix1 = x1; c.iy1 = y1; c.ix2 = x2; c.iy2 = y2; c.dbl = 0;
     (void)r;
     return line_run(&c, q, 0);                  /* qrect: (float)min - 1.0f is these exactly */
+}
+
+/* collision_line_i(...) != NOONE (isCollision*: only whether some instance is hit). pcol_query flushes the tree
+   (UpdateTree) as for collision_line_i, so the tree's history is the same; with the tree (q == 1) the search only
+   picks which hit comes first, and every alive instance of obj is in the tree with its current box then. For the
+   oSolid family the solid grid holds the same instances (alive, with a sprite: those without one never hit), so it
+   answers whether one is hit with the same line_hit test. A box of [l, r] x [t, b] in cell (cx, cy) reaches cell
+   cx + gmaxw at most; line_hit needs l <= hx and r > lx (and in y), so the hits are in the cells
+   (lx >> 4) - gmaxw .. hx >> 4 (clamped as the cells are). q == 2 keeps the creation-order scan (its touches) */
+int collision_line_any_i(int32_t x1, int32_t y1, int32_t x2, int32_t y2, int obj, int prec, int notme_self)
+{
+    int q = pcol_query(obj), x0, xe, y0, ye, x, y, k;
+    struct qctx c;
+    PWST(line, 1);
+    if (q < 0) return 0;
+    c.lq.iok = 1;
+    c.lq.lx = x1 < x2 ? x1 : x2; c.lq.hx = x1 < x2 ? x2 : x1;
+    c.lq.ly = y1 < y2 ? y1 : y2; c.lq.hy = y1 < y2 ? y2 : y1;
+    c.lq.axis = x1 == x2 || y1 == y2;
+    c.obj = obj; c.notme = notme_self; c.prec = prec;
+    c.ix1 = x1; c.iy1 = y1; c.ix2 = x2; c.iy2 = y2; c.dbl = 0;
+    if (q != 1 || obj < 0 || !obj_is(obj, OBJ_oSolid)) return line_run(&c, q, 0) != NOONE;
+    grid_flush();
+    if (gfar) return line_run(&c, q, 0) != NOONE;
+    x0 = clampi((c.lq.lx >> 4) - gmaxw, 0, GRID_W - 1);
+    xe = clampi(c.lq.hx >> 4, 0, GRID_W - 1);
+    y0 = clampi((c.lq.ly >> 4) - gmaxh, 0, GRID_H - 1);
+    ye = clampi(c.lq.hy >> 4, 0, GRID_H - 1);
+    /* the line's own cells first (a hit there ends the scan); every grid instance is alive (unlinked when it dies) */
+    for (y = ye; y >= y0; y--)
+        for (x = xe; x >= x0; x--)
+            for (k = ghead[y][x]; k >= 0; k = gnext[k]) {
+                PWST(visit, 1);
+                if (k != notme_self && line_hit(k, &c) && (obj == OBJ_oSolid || obj_is(PW.in[k].obj, obj))) return 1;
+            }
+    return 0;
 }
 
 /* a rectangle query: its sides rounded (floor(v + 0.5)) once */

@@ -143,6 +143,10 @@ extern struct pworld PW;
 /* creation order: pw_seq[i] is slot i's creation number in this room (older < newer); pw_ord[0 .. PW.nord) the
    slots in creation order (alive, or dead and not yet back on the free list) */
 extern int16_t pw_seq[PIN_MAX];
+extern int16_t pw_tahead, pw_tanext[PIN_MAX];     /* pworld.c: the terrain to animate (prun.c animate) */
+void pw_ta_off(int i);
+int pw_ta_is_on(int i);
+int pw_last_with_sprite(int16_t s0);
 extern int16_t pw_ord[PIN_MAX];
 #define PIN_OLDER(a, b) (pw_seq[a] < pw_seq[b])
 /* slot reuse: an instance's slot goes back on the free list at the end of the step whose RemoveMarked removed it
@@ -298,6 +302,7 @@ int pcol_count(int obj);
 /* the same with whole-number coordinates (|v| < 30000), without the double conversions */
 int collision_line_i(int32_t x1, int32_t y1, int32_t x2, int32_t y2, int obj, int prec, int notme_self);
 int collision_rect_i(int32_t x1, int32_t y1, int32_t x2, int32_t y2, int obj, int prec, int notme_self);
+int collision_line_any_i(int32_t x1, int32_t y1, int32_t x2, int32_t y2, int obj, int prec, int notme_self); /* != NOONE */
 int pin_xy_int(int i, int32_t *x, int32_t *y);    /* x, y as ints when both are whole numbers */
 int instance_place_p(int self, double px, double py, int obj);
 #define place_meeting_p(self, px, py, obj) (instance_place_p((self), (px), (py), (obj)) != NOONE)
