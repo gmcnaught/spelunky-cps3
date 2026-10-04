@@ -78,3 +78,4 @@ n=$(ls "$RUN/game" | grep -c '^trc_.*\.bin$' || true)
 k=0; : > "build/trace/$NAME.bin"
 while [ $k -lt "$n" ]; do cat "$RUN/game/trc_$k.bin" >> "build/trace/$NAME.bin"; k=$((k + 1)); done
 echo "build/trace/$NAME.bin ($n chunks, $(wc -c < "build/trace/$NAME.bin") bytes, $(( $(date +%s) - start )) s; $(tail -1 "build/trace/$NAME.log"))"
+[ "${KEEP_RUN:-0}" = 1 ] || rm -rf "$RUN"   # the run copy of the game (about 100 MB); KEEP_RUN=1 keeps it
