@@ -695,6 +695,14 @@ int pshop_collision(int self, int other)
     } else {                                                           /* Collision_oWhip / oWhipPre (the whip) */
         struct pin *p = &PX(self);
         if (!PEN(p)->whipped) {
+            if (whip_machete(other)) {                                         /* :3 other.type == "Machete" */
+                PE(p)->hp -= (int16_t)whip_damage(other);
+                if (PEN(p)->bloodLeft > 0) {
+                    scrCreateBlood(self, P(X(self) + sprw(self) / 2.0), P(Y(self) + sprh(self) / 2.0), 1);
+                    p = &PX(self);
+                    if (PE(p)->hp < 0) PEN(p)->bloodLeft -= 1;
+                }
+            }
             PE(p)->yVel = N(-2);
             PE(p)->xVel = DLT(X(other), X(self)) ? N(1) : N(-1);
             snd_play(SND_xhit);                                                /* :15 */

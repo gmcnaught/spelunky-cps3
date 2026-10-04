@@ -1147,8 +1147,7 @@ void enemy_hit_player(int i, int c)
 void enemy_whipped(int i, int w)
 {
     struct pin *p = &PX(i);
-    (void)w;
-    PE(p)->hp -= 1;                                                        /* other.damage: 1 (oWhip, oWhipPre) */
+    PE(p)->hp -= (int16_t)whip_damage(w);                                  /* other.damage */
     PEN(p)->countsAsKill = 1;
     if (PEN(p)->bloodLeft > 0) {
         blood(i, X(i) + sprw(i) / 2.0, Y(i) + sprh(i) / 2.0, 1);
@@ -1197,12 +1196,12 @@ static void caveman_hit_player(int i, int c)
     }
 }
 
-/* objects/oCaveman/Collision_oWhip.gml (and oWhipPre; other.type "Machete": not the whip) */
+/* objects/oCaveman/Collision_oWhip.gml (and oWhipPre) */
 static void caveman_whipped(int i, int w)
 {
     struct pin *p = &PX(i);
-    if (PE(p)->status < E_STUNNED) {
-        PE(p)->hp -= 1;
+    if (PE(p)->status < E_STUNNED || whip_machete(w)) {
+        PE(p)->hp -= (int16_t)whip_damage(w);
         if (PEN(p)->bloodLeft > 0) {
             blood(i, X(i) + sprw(i) / 2.0, Y(i) + sprh(i) / 2.0, 1);
             p = &PX(i);
@@ -1256,14 +1255,14 @@ int pen_collision(int self, int other)
     case OBJ_oGiantSpider:
         if (obj_is(oo, OBJ_oCharacter)) giant_hit_player(self, other);
         else if (PEN(&PX(self))->whipped == 0) {                              /* Collision_oWhip (oWhipPre: oEnemy's) */
-            if (oo == OBJ_oWhip) {
+            if (obj_is(oo, OBJ_oWhip)) {
                 PE(&PX(self))->hp -= 1;
                 pin_create(PX(self).x + PI(16), PX(self).y + PI(24), OBJ_oBlood);
                 snd_play(SND_xhit);                                            /* Collision_oWhip :5 */
                 PEN(&PX(self))->whipped = 10;
             } else
                 enemy_whipped(self, other);
-        } else if (oo == OBJ_oWhipPre)
+        } else if (obj_is(oo, OBJ_oWhipPre))
             enemy_whipped(self, other);
         return 1;
     case OBJ_oEnemySight:

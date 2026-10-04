@@ -250,13 +250,24 @@ int pdam_animend(int i)
     return 0;
 }
 
-/* objects/oDamsel/Collision_oWhip.gml (and oWhipPre; other.type "Machete": not the whip) */
+/* objects/oDamsel/Collision_oWhip.gml (and oWhipPre) */
 int pdam_collision(int self, int other)
 {
     struct pin *p = &PX(self);
     if (p->obj != OBJ_oDamsel) return 0;
-    (void)other;
-    if (PE(p)->status != D_THROWN && (PE(p)->status < D_EXIT || PE(p)->status == D_SLAVE || PE(p)->status == D_KISS) && PEN(p)->hit == 0) {
+    if (whip_machete(other) && PEN(p)->hit == 0) {                            /* :1 other.type == "Machete" */
+        PE(p)->hp -= (int16_t)whip_damage(other);
+        PEN(p)->hit = 10;
+        snd_play(SND_xhit);                                                    /* :5 */
+        snd_play(SND_xdamsel);
+        if (PEN(p)->bloodLeft > 0) {
+            int s = p->spr;
+            double w = s >= 0 ? (int)(psprite[s].w * p->xscale) : 0, h = s >= 0 ? (int)(psprite[s].h * p->yscale) : 0;
+            scrCreateBlood(self, P(X(self) + w / 2.0), P(PTOD(p->y) + h / 2.0), 1);
+            p = &PX(self);
+            if (PE(p)->hp < 0) PEN(p)->bloodLeft -= 1;
+        }
+    } else if (PE(p)->status != D_THROWN && (PE(p)->status < D_EXIT || PE(p)->status == D_SLAVE || PE(p)->status == D_KISS) && PEN(p)->hit == 0) {
         PE(p)->yVel = N(-2);
         PEN(p)->hit = 10;
         snd_play(SND_xhit);                                                    /* :17 */
