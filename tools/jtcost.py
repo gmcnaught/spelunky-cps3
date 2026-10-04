@@ -64,6 +64,7 @@ def fn(pc):
     return syms[i][1] if i >= 0 else '?'
 PLAY = [a for a, n in syms if n == '_play_step'][0]
 PCHIST = os.getenv('JTC_PCHIST'); pch = collections.Counter()   # JTC_PCHIST=<symbol>: its instructions by address
+callers = collections.Counter()
 STARTS = set(SA)                                  # a function's first instruction: one entry (call) of it
 dm = collections.Counter(); dsto = collections.Counter()
 
@@ -108,7 +109,9 @@ for line in open(tr):
     elif pc == ret and R[15] == sp0:
         break
     f = fn(pc); c = per[f]
-    if pc in STARTS: c['entries'] += 1
+    if pc in STARTS:
+        c['entries'] += 1
+        if f.startswith('___'): callers[(f, fn(R[16]))] += 1     # libgcc helper: who called it (PR)
     if f == PCHIST: pch[pc] += 1
     dis = dis.strip(); op = dis.split()[0] if dis else ''
     args_ = dis[len(op):].strip()
@@ -235,6 +238,9 @@ for s in (0, 1):
           'dmiss_ram=%d dmiss_simm=%d lit=%d' % (opt['--route'], opt['--step'], SETS[s], ins, st['mame'], tot[s],
                                                 tot[s] / max(ins, 1), stores, st['st_stack'], st['imiss'],
                                                 st['dmiss_ram'], st['dmiss_simm'], lit))
+
+print('\nsoft-float / libgcc calls by caller')
+for (h, cf), v in callers.most_common(30): print('  %-16s <- %-24s %6d' % (h, cf, v))
 
 if PCHIST:
     print('\n%s: executions by address (JTC_PCHIST)' % PCHIST)
