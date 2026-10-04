@@ -258,11 +258,12 @@ int pw_count(int obj);                            /* alive instances of obj with
    A new room (pw_reset) empties it */
 int pw_draw_dirty(const int16_t **list);
 /* the terrain near the view (src/draw): pw_grid_sync, then per cell (cx < GRID_W, cy < GRID_H: inst.h)
-   pw_grid_cell / pw_grid_next (NOONE ends): the oSolid-family and terrain instances with a box whose top-left is in
-   the cell (clamped); a box reaches at most pw_grid_extent cells right / down. The other alive instances:
-   pw_nthead, pw_ntnext (creation order) */
+   pw_grid_cell (the oSolid family) and pw_grid_tcell (the other terrain, pin_needs_ext 0), each list followed by
+   pw_grid_next (NOONE ends): the instances with a box whose top-left is in the cell (clamped); a box reaches at
+   most pw_grid_extent cells right / down. The other alive instances: pw_nthead, pw_ntnext (creation order) */
 void pw_grid_sync(void);
 int pw_grid_cell(int cx, int cy);
+int pw_grid_tcell(int cx, int cy);
 int pw_grid_next(int k);
 void pw_grid_extent(int *w, int *h);
 extern int16_t pw_nthead, pw_ntnext[PIN_MAX];

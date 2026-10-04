@@ -742,6 +742,10 @@ static void ebbox_keys(int e, float dx, float dy, rk *k)
     keys_of(k, fr);
 }
 
+/* Compute_BoundingBox of play instance i as the runner keeps it (floats; rotated by image_angle): pworld.c's boxes
+   of rotated instances */
+void pcol_box(int i, float *o);
+
 static void ebbox(int e, float dx, float dy, float *o)
 {
     float x, y, xs = 1, ys = 1, ang = 0, w, h, t0, t1;
@@ -816,6 +820,8 @@ static void ebbox(int e, float dx, float dy, float *o)
 }
 
 static int edead(int e) { return (ef[e] & EF_PEND) != 0; }
+
+void pcol_box(int i, float *o) { ebbox(i, 0, 0, o); }
 
 /* CollisionUpdate: take the entry out (if in) and put it in with its current box */
 static void cupdate_at(int e, float dx, float dy)

@@ -17,7 +17,9 @@ static int spr_of(const struct pin *p) { return p->mask >= 0 ? p->mask : p->spr;
 static void grid_reset(void);
 static void grid_unlink(int i);
 static void grid_dirty(int i);
-static int16_t ghead[GRID_H][GRID_W];
+static int16_t ghead[GRID_H][GRID_W];       /* the oSolid family (point queries) */
+static int16_t thead[GRID_H][GRID_W];       /* the other terrain (the drawing only) */
+static int tmaxw, tmaxh;
 static int16_t gnext[PIN_MAX], gcell[PIN_MAX], gdnext[PIN_MAX];
 static uint8_t gond[PIN_MAX];
 static int16_t gdhead = NOONE;
@@ -245,10 +247,18 @@ static void en_zero(struct pin_en *x)
     for (k = 0; k < sizeof *x; k++) b[k] = 0;
 }
 
-/* the objects that use struct pin_en: the oEnemy and oDamsel families, oEnemySight */
+/* the objects that use struct pin_en: the oEnemy and oDamsel families and the other objects whose events penemy.c,
+   pdamsel.c and pshop.c run (their switch cases) */
 static int pin_needs_en(int obj)
 {
-    return obj_is(obj, OBJ_oEnemy) || obj_is(obj, OBJ_oDamsel) || obj == OBJ_oEnemySight;
+    switch (obj) {
+    case OBJ_oEnemySight: case OBJ_oBoulder: case OBJ_oGiantTikiHead: case OBJ_oDamselKiss: case OBJ_oSpiderHang:
+    case OBJ_oGiantSpiderHang: case OBJ_oFakeBones: case OBJ_oYellHelp: case OBJ_oHeart: case OBJ_oSplash:
+    case OBJ_oWeb: case OBJ_oWebBall: case OBJ_oBullet: case OBJ_oBone: case OBJ_oShotgunBlastLeft:
+    case OBJ_oShotgunBlastRight:
+        return 1;
+    }
+    return obj_is(obj, OBJ_oEnemy) || obj_is(obj, OBJ_oDamsel);
 }
 
 int pw_en_used_max(void) { return en_used_max; }
@@ -349,6 +359,14 @@ struct pin_en *pin_en_checked(const struct pin *p)
                 k, (unsigned)PW.step, play_cur_obj >= 0 ? objdefs[play_cur_obj].name : "-", objdefs[p->obj].name);
         fprintf(stderr, "  ext %d en %d en_used %d id %ld alive %d\n", p->ext, x->en, en_used, (long)p->id, p->alive);
         exit(3);
+    }
+    if (x->en == 0 && getenv("PIN_EN_LOG")) {
+        static uint8_t seen[OBJ_COUNT];
+        if (!seen[p->obj]) {
+            seen[p->obj] = 1;
+            fprintf(stderr, "PIN_EN_LOG: %s reads / writes the shared record (step %u, current %s)\n",
+                    objdefs[p->obj].name, (unsigned)PW.step, play_cur_obj >= 0 ? objdefs[play_cur_obj].name : "-");
+        }
     }
     return &pin_en[x->en];
 }
@@ -473,6 +491,12 @@ static void bbox_dbl(const struct pin *p, const struct gsprcol *c, double *l, do
 {
     double xs = p->xscale, ys = p->yscale, x = PTOD(p->x), y = PTOD(p->y);
     PWST(bbox, 1);
+    if (!dzero(p->angle)) {                       /* rotated: the box of the rotated sprite (pcol.c ebbox) */
+        float o[4];
+        pcol_box((int)(p - PW.in), o);
+        *l = o[0]; *t = o[1]; *r = o[2]; *b = o[3];
+        return;
+    }
     if (xs >= 0) *l = x + xs * (c->l - c->xo);
     else *l = x + xs * (c->r + 1 - c->xo);
     *r = *l + (xs < 0 ? -xs : xs) * (c->r - c->l + 1);
@@ -504,7 +528,7 @@ static int bbkind(int i)
         else {
             const struct gsprcol *c = &gsprcol[s];
             int xs = dunit(p->xscale), ys = dunit(p->yscale);
-            if (xs && ys && pos_int(p->x, &x) && pos_int(p->y, &y)) {
+            if (xs && ys && dzero(p->angle) && pos_int(p->x, &x) && pos_int(p->y, &y)) {
                 int32_t l = xs > 0 ? x + (c->l - c->xo) : x - (c->r + 1 - c->xo);
                 int32_t t = ys > 0 ? y + (c->t - c->yo) : y - (c->b + 1 - c->yo);
                 PWST(bbox_int, 1);
@@ -615,6 +639,8 @@ struct pq { double px, py; int32_t ix, iy; int iok; };
 
 static void pq_init(struct pq *q, double px, double py)
 {
+    px = (float)px;                                  /* CInstance::Collision_Point takes floats */
+    py = (float)py;
     q->px = px;
     q->py = py;
     q->iok = dfloor_int(px, &q->ix) && dfloor_int(py, &q->iy);
@@ -647,9 +673,9 @@ static void grid_reset(void)
 {
     int x, y;
     for (y = 0; y < GRID_H; y++)
-        for (x = 0; x < GRID_W; x++) ghead[y][x] = NOONE;
+        for (x = 0; x < GRID_W; x++) ghead[y][x] = thead[y][x] = NOONE;
     gdhead = NOONE;
-    gmaxw = gmaxh = 1;
+    gmaxw = gmaxh = tmaxw = tmaxh = 1;
 }
 
 static void grid_unlink(int i)
@@ -657,7 +683,9 @@ static void grid_unlink(int i)
     int c = gcell[i];
     int16_t *pp;
     if (c < 0) return;
-    for (pp = &ghead[c / GRID_W][c % GRID_W]; *pp != i; pp = &gnext[*pp]) {}
+    pp = c >= GRID_W * GRID_H ? &thead[(c - GRID_W * GRID_H) / GRID_W][(c - GRID_W * GRID_H) % GRID_W]
+                              : &ghead[c / GRID_W][c % GRID_W];
+    for (; *pp != i; pp = &gnext[*pp]) {}
     *pp = gnext[i];
     gcell[i] = NOONE;
 }
@@ -674,7 +702,7 @@ static void grid_dirty(int i)
 static void grid_flush(void)
 {
     while (gdhead >= 0) {
-        int i = gdhead, cx, cy, w, h;
+        int i = gdhead, cx, cy, w, h, solid;
         int32_t ib[4];
         double l, t, r, b;
         gdhead = gdnext[i];
@@ -690,13 +718,25 @@ static void grid_flush(void)
             w = (dfloor(r - l) >> 4) + 2; h = (dfloor(b - t) >> 4) + 2;
         } else
             continue;                             /* no sprite: never hit */
-        if (w > gmaxw) gmaxw = w;
-        if (h > gmaxh) gmaxh = h;
+        solid = obj_is(PW.in[i].obj, OBJ_oSolid);
+        if (solid) {
+            if (w > gmaxw) gmaxw = w;
+            if (h > gmaxh) gmaxh = h;
+        } else {
+            if (w > tmaxw) tmaxw = w;
+            if (h > tmaxh) tmaxh = h;
+        }
         cx = clampi(cx, 0, GRID_W - 1);
         cy = clampi(cy, 0, GRID_H - 1);
-        gcell[i] = (int16_t)(cy * GRID_W + cx);
-        gnext[i] = ghead[cy][cx];
-        ghead[cy][cx] = (int16_t)i;
+        if (solid) {
+            gcell[i] = (int16_t)(cy * GRID_W + cx);
+            gnext[i] = ghead[cy][cx];
+            ghead[cy][cx] = (int16_t)i;
+        } else {                                  /* cell index + GRID_W * GRID_H: the terrain list */
+            gcell[i] = (int16_t)(GRID_W * GRID_H + cy * GRID_W + cx);
+            gnext[i] = thead[cy][cx];
+            thead[cy][cx] = (int16_t)i;
+        }
     }
 }
 
@@ -705,8 +745,13 @@ static void grid_flush(void)
    a box reaches at most pw_grid_extent cells right / down of its cell */
 void pw_grid_sync(void) { grid_flush(); }
 int pw_grid_cell(int cx, int cy) { return ghead[cy][cx]; }
+int pw_grid_tcell(int cx, int cy) { return thead[cy][cx]; }
 int pw_grid_next(int k) { return gnext[k]; }
-void pw_grid_extent(int *w, int *h) { *w = gmaxw; *h = gmaxh; }
+void pw_grid_extent(int *w, int *h)
+{
+    *w = gmaxw > tmaxw ? gmaxw : tmaxw;
+    *h = gmaxh > tmaxh ? gmaxh : tmaxh;
+}
 
 /* the oldest instance of obj (oSolid or a descendant; but notme) whose box (and mask) holds the point */
 static int grid_point(int obj, int notme, const struct pq *q, int prec)
@@ -807,6 +852,28 @@ struct rq;
 struct qctx { int obj, notme, prec, self, hit; double x1, y1, x2, y2, dx, dy; struct lq lq; struct rq *rq;
               int32_t ix1, iy1, ix2, iy2; uint8_t dbl; };
 
+/* CInstance::Collision_Line against the bounding box (non-compatibility mode, floats): outside the segment's own
+   box; else the segment, its ends ordered in x, clipped to [left, right - 1e-5] and missing when both clipped ends
+   are above top or both below bottom */
+static int line_box_f(float x1, float y1, float x2, float y2, float l, float t, float r, float b)
+{
+    float xa, ya, xb, yb;
+    if ((x1 < x2 ? x1 : x2) >= r || l > (x1 > x2 ? x1 : x2) || (y1 < y2 ? y1 : y2) >= b || t > (y1 > y2 ? y1 : y2))
+        return 0;
+    if (x1 > x2) { xa = x2; ya = y2; xb = x1; yb = y1; }
+    else { xa = x1; ya = y1; xb = x2; yb = y2; }
+    if (l > xa) {
+        ya = ya + ((yb - ya) * (l - xa)) / (xb - xa);
+        xa = l;
+    }
+    r = r + -1.0e-5f;
+    if (xb > r)
+        yb = yb + ((yb - ya) * (r - xb)) / (xb - xa);
+    if (t > ya && t > yb) return 0;
+    if (ya > b && yb > b) return 0;
+    return 1;
+}
+
 static int line_hit(int k, struct qctx *c)
 {
     double l, t, r, b, t0, t1, x1, y1, x2, y2;
@@ -826,10 +893,10 @@ static int line_hit(int k, struct qctx *c)
         c->dbl = 1;
     }
     x1 = c->x1; y1 = c->y1; x2 = c->x2; y2 = c->y2;
+    if (!prec || !precise(k))
+        return line_box_f((float)x1, (float)y1, (float)x2, (float)y2, (float)l, (float)t, (float)r, (float)b);
     if (!seg_box(x1, y1, x2, y2, l, t, r, b, &t0, &t1))
         return 0;
-    if (!prec || !precise(k))
-        return 1;
     {   /* walk the clipped part a pixel at a time */
         double dx = x2 - x1, dy = y2 - y1, len = (dx < 0 ? -dx : dx) > (dy < 0 ? -dy : dy) ? (dx < 0 ? -dx : dx) : (dy < 0 ? -dy : dy);
         int n = (int)((t1 - t0) * len) + 1, s;
@@ -920,11 +987,15 @@ int collision_line_i(int32_t x1, int32_t y1, int32_t x2, int32_t y2, int obj, in
 }
 
 /* a rectangle query: its sides rounded (floor(v + 0.5)) once */
-struct rq { double lx, hx, ly, hy; int32_t ilx, ihx, ily, ihy; int iok; };
+/* f*: the corners as the runner's floats (CInstance::Collision_Rectangle takes floats) */
+struct rq { double lx, hx, ly, hy; int32_t ilx, ihx, ily, ihy; int iok; float flx, fhx, fly, fhy; };
 
 static void rq_init(struct rq *q, double x1, double y1, double x2, double y2)
 {
     double lx = x1 < x2 ? x1 : x2, hx = x1 < x2 ? x2 : x1, ly = y1 < y2 ? y1 : y2, hy = y1 < y2 ? y2 : y1;
+    float f1 = (float)x1, f2 = (float)x2, g1 = (float)y1, g2 = (float)y2;
+    q->flx = f1 < f2 ? f1 : f2; q->fhx = f1 < f2 ? f2 : f1;
+    q->fly = g1 < g2 ? g1 : g2; q->fhy = g1 < g2 ? g2 : g1;
     q->iok = dfloor_int(lx + 0.5, &q->ilx) && dfloor_int(hx + 0.5, &q->ihx) && dfloor_int(ly + 0.5, &q->ily) &&
              dfloor_int(hy + 0.5, &q->ihy);
     if (q->iok) {
@@ -952,14 +1023,26 @@ static int rect_hit(int k, const struct rq *q, int prec)
     }
     if (!pin_bbox(k, &l, &t, &r, &b))
         return 0;
+    if (!prec || !precise(k)) {
+        /* CInstance::Collision_Rectangle, the bounding box (floats): outside when xmin >= right, left > xmax (and
+           in y); else a miss when the overlap's ends round (floor(v + 0.5)) to the same column, or row */
+        float fl = (float)l, ft = (float)t, fr = (float)r, fb = (float)b, c0, c1;
+        if (q->flx >= fr || fl > q->fhx || q->fly >= fb || ft > q->fhy)
+            return 0;
+        c0 = (q->flx > fl ? q->flx : fl) + 0.5f;
+        c1 = (q->fhx < fr ? q->fhx : fr) + 0.5f;
+        if (dfloor(c0) == dfloor(c1)) return 0;
+        c0 = (q->fly > ft ? q->fly : ft) + 0.5f;
+        c1 = (q->fhy < fb ? q->fhy : fb) + 0.5f;
+        if (dfloor(c0) == dfloor(c1)) return 0;
+        return 1;
+    }
     a0 = lx > l ? lx : l;
     a1 = hx < r ? hx : r;
     b0 = ly > t ? ly : t;
     b1 = hy < b ? hy : b;
     if (!(a0 < a1 && b0 < b1))
         return 0;
-    if (!prec || !precise(k))
-        return 1;
     {
         int px, py;
         for (py = dfloor(b0); py < b1; py++)

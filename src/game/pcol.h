@@ -16,7 +16,8 @@ void pcol_mark(int i);                 /* a change of position / sprite / mask /
 void pcol_destroyed(int i);            /* instance_destroy: removed from the tree at the next RemoveMarked */
 void pcol_touch(int i);                /* the runner computes i's bounding box (Compute_BoundingBox(true)) */
 void pcol_load_done(void);              /* play_level_start loaded the level: no instance is quiet now */
-int pcol_quiet(void);                  /* some level-load instance is not yet looked at (pcol_touch_stale inexact) */
+int pcol_quiet(void);
+void pcol_box(int i, float *o);         /* play instance i's bounding box l, t, r, b (floats; image_angle included) */                  /* some level-load instance is not yet looked at (pcol_touch_stale inexact) */
 void pcol_touch_stale(int obj, int notme, int upto);  /* the touches of a creation-order scan up to `upto` */
 /* ShouldUseFastCollision(obj) then, when it gives 1, UpdateTree: -1 no instance (no search at all), 1 search the
    tree (pcol_search), 2 test the object's instances in creation order (touching each, pcol_touch) */
