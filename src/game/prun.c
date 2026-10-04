@@ -291,6 +291,7 @@ void play_level_start(int32_t next_id)
         int i;
         if (!g->alive) continue;
         i = pin_add(g->obj, PI(g->x), PI(g->y), g->id);
+        if (i == PIN_DEAD) continue;               /* full (PUNTR 9001): the rest of the level is not loaded */
         {
             struct pin *p = &PX(i);
             int a;

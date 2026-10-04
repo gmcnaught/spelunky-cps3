@@ -198,6 +198,67 @@ through that slot's ext. With PIN_MAX 4096 (src/game's own value) the same run c
 test-harness limit (PIN_MAX 1000, no room setting), plus a missing PIN_DEAD check in `play_level_start`
 (src/game).
 
+## 6. Instance capacity (PIN_MAX, EXT_MAX)
+
+The shipping / SH-2 builds ran with PIN_MAX 1000 (the test scripts' sed of play.h's 4096) and EXT_MAX 400.
+
+Generated instances (build/host/genhost over tests/gen, 8,080 cases; alive instances after generation):
+
+| Set | Cases | Max | Cases >= 999 |
+|---|---|---|---|
+| mines (1-4) | 1,600 | 962 | 0 |
+| lush (5-8) | 2,200 | 1,404 (lake) | 203: every lake case (about 570 oWaterSwim + 560 oLush) |
+| ice (9-12) | 1,400 | 921 | 0 |
+| temple (13-15) | 1,600 | 883 | 0 |
+| olmec (16) | 400 | 1,290 | 400 |
+| chains (natural lake on level 6) | 80 | 1,267 | 8 |
+
+Play (playhost, every route with its header options): slots used up to 1,262 (c_temple_olmec), 996 on
+c_swamp_vampkill; play adds up to 117 slots over a room's start (c_swamp_drain), 113 (p4_darkexit). The largest
+generated levels played 300 steps idle (a scratch playhost with lake / cityOfGold / prob* globals and the level's
+own room): lake up to 1,537 slots, Olmec 1,359. pin_ext records: lake about 790 with EXT_MAX raised (oWaterSwim
+took one each), Olmec 381 (cityOfGold).
+
+So PIN_MAX 1000 failed every Olmec level and every lake level: `play_level_start`'s copy wrote slot PIN_DEAD = 999,
+which is generator instance 999's memory not read yet (the c_temple_olmec SIGBUS), and pin_add's callers wrote
+through PIN_DEAD's record 0 (the shared defaults). EXT_MAX 400 failed every lake level (ext_alloc returned record 0).
+
+Changes (src/game, harnesses):
+
+- **PIN_MAX 1792** in play.h (the scripts' default PIN, their sed now matches any value). PIN_MAX > INST_MAX
+  (1536) is a compile-time check: every generated instance gets a slot (the loader and pcol.c's gen_load).
+- **oWater, oWaterSwim as terrain** (pworld.c terrain_names): Create / Destroy only, no alarms, no collision
+  events; their only variables are `type` (struct pin) and `checked` (written by oLevel's commented-out
+  deactivation, read nowhere). They stay in the collision grid (terrain is), so collision_point / instance_place on
+  oWater see them as before. Lake levels then need at most 212 ext records.
+- **EXT_MAX 448** (381 used at most, 66 left).
+- **Guards:** PIN_DEAD's record is a reserved scratch record (EXT_SCRATCH = EXT_MAX - 1, never allocated; record 0
+  stays the defaults); a full ext_alloc returns it too (PUNTR 9005); a full pin_add sets PIN_DEAD up and returns it
+  (PUNTR 9001); pin_create then makes no collision entry and runs no Create; the loaders (prun.c, ptrans.c) skip
+  a PIN_DEAD slot. Checked with an ASan playhost at PIN_MAX 1411 / INST_MAX 1410 / EXT_MAX 150: the lake level
+  fills every slot, Olmec and c_swamp_vampkill run out of ext, all three run to the end with no ASan report.
+- **RAM check:** tests/ramcheck.ld, linked into tests/game, gametime and playsh2 (both variants): .bss must end
+  32 KB below the stack top. tests/game at PIN_MAX 1792: .data 14.0 K + .bss 458.5 K, 50 KB left for the stack;
+  PIN_MAX 3000 fails the link.
+- **Route options for the game program:** game_cfg nodark / room / globals (src/main/game.c), filled from the
+  route's `# nodark`, `# room`, `# globals` lines by tests/game/mkroute.py (tests/game and gametime), as playhost's
+  options; room also takes rLevel2 / rLevel3 (the cabinet keeps -1: the level's own room).
+
+MAME (tests/game, new options): c_temple_olmec (room rOlmec) and `tests/routes/l_lake8.txt` (lush seed 479398616
+level 8, lake=1, room rLevel3: the largest generated lake level) run to their end, no crash (draw max 1.17 M at the
+room start, 69 entries).
+
+For the oJaws work (the lake boss has no Step: untranslated 5003 on every lake level): the largest lake levels,
+`lake=1`, noDarkLevel 1, room rLevel3 (tests/gen/lush.txt): seeds 479398616 (level 8, 1,404 instances),
+1769241775 (5), 1305291916 (5), 243538780 (8), 587626975 (6), 235542814 (7), 908267969 (7), 738162012 (8);
+`tests/routes/l_lake8.txt` runs the first in the game program. The host tracer can start only in rLevel / rOlmec,
+so these levels have no runner trace yet.
+
+c_temple_olmec in MAME against the model: 62-63 K px differ at rec 100-300. The model draws bgCave and follows
+the player; rOlmec's background is bgTemple (refs/hd/src/rooms/rOlmec, as draw.c draws it) and oOlmec's Create
+makes the view follow oOlmec (:37-40). Both are tools/drawmodel.py gaps (not fixed here); the content traces have
+no runner frames for rOlmec to confirm the camera.
+
 ## Observed / Inferred / Unknown
 
 - **Observed:** entries max 214, records max 9 over 27,544 frames; 97.8 % of frame draws one-piece; no

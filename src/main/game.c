@@ -7,7 +7,7 @@
 #include "pmsg.h"
 #include "game.h"
 
-struct game_cfg game_cfg = { 0, 0, 30, 0, 1, 0, 1 };
+struct game_cfg game_cfg = { 0, 0, 30, 0, 1, 0, 1, -1, -1, 0 };
 int32_t game_rec, game_rec1 = -1, game_steps;
 void (*game_rec_hook)(int32_t rec);               /* tests: called at each record point with its number */
 uint8_t game_over;
@@ -30,6 +30,54 @@ void game_attract_step(void)
     front_step();
 }
 
+/* game_cfg.globals: one "name=value" (test/host/playhost.c set_global's names); 0 if the name is not known */
+static int str_is(const char *a, const char *b, int n)
+{
+    int k;
+    for (k = 0; k < n; k++)
+        if (a[k] != b[k]) return 0;
+    return b[n] == 0;
+}
+static int set_global(const char *s, int n)
+{
+    /* name, size and place of each global (sizes from the structs: 1, 2 or 4 bytes) */
+#define GV(st, f) { #f, sizeof(st.f), &st.f }
+    static const struct { const char *name; uint8_t sz; void *at; } gl[] = {
+        GV(G, madeMoai), GV(G, kaliPunish), GV(PG, arrows), GV(PG, bombs), GV(PG, rope), GV(PG, plife),
+        GV(PG, money), GV(PG, hasJetpack), GV(PG, hasCape), GV(PG, hasParachute), GV(PG, hasMitt),
+        GV(PG, hasGloves), GV(PG, hasSpringShoes), GV(PG, hasSpikeShoes), GV(PG, hasKapala), GV(PG, hasAnkh),
+        GV(PG, hasCompass), GV(PG, hasStickyBombs), GV(PG, hasUdjatEye), GV(PG, hasCrown), GV(PG, hasJordans),
+        GV(G, lake), GV(G, cityOfGold),
+    };
+#undef GV
+    char v[32];
+    int e = 0, k, m, x = 0, neg = 0;
+    while (e < n && s[e] != '=') e++;
+    if (e == n) return 0;
+    for (m = 0; e + 1 + m < n && m < 31; m++) v[m] = s[e + 1 + m] == '~' ? ' ' : s[e + 1 + m];
+    v[m] = 0;
+    if (str_is(s, "pickupItem", e)) {
+        for (k = 0; k < PICK_COUNT; k++) {
+            const char *p = pickup_names[k];
+            int j = 0;
+            while (p[j] && p[j] == v[j]) j++;
+            if (!p[j] && !v[j]) { G.pickupItem = (uint8_t)k; return 1; }
+        }
+        return 0;
+    }
+    for (k = v[0] == '-'; v[k] >= '0' && v[k] <= '9'; k++) x = 10 * x + (v[k] - '0');
+    neg = v[0] == '-';
+    if (neg) x = -x;
+    for (k = 0; k < (int)(sizeof gl / sizeof gl[0]); k++)
+        if (str_is(s, gl[k].name, e)) {
+            if (gl[k].sz == 1) *(uint8_t *)gl[k].at = (uint8_t)x;
+            else if (gl[k].sz == 2) *(int16_t *)gl[k].at = (int16_t)x;
+            else *(int32_t *)gl[k].at = x;
+            return 1;
+        }
+    return 0;
+}
+
 void game_begin(void)
 {
     front_stop();
@@ -37,8 +85,20 @@ void game_begin(void)
     G.currLevel = game_cfg.level;
     PG.money = game_cfg.money;
     play_noenemy = !game_cfg.enemies;
+    if (game_cfg.nodark >= 0) G.noDarkLevel = (uint8_t)game_cfg.nodark;
+    if (game_cfg.globals) {
+        const char *s = game_cfg.globals;
+        while (*s) {
+            int n = 0;
+            while (s[n] && s[n] != ',') n++;
+            set_global(s, n);                     /* mkroute.py checked the names */
+            s += n + (s[n] == ',');
+        }
+    }
     rng_seed(&g_rng, game_cfg.seed ? game_cfg.seed : SH.frame * 2654435761u + 1);
+    gen_room_force = game_cfg.room;
     play_level_start(110325);                     /* the runner's instance id counter at rLevel (playhost) */
+    gen_room_force = -1;
     game_rec = 0;
     game_rec1 = -1;
     game_steps = 0;

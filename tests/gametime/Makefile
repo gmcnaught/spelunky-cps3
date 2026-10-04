@@ -1,6 +1,6 @@
 # tests/gametime: the game program's frame budget (main.c) on a route; scripts/gametime_check.sh builds and runs it.
 # Reuses tests/game's route tool, flash assets and sprite-RAM layout (read-only), and src/game snapshotted into
-# build/g by the script (PIN_MAX 1000).
+# build/g by the script (PIN_MAX 1792).
 #   scripts/dmake.sh tests/gametime [ROUTE=p4_push_rope SEED=365 LEVEL=1 MONEY=0 ENEMIES=0] [ROUTE2=p5_snakes SEED2=101
 #   LEVEL2=1 MONEY2=0 ENEMIES2=1] [ATTRACT_FRAMES=3600]
 PROG   := gametime
@@ -28,7 +28,7 @@ SRCS   := main.c hooks.c frt.S ../playsh2/bigtext.c $(ROOT)/src/main/game.c $(RO
           $(ROOT)/src/sh2/softfp.c $(ROOT)/src/sh2/softfp_sh2.S $(ROOT)/src/sh2/fma.c
 CFLAGS := $(OPT) -std=gnu99 -fno-bit-tests -Wno-unused-parameter -Wno-sign-compare -Wno-missing-field-initializers \
           -Ibuild/g -Ibuild -I. -I$(GEN) -I$(ROOT)/src/draw -I$(ROOT)/src/main -I$(ROOT)/src/hud -I$(ROOT)/src/shell \
-          -I$(ROOT)/src/snd -I$(ROOT)/src/front -DSOFTFP_ASM -fdata-sections -Wl,-T,../game/sprbss.ld \
+          -I$(ROOT)/src/snd -I$(ROOT)/src/front -DSOFTFP_ASM -fdata-sections -Wl,-T,../game/sprbss.ld -Wl,-T,../ramcheck.ld \
           '-DDRAW_MAPS_SECTION=__attribute__((section(".bss.drawmaps")))' \
           '-DDRAW_CACHE_SECTION=__attribute__((section(".bss.drawcache")))' '-DROUTE_NAME="$(shell echo $(ROUTE) | tr a-z A-Z)"' '-DROUTE2_NAME="$(shell echo $(ROUTE2) | tr a-z A-Z)"' -DATTRACT_FRAMES=$(ATTRACT_FRAMES)
 FLASH  := build/flash.bin

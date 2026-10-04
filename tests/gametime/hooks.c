@@ -82,6 +82,9 @@ void main_boot(void)
     game_cfg.level = ROUTE_LEVEL;
     game_cfg.money = ROUTE_MONEY;
     game_cfg.enemies = ROUTE_ENEMIES;
+    game_cfg.nodark = ROUTE_NODARK;
+    game_cfg.room = ROUTE_ROOM;
+    game_cfg.globals = ROUTE_GLOBALS;
 }
 
 /* the cabinet: nothing during the attract section; then a coin and Start (game 1, route 1); after game 1 is over,
@@ -99,6 +102,9 @@ void gt_section_end(void)
         game_cfg.level = ROUTE2_LEVEL;
         game_cfg.money = ROUTE2_MONEY;
         game_cfg.enemies = ROUTE2_ENEMIES;
+        game_cfg.nodark = ROUTE2_NODARK;
+        game_cfg.room = ROUTE2_ROOM;
+        game_cfg.globals = ROUTE2_GLOBALS;
         coin_at = frame + 60;
         return;
     }

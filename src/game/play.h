@@ -33,7 +33,11 @@
 #include "gentables.h"
 #include "playtables.h"
 
-#define PIN_MAX 4096
+/* play slots (PIN_DEAD the last): generated levels up to 1,404 instances (lake), 1,537 slots after 300 idle steps
+   on a lake level, play adds up to 117 on the routes; tests/game: .data + .bss 473 KB of 512, 50 KB left for the
+   stack (docs/DRAW.md section 6).
+   The line stays bare: the test scripts set it by sed (PIN=n) */
+#define PIN_MAX 1792
 #define NOONE (-1)
 
 /* item / treasure / misc `type` strings (GML compares strings; here an enum) */
@@ -160,8 +164,10 @@ void pw_release(void);
 
 #define PX(i) (PW.in[i])
 #ifndef EXT_MAX
-#define EXT_MAX 400              /* struct pin_ext records (0: the shared defaults); 343 at most in use */
+#define EXT_MAX 448              /* struct pin_ext records (0: the shared defaults, EXT_SCRATCH): 381 at most in use
+                                    (Olmec, cityOfGold, idle), lake levels 212 with oWater as terrain (DRAW.md 6) */
 #endif
+#define EXT_SCRATCH (EXT_MAX - 1)  /* never allocated: PIN_DEAD's record and a full ext_alloc's (pworld.c) */
 #ifndef EN_MAX
 #define EN_MAX 128               /* struct pin_en records (0: the shared zeros) */
 #endif

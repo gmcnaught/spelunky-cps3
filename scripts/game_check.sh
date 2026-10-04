@@ -5,7 +5,7 @@
 #   scripts/game_check.sh <route> <seed> <trace name> <rec,rec,...> [level money enemies]
 #   e.g. scripts/game_check.sh p4_exit559 559 g_p4_exit559_s559 30,150,300
 # Reference traces with frames: TRACE_SHOT=<recs> scripts/hd_trace.sh (build/game/traces.sh: the gate's three).
-# src/game is taken at GAME_REV (default HEAD) with PIN_MAX 1000, as scripts/playsh2_check.sh does.
+# src/game is taken at GAME_REV (default HEAD) with PIN_MAX 1792, as scripts/playsh2_check.sh does.
 # HUD=0: the program draws no HUD (the runner's frames have none); HUD=1 (default): the model draws HD's HUD from the
 # record's globals (TRACE_HUD traces: collect, messages, drawHUD, the transition's text); --gui frames (TRACE_GUI) too.
 # ATTRACT=1 (or 5: from rHighscores): the attract mode (src/front), no coin / start; the route only gives the seed
@@ -22,8 +22,8 @@ git archive "${GAME_REV:-HEAD}" src/game | tar -x -C "$G" --strip-components=2
 # work in them; the other files stay at GAME_REV)
 for f in $GAME_FILES; do cp "src/game/$f" "$G/$f"; done
 cp build/gen/objects.[ch] build/gen/gentables.[ch] build/gen/playtables.[ch] "$G/"
-sed -i '' "s/^#define PIN_MAX 4096\$/#define PIN_MAX ${PIN:-1000}/" "$G/play.h"
-grep -q "^#define PIN_MAX ${PIN:-1000}\$" "$G/play.h"
+sed -i '' "s/^#define PIN_MAX [0-9][0-9]*\$/#define PIN_MAX ${PIN:-1792}/" "$G/play.h"
+grep -q "^#define PIN_MAX ${PIN:-1792}\$" "$G/play.h"
 # EXACT=1: the exact build (src/game/pcol.c with PCOL_EXACT: the runner's R-tree order in play); default the
 # shipping build's collision grid (src/game/pcolgrid.h). GRID_SHIFT=<n>: grid cells of 2^n px (default 4)
 if [ "${EXACT:-0}" = 1 ]; then { echo "#define PCOL_EXACT 1"; cat "$G/pcol.c"; } > "$G/pcol.tmp" && mv "$G/pcol.tmp" "$G/pcol.c"; fi

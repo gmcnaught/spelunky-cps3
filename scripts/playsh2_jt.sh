@@ -1,6 +1,6 @@
 #!/bin/sh
 # tests/playsh2's jtcps3 variant (JT=1): one generation case per area and all 18 routes in the CPS3's 512 KB of main
-# RAM with PIN_MAX 1000 (since e380bb6 everything fits; no sprite or character RAM used as memory; the host check
+# RAM with PIN_MAX 1792 (docs/DRAW.md section 6; no sprite or character RAM used as memory; the host check
 # below shows the limit changes nothing for these jobs); the program times them with the FRT and shows the results
 # on screen (large: PASS n/N and the sprite RAM self-test; a table: per job total clocks, step mean / max, checksum
 # OK against host values built in). This script: the host check that the patched
@@ -8,7 +8,7 @@
 #   scripts/playsh2_jt.sh          -> tests/playsh2/build/jt/elf/mame/sfiii3na (the set), build/jt/out/{snap,jt.txt}
 set -e
 cd "$(dirname "$0")/.."
-T=tests/playsh2; B=$T/build; J=$B/jt; V=${JTV:-}; O=$J/out$V; N=${PIN:-1000}
+T=tests/playsh2; B=$T/build; J=$B/jt; V=${JTV:-}; O=$J/out$V; N=${PIN:-1792}
 rm -rf "$O" "$B/g" "$J/gA"; mkdir -p "$O/w" "$B/g" "$J/gA"
 git archive "${GAME_REV:-HEAD}" src/game | tar -x -C "$J/gA" --strip-components=2
 cp build/gen/objects.[ch] build/gen/gentables.[ch] build/gen/playtables.[ch] "$J/gA/"
@@ -21,7 +21,7 @@ for f in ${O2FILES:-}; do
   { echo '#pragma GCC optimize("O2", "no-tree-loop-distribute-patterns")'; cat "$J/gA/$f"; } > "$J/o2.tmp" && mv "$J/o2.tmp" "$J/gA/$f"
 done
 cp "$J/gA"/* "$B/g/"
-sed -i '' "s/^#define PIN_MAX 4096\$/#define PIN_MAX $N/" "$B/g/play.h"
+sed -i '' "s/^#define PIN_MAX [0-9][0-9]*\$/#define PIN_MAX $N/" "$B/g/play.h"
 grep -q "^#define PIN_MAX $N\$" "$B/g/play.h"; touch "$B/g/stamp"
 # snapcfg.h (tests/playsh2/core.c): where the snapshot keeps alpha
 sed -n '/^struct pin_ext {/,/^};/p' "$B/g/play.h" | grep -q "alpha" && echo "#define ALPHA_IN_EXT 1" > "$B/g/snapcfg.h" || : > "$B/g/snapcfg.h"

@@ -13,6 +13,9 @@
 /* the generator's instances, then the play instances in the same memory (play.h struct pworld) */
 #define INST_MEM_N (PIN_MAX > INST_MAX ? PIN_MAX : INST_MAX)
 typedef char pin_size_is_inst_size[sizeof(struct pin) == sizeof(struct inst) ? 1 : -1];
+/* every generated instance gets a play slot (play_level_start, pcol.c gen_load: the grid's arrays are PIN_MAX long), with
+   PIN_DEAD left over */
+typedef char pin_max_covers_inst_max[PIN_MAX > INST_MAX ? 1 : -1];
 struct inst inst_mem[INST_MEM_N];
 struct pworld PW = { .in = (struct pin *)inst_mem };
 #ifdef PLAY_STATS
@@ -286,7 +289,8 @@ static const char *const terrain_names[] = {
     "oBrick", "oBrickSmooth", "oBlock", "oHardBlock", "oLush", "oTemple", "oIce", "oDark", "oDesert", "oDesert2",
     "oLavaSolid", "oAlienShip", "oAlienShipFloor", "oXocBlock", "oAltarLeft", "oAltarRight", "oMoai", "oMoai2",
     "oMoai3", "oMoaiInside", "oLadder", "oLadderOrange", "oLadderTop", "oRoom", "oBlackBG", "oBlackFadeUp",
-    "oCaveBG", "oCaveBG2", "oCaveBGEntrance", "oBackdrop", "oForeground"
+    "oCaveBG", "oCaveBG2", "oCaveBGEntrance", "oBackdrop", "oForeground",
+    "oWater", "oWaterSwim"            /* Create / Destroy only; their type is in struct pin, checked is never read */
 };
 
 static int str_eq(const char *a, const char *b)
@@ -347,7 +351,8 @@ static void ext_reset(void)
     int k;
     ext_defaults(&pin_ext[0]);
     nextfree = 0;
-    for (k = EXT_MAX - 1; k >= 1; k--) extfree[nextfree++] = (int16_t)k;
+    for (k = EXT_SCRATCH - 1; k >= 1; k--) extfree[nextfree++] = (int16_t)k;   /* EXT_SCRATCH kept out */
+    ext_defaults(&pin_ext[EXT_SCRATCH]);
     ext_used = 0;
     en_zero(&pin_en[0]);
     nenfree = 0;
@@ -358,9 +363,10 @@ static void ext_reset(void)
 static int ext_alloc(void)
 {
     int e;
-    if (nextfree == 0) {
+    if (nextfree == 0) {                             /* full: the scratch record (never record 0, the defaults) */
         PUNTR(9005);
-        return 0;
+        ext_defaults(&pin_ext[EXT_SCRATCH]);
+        return EXT_SCRATCH;
     }
     e = extfree[--nextfree];
     ext_defaults(&pin_ext[e]);
@@ -404,6 +410,28 @@ void pw_removed(int i)
 #endif
 }
 
+/* the slot PIN_DEAD: never alive; what the references to removed instances (REL) and a full pin_add point to. Its
+   record is the scratch one (writes through it touch no live instance and not the defaults); initialised once a
+   room, after the loader (until then it is W.in's memory) */
+static void dead_init(void)
+{
+    struct pin *d;
+    unsigned char *b;
+    unsigned k2;
+    if (dead_ok) return;
+    d = &PW.in[PIN_DEAD];
+    b = (unsigned char *)d;
+    for (k2 = 0; k2 < sizeof *d; k2++) b[k2] = 0;
+    PIN_WR(int16_t, d->spr) = -1;
+    PIN_WR(int16_t, d->mask) = -1;
+#ifdef PIN_EXT_CHECK
+    d->ext = -1;                                     /* PE(PIN_DEAD) is an error */
+#else
+    d->ext = EXT_SCRATCH;
+#endif
+    dead_ok = 1;
+}
+
 /* a reference kept across steps: to PIN_DEAD when its slot goes back */
 #define REL(r) do { if ((r) >= 0 && relmark[r]) (r) = PIN_DEAD; } while (0)
 
@@ -417,18 +445,7 @@ void pw_release(void)
        the free ones close to running out (a step creates fewer than PW_RELEASE_ROOM) */
     if (nrmq < PW_RELEASE_BATCH && nfree + (PIN_DEAD - PW.n) >= PW_RELEASE_ROOM) return;
     if (nrmq == 0) return;
-    if (!dead_ok) {
-        struct pin *d = &PW.in[PIN_DEAD];
-        unsigned char *b = (unsigned char *)d;
-        unsigned k2;
-        for (k2 = 0; k2 < sizeof *d; k2++) b[k2] = 0;
-        PIN_WR(int16_t, d->spr) = -1;
-        PIN_WR(int16_t, d->mask) = -1;
-#ifdef PIN_EXT_CHECK
-        d->ext = -1;                                 /* PE(PIN_DEAD) is an error */
-#endif
-        dead_ok = 1;
-    }
+    dead_init();
     for (k = 0; k < nrmq; k++) {
         s = rmq(k);
         relmark[s] = 1;
@@ -539,8 +556,9 @@ int pin_add(int obj, pos x, pos y, int32_t id)
     if (nfree > 0)
         i = freel[--nfree];
     else {
-        if (PW.n >= PIN_DEAD) {
-            PUNTR(9001);
+        if (PW.n >= PIN_DEAD) {                      /* full: the caller gets the scratch slot (dead_init), not */
+            PUNTR(9001);                             /* alive, its writes go to the scratch record */
+            dead_init();
             return PIN_DEAD;
         }
         i = PW.n++;
@@ -584,6 +602,7 @@ int pin_add(int obj, pos x, pos y, int32_t id)
 int pin_create(pos x, pos y, int obj)
 {
     int i = pin_add(obj, x, y, PW.next_id++);
+    if (i == PIN_DEAD) return i;                     /* full: no collision entry, no Create */
     pcol_create(i);                                  /* CollisionInsert, before the Create event */
     ev_create(i);
     return i;

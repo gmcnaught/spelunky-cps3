@@ -88,6 +88,7 @@ void play_transition_start(int room)
         int i;
         if (!g->alive) continue;
         i = pin_add(g->obj, PI(g->x), PI(g->y), g->id);
+        if (i == PIN_DEAD) continue;                   /* full (PUNTR 9001) */
         pin_setspr(&PX(i), g->spr);
         pin_setdepth(&PX(i), g->depth);
         if (obj_is(g->obj, OBJ_oSolid)) PX(i).invincible = (g->flags & IF_INVINCIBLE) != 0;

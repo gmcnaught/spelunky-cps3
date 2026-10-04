@@ -1,0 +1,7 @@
+# Capacity check (docs/DRAW.md section 6): the largest generated lake level (lush 479398616 level 8, lake=1, 1,404
+# instances, room rLevel3), 300 steps idle. No reference trace (the tracer starts in rLevel only).
+# seed 479398616
+# level 8
+# globals lake=1
+# room rLevel3
+300 -

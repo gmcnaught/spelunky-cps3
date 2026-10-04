@@ -2,7 +2,7 @@
 # tests/playsh2 in MAME: the level generator (48 cases, all areas), the P4 routes and the P5 routes on the SH-2 with the real
 # src/game code; per-record checksums compared with the host build of the same code (tests/playsh2/host.c), SH-2
 # clocks per generation / step summarised (tests/playsh2/report.py).
-#   [PIN=1000] [OPT=-O2] [PROF=<ticks>] scripts/playsh2_check.sh
+#   [PIN=1792] [OPT=-O2] [PROF=<ticks>] scripts/playsh2_check.sh
 # ATTR=1: time per category / event / object (tests/playsh2/attr.c).
 # SOFTFP=1: link src/sh2/softfp.c in place of libgcc's fp-bit (scripts/softfp_check.sh tests it).
 # VARIANT=<name>: build and output in tests/playsh2/build/<name> (default run, run_prof).
@@ -17,8 +17,8 @@ G=$B/g; rm -rf "$G"; mkdir -p "$G"
 if [ "${GAME_REV:-HEAD}" = WORKTREE ]; then cp src/game/*.c src/game/*.h "$G/"      # the working tree's src/game
 else git archive "${GAME_REV:-HEAD}" src/game | tar -x -C "$G" --strip-components=2; fi
 cp build/gen/objects.[ch] build/gen/gentables.[ch] build/gen/playtables.[ch] "$G/"
-sed -i '' "s/^#define PIN_MAX 4096\$/#define PIN_MAX ${PIN:-1000}/" "$G/play.h"
-grep -q "^#define PIN_MAX ${PIN:-1000}\$" "$G/play.h"; touch "$G/stamp"
+sed -i '' "s/^#define PIN_MAX [0-9][0-9]*\$/#define PIN_MAX ${PIN:-1792}/" "$G/play.h"
+grep -q "^#define PIN_MAX ${PIN:-1792}\$" "$G/play.h"; touch "$G/stamp"
 # EXACT=1: the exact build (src/game/pcol.c with PCOL_EXACT: the runner's R-tree order in play); default the
 # shipping build's collision grid (src/game/pcolgrid.h). GRID_SHIFT=<n>: grid cells of 2^n px (default 4)
 if [ "${EXACT:-0}" = 1 ]; then { echo "#define PCOL_EXACT 1"; cat "$G/pcol.c"; } > "$G/pcol.tmp" && mv "$G/pcol.tmp" "$G/pcol.c"; fi

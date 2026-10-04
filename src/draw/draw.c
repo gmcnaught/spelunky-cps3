@@ -1024,7 +1024,7 @@ void draw_boot(void)
 
 void draw_frame(void)
 {
-    int k, m, n = 0, band = 0, q, ncand;
+    int k, n = 0, band = 0, q, ncand;
     uint32_t xlo, xhi, ylo, yhi;
     PROF0();
     draw_st.frames++;
@@ -1075,8 +1075,6 @@ void draw_frame(void)
     for (q = 0; q < ncand; q++) {                 /* newest first: the sort below then moves little */
         int pi = k = cand_list[q];
         uint32_t kx, ky;
-        int c;
-        uint16_t t;
         uint8_t dk;
         if (!I_ALIVE(pi) || !I_VISIBLE(pi)) continue;
         dk = draw_kind[I_OBJ(pi)];

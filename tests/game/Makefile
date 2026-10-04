@@ -1,6 +1,6 @@
 # tests/game: the game program (src/main: shell -> play_step -> draw) in MAME, playing a route's keys
 # (build/route.h, mkroute.py) and holding the frames listed in SNAPS on screen for scripts/lua/gamesnap.lua.
-# scripts/game_check.sh snapshots src/game (git HEAD, or GAME_REV) and build/gen into build/g with PIN_MAX 1000
+# scripts/game_check.sh snapshots src/game (git HEAD, or GAME_REV) and build/gen into build/g with PIN_MAX 1792
 # (main RAM is 512 KB) and runs the gate.
 #   scripts/dmake.sh tests/game ROUTE=p4_exit559 SEED=559 SNAPS=100,200 [LEVEL=1 MONEY=0 ENEMIES=0] [OPT=-O2]
 #   [HOLD=n: the SNAPS frames held n frames each on their own, sound running (jtcps3 frame check, scripts/jt_frames.sh)]
@@ -26,7 +26,7 @@ SRCS   := main.c $(ROOT)/src/main/main.c $(ROOT)/src/main/game.c $(ROOT)/src/dra
           $(ROOT)/src/sh2/softfp.c $(ROOT)/src/sh2/softfp_sh2.S $(ROOT)/src/sh2/fma.c
 CFLAGS := $(OPT) -std=gnu99 -fno-bit-tests -Wno-unused-parameter -Wno-sign-compare -Wno-missing-field-initializers \
           -Ibuild/g -Ibuild -I. -I$(GEN) -I$(ROOT)/src/draw -I$(ROOT)/src/main -I$(ROOT)/src/hud -I$(ROOT)/src/shell \
-          -I$(ROOT)/src/snd -I$(ROOT)/src/front -DSOFTFP_ASM -fdata-sections -Wl,-T,sprbss.ld \
+          -I$(ROOT)/src/snd -I$(ROOT)/src/front -DSOFTFP_ASM -fdata-sections -Wl,-T,sprbss.ld -Wl,-T,../ramcheck.ld \
           '-DDRAW_MAPS_SECTION=__attribute__((section(".bss.drawmaps")))' \
           '-DDRAW_CACHE_SECTION=__attribute__((section(".bss.drawcache")))' $(if $(filter 1,$(DPROF)),-DDRAW_PROFILE) $(if $(filter 0,$(HUD)),-DGAME_NOHUD) $(if $(DARK),-DGAME_DARK=$(DARK)) $(if $(ATTRACT),-DGAME_ATTRACT=$(ATTRACT)) $(if $(HOLD),-DGAME_HOLD=$(HOLD))
 FLASH  := build/flash.bin

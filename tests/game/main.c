@@ -72,6 +72,9 @@ void main_boot(void)
     game_cfg.level = ROUTE_LEVEL;
     game_cfg.money = ROUTE_MONEY;
     game_cfg.enemies = ROUTE_ENEMIES;
+    game_cfg.nodark = ROUTE_NODARK;
+    game_cfg.room = ROUTE_ROOM;
+    game_cfg.globals = ROUTE_GLOBALS;
 }
 
 static uint32_t frame;

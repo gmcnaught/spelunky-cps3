@@ -31,7 +31,7 @@ def masks(path):
         out += [m] * n
     return out[:100000]
 
-# --jt: one generation case per area and every route (since e380bb6 all of it fits main RAM at PIN_MAX 1000; host
+# --jt: one generation case per area and every route (all of it fits main RAM at PIN_MAX 1792, docs/DRAW.md section 6; host
 # results equal to the unpatched build: scripts/playsh2_jt.sh checks it)
 JT = '--jt' in sys.argv
 JT_GEN = [(120965577, 2), (120965577, 6), (120965577, 10), (120965577, 14), (120965577, 16)]

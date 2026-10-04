@@ -18,6 +18,12 @@ struct game_cfg {
     int32_t tail;
     uint32_t seed;               /* RNG seed (route: the trace's; cabinet: 0 = from the frame counter) */
     int32_t level, money, enemies;   /* starting level, money, enemies kept (P4 routes: 0) */
+    /* a route's header lines, as test/host/playhost.c's options (tools/tracer.py TRACE_NODARK / TRACE_GLOBALS /
+       TRACE_ROOM): */
+    int32_t nodark;              /* >= 0: global.noDarkLevel (-1: scrClearGlobals' value) */
+    int32_t room;                /* the first room: -1 the level's own (the cabinet); routes 0 rLevel (default), 1 rLevel2,
+                                    2 rLevel3 (a lake), 3 rOlmec (gen_room_for_level) */
+    const char *globals;         /* "name=value,..." ("~" a space), or NULL */
 };
 extern struct game_cfg game_cfg;
 
