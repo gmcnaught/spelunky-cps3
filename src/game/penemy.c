@@ -250,9 +250,14 @@ int pen_create(int i, int fromgen)
         PE(p)->colLeft = PE(p)->colRight = 0;
         return 1;
     case OBJ_oScarab: case OBJ_oFrog: case OBJ_oFireFrog: case OBJ_oZombie: case OBJ_oVampire: case OBJ_oMonkey:
-    case OBJ_oManTrap: case OBJ_oHawkman: case OBJ_oYeti: case OBJ_oYetiKing:
-        if (!fromgen) PUNTR(5002);
+    case OBJ_oManTrap: case OBJ_oHawkman: case OBJ_oYeti: case OBJ_oYetiKing: case OBJ_oPiranha: case OBJ_oDeadFish:
         pen_enemy_create(i);
+        if (fromgen && play_gen_inst) {                /* oEnemy Create's facing / swimming: the generator's final */
+            PE(p)->facing = play_gen_inst->facing;
+            PEN(p)->swimming = (play_gen_inst->flags & IF_SWIMMING) != 0;
+        }
+        /* P7 hook: the object's own Create (arg: fromgen, the generator ran it and its RNG draws) */
+        if (!pcontent_ev(FEV_CREATE, i, fromgen) && !fromgen) PUNTR(5002);
         return 1;
     }
     return 0;
@@ -292,7 +297,7 @@ int pen_hit_common(int e, int kind)
         }
     } else if (o->obj == OBJ_oManTrap || o->obj == OBJ_oVampire || o->obj == OBJ_oYeti || o->obj == OBJ_oHawkman ||
                o->obj == OBJ_oTombLord || o->obj == OBJ_oAlienBoss || o->obj == OBJ_oUFO) {
-        PUNTR(5010);
+        pcontent_enemy(5010, e, kind);                                                  /* P7 hook */
     } else {
         blood(e, X(e) + 8, Y(e) + 8, 1);
         o = &PX(e);
@@ -332,7 +337,7 @@ void pen_parent_step(int i)
             snd_play(SND_xsplash);                                             /* :40 */
         }
         PE(p)->myGrav = PEN(p)->myGravWater;
-        if (p->obj == OBJ_oFireFrog) PUNTR(5011);
+        if (p->obj == OBJ_oFireFrog) pcontent_enemy(5011, i, 0);                       /* P7 hook */
     } else {
         PEN(p)->swimming = 0;
         PE(p)->myGrav = PEN(p)->myGravNorm;
@@ -347,7 +352,8 @@ void pen_parent_step(int i)
     }
     if (CP(X(i) + dfloor(sprw(i) / 2.0), Y(i) - 1, OBJ_oLava)) ptemple_world(5012, i, 0);                   /* :63 */
     if (CP(X(i) + dfloor(sprw(i) / 2.0), Y(i) + sprh(i) - 2, OBJ_oLava)) ptemple_world(5012, i, 0);
-    if (collision_rect_p(X(i) + 2, Y(i) + 2, X(i) + 14, Y(i) + 14, OBJ_oSpearsLeft, 0, NOONE) != NOONE) PUNTR(5013);
+    if (collision_rect_p(X(i) + 2, Y(i) + 2, X(i) + 14, Y(i) + 14, OBJ_oSpearsLeft, 0, NOONE) != NOONE)
+        pcontent_enemy(5013, i, 0);                                                     /* P7 hook */
     if (CP(X(i) + 8, Y(i) + 16, OBJ_oSpikes) && NGT(PE(p)->yVel, N(2))) {  /* :108 */
         int spikes = instance_place_p(i, X(i) + 8, Y(i) + 14, OBJ_oSpikes);
         if (!bloodless_of(i) && spikes != NOONE) pin_set_sprite(spikes, GSPR_sSpikesBlood);
@@ -1080,7 +1086,7 @@ int pen_animend(int i)
 
 /* ---- Collision events ----------------------------------------------------------------------------------- */
 /* objects/oEnemy/Collision_oCharacter.gml (stomp or hurt) */
-static void enemy_hit_player(int i, int c)
+void enemy_hit_player(int i, int c)
 {
     struct pin *p = &PX(i), *o = &PX(c);
     double dx = PTOD(o->x) - (X(i) + 8);
@@ -1101,13 +1107,13 @@ static void enemy_hit_player(int i, int c)
         if (PG.plife > 0) PG.plife -= 1;
         /* type == "Bat" / "Piranha" / "Vampire": oBat never sets its type (it stays "NONE"; Observed:
            build/trace/p5_buy_s28 record 257, no blood) and the others are not Mines enemies */
-        if (p->obj == OBJ_oPiranha || p->obj == OBJ_oVampire) PUNTR(5006);
+        if (p->obj == OBJ_oPiranha || p->obj == OBJ_oVampire) pcontent_enemy(5006, i, c);   /* P7 hook */
         snd_play(SND_xhurt);                                                   /* :57 */
     }
 }
 
 /* objects/oEnemy/Collision_oWhip.gml (and oWhipPre) */
-static void enemy_whipped(int i, int w)
+void enemy_whipped(int i, int w)
 {
     struct pin *p = &PX(i);
     (void)w;
@@ -1264,7 +1270,8 @@ int pen_collision(int self, int other)
     }
     if (obj_is(so, OBJ_oEnemy) && so != OBJ_oShopkeeper) {
         if (so == OBJ_oSnake || so == OBJ_oBat || so == OBJ_oSpider || so == OBJ_oSpiderHang ||
-            so == OBJ_oGiantSpiderHang || so == OBJ_oSkeleton) {
+            so == OBJ_oGiantSpiderHang || so == OBJ_oSkeleton ||
+            so == OBJ_oPiranha || so == OBJ_oDeadFish || so == OBJ_oZombie) {          /* oEnemy's events */
             if (obj_is(oo, OBJ_oCharacter)) enemy_hit_player(self, other);
             else enemy_whipped(self, other);
         } else if (!pcontent_ev(FEV_COLLISION, self, other))                               /* P7 hook */
@@ -1292,8 +1299,10 @@ int pen_outside(int i)
 
 int pen_destroy(int i)
 {
-    /* oEnemy's Destroy is commented out; oEnemySight, oWebBall, ... have none */
-    return obj_is(PX(i).obj, OBJ_oEnemy) && PX(i).obj != OBJ_oShopkeeper;
+    /* oEnemy's Destroy is commented out; oEnemySight, oWebBall, ... have none; a P7 enemy's own: pcontent */
+    if (!(obj_is(PX(i).obj, OBJ_oEnemy) && PX(i).obj != OBJ_oShopkeeper)) return 0;
+    if (pobj[PX(i).obj].ev & EV_DESTROY) pcontent_ev(FEV_DESTROY, i, 0);                /* P7 hook */
+    return 1;
 }
 
 /* ---- thrown items (oItem Step :233-326) ------------------------------------------------------------------ */
@@ -1304,6 +1313,8 @@ void pen_item_hit_enemy(int it)
         int obj = instance_nearest_p(x, y, OBJ_oEnemy);
         if (!PX(obj).invincible && PX(obj).obj != OBJ_oMagmaMan) {
             PE(&PX(obj))->xVel = PE(&PX(it))->xVel;
+            if (PX(it).type == T_ARROW && PX(obj).obj == OBJ_oVampire)               /* :243 stakes: P7 hook */
+                pcontent_enemy(5016, obj, it);
             pen_hit_common(obj, 0);
             PE(&PX(obj))->xVel = NMUL(PE(&PX(it))->xVel, N(0.3));
             if (PX(it).type == T_ARROW && PX(it).spr == GSPR_sBombArrowRight) PUNTR(5040);

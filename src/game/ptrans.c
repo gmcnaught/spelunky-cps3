@@ -165,13 +165,29 @@ static void transition_alarm0(int i)
                 pin_sety(&PX(sp), PI(91));
                 TR.drawLoot = 1;
             }
-            /* the kill counts (P5: the Mines' kinds; the other areas' are 0 here) */
+            /* the kill counts (objects/oTransition/Alarm_0.gml :120-) */
             if (PG.bats > 0) { cnt = &PG.bats; spr = GSPR_sBatLeft; }
             else if (PG.snakes > 0) { cnt = &PG.snakes; spr = GSPR_sSnakeLeft; }
             else if (PG.spiders > 0) { cnt = &PG.spiders; spr = GSPR_sSpider; }
+            else if (PG.deadfish > 0) { cnt = &PG.deadfish; spr = GSPR_sDeadFishLeftIco; }
+            else if (PG.piranhas > 0) { cnt = &PG.piranhas; spr = GSPR_sPiranhaLeftIco; }
             else if (PG.skeletons > 0) { cnt = &PG.skeletons; spr = GSPR_sSkeletonLeft; }
+            else if (PG.zombies > 0) { cnt = &PG.zombies; spr = GSPR_sZombieLeft; }
+            else if (PG.vampires > 0) { cnt = &PG.vampires; spr = GSPR_sVampireLeft; }
+            else if (PG.frogs > 0) { cnt = &PG.frogs; spr = GSPR_sFrogLeft; }
+            else if (PG.firefrogs > 0) { cnt = &PG.firefrogs; spr = GSPR_sFireFrogLeft; }
+            else if (PG.monkeys > 0) { cnt = &PG.monkeys; spr = GSPR_sMonkeyLeft; }
+            else if (PG.mantraps > 0) { cnt = &PG.mantraps; spr = GSPR_sManTrapLeft; }
+            else if (PG.yetis > 0) { cnt = &PG.yetis; spr = GSPR_sYetiLeft; }
+            else if (PG.ufos > 0) { cnt = &PG.ufos; spr = GSPR_sUFO; }
+            else if (PG.aliens > 0) { cnt = &PG.aliens; spr = GSPR_sAlien; }
+            else if (PG.alienbosses > 0) { cnt = &PG.alienbosses; spr = GSPR_sAlienBossDisp; }
             else if (PG.cavemen > 0) { cnt = &PG.cavemen; spr = GSPR_sCavemanLeft; }
+            else if (PG.hawkmen > 0) { cnt = &PG.hawkmen; spr = GSPR_sHawkLeft; }
             else if (PG.giantspiders > 0) { cnt = &PG.giantspiders; spr = GSPR_sGiantSpiderDisp; }
+            else if (PG.megamouths > 0) { cnt = &PG.megamouths; spr = GSPR_sMegaMouth; }
+            else if (PG.yetikings > 0) { cnt = &PG.yetikings; spr = GSPR_sYetiKingDisp; }
+            else if (PG.tomblords > 0) { cnt = &PG.tomblords; spr = GSPR_sTombLordDisp; }
             else if (PG.damselsKilled > 0) { cnt = &PG.damselsKilled; spr = GSPR_sDamselLeftIco; }
             else if (PG.shopkeepers > 0) { cnt = &PG.shopkeepers; spr = GSPR_sShopLeftIco; }
             if (cnt) {

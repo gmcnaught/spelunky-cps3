@@ -296,7 +296,8 @@ void ev_create(int i)
     case OBJ_oBone: pitems_world(1001, i, 0); break;
     default:
         if (ptrans_create(i)) break;
-        if ((pobj[p->obj].ev & EV_CREATE) && !pcontent_ev(FEV_CREATE, i, 0))               /* P7 hook */
+        if ((pobj[p->obj].ev & EV_CREATE) && !pcontent_ev(FEV_CREATE, i, play_in_gen_init) &&   /* P7 hook */
+            !play_in_gen_init)
             PUNTR(1000);
         break;
     }
@@ -337,15 +338,16 @@ void pobj_init_from_gen(int i)
     case OBJ_oDamsel:
         break;                                                                 /* removed (TRACE_NOENEMY) */
     default:
-        if (obj_is(p->obj, OBJ_oSolid))
-            create_solid(p);
-        else if (obj_is(p->obj, OBJ_oItem) || obj_is(p->obj, OBJ_oTreasure) || p->obj == OBJ_oRubble ||
-                 p->obj == OBJ_oRubbleSmall) {
+        if (obj_is(p->obj, OBJ_oItem) || obj_is(p->obj, OBJ_oTreasure) || p->obj == OBJ_oRubble ||
+            p->obj == OBJ_oRubbleSmall) {
             int a0 = PE(p)->alarm[0];
             play_in_gen_init = 1;
             ev_create(i);                                                      /* the RNG parts ran in gen */
             play_in_gen_init = 0;
             PE(p)->alarm[0] = a0;
+        } else {
+            if (obj_is(p->obj, OBJ_oSolid)) create_solid(p);
+            if (pobj[p->obj].ev & EV_CREATE) pcontent_ev(FEV_CREATE, i, 1);   /* P7 hook (fromgen 1) */
         }
         break;
     }
@@ -372,7 +374,7 @@ static void gold_drop(int i, int obj)
 }
 
 /* objects/oSolid/Destroy_0.gml */
-static void destroy_solid(int i)
+void destroy_solid(int i)
 {
     struct pin *p = &PX(i);
     int obj;
@@ -503,6 +505,8 @@ void ev_destroy(int i)
         break;
     default:
         if (obj_is(o, OBJ_oSolid)) {
+            if (o != OBJ_oSolid && pcontent_ev(FEV_DESTROY, i, 0)) break;       /* P7 hook (calls destroy_solid
+                                                                                  itself when it inherits) */
             if (pobj[o].ev & EV_DESTROY) {
                 /* the chain resolves to oSolid's own Destroy unless the object has one */
                 int a, own = 0;
@@ -1074,7 +1078,8 @@ void ev_step(int i)
             } else if (p->obj == OBJ_oDamsel || p->obj == OBJ_oFlare || p->obj == OBJ_oFlareCrate ||
                 p->obj == OBJ_oLockedChest || p->obj == OBJ_oMattock || p->obj == OBJ_oWebCannon)
                 pitems_world(1060, i, 0);
-            else
+            else if (!pcontent_ev(FEV_STEP, i, 0))                            /* P7 hook (calls item_step
+                                                                                  itself when it inherits) */
                 item_step(i);
         } else if (!pcontent_ev(FEV_STEP, i, 0))                                       /* P7 hook */
             PUNTR(1061);

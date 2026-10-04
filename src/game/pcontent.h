@@ -44,5 +44,15 @@ int pice_player(int site, int i, int arg);           /* 2018 laser; 2019 psychic
 int ptemple_player(int site, int i, int arg);        /* 2021 smash trap; 2022 ceiling trap; 2033 lava; 2046 idol trap; 2061 exit past Olmec */
 int ptemple_world(int site, int i, int arg);         /* 1032 / 1036 / 1039 / 1040 / 1056 lava; 1094 sceptre / gold door; 5012 enemies in lava */
 int pitems_player(int site, int i, int arg);         /* jetpack, cape glide, parachute, mitt, weapons, flare crate, ankh, kapala, ball, downToRun; 3001 bow; 3002 equipment */
-int pitems_world(int site, int i, int arg);          /* bones, jars, sticky bombs, shop bombs / idol, udjat, dice, flare / chest / mattock / web cannon, bomb arrows, locked chest, Kali */
+int pitems_world(int site, int i, int arg);
+/* pX_enemy(site, e, arg): the enemy sites of penemy.c (5006 piranha / vampire blood on hurting the player, arg the
+   character; 5010 a thrown item / stunned enemy hits e, arg kind 0 item / 1 enemy; 5011 fire frog in water;
+   5013 oSpearsLeft; 5016 an arrow hits a vampire, arg the arrow). Asked in order A .. E (pcontent_enemy): 1 when
+   one ran it; the defaults return 0 and pcontent_enemy does PUNTR(site) */
+int pjungle_enemy(int site, int e, int arg);
+int pswamp_enemy(int site, int e, int arg);
+int pice_enemy(int site, int e, int arg);
+int ptemple_enemy(int site, int e, int arg);
+int pitems_enemy(int site, int e, int arg);
+int pcontent_enemy(int site, int e, int arg);          /* bones, jars, sticky bombs, shop bombs / idol, udjat, dice, flare / chest / mattock / web cannon, bomb arrows, locked chest, Kali */
 #endif

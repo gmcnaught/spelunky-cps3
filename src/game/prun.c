@@ -15,7 +15,9 @@ int play_cur_obj = -1;
 uint32_t play_time;
 int play_goto_room = -1;
 int32_t play_rooms_entered;
-int play_noenemy = 1;                    /* P4 references: TRACE_NOENEMY (playhost --enemies clears it) */
+int play_noenemy = 1;
+const struct inst *play_gen_inst;
+int play_gen_created;                    /* P4 references: TRACE_NOENEMY (playhost --enemies clears it) */
 uint32_t play_dops;
 #ifdef NUM_IS_CLASS
 struct dcount play_dcount;
@@ -295,8 +297,15 @@ void play_level_start(int32_t next_id)
             } else if (gen_not_default(g))
                 PUNTR(9006);                       /* terrain shares the defaults (pworld.c pin_needs_ext) */
         }
+        play_gen_inst = g;                         /* P7: the generator's values for FEV_CREATE (fromgen 1) */
+        play_gen_created = 0;
+        if (PX(i).ext) {                           /* xVel / yVel before the Create hook, which may set them */
+            PE(&PX(i))->xVel = NMUL(NI(g->xvel), N(1.0 / 256));
+            PE(&PX(i))->yVel = NMUL(NI(g->yvel), N(1.0 / 256));
+        }
         if (g->obj == OBJ_oPlayer1) pl_init_from_gen(i);
         else pobj_init_from_gen(i);
+        play_gen_inst = 0;
         if (PW.n > k + 1) PUNTR(9007);             /* an instance created here would overwrite W.in[k + 1 ..] */
         {
             struct pin *p = &PX(i);
@@ -307,8 +316,10 @@ void play_level_start(int32_t next_id)
                 PE(p)->cost = g->cost;
                 PE(p)->forSale = (g->flags & IF_FORSALE) != 0;
                 PE(p)->held = (g->flags & IF_HELD) != 0;
-                PE(p)->xVel = NMUL(NI(g->xvel), N(1.0 / 256));
-                PE(p)->yVel = NMUL(NI(g->yvel), N(1.0 / 256));
+                if (!play_gen_created) {           /* (the P5 Creates zero them: the generator's again) */
+                    PE(p)->xVel = NMUL(NI(g->xvel), N(1.0 / 256));
+                    PE(p)->yVel = NMUL(NI(g->yvel), N(1.0 / 256));
+                }
                 if (obj_is(g->obj, OBJ_oItem) || obj_is(g->obj, OBJ_oTreasure)) PE(p)->value = g->value;
             }
         }

@@ -78,7 +78,15 @@ int inview(int i, int m);
 int create_detritus(int i);                   /* pobj.c: oDetritus Create / Step (oBone, P5) */
 void detritus_step(int i);
 void create_item(struct pin *p);              /* pobj.c: oItem Create / Step (oDamsel's inherited, P5) */
-void item_step(int i);                     /* x, y inside the view +/- m (the GML's view checks) */
+void item_step(int i);
+void destroy_solid(int i);
+/* the generator's instance during play_level_start's pobj_init_from_gen (the struct inst fields the FEV_CREATE
+   handlers with fromgen 1 read: dir, facing, flags, counter, ...); 0 otherwise */
+extern const struct inst *play_gen_inst;
+extern int play_gen_created;                  /* a package's FEV_CREATE ran for it (its xVel / yVel are kept) */
+/* penemy.c: oEnemy's collision events, for the P7 enemies that inherit them */
+void enemy_hit_player(int i, int c);          /* objects/oEnemy/Collision_oCharacter.gml */
+void enemy_whipped(int i, int w);             /* objects/oEnemy/Collision_oWhip.gml (and oWhipPre) */                    /* pobj.c: objects/oSolid/Destroy_0.gml (P7 packages' oSolid children) */                     /* x, y inside the view +/- m (the GML's view checks) */
 
 /* room indices (names file R lines) */
 enum { R_rTitle = 4, R_rHighscores = 5, R_rSun = 6, R_rMoon = 7, R_rStars = 8, R_rTutorial = 9, R_rLevelEditor = 10,

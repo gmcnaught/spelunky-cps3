@@ -365,7 +365,7 @@ static void characterStepEvent(int i)
         PL.jumpTime = 0;
         PE(p)->grav = PL.gravNorm;
     } else if (PG.hasCape && PL.kJumpPressed && PL.kJumped && platformCharacterIs(IN_AIR)) {
-        pitems_player(2005, i, 0);
+        pswamp_player(2005, i, 0);                                             /* oCape.open (package B) */
     } else if (PG.hasJetpack && PL.kJump && PL.kJumped && platformCharacterIs(IN_AIR) && PL.jetpackFuel > 0) {
         pitems_player(2006, i, 0);
     } else if (platformCharacterIs(ON_GROUND) && PL.kJumpPressed && PL.fallTimer == 0) {   /* :352 */

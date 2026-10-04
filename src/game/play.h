@@ -374,6 +374,9 @@ struct pglobals {
     int16_t diamonds, xdamsels, scarabs, idols, skulls;
     /* P5: the level's kills the transition room shows (global.bats ... shopkeepers), damsels saved / killed */
     int16_t bats, snakes, spiders, giantspiders, cavemen, skeletons, damselsKilled, shopkeepers, damsels;
+    /* P7: the other areas' kinds (global.deadfish ... tomblords) */
+    int16_t deadfish, piranhas, zombies, vampires, frogs, firefrogs, monkeys, mantraps, yetis, ufos, aliens;
+    int16_t alienbosses, hawkmen, megamouths, yetikings, tomblords;
 };
 extern struct pglobals PG;
 
