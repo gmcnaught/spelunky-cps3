@@ -981,6 +981,20 @@ static void door_step(int i)
 }
 
 /* ==== oTemple, oTempleFake ======================================================================================== */
+/* scripts/scrGenerateItem's underground set (argument2 = 2) in play: the item and its cost / forSale */
+static void gen_item_underground(pos x, pos y)
+{
+    static const int16_t objs[19] = { OBJ_oJetpack, OBJ_oCapePickup, OBJ_oShotgun, OBJ_oMattock, OBJ_oTeleporter,
+        OBJ_oGloves, OBJ_oSpectacles, OBJ_oWebCannon, OBJ_oPistol, OBJ_oMitt, OBJ_oPaste, OBJ_oSpringShoes,
+        OBJ_oSpikeShoes, OBJ_oMachete, OBJ_oBombBox, OBJ_oBow, OBJ_oCompass, OBJ_oParaPickup, OBJ_oRopePile };
+    static const int8_t dx[19] = { 0, 0, 0, 0, 0, 0, 0, -2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+    static const int8_t dy[19] = { -2, 0, 0, 0, 3, -1, 0, 0, 0, -1, 0, 0, 0, 0, -2, 0, 0, 0, 0 };
+    int n = RAND(0, 18);
+    int o = pin_create(x + PI(dx[n]), y + PI(dy[n]), objs[n]);
+    PE(&PX(o))->cost = 0;
+    PE(&PX(o))->forSale = 0;
+}
+
 /* objects/oTemple/Create_0.gml in play (oTempleFake, Olmec's room): the generator's block_gems in play */
 static void temple_create(int i)
 {
@@ -995,7 +1009,7 @@ static void temple_create(int i)
         if (RAND(1, 60) == 1) pin_create(p->x + PI(8), p->y + PI(8), OBJ_oSapphireBig);
         else if (RAND(1, 80) == 1) pin_create(p->x + PI(8), p->y + PI(8), OBJ_oEmeraldBig);
         else if (RAND(1, 100) == 1) pin_create(p->x + PI(8), p->y + PI(8), OBJ_oRubyBig);
-        else if (RAND(1, 1200) == 1) PUNTR(7001);                     /* scrGenerateItem in play */
+        else if (RAND(1, 1200) == 1) gen_item_underground(p->x + PI(8), p->y + PI(8));
     }
 }
 
@@ -1151,17 +1165,31 @@ static void lava_treasure(int i)
     if (lava_point(i)) pin_destroy(i);
 }
 
-/* objects/oRope/Step_0.gml (1056: the burn starts, or burnTimer reached 1) */
+/* objects/oRope/Step_0.gml (1056: lava next to it and burnTimer 0, :1; or burnTimer reached 1, :7) */
 static void lava_rope(int i)
 {
     struct pin *p = &PX(i);
     if (PE(p)->burnTimer == 1) {                                       /* :7 */
         if (PL.state == CLIMBING && collision_point_p(X(i) + 12, Y(i) + 4, OBJ_oPlayer1, 0, NOONE) != NOONE)
-            PUNTR(7002);                                               /* the rope burns under the player */
-        PUNTR(7003);
+            PL.state = FALLING;
+        pin_destroy(i);
         return;
     }
-    PUNTR(7004);                                                       /* oRopeBurn */
+    pin_create(p->x + PI(8), p->y, OBJ_oRopeBurn);                     /* :3 */
+}
+
+/* objects/oRopeBurn/Step_0.gml */
+static void ropeburn_step(int i)
+{
+    struct pin *p = &PX(i);
+    pin_sety(p, PADDV(p->y, PE(p)->yVel));
+    if (CP(X(i), Y(i), OBJ_oSolid) ||
+        collision_rect_p(X(i) - 1, Y(i) - 8, X(i) + 1, Y(i) + 8, OBJ_oRope, 0, NOONE) == NOONE)
+        pin_destroy(i);
+    if (CP(X(i), Y(i), OBJ_oRope)) {
+        int r = instance_nearest_p(X(i), Y(i), OBJ_oRope);
+        if (r != NOONE) PE(&PX(r))->burnTimer = 1;
+    }
 }
 
 /* ==== D2: oOlmec ================================================================================================== */
@@ -1582,6 +1610,11 @@ static int create_ev(int i, int fromgen)
         return 1;
     case OBJ_oCavemanWorship: PX(i).ispd = (img_t)0.25; return 1;
     case OBJ_oLavaSolid: PX(i).invincible = 1; return 1;
+    case OBJ_oRopeBurn:                                                /* objects/oRopeBurn/Create_0.gml */
+        PX(i).type = T_NONE;
+        PE(&PX(i))->yVel = N(-1);
+        PX(i).ispd = (img_t)0.8;
+        return 1;
     }
     return 0;
 }
@@ -1620,6 +1653,7 @@ static int step_ev(int i)
         return 1;
     }
     case OBJ_oFinalBoss: finalboss_step(i); return 1;
+    case OBJ_oRopeBurn: ropeburn_step(i); return 1;
     case OBJ_oTempleFake:                                              /* objects/oTempleFake/Step_0.gml */
         if (!CP(X(i) + 8, Y(i) + 8, OBJ_oDoor)) {
             pin_create(PX(i).x, PX(i).y, OBJ_oTemple);
