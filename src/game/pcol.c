@@ -74,9 +74,9 @@ struct pcol_stats pcol_st;
 /* ---- the R-tree ----------------------------------------------------------------------------------------------- */
 #define RMAX 6
 #define RMIN 2
-/* 640 nodes (124 bytes each): the most seen is 421 (olmec, level 16; 260-281 in the mines; playhost over 20 seeds x
+/* 448 nodes (124 bytes each): the most seen is 421 (olmec, level 16; 260-281 in the mines; playhost over 20 seeds x
    16 levels); running out stops the play loop with untranslated code 9101 */
-#define RT_NODES 640
+#define RT_NODES 448
 /* entries: play instance i is entry i; while a level is generated (gmode), generator instance w is entry w */
 #define ENT_MAX (PIN_MAX > INST_MAX ? PIN_MAX : INST_MAX)
 /* rectangle sides as order-mapped float bits (fkey: signed int order = float order; -0 as +0): the tests and the
@@ -93,7 +93,7 @@ static uint8_t rlock;
 static int nalloc(void)
 {
     int n;
-    if (rnfree == 0) {                          /* never in the references (RT_NODES is 1.5 x the largest use) */
+    if (rnfree == 0) {                          /* never in the references (RT_NODES is 1.06 x the largest use) */
         PUNTR(9101);
         return 0;
     }

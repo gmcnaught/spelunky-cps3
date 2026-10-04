@@ -27,6 +27,9 @@ static const char *const treasure_names[] = { "", "Big~Ruby", "Diamond", "Sapphi
 static const char *const exit_names[] = { "Exit", "Moai~Exit", "Market~Exit" };
 
 /* globals settable by a case override (name=value) */
+/* the generator's instances (inst.c W.in; in the play builds pworld.c shares this memory with the play instances) */
+struct inst inst_mem[INST_MAX];
+
 struct gvar { const char *name; uint8_t *u8; int16_t *s16; };
 static const struct gvar gvars[] = {
 #define U8(n) { #n, &G.n, 0 }

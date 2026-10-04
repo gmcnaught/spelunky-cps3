@@ -35,19 +35,19 @@ int pshop_create(int i, int fromgen)
         PE(p)->hp = 20;
         p->invincible = 0;
         PE(p)->status = S_IDLE;
-        PE(p)->whipped = 0;
-        PE(p)->bounced = 0;
-        PE(p)->edead = 0;
+        PEN(p)->whipped = 0;
+        PEN(p)->bounced = 0;
+        PEN(p)->edead = 0;
         PE(p)->counter = 0;
-        PE(p)->sightCounter = 0;
-        PE(p)->turnTimer = 0;
-        PE(p)->throwCount = 0;
-        PE(p)->stunTime = 5;
+        PEN(p)->sightCounter = 0;
+        PEN(p)->turnTimer = 0;
+        PEN(p)->throwCount = 0;
+        PEN(p)->stunTime = 5;
         PE(p)->facing = E_LEFT;
-        PE(p)->welcomed = 0;
-        PE(p)->angered = 0;
+        PEN(p)->welcomed = 0;
+        PEN(p)->angered = 0;
         PE(p)->hasGun = 1;
-        PE(p)->firing = 0;
+        PEN(p)->firing = 0;
         PE(p)->colLeft = PE(p)->colRight = PE(p)->colBot = PE(p)->colTop = 0;
         if (fromgen) {
             PE(p)->style = (uint8_t)style;
@@ -72,7 +72,7 @@ void scrShopkeeperAnger(int self, int k)
 {
     int shp = instance_nearest_p(X(self), Y(self), OBJ_oShopkeeper);
     (void)k;
-    if (shp != NOONE && !PE(&PX(shp))->edead && !PE(&PX(shp))->angered) {
+    if (shp != NOONE && !PEN(&PX(shp))->edead && !PEN(&PX(shp))->angered) {
         PE(&PX(shp))->status = S_ATTACK;
         if (G.thiefLevel > 0) G.thiefLevel += 3;
         else G.thiefLevel += 2;
@@ -115,7 +115,7 @@ static void shoot(int i, int left)
     PE(p)->yVel -= N(1);
     if (left) PE(p)->xVel += N(3);
     else PE(p)->xVel -= N(3);
-    PE(p)->firing = 30;                                                    /* firingMax */
+    PEN(p)->firing = 30;                                                    /* firingMax */
 }
 
 static void drop_gun(int i)
@@ -158,7 +158,7 @@ static void shopkeeper_step(int i)
     if (isCollisionBottom(i, 1)) PE(p)->colBot = 1;
     if (isCollisionTop(i, 1)) PE(p)->colTop = 1;
     if (PE(p)->colBot && PE(p)->status != S_STUNNED) PE(p)->yVel = 0;
-    if (PE(p)->throwCount > 0) PE(p)->throwCount -= 1;
+    if (PEN(p)->throwCount > 0) PEN(p)->throwCount -= 1;
     if (PE(p)->status >= S_STUNNED) {                                      /* :26 crushed */
         if (CP(X(i) + 8, Y(i) + 12, OBJ_oSolid)) {
             scrCreateBlood(i, p->x + PI(8), p->y + PI(8), 3);
@@ -192,7 +192,7 @@ static void shopkeeper_step(int i)
             PE(p)->status = S_ATTACK;
     }
     if (PE(p)->status == S_IDLE) {                                         /* :108 */
-        PE(p)->bounced = 0;
+        PEN(p)->bounced = 0;
         if (PE(p)->colLeft) pin_setx(p, p->x + (PI(1)));
         if (PE(p)->colRight) pin_setx(p, p->x - (PI(1)));
         if (PE(p)->colLeft && PE(p)->colRight) PE(p)->status = S_ATTACK;
@@ -200,12 +200,12 @@ static void shopkeeper_step(int i)
         if (NLT(PE(p)->yVel, N(0)) && PE(p)->colTop) PE(p)->yVel = 0;
         if (G.murderer || G.thiefLevel > 0)
             PE(p)->status = S_PATROL;
-        else if (!PE(p)->welcomed && scrGetRoomX(PFLOOR(q->x)) == scrGetRoomX(PFLOOR(p->x)) &&
+        else if (!PEN(p)->welcomed && scrGetRoomX(PFLOOR(q->x)) == scrGetRoomX(PFLOOR(p->x)) &&
                  scrGetRoomY(PFLOOR(q->y)) == scrGetRoomY(PFLOOR(p->y)))
         {
             /* the welcome message: scrGetName()'s random_range(1, 32) (one draw) except the Ankh shop's */
             if (PE(p)->style != SHOP_ANKH) (void)prandom(31);
-            PE(p)->welcomed = 1;
+            PEN(p)->welcomed = 1;
         }
         if (PE(p)->style == SHOP_CRAPS) {                                  /* :185 */
             if (instance_number_p(OBJ_oDice) == 2 && PL.bet > 0) PUNTR(7010);
@@ -222,10 +222,10 @@ static void shopkeeper_step(int i)
         double iv;
         p->ispd = (img_t)0.5;
         if (isCollisionLeft(i, 1) || isCollisionRight(i, 1)) PE(p)->facing = PE(p)->facing == E_LEFT ? E_RIGHT : E_LEFT;
-        if (PE(p)->turnTimer > 0) PE(p)->turnTimer -= 1;
+        if (PEN(p)->turnTimer > 0) PEN(p)->turnTimer -= 1;
         else if (DLT(dabs(PTOD(q->y) - (Y(i) + 8)), 8) && isCollisionBottom(i, 1) && DGT(dist, 16)) {
             PE(p)->facing = DLT(PTOD(q->x), X(i)) ? E_LEFT : E_RIGHT;
-            PE(p)->turnTimer = 10;
+            PEN(p)->turnTimer = 10;
         }
         iv = dist / 16 * 1.5;
         PE(p)->xVel = PE(p)->facing == E_LEFT ? ND(-iv) : ND(iv);
@@ -237,7 +237,7 @@ static void shopkeeper_step(int i)
         } else
             PE(p)->status = S_IDLE;
     } else if (PE(p)->status == S_PATROL) {                                /* :295 */
-        PE(p)->bounced = 0;
+        PEN(p)->bounced = 0;
         if (NLT(PE(p)->yVel, N(0)) && isCollisionTop(i, 1)) PE(p)->yVel = 0;
         if (PE(p)->colBot && PE(p)->counter > 0) PE(p)->counter -= 1;
         if (PE(p)->counter < 1) {
@@ -269,7 +269,7 @@ static void shopkeeper_step(int i)
         }
     } else if (PE(p)->status == S_ATTACK) {                                /* :340 */
         p->ispd = 1;
-        if (!PE(p)->angered) {
+        if (!PEN(p)->angered) {
             int16_t w[PIN_MAX];
             int n = pw_with(OBJ_oItem, w, PIN_MAX), k;
             for (k = 0; k < n; k++) {
@@ -277,17 +277,17 @@ static void shopkeeper_step(int i)
                 PE(&PX(w[k]))->forSale = 0;
             }
             p = &PX(i);
-            PE(p)->angered = 1;
+            PEN(p)->angered = 1;
         }
-        if (PE(p)->turnTimer > 0) PE(p)->turnTimer -= 1;
+        if (PEN(p)->turnTimer > 0) PEN(p)->turnTimer -= 1;
         else if (DLT(dabs(PTOD(q->y) - (Y(i) + 8)), 8) && isCollisionBottom(i, 1) && DGT(dist, 16)) {
             PE(p)->facing = DLT(PTOD(q->x), X(i)) ? E_LEFT : E_RIGHT;
-            PE(p)->turnTimer = 20;
+            PEN(p)->turnTimer = 20;
         }
         if (isCollisionLeft(i, 1) || isCollisionRight(i, 1)) PE(p)->facing = PE(p)->facing == E_LEFT ? E_RIGHT : E_LEFT;
         PE(p)->xVel = PE(p)->facing == E_LEFT ? N(-3) : N(3);
         if (PE(p)->hasGun) {
-            if (PE(p)->firing > 0) PE(p)->firing -= 1;
+            if (PEN(p)->firing > 0) PEN(p)->firing -= 1;
             else if (DLT(dabs(PTOD(q->y) - (Y(i) + 8)), 32)) {
                 if (PE(p)->facing == E_LEFT && DLT(PTOD(q->x), X(i) + 8) && DLT(dist, 96)) shoot(i, 1);
                 p = &PX(i);
@@ -310,10 +310,10 @@ static void shopkeeper_step(int i)
         if (PL.dead) PE(p)->status = S_WALK;
     } else if (PE(p)->status == S_STUNNED) {                               /* :447 */
         if (PE(p)->colBot) pin_set_sprite(i, GSPR_sShopStunL);
-        else if (PE(p)->bounced) pin_set_sprite(i, NLT(PE(p)->yVel, N(0)) ? GSPR_sShopBounceL : GSPR_sShopFallL);
+        else if (PEN(p)->bounced) pin_set_sprite(i, NLT(PE(p)->yVel, N(0)) ? GSPR_sShopBounceL : GSPR_sShopFallL);
         else pin_set_sprite(i, NLT(PE(p)->xVel, N(0)) ? GSPR_sShopDieLL : GSPR_sShopDieLR);
-        if (PE(p)->colBot && !PE(p)->bounced) {
-            PE(p)->bounced = 1;
+        if (PE(p)->colBot && !PEN(p)->bounced) {
+            PEN(p)->bounced = 1;
             scrCreateBlood(i, p->x + PI(8), p->y + PI(8), 3);
             p = &PX(i);
         }
@@ -329,7 +329,7 @@ static void shopkeeper_step(int i)
             }
         }
     } else if (PE(p)->status == S_DEAD) {                                  /* :479 */
-        if (!PE(p)->edead) {
+        if (!PEN(p)->edead) {
             int n, k;
             PG.shopkeepers += 1;
             PG.kills += 1;
@@ -344,7 +344,7 @@ static void shopkeeper_step(int i)
                 }
             }
             p = &PX(i);
-            PE(p)->edead = 1;
+            PEN(p)->edead = 1;
         }
         pin_set_sprite(i, GSPR_sShopDieL);
         if (NGT(NABS(PE(p)->xVel), N(0)) || NGT(NABS(PE(p)->yVel), N(0))) PE(p)->status = S_STUNNED;
@@ -379,7 +379,7 @@ int pshop_step(int i)
 int pshop_alarm(int i, int a)
 {
     switch (PX(i).obj) {
-    case OBJ_oShopkeeper: if (a == 0) PE(&PX(i))->whipped = 0; return 1;
+    case OBJ_oShopkeeper: if (a == 0) PEN(&PX(i))->whipped = 0; return 1;
     case OBJ_oBullet: if (a == 0) PE(&PX(i))->safe = 0; return 1;
     }
     return 0;
@@ -421,7 +421,7 @@ static void shop_hit_player(int i, int c)
                 PE(p)->hp -= (int16_t)(1 * dceil(PL.fallTimer / 16.0));
             PL.fallTimer = 0;
             PE(p)->status = S_STUNNED;
-            PE(p)->counter = PE(p)->stunTime;
+            PE(p)->counter = PEN(p)->stunTime;
             PE(p)->yVel = N(-6);
             if (DLT(PTOD(o->x), X(i) + 8)) PE(p)->xVel += N(1);
             else PE(p)->xVel -= N(1);
@@ -480,10 +480,10 @@ static void bullet_collision(int b, int other)
         }
     } else if (oo == OBJ_oDamsel) {
         if (!o->invincible) {
-            if (PE(o)->bloodLeft > 0) {
+            if (PEN(o)->bloodLeft > 0) {
                 scrCreateBlood(other, (pos)(X(other) + sprw(other) / 2.0), (pos)(Y(other) + sprh(other) / 2.0), 1);
                 o = &PX(other);
-                if (PE(o)->hp < 0) PE(o)->bloodLeft -= 1;
+                if (PE(o)->hp < 0) PEN(o)->bloodLeft -= 1;
             }
             if (PE(o)->held) {
                 PE(o)->held = 0;
@@ -511,11 +511,11 @@ static void bullet_collision(int b, int other)
                 PE(o)->status = 98;
                 PE(o)->counter = 20;
             }
-            if (PE(o)->bloodLeft > 0) {
+            if (PEN(o)->bloodLeft > 0) {
                 if (o->obj != OBJ_oSkeleton)
                     scrCreateBlood(other, (pos)(X(other) + sprw(other) / 2.0), (pos)(Y(other) + sprh(other) / 2.0), 1);
                 o = &PX(other);
-                if (PE(o)->hp < 0) PE(o)->bloodLeft -= 1;
+                if (PE(o)->hp < 0) PEN(o)->bloodLeft -= 1;
             }
             pin_destroy(b);
         }
@@ -547,10 +547,10 @@ int pshop_collision(int self, int other)
         }
     } else {                                                           /* Collision_oWhip / oWhipPre (the whip) */
         struct pin *p = &PX(self);
-        if (!PE(p)->whipped) {
+        if (!PEN(p)->whipped) {
             PE(p)->yVel = N(-2);
             PE(p)->xVel = DLT(X(other), X(self)) ? N(1) : N(-1);
-            PE(p)->whipped = 1;
+            PEN(p)->whipped = 1;
             PE(p)->alarm[0] = 10;
             PE(p)->status = S_ATTACK;
         }

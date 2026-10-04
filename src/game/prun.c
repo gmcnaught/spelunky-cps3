@@ -142,6 +142,7 @@ static void draw_and_view(void)
     for (k = n0; k < PW.n; k++)
         if (PW.in[k].alive && PW.in[k].visible && (pobj[PW.in[k].obj].ev & EV_DRAW))
             { ev_draw(k); pcol_event_done(k); }
+    ptrans_draw_gui();                                                         /* Draw GUI (after Draw) */
     view_update();
     PW.vdirty = 0;
 }
@@ -160,7 +161,7 @@ static void animate(void)
         PWST(anim, 1);
         if (!p->alive) continue;
         if (p->spr < 0) {
-            p->img = p->img + p->ispd;
+            pin_setimg(p, p->img + p->ispd);
             continue;
         }
         {
@@ -172,12 +173,12 @@ static void animate(void)
                 if (pobj[p->obj].ev & EV_ANIMEND) { ev_animend(k); pcol_event_done(k); }
                 continue;
             }
-            p->img = p->img + p->ispd * sp;
+            pin_setimg(p, p->img + p->ispd * sp);
             if (p->img >= fr) {
-                p->img = p->img - fr;
+                pin_setimg(p, p->img - fr);
                 if (pobj[p->obj].ev & EV_ANIMEND) { ev_animend(k); pcol_event_done(k); }
             } else if (p->img < 0) {
-                p->img = p->img + fr;
+                pin_setimg(p, p->img + fr);
                 if (pobj[p->obj].ev & EV_ANIMEND) { ev_animend(k); pcol_event_done(k); }
             }
         }
@@ -224,7 +225,8 @@ void play_level_start(int32_t next_id)
     PW.step = 0;
     PL.idx = NOONE;
     for (k = 0; k < W.n; k++) {
-        const struct inst *g = &W.in[k];
+        const struct inst gk = W.in[k];                /* PX(i), i <= k, is the same memory (play.h) */
+        const struct inst *g = &gk;
         int i;
         if (!g->alive) continue;
         i = pin_add(g->obj, PI(g->x), PI(g->y), g->id);
@@ -232,7 +234,7 @@ void play_level_start(int32_t next_id)
             struct pin *p = &PX(i);
             int a;
             pin_setspr(p, g->spr);
-            p->depth = g->depth;
+            pin_setdepth(p, g->depth);
             p->treasure = g->treasure;
             if (p->ext) {
                 for (a = 0; a < 12; a++) PE(p)->alarm[a] = g->alarm[a];
@@ -247,6 +249,7 @@ void play_level_start(int32_t next_id)
         }
         if (g->obj == OBJ_oPlayer1) pl_init_from_gen(i);
         else pobj_init_from_gen(i);
+        if (PW.n > k + 1) PUNTR(9007);             /* an instance created here would overwrite W.in[k + 1 ..] */
         {
             struct pin *p = &PX(i);
             p->invincible = (g->flags & IF_INVINCIBLE) != 0;

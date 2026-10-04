@@ -732,7 +732,7 @@ static void characterStepEvent(int i)
         setCollisionBounds(i, -5, -8, 5, 8);
     if (PL.whipping) p->ispd = 1;
     if (PL.state == DUCKTOHANG) {
-        p->img = 0;
+        pin_setimg(p, 0);
         p->ispd = (img_t)0.8;
     }
     if (DGT(p->ispd, 1)) p->ispd = 1;
@@ -867,7 +867,7 @@ static void exit_level(int i)
                 PE(&PX(h))->held = 0;
                 PE(&PX(h))->xVel = 0;
                 PE(&PX(h))->yVel = 0;
-                PX(h).depth = 1000;
+                pin_setdepth(&PX(h), 1000);
                 PE(&PX(h))->active = 0;
                 PL.holdItem = NOONE;
             } else {
@@ -911,7 +911,7 @@ static void exit_level(int i)
     p->ispd = (img_t)0.5;
     PL.active = 0;
     PL.invincible = 999;
-    p->depth = 999;
+    pin_setdepth(p, 999);
     if (G.thiefLevel > 0) G.thiefLevel -= 1;
     if (G.currLevel == 1) G.currLevel += PL.firstLevelSkip;
     else G.currLevel += PL.levelSkip;
@@ -928,7 +928,7 @@ static void hurt_logic(int i)
     if (PG.plife < -10000) PG.plife = -10000;                                  /* :1452 */
     if (PG.plife < -99 && p->visible) {
         scrCreateBlood(i, p->x, p->y, 3);
-        p->visible = 0;
+        pin_setvisible(p, 0);
     }
     if (!(PG.plife >= -99 && p->visible && !spr_is_exit(p->spr)))
         return;
@@ -937,7 +937,7 @@ static void hurt_logic(int i)
         PL.active = 0;
         PE(p)->yVel = N(-3);
         scrCreateBlood(i, p->x, p->y, 3);
-        p->visible = 0;
+        pin_setvisible(p, 0);
     }
     if (collision_rect_p(x - 8, y - 8, x + 8, y + 8, OBJ_oArrow, 0, NOONE) != NOONE) {   /* :1483 */
         obj = instance_nearest_p(x, y, OBJ_oArrow);
@@ -1063,7 +1063,7 @@ void pl_step(int i)
         PE(p)->myGrav = 0;
         PL.bounced = 1;
         if (PL.holdItem != NOONE) {
-            PX(PL.holdItem).visible = 1;
+            pin_setvisible(&PX(PL.holdItem), 1);
             PE(&PX(PL.holdItem))->held = 0;
             PL.holdItem = NOONE;
             PL.pickupItemType = T_NONE;
@@ -1113,7 +1113,7 @@ void pl_step(int i)
         if (PL.holdItem != NOONE) {
             int h = PL.holdItem;
             if (PX(h).type == T_BOW && PL.bowArmed) scrFireBow();
-            PX(h).visible = 1;
+            pin_setvisible(&PX(h), 1);
             PE(&PX(h))->held = 0;
             drop_or_switch();
         }
@@ -1353,7 +1353,7 @@ void pl_step(int i)
             if (G.isTunnelMan || G.isDamsel) PUNTR(2045);
             else {
                 pin_set_sprite(i, GSPR_sAttackLeft);
-                p->img = 0;
+                pin_setimg(p, 0);
                 PL.whipping = 1;
             }
         } else if (PL.kAttackPressed && PL.kDown) {                            /* :1209 pick up */
@@ -1562,7 +1562,7 @@ void pl_step(int i)
                         PE(&PX(h))->held = 0;
                         PE(&PX(h))->xVel = 0;
                         PE(&PX(h))->yVel = 0;
-                        PX(h).depth = 1000;
+                        pin_setdepth(&PX(h), 1000);
                         PE(&PX(h))->active = 0;
                         PE(&PX(h))->canPickUp = 0;
                         PL.holdItem = NOONE;
@@ -1579,8 +1579,8 @@ void pl_end_step(int i)
 {
     struct pin *p = &PX(i);
     if (PL.holdItem != NOONE) {
-        if (PL.state == CLIMBING && (PG.hasJetpack || PG.hasCape)) PX(PL.holdItem).depth = 51;
-        else PX(PL.holdItem).depth = 0;
+        if (PL.state == CLIMBING && (PG.hasJetpack || PG.hasCape)) pin_setdepth(&PX(PL.holdItem), 51);
+        else pin_setdepth(&PX(PL.holdItem), 0);
     }
     if (PL.state == DUCKTOHANG && p->spr != GSPR_sDuckToHangL && p->spr != GSPR_sDamselDtHL && p->spr != GSPR_sTunnelDtHL)
         PL.state = STANDING;
@@ -1627,7 +1627,7 @@ void pl_animend(int i)
     struct pin *p = &PX(i);
     if (spr_is_attack(p->spr)) {
         PL.whipping = 0;
-        if (PL.holdItem != NOONE) PX(PL.holdItem).visible = 1;
+        if (PL.holdItem != NOONE) pin_setvisible(&PX(PL.holdItem), 1);
     } else if (p->spr == GSPR_sDuckToHangL || p->spr == GSPR_sDamselDtHL || p->spr == GSPR_sTunnelDtHL) {
         int obj;
         pin_sety(p, p->y + PI(16));
@@ -1768,7 +1768,7 @@ void scrUseItem(void)
     } else {                                                                   /* :594 throw */
         if (o->type == T_DAMSEL) {                                             /* scrUseItem :596 (P5) */
             PE(o)->status = 2;
-            PE(o)->counter = PE(o)->stunMax;
+            PE(o)->counter = PEN(o)->stunMax;
             pin_sety(o, o->y - (PI(4)));
         }
         PE(o)->held = 0;

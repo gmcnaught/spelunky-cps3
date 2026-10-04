@@ -20,7 +20,7 @@
 #include "objects.h"
 #include "gentables.h"
 
-#define INST_MAX 2048            /* the largest level seen: 1,404 instances (P2 references) */
+#define INST_MAX 1536            /* the largest level seen: 1,404 instances (P2 references; 8,091 generator cases) */
 #define INST_NONE (-1)
 
 /* flags */
@@ -76,16 +76,19 @@ struct inst {
 };
 
 struct world {
-    struct inst in[INST_MAX];
+    struct inst *in;        /* INST_MAX of them (inst_mem: pworld.c, test/host/genhost.c) */
     int16_t n;              /* instances created (alive or not), index = creation order */
     int32_t next_id;        /* id of the next instance_create */
-    /* terrain grid: per cell, a list of the alive oSolid-family instances whose bbox is exactly that cell; the
-       other oSolid-family instances are on the irregular list. A point test against oSolid (or a child) is a
-       cell lookup plus that list and gives the instance test's answer (inst_selftest checks it) */
+    /* point-test grids (inst.c collision_point): cell, per cell the alive oSolid-family instances whose bbox is
+       exactly that cell; lcell, per cell the other instances with a bbox by the cell of its top-left corner
+       (clamped), their extent at most lext_x / lext_y cells; irr, the ones with a box over 64 px. Each instance
+       is on one of them (ingrid 1, 3, 2); links in cnext. inst_selftest checks the answers against a scan */
     int16_t cell[GRID_H][GRID_W];
+    int16_t lcell[GRID_H][GRID_W];
     int16_t cnext[INST_MAX];
     int16_t irr[INST_MAX];
     int16_t nirr;
+    int16_t lext_x, lext_y;
 };
 
 extern struct world W;
@@ -106,6 +109,10 @@ static inline int inst_is(int i, int obj) { return W.in[i].alive && obj_is(W.in[
 
 /* bounding box, half-open [l, r) x [t, b); returns 0 if the instance has no sprite (no collisions) */
 int inst_bbox(int i, int32_t *l, int32_t *t, int32_t *r, int32_t *b);
+/* the objects that are obj or its descendants: obj_desc[obj_desc0[obj] .. obj_desc0[obj + 1]) (obj_desc_init) */
+extern int16_t obj_desc0[], obj_desc[];
+void obj_desc_init(void);
+void inst_moved(int i);                  /* x / y of instance i written: the point-test grids follow */
 
 /* instance searches (collision_point, collision_rectangle, instance_place, instance_nearest ties, instance_find(obj,
    0) = obj.var) return the oldest matching instance (Observed: build/p2/probe, overlapping instances) */

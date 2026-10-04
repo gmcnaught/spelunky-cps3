@@ -100,6 +100,8 @@ int ptrans_alarm(int i, int a);
 int ptrans_animend(int i);
 int ptrans_create(int i);
 void ptrans_draw(int i);
+void ptrans_draw_gui(void);                       /* oTransition Draw GUI: global.noDarkLevel */
+int ptrans_gui(int32_t *v);                       /* drawLoot, moneyCount, isLoot, isKills (src/draw); 0: none */
 
 /* events of the player (pplayer.c) */
 void pl_step(int i);

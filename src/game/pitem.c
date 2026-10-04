@@ -47,12 +47,12 @@ int pitem_step(int i)
         item_step(i);
         if (PX(i).alive && PE(&PX(i))->held) {
             pin_set_sprite(i, PL.facing == 18 ? GSPR_sBowLeft : GSPR_sBowRight);
-            if (NGE(PL.bowStrength, N(10))) PX(i).img = 3;
-            else if (NGT(PL.bowStrength, N(6))) PX(i).img = 2;
-            else if (NGT(PL.bowStrength, N(2))) PX(i).img = 1;
-            else PX(i).img = 0;
+            if (NGE(PL.bowStrength, N(10))) pin_setimg(&PX(i), 3);
+            else if (NGT(PL.bowStrength, N(6))) pin_setimg(&PX(i), 2);
+            else if (NGT(PL.bowStrength, N(2))) pin_setimg(&PX(i), 1);
+            else pin_setimg(&PX(i), 0);
         } else if (PX(i).alive)
-            PX(i).img = 0;
+            pin_setimg(&PX(i), 0);
         return 1;
     case OBJ_oSacAltarLeft: case OBJ_oSacAltarRight: {                 /* objects/oSacAltarLeft/Step_0.gml */
         double x = PTOD(PX(i).x), y = PTOD(PX(i).y);

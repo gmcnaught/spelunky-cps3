@@ -78,12 +78,13 @@ void play_transition_start(int room)
     PW.step = 0;
     PL.idx = NOONE;
     for (k = 0; k < W.n; k++) {
-        const struct inst *g = &W.in[k];
+        const struct inst gk = W.in[k];                /* PX(i), i <= k, is the same memory (play.h) */
+        const struct inst *g = &gk;
         int i;
         if (!g->alive) continue;
         i = pin_add(g->obj, PI(g->x), PI(g->y), g->id);
         pin_setspr(&PX(i), g->spr);
-        PX(i).depth = g->depth;
+        pin_setdepth(&PX(i), g->depth);
         if (obj_is(g->obj, OBJ_oSolid)) PX(i).invincible = (g->flags & IF_INVINCIBLE) != 0;
     }
     pin_add(OBJ_oGamepad, 0, 0, 110219);
@@ -288,6 +289,33 @@ int ptrans_animend(int i)
         return 1;
     }
     return 0;
+}
+
+/* objects/oTransition/Draw_64.gml (Draw GUI, every drawn frame, visible instances): its one side effect,
+   :86-89 global.noDarkLevel = (the seconds part of xtime <= 20; the minutes are taken off first), while
+   drawLoot > -2. xtime does not change in the transition room, so once per step is the same */
+void ptrans_draw_gui(void)
+{
+    int i;
+    for (i = pw_ohead[OBJ_oTransition]; i >= 0; i = pw_inext[i]) {
+        int32_t s;
+        if (!PX(i).alive || !PX(i).visible || TR.drawLoot <= -2) continue;
+        s = PG.xtime / 1000;                                                   /* floor: xtime >= 0 */
+        while (s > 59) s -= 60;
+        G.noDarkLevel = s <= 20;
+    }
+}
+
+/* the transition's GUI state for the drawing (src/draw): drawLoot, moneyCount, isLoot, isKills; 0 when there is
+   no oTransition */
+int ptrans_gui(int32_t *v)
+{
+    if (pw_count(OBJ_oTransition) == 0) return 0;
+    v[0] = TR.drawLoot;
+    v[1] = TR.moneyCount;
+    v[2] = TR.isLoot;
+    v[3] = TR.isKills;
+    return 1;
 }
 
 int ptrans_create(int i)

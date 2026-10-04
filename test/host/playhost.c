@@ -43,44 +43,44 @@ static void record(int phase)
         pd(p->xscale);
         pd(p->yscale);
         pd(p->angle);
-        pd(p->alpha);
+        pd(PE(p)->alpha);
         pd((double)p->depth);
         printf(" %d ", p->visible);
         for (a = 0; a < 12; a++)
-            if (p->alarm[a] != -1) {
-                printf("%s%d=%d", any ? "," : "", a, p->alarm[a]);
+            if (PE(p)->alarm[a] != -1) {
+                printf("%s%d=%d", any ? "," : "", a, PE(p)->alarm[a]);
                 any = 1;
             }
         if (!any) printf("-");
-        pd(NTOD(p->xVel));
-        pd(NTOD(p->yVel));
+        pd(NTOD(PE(p)->xVel));
+        pd(NTOD(PE(p)->yVel));
         pd((double)p->ispd);
         if (k == PL.idx) {
             printf(" state=%d xAcc=%.17g yAcc=%.17g fallTimer=%d stunTimer=%d dead=%d stunned=%d jumpTime=%d"
                    " whipping=%d hangCount=%d ladderTimer=%d pushTimer=%d runHeld=%d holdItem=%ld grav=%.17g"
                    " gravityIntensity=%.17g bounced=%d invincible=%d facing=%d myGrav=%.17g kJumped=%d"
                    " jumpButtonReleased=%d",
-                   PL.state, NTOD(p->xAcc), NTOD(p->yAcc), PL.fallTimer, PL.stunTimer, PL.dead, PL.stunned,
+                   PL.state, NTOD(PE(p)->xAcc), NTOD(PE(p)->yAcc), PL.fallTimer, PL.stunTimer, PL.dead, PL.stunned,
                    PL.jumpTime, PL.whipping, PL.hangCount, PL.ladderTimer, PL.pushTimer, PL.runHeld,
-                   PL.holdItem == NOONE ? 0L : (long)PX(PL.holdItem).id, NTOD(p->grav), NTOD(PL.gravityIntensity),
-                   PL.bounced, PL.invincible, PL.facing, NTOD(p->myGrav), PL.kJumped, PL.jumpButtonReleased);
+                   PL.holdItem == NOONE ? 0L : (long)PX(PL.holdItem).id, NTOD(PE(p)->grav), NTOD(PL.gravityIntensity),
+                   PL.bounced, PL.invincible, PL.facing, NTOD(PE(p)->myGrav), PL.kJumped, PL.jumpButtonReleased);
         } else if (obj_is(p->obj, OBJ_oItem)) {
-            printf(" held=%d armed=%d safe=%d cost=%ld trigger=%d myGrav=%.17g", p->held, p->armed, p->safe,
-                   (long)p->cost, p->trigger, NTOD(p->myGrav));
+            printf(" held=%d armed=%d safe=%d cost=%ld trigger=%d myGrav=%.17g", PE(p)->held, PE(p)->armed, PE(p)->safe,
+                   (long)PE(p)->cost, PE(p)->trigger, NTOD(PE(p)->myGrav));
             if (p->obj == OBJ_oDamsel)                     /* P5 */
-                printf(" status=%d counter=%d facing=%d bounced=%d dead=%d", p->status, p->counter, p->facing,
-                       p->bounced, p->edead);
+                printf(" status=%d counter=%d facing=%d bounced=%d dead=%d", PE(p)->status, PE(p)->counter, PE(p)->facing,
+                       PEN(p)->bounced, PEN(p)->edead);
         } else if (obj_is(p->obj, OBJ_oEnemy)) {           /* P5: the variables the trace has (when they exist) */
             printf(" status=%d counter=%d facing=%d held=%d invincible=%d myGrav=%.17g bounced=%d dead=%d"
-                   " xAcc=%.17g yAcc=%.17g cost=%ld", p->status, p->counter, p->facing, p->held, p->invincible,
-                   NTOD(p->myGrav), p->bounced, p->edead, NTOD(p->xAcc), NTOD(p->yAcc), (long)p->cost);
+                   " xAcc=%.17g yAcc=%.17g cost=%ld", PE(p)->status, PE(p)->counter, PE(p)->facing, PE(p)->held, p->invincible,
+                   NTOD(PE(p)->myGrav), PEN(p)->bounced, PEN(p)->edead, NTOD(PE(p)->xAcc), NTOD(PE(p)->yAcc), (long)PE(p)->cost);
         } else if (obj_is(p->obj, OBJ_oTreasure)) {
-            printf(" held=%d state=%d value=%ld trigger=%d myGrav=%.17g", p->held, p->state, (long)p->value,
-                   p->trigger, NTOD(p->myGrav));
+            printf(" held=%d state=%d value=%ld trigger=%d myGrav=%.17g", PE(p)->held, PE(p)->state, (long)PE(p)->value,
+                   PE(p)->trigger, NTOD(PE(p)->myGrav));
         } else if (obj_is(p->obj, OBJ_oDetritus)) {
-            printf(" life=%.17g grav=%.17g invincible=%d", NTOD(p->life), NTOD(p->grav), p->invincible);
+            printf(" life=%.17g grav=%.17g invincible=%d", NTOD(PE(p)->life), NTOD(PE(p)->grav), p->invincible);
         } else if (p->obj == OBJ_oWeb) {
-            printf(" life=%.17g", NTOD(p->life));
+            printf(" life=%.17g", NTOD(PE(p)->life));
         }
         printf("\n");
     }
@@ -229,8 +229,9 @@ int main(int argc, char **argv)
             (unsigned long)pcol_st.inserts, (unsigned long)pcol_st.removes, (unsigned long)pcol_st.searches,
             (unsigned long)pcol_st.visits, (unsigned long)pcol_st.syncs, (unsigned long)pcol_st.flushes,
             (unsigned long)pcol_st.nodes_max, (unsigned long)cmax[0], (unsigned long)cmax[1], (unsigned long)cmax[2]);
-    fprintf(stderr, "PCOL per-step max: inserts %lu removes %lu searches %lu; pairs in a pass %lu\n",
-            (unsigned long)cmax[3], (unsigned long)cmax[4], (unsigned long)cmax[5], (unsigned long)pcol_st.pairs_max);
+    fprintf(stderr, "PCOL per-step max: inserts %lu removes %lu searches %lu; pairs in a pass %lu; pin_ext records %d; pin_en %d; "
+            "instances created %d\n", (unsigned long)cmax[3], (unsigned long)cmax[4], (unsigned long)cmax[5],
+            (unsigned long)pcol_st.pairs_max, pw_ext_used_max(), pw_en_used_max(), PW.n);
 #ifdef PLAY_STATS
     {   /* pworld / prun counters per step (the level start excluded): mean / max */
         int j;

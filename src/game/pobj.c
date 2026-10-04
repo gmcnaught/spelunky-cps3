@@ -50,7 +50,7 @@ void create_item(struct pin *p)
     PE(p)->stuck = 0;
     PE(p)->sticky = 0;
     PE(p)->enemyID = NOONE;
-    p->depth = G.hasSpectacles ? 51 : 101;
+    pin_setdepth(p, G.hasSpectacles ? 51 : 101);
     PE(p)->colLeft = PE(p)->colRight = PE(p)->colBot = PE(p)->colTop = 0;
 }
 
@@ -511,7 +511,7 @@ void item_step(int i)
     struct pin *p = &PX(i);
     if (!(inview(i, 16) || p->type == T_ROPE))
         return;
-    p->depth = G.hasSpectacles ? 51 : 101;                                      /* :5 */
+    pin_setdepth(p, G.hasSpectacles ? 51 : 101);                                      /* :5 */
     if ((!instance_exists_p(OBJ_oShopkeeper) || G.thiefLevel > 0 || G.murderer) && PE(p)->cost > 0) {   /* :8 */
         PE(p)->cost = 0;
         PE(p)->forSale = 0;
@@ -540,7 +540,7 @@ void item_step(int i)
             if (PL.state == DUCKING && NLT(NABS(PE(pl)->xVel), N(2))) pin_sety(p, pl->y + PI(4));
             else pin_sety(p, pl->y + PI(2));
         }
-        p->depth = 1;
+        pin_setdepth(p, 1);
         if (PL.holdItem == NOONE) PE(p)->held = 0;
     } else if (collision_point_p(PTOD(p->x), PTOD(p->y), OBJ_oSolid, 0, NOONE) == NOONE) {   /* :69 */
         moveTo(i, PE(p)->xVel, PE(p)->yVel, 0, 0);
@@ -634,7 +634,7 @@ static void jar_step(int i, int skull)
         else if (PL.facing == RIGHT) pin_setx(p, pl->x + PI(4));
         if (PL.state == DUCKING && NLT(NABS(PE(pl)->xVel), N(2))) pin_sety(p, pl->y + PI(4));
         else pin_sety(p, pl->y);
-        p->depth = 1;
+        pin_setdepth(p, 1);
     } else {
         moveTo(i, PE(p)->xVel, PE(p)->yVel, 0, 0);
         if (NLT(PE(p)->yVel, N(6))) PE(p)->yVel += PE(p)->myGrav;
@@ -669,7 +669,7 @@ static void jar_step(int i, int skull)
             pin_sety(p, p->y - (PI(1)));
             PE(p)->yVel = 0;
         }
-        p->depth = 100;
+        pin_setdepth(p, 100);
         if (collision_rect_p(PTOD(p->x) - 3, PTOD(p->y) - 3, PTOD(p->x) + 3, PTOD(p->y) + 3, OBJ_oLava, 0, NOONE) != NOONE ||
             collision_point_p(PTOD(p->x), PTOD(p->y) - 5, OBJ_oLava, 0, NOONE) != NOONE)
             PUNTR(1036);
@@ -723,8 +723,8 @@ static void treasure_step(int i)
         if (!PE(p)->colRight) pin_setx(p, p->x + (PI(1)));
     } else if (PE(p)->colRight)
         pin_setx(p, p->x - (PI(1)));
-    if (G.hasSpectacles || PG.hasUdjatEye) p->depth = 0;
-    else p->depth = 101;
+    if (G.hasSpectacles || PG.hasUdjatEye) pin_setdepth(p, 0);
+    else pin_setdepth(p, 101);
     NOPS(8);
     if (collision_rect_p(PTOD(p->x) - 3, PTOD(p->y) - 3, PTOD(p->x) + 3, PTOD(p->y) + 3, OBJ_oLava, 0, NOONE) != NOONE ||
         collision_point_p(PTOD(p->x), PTOD(p->y) - 5, OBJ_oLava, 0, NOONE) != NOONE)
@@ -779,8 +779,8 @@ static void bomb_step(int i)
 {
     struct pin *p = &PX(i);
     item_step(i);
-    if (p->spr == GSPR_sBombArmed) p->depth = 49;
-    if (PE(p)->sticky) p->depth = 1;
+    if (p->spr == GSPR_sBombArmed) pin_setdepth(p, 49);
+    if (PE(p)->sticky) pin_setdepth(p, 1);
     if (PE(p)->armed && instance_exists_p(OBJ_oShopkeeper)) PUNTR(1042);
 }
 
@@ -1020,7 +1020,7 @@ void ev_step(int i)
             PUNTR(1055);
         break;
     case OBJ_oWeb:                                                             /* objects/oWeb/Step_0.gml */
-        p->alpha = NTOD(PE(p)->life) / 12;
+        PE(p)->alpha = NTOD(PE(p)->life) / 12;
         if (PE(p)->dying) PE(p)->life -= N(0.02);
         if (NLE(PE(p)->life, N(1))) pin_destroy(i);
         break;

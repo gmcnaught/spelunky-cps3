@@ -67,7 +67,7 @@ extern const char *const ptype_names[T_COUNT];
    ...; 70-80 % of a level's instances) share record 0, which holds pin_add's defaults and is never written (the
    PIN_EXT_CHECK build checks it after every event). PE(p) is p's record */
 struct pin_ext {
-    int32_t alarm[12];
+    int16_t alarm[12];      /* -1 off; the routes set at most 210 */
     /* the GML instance variables the translated events use (named as in GML) */
     num xVel, yVel, xAcc, yAcc, myGrav, grav;
     num bounceFactor, frictionFactor, life;
@@ -80,13 +80,20 @@ struct pin_ext {
     int16_t xAct;
     num px, py;             /* oRopeThrow px, py */
     double direction;       /* oArrow */
+    double alpha;           /* image_alpha (oSmokePuff: life / 12) */
     int8_t lbo, tbo, rbo, bbo; /* setCollisionBounds offsets */
     uint8_t etype, style;
-    /* enemies, damsel, shopkeeper (penemy.c, pdamsel.c, pshop.c): oEnemy / oDamsel Create's variables */
-    uint8_t countsAsKill, swimming, edead, bounced, startled, angered;
+    uint8_t hasGun;         /* oShopkeeper (the drawing reads it) */
+    int16_t en;             /* its struct pin_en (0: the shared zeros) */
+};
+
+/* the enemies' variables (penemy.c, pdamsel.c, pshop.c: oEnemy / oDamsel Create's, oEnemySight's motion), in a
+   third pool: the oEnemy and oDamsel families and oEnemySight get a record (pworld.c pin_needs_en), the others
+   share record 0 (zeros, never written: PIN_EXT_CHECK). PEN(p) is p's record */
+struct pin_en {
+    uint8_t countsAsKill, swimming, edead, bounced, startled, angered, welcomed;
     int16_t bloodLeft, sacCount, burning, stunTime, sightCounter, squirtTimer, whipped, hit, stunMax;
     int16_t bombID, owner, firing, turnTimer, throwCount;
-    uint8_t hasGun, welcomed;
     num myGravNorm, myGravWater, yVelLimit;
     double hspeed, vspeed;  /* built-in motion (speed, direction): oEnemySight; applied after the Step events */
 };
@@ -97,13 +104,14 @@ struct pin {
     PIN_RO int16_t spr;     /* sprite_index (GSPR_*, -1 none) */
     PIN_RO int16_t mask;    /* mask_index (-1: the sprite) */
     int16_t ext;            /* its struct pin_ext (0: the shared defaults) */
-    uint8_t alive, visible, persistent;
+    uint8_t alive, persistent;
+    PIN_RO uint8_t visible;
     PIN_RO pos x, y;
     pos xprev, yprev;
-    float depth;            /* a float in the runner (-99999991 reads -99999992) */
-    img_t img, ispd;        /* image_index, image_speed */
-    PIN_RO double xscale, yscale, angle;
-    double alpha;
+    PIN_RO float depth;     /* a float in the runner (-99999991 reads -99999992) */
+    PIN_RO img_t img;       /* image_index */
+    img_t ispd;             /* image_speed */
+    PIN_RO float xscale, yscale, angle;  /* floats in the runner; the values set (+-1, whole numbers, (float) angle) */
     int16_t type;           /* enum ptype */
     uint8_t invincible, cleanDeath, shopWall, treasure;
     /* the bounding box cache (pworld.c pin_bbox): bbk 0 not computed since the last change of x / y / sprite /
@@ -114,8 +122,11 @@ struct pin {
 };
 
 
+/* PW.in and the generator's W.in are the same memory (pworld.c inst_mem): struct pin is struct inst's size and the
+   loaders (play_level_start, play_transition_start) write play instance i only after reading generator instance k
+   >= i. Nothing reads W during play */
 struct pworld {
-    struct pin in[PIN_MAX];
+    struct pin *in;
     int16_t n;              /* instances created (alive or not); index = creation order */
     int32_t next_id;
     int16_t room;           /* room index (names file R lines) of the current room */
@@ -130,17 +141,25 @@ extern struct pworld PW;
 
 #define PX(i) (PW.in[i])
 #ifndef EXT_MAX
-#define EXT_MAX 512              /* struct pin_ext records (0: the shared defaults) */
+#define EXT_MAX 400              /* struct pin_ext records (0: the shared defaults); 343 at most in use */
+#endif
+#ifndef EN_MAX
+#define EN_MAX 128               /* struct pin_en records (0: the shared zeros) */
 #endif
 extern struct pin_ext pin_ext[EXT_MAX];
+extern struct pin_en pin_en[EN_MAX];
 int pin_needs_ext(int obj);                       /* pworld.c: its instances get their own record */
 void pw_removed(int i);                           /* RemoveMarked took instance i out: its record is free */
 int pw_ext_used_max(void);
+int pw_en_used_max(void);
 #ifdef PIN_EXT_CHECK
 struct pin_ext *pin_ext_checked(const struct pin *p);
+struct pin_en *pin_en_checked(const struct pin *p);
 #define PE(p) pin_ext_checked(p)
+#define PEN(p) pin_en_checked(p)
 #else
 #define PE(p) (&pin_ext[(p)->ext])
+#define PEN(p) (&pin_en[pin_ext[(p)->ext].en])
 #endif
 static inline int pin_is(int i, int obj) { return i >= 0 && PW.in[i].alive && obj_is(PW.in[i].obj, obj); }
 
@@ -170,22 +189,42 @@ static inline void pin_setmask(struct pin *p, int v)
     PIN_WR(int16_t, p->mask) = (int16_t)v;
     if (o != v) pin_changed_(p);
 }
+/* image_index, visible, depth: no collision effect; the drawing's dirty mark (pw_draw_mark) on a change */
+void pw_draw_mark(int i);
+static inline void pin_setimg(struct pin *p, img_t v)
+{
+    img_t o = p->img;
+    PIN_WR(img_t, p->img) = v;
+    if (o != v) pw_draw_mark((int)(p - PW.in));
+}
+static inline void pin_setvisible(struct pin *p, int v)
+{
+    int o = p->visible;
+    PIN_WR(uint8_t, p->visible) = (uint8_t)v;
+    if (o != v) pw_draw_mark((int)(p - PW.in));
+}
+static inline void pin_setdepth(struct pin *p, float v)
+{
+    float o = p->depth;
+    PIN_WR(float, p->depth) = v;
+    if (o != v) pw_draw_mark((int)(p - PW.in));
+}
 static inline void pin_setxscale(struct pin *p, double v)
 {
-    float o = (float)p->xscale;
-    PIN_WR(double, p->xscale) = v;
+    float o = p->xscale;
+    PIN_WR(float, p->xscale) = (float)v;
     if (o != (float)v) pin_changed_(p);
 }
 static inline void pin_setyscale(struct pin *p, double v)
 {
-    float o = (float)p->yscale;
-    PIN_WR(double, p->yscale) = v;
+    float o = p->yscale;
+    PIN_WR(float, p->yscale) = (float)v;
     if (o != (float)v) pin_changed_(p);
 }
 static inline void pin_setangle(struct pin *p, double v)
 {
-    float o = (float)p->angle;
-    PIN_WR(double, p->angle) = v;
+    float o = p->angle;
+    PIN_WR(float, p->angle) = (float)v;
     if (o != (float)v) pin_changed_(p);
 }
 
@@ -214,6 +253,20 @@ int pin_box_outside(int i, int w, int h);          /* its box is outside [0, w] 
 extern int16_t pw_ohead[OBJ_COUNT], pw_inext[PIN_MAX];
 extern int16_t pw_ahead, pw_anext[PIN_MAX];        /* every alive instance in creation order */
 int pw_count(int obj);                            /* alive instances of obj with its descendants */
+/* the drawing's dirty list: the instances whose x, y, sprite, mask, scales, angle, image_index, visible or depth
+   changed, or that were created or destroyed (alive 0 then), since pw_draw_dirty_clear; at most one entry each.
+   A new room (pw_reset) empties it */
+int pw_draw_dirty(const int16_t **list);
+/* the terrain near the view (src/draw): pw_grid_sync, then per cell (cx < GRID_W, cy < GRID_H: inst.h)
+   pw_grid_cell / pw_grid_next (NOONE ends): the oSolid-family and terrain instances with a box whose top-left is in
+   the cell (clamped); a box reaches at most pw_grid_extent cells right / down. The other alive instances:
+   pw_nthead, pw_ntnext (creation order) */
+void pw_grid_sync(void);
+int pw_grid_cell(int cx, int cy);
+int pw_grid_next(int k);
+void pw_grid_extent(int *w, int *h);
+extern int16_t pw_nthead, pw_ntnext[PIN_MAX];
+void pw_draw_dirty_clear(void);
 int collision_point_p(double px, double py, int obj, int prec, int notme_self);
 int collision_line_p(double x1, double y1, double x2, double y2, int obj, int prec, int notme_self);
 int collision_rect_p(double x1, double y1, double x2, double y2, int obj, int prec, int notme_self);

@@ -4,7 +4,11 @@
 #include "pcol.h"
 #include "inst.h"                 /* GRID_W, GRID_H: the solid grid covers the generator's level grid */
 
-struct pworld PW;
+/* the generator's instances, then the play instances in the same memory (play.h struct pworld) */
+#define INST_MEM_N (PIN_MAX > INST_MAX ? PIN_MAX : INST_MAX)
+typedef char pin_size_is_inst_size[sizeof(struct pin) == sizeof(struct inst) ? 1 : -1];
+struct inst inst_mem[INST_MEM_N];
+struct pworld PW = { .in = (struct pin *)inst_mem };
 #ifdef PLAY_STATS
 struct pw_stats pw_st;
 #endif
@@ -26,37 +30,24 @@ int16_t pw_ohead[OBJ_COUNT], pw_inext[PIN_MAX];
    walk that saw it continues from it) */
 int16_t pw_ahead, pw_anext[PIN_MAX];
 static int16_t pw_atail, aprev[PIN_MAX];
+/* the alive non-terrain instances (pin_needs_ext 1) in creation order: pw_nthead, then pw_ntnext[i] */
+int16_t pw_nthead, pw_ntnext[PIN_MAX];
+static int16_t pw_nttail, ntprev[PIN_MAX];
 static int16_t otail[OBJ_COUNT], iprev[PIN_MAX];
 static int16_t olive[OBJ_COUNT];
-/* the objects that are obj or its descendants: odesc[odesc0[obj] .. odesc0[obj + 1]) */
-static int16_t odesc0[OBJ_COUNT + 1];
-static int16_t *odesc;
-static int16_t odesc_buf[2048];
-
-static void odesc_init(void)
-{
-    int o, a, n = 0;
-    for (a = 0; a < OBJ_COUNT; a++) {
-        odesc0[a] = (int16_t)n;
-        for (o = 0; o < OBJ_COUNT; o++)
-            if (obj_is(o, a)) {
-                if (n == (int)(sizeof odesc_buf / sizeof odesc_buf[0])) { PUNTR(9003); break; }
-                odesc_buf[n++] = (int16_t)o;
-            }
-    }
-    odesc0[OBJ_COUNT] = (int16_t)n;
-    odesc = odesc_buf;
-}
+#define odesc0 obj_desc0
+#define odesc obj_desc
 
 static void olists_reset(void)
 {
     int o;
-    if (!odesc) odesc_init();
+    obj_desc_init();
     for (o = 0; o < OBJ_COUNT; o++) {
         pw_ohead[o] = otail[o] = NOONE;
         olive[o] = 0;
     }
     pw_ahead = pw_atail = NOONE;
+    pw_nthead = pw_nttail = NOONE;
     grid_reset();
 }
 
@@ -78,6 +69,12 @@ static void olink(int i)
     aprev[i] = pw_atail;
     if (pw_atail >= 0) pw_anext[pw_atail] = (int16_t)i; else pw_ahead = (int16_t)i;
     pw_atail = (int16_t)i;
+    if (pin_needs_ext(o)) {
+        pw_ntnext[i] = NOONE;
+        ntprev[i] = pw_nttail;
+        if (pw_nttail >= 0) pw_ntnext[pw_nttail] = (int16_t)i; else pw_nthead = (int16_t)i;
+        pw_nttail = (int16_t)i;
+    }
 }
 
 static void ounlink(int i)
@@ -89,6 +86,10 @@ static void ounlink(int i)
     grid_unlink(i);
     if (aprev[i] >= 0) pw_anext[aprev[i]] = pw_anext[i]; else pw_ahead = pw_anext[i];
     if (pw_anext[i] >= 0) aprev[pw_anext[i]] = aprev[i]; else pw_atail = aprev[i];
+    if (pin_needs_ext(o)) {
+        if (ntprev[i] >= 0) pw_ntnext[ntprev[i]] = pw_ntnext[i]; else pw_nthead = pw_ntnext[i];
+        if (pw_ntnext[i] >= 0) ntprev[pw_ntnext[i]] = ntprev[i]; else pw_nttail = ntprev[i];
+    }
 }
 
 /* the alive instances of obj (with its descendants) in creation order: a merge of the objects' lists. More than
@@ -140,9 +141,36 @@ static int fam_get(struct fam *it)
 /* no alive instance of obj (with descendants) */
 static int fam_none(int obj) { return obj >= 0 && olive[obj] == 0; }
 
+/* ---- the drawing's dirty marks: instances whose x, y, sprite, mask, scale, angle, image_index, visible or depth
+   changed, or that were created or destroyed, since the drawing last took the list (pw_draw_dirty) ------------ */
+static int16_t ddlist[PIN_MAX];
+static uint8_t ddmark[PIN_MAX];
+static int nddlist;
+
+void pw_draw_mark(int i)
+{
+    if (ddmark[i]) return;
+    ddmark[i] = 1;
+    ddlist[nddlist++] = (int16_t)i;
+}
+
+int pw_draw_dirty(const int16_t **list)
+{
+    *list = ddlist;
+    return nddlist;
+}
+
+void pw_draw_dirty_clear(void)
+{
+    int k;
+    for (k = 0; k < nddlist; k++) ddmark[ddlist[k]] = 0;
+    nddlist = 0;
+}
+
 /* a setter changed x / y / sprite / mask / scale / angle (play.h pin_changed_) */
 void pw_changed(int i)
 {
+    pw_draw_mark(i);
     PW.in[i].bbk = 0;
     grid_dirty(i);
     pcol_changed(i);
@@ -166,6 +194,7 @@ static void ext_defaults(struct pin_ext *x)
     for (k = 0; k < sizeof *x; k++) b[k] = 0;
     for (k = 0; k < 12; k++) x->alarm[k] = -1;
     x->trapID = x->enemyID = NOONE;
+    x->alpha = 1;
 }
 
 /* the terrain: static blocks, ladders, backgrounds and the transition rooms' decorations ("...Tile"), whose
@@ -203,6 +232,27 @@ int pin_needs_ext(int obj)
     return needs_ext[obj] == 2;
 }
 
+/* the enemies' pool (struct pin_en) */
+struct pin_en pin_en[EN_MAX];
+static int16_t enfree[EN_MAX];
+static int nenfree;
+static int en_used, en_used_max;
+
+static void en_zero(struct pin_en *x)
+{
+    unsigned char *b = (unsigned char *)x;
+    unsigned k;
+    for (k = 0; k < sizeof *x; k++) b[k] = 0;
+}
+
+/* the objects that use struct pin_en: the oEnemy and oDamsel families, oEnemySight */
+static int pin_needs_en(int obj)
+{
+    return obj_is(obj, OBJ_oEnemy) || obj_is(obj, OBJ_oDamsel) || obj == OBJ_oEnemySight;
+}
+
+int pw_en_used_max(void) { return en_used_max; }
+
 static void ext_reset(void)
 {
     int k;
@@ -210,6 +260,10 @@ static void ext_reset(void)
     nextfree = 0;
     for (k = EXT_MAX - 1; k >= 1; k--) extfree[nextfree++] = (int16_t)k;
     ext_used = 0;
+    en_zero(&pin_en[0]);
+    nenfree = 0;
+    for (k = EN_MAX - 1; k >= 1; k--) enfree[nenfree++] = (int16_t)k;
+    en_used = 0;
 }
 
 static int ext_alloc(void)
@@ -227,11 +281,28 @@ static int ext_alloc(void)
 
 int pw_ext_used_max(void) { return ext_used_max; }
 
+static int en_alloc(void)
+{
+    int e;
+    if (nenfree == 0) {
+        PUNTR(9008);
+        return 0;
+    }
+    e = enfree[--nenfree];
+    en_zero(&pin_en[e]);
+    if (++en_used > en_used_max) en_used_max = en_used;
+    return e;
+}
+
 /* instance i left the room (RemoveMarked): its record is free */
 void pw_removed(int i)
 {
     struct pin *p = &PW.in[i];
     if (p->ext > 0) {
+        if (pin_ext[p->ext].en > 0) {
+            enfree[nenfree++] = pin_ext[p->ext].en;
+            en_used--;
+        }
         extfree[nextfree++] = p->ext;
         ext_used--;
     }
@@ -266,11 +337,27 @@ struct pin_ext *pin_ext_checked(const struct pin *p)
     }
     return &pin_ext[p->ext];
 }
+
+struct pin_en *pin_en_checked(const struct pin *p)
+{
+    static struct pin_en zero;
+    struct pin_ext *x = pin_ext_checked(p);
+    if (memcmp(&pin_en[0], &zero, sizeof zero)) {
+        unsigned k;
+        for (k = 0; k < sizeof zero && ((unsigned char *)&pin_en[0])[k] == 0; k++) {}
+        fprintf(stderr, "PIN_EXT_CHECK: pin_en record 0 written at byte %u (step %u, current object %s, accessed %s)\n",
+                k, (unsigned)PW.step, play_cur_obj >= 0 ? objdefs[play_cur_obj].name : "-", objdefs[p->obj].name);
+        fprintf(stderr, "  ext %d en %d en_used %d id %ld alive %d\n", p->ext, x->en, en_used, (long)p->id, p->alive);
+        exit(3);
+    }
+    return &pin_en[x->en];
+}
 #endif
 
 void pw_reset(void)
 {
     PW.n = 0;
+    nddlist = 0;                                     /* a new room: the drawing starts from scratch */
     ext_reset();
     olists_reset();
     pcol_after_reset();
@@ -296,19 +383,21 @@ int pin_add(int obj, pos x, pos y, int32_t id)
     PIN_WR(int16_t, p->spr) = gobjspr[obj];         /* a new instance: pcol_added takes it as it is */
     PIN_WR(int16_t, p->mask) = -1;
     p->alive = 1;
-    p->visible = pobj[obj].visible;
+    PIN_WR(uint8_t, p->visible) = pobj[obj].visible;
     p->persistent = pobj[obj].persistent;
     PIN_WR(pos, p->x) = x;
     PIN_WR(pos, p->y) = y;
     p->xprev = x;
     p->yprev = y;
-    p->depth = objdefs[obj].depth;
-    p->img = 0;
+    PIN_WR(float, p->depth) = objdefs[obj].depth;
+    PIN_WR(img_t, p->img) = 0;
     p->ispd = 1;
-    PIN_WR(double, p->xscale) = PIN_WR(double, p->yscale) = 1;
-    PIN_WR(double, p->angle) = 0;
-    p->alpha = 1;
+    PIN_WR(float, p->xscale) = PIN_WR(float, p->yscale) = 1;
+    PIN_WR(float, p->angle) = 0;
     p->ext = (int16_t)(pin_needs_ext(obj) ? ext_alloc() : 0);   /* with pin_add's defaults (ext_defaults) */
+    if (p->ext && pin_needs_en(obj)) pin_ext[p->ext].en = (int16_t)en_alloc();
+    ddmark[i] = 0;
+    pw_draw_mark(i);
     (void)k;
     olink(i);
     gcell[i] = NOONE;
@@ -332,6 +421,7 @@ void pin_destroy(int i)
         return;
     PW.in[i].alive = 0;          /* GameMaker marks it first: a search inside its Destroy event skips it */
     ounlink(i);
+    pw_draw_mark(i);
     ev_destroy(i);
     pcol_destroyed(i);           /* in the collision tree until the next RemoveMarked */
 }
@@ -339,7 +429,7 @@ void pin_destroy(int i)
 void pin_kill(int i)
 {
     if (i >= 0) {
-        if (PW.in[i].alive) ounlink(i);
+        if (PW.in[i].alive) { ounlink(i); pw_draw_mark(i); }
         PW.in[i].alive = 0;
         pcol_destroyed(i);
     }
@@ -354,9 +444,10 @@ void pin_set_sprite(int i, int spr)
     if (p->spr != spr) {
         PIN_WR(int16_t, p->spr) = (int16_t)spr;
         p->bbk = 0;
+        pw_draw_mark(i);
         grid_dirty(i);
         if (spr >= 0 && (p->img >= (img_t)psprite[spr].frames || p->img < 0))
-            p->img = 0;
+            PIN_WR(img_t, p->img) = 0;
         pcol_mark(i);                                /* SetSpriteIndex: CollisionMarkDirty */
     }
 }
@@ -574,7 +665,7 @@ static void grid_unlink(int i)
 /* a solid's box may have changed (or it was added): placed again at the next query */
 static void grid_dirty(int i)
 {
-    if (gond[i] || !obj_is(PW.in[i].obj, OBJ_oSolid)) return;
+    if (gond[i] || !(obj_is(PW.in[i].obj, OBJ_oSolid) || !pin_needs_ext(PW.in[i].obj))) return;
     gond[i] = 1;
     gdnext[i] = gdhead;
     gdhead = (int16_t)i;
@@ -608,6 +699,14 @@ static void grid_flush(void)
         ghead[cy][cx] = (int16_t)i;
     }
 }
+
+/* the drawing's walk of the terrain near the view (src/draw): the grid's cells, each holding the oSolid-family and
+   terrain instances (pin_needs_ext 0) whose box's top-left corner is in that cell (clamped to GRID_W x GRID_H);
+   a box reaches at most pw_grid_extent cells right / down of its cell */
+void pw_grid_sync(void) { grid_flush(); }
+int pw_grid_cell(int cx, int cy) { return ghead[cy][cx]; }
+int pw_grid_next(int k) { return gnext[k]; }
+void pw_grid_extent(int *w, int *h) { *w = gmaxw; *h = gmaxh; }
 
 /* the oldest instance of obj (oSolid or a descendant; but notme) whose box (and mask) holds the point */
 static int grid_point(int obj, int notme, const struct pq *q, int prec)

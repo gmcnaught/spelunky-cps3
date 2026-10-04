@@ -24,23 +24,23 @@ int pdam_create(int i, int fromgen)
         setCollisionBounds(i, -4, -4, 4, 8);
         p->ispd = (img_t)0.5;
         PE(p)->trigger = 1;
-        PE(p)->startled = 0;
+        PEN(p)->startled = 0;
         p->invincible = 0;
-        PE(p)->swimming = 0;
+        PEN(p)->swimming = 0;
         PE(p)->heavy = 1;
         PE(p)->cost = (10000 + 5000 * (G.currLevel - 2)) * 3;                  /* getKissValue() * 3 */
         PE(p)->hp = 4;
-        PE(p)->bloodLeft = 4;
-        PE(p)->sacCount = 20;
-        PE(p)->edead = 0;
+        PEN(p)->bloodLeft = 4;
+        PEN(p)->sacCount = 20;
+        PEN(p)->edead = 0;
         PE(p)->status = D_IDLE;
-        PE(p)->hit = 0;
+        PEN(p)->hit = 0;
         PE(p)->facing = LEFT;
-        PE(p)->bounced = 0;
-        PE(p)->burning = 0;
+        PEN(p)->bounced = 0;
+        PEN(p)->burning = 0;
         PE(p)->counter = 200;
-        PE(p)->stunMax = 120;
-        PE(p)->bombID = NOONE;
+        PEN(p)->stunMax = 120;
+        PEN(p)->bombID = NOONE;
         PE(p)->cimg = 0;
         if (fromgen) PE(p)->status = (int16_t)st;
         return 1;
@@ -75,24 +75,24 @@ static void damsel_step(int i)
         PE(p)->status = D_EXIT;
         PE(p)->xVel = 0;
         PE(p)->yVel = 0;
-        p->depth = 1000;
+        pin_setdepth(p, 1000);
         PE(p)->active = 0;
         PE(p)->canPickUp = 0;
     }
     if (p->spr == GSPR_sDamselExit2 || p->spr == GSPR_sPExit) {        /* :25 */
-        p->depth = 1000;
+        pin_setdepth(p, 1000);
         p->invincible = 1;
     }
-    if (PE(p)->hit > 0) PE(p)->hit -= 1;
+    if (PEN(p)->hit > 0) PEN(p)->hit -= 1;
     if (collision_point_p(X(i), Y(i), OBJ_oWaterSwim, 1, i) != NOONE) {   /* :33 */
-        if (!PE(p)->swimming) {
+        if (!PEN(p)->swimming) {
             pin_create(p->x, p->y, OBJ_oSplash);
             p = &PX(i);
-            PE(p)->swimming = 1;
+            PEN(p)->swimming = 1;
         }
         PE(p)->myGrav = N(0.2);
     } else {
-        PE(p)->swimming = 0;
+        PEN(p)->swimming = 0;
         PE(p)->myGrav = N(0.6);
     }
     if (PE(p)->cost > 0 && PE(p)->hp <= 0) scrShopkeeperAnger(i, 3);              /* :50 */
@@ -107,13 +107,13 @@ static void damsel_step(int i)
             }
             pin_destroy(i);
         }
-        if (PE(p)->burning > 0) {
+        if (PEN(p)->burning > 0) {
             if (RAND(1, 5) == 1) {
                 int yy = RAND(4, 12), xx = RAND(4, 12);
                 pin_create(p->x + PI(xx), p->y + PI(yy), OBJ_oBurn);
                 p = &PX(i);
             }
-            PE(p)->burning -= 1;
+            PEN(p)->burning -= 1;
         }
         if (CP(X(i), Y(i) + 6, OBJ_oLava)) PUNTR(6010);
         if (CP(X(i), Y(i) + 6, OBJ_oSpikes) && NGT(PE(p)->yVel, N(2))) {  /* :92 */
@@ -125,7 +125,7 @@ static void damsel_step(int i)
             }
             pin_set_sprite(i, GSPR_sDamselDieL);
             PE(p)->status = D_DEAD;
-            PE(p)->edead = 1;
+            PEN(p)->edead = 1;
             if (PE(p)->hp > 0) PE(p)->hp = 0;
             PE(p)->myGrav = 0;
             PE(p)->xVel = 0;
@@ -163,22 +163,22 @@ static void damsel_step(int i)
         if (PE(p)->facing == RIGHT && isCollisionRight(i, 2)) PE(p)->facing = LEFT;
         PE(p)->xVel = PE(p)->facing == LEFT ? N(-1.5) : N(1.5);
     } else if (PE(p)->status == D_THROWN) {                                /* :236 */
-        PE(p)->startled = 1;                                               /* global.damselsGrabbed: statistics */
+        PEN(p)->startled = 1;                                               /* global.damselsGrabbed: statistics */
         if (NEQ(PE(p)->xVel, N(0))) pin_set_sprite(i, GSPR_sDamselStunL);
-        else if (PE(p)->bounced) pin_set_sprite(i, NLT(PE(p)->yVel, N(0)) ? GSPR_sDamselBounceL : GSPR_sDamselFallL);
+        else if (PEN(p)->bounced) pin_set_sprite(i, NLT(PE(p)->yVel, N(0)) ? GSPR_sDamselBounceL : GSPR_sDamselFallL);
         else pin_set_sprite(i, NLT(PE(p)->xVel, N(0)) ? GSPR_sDamselDieLL : GSPR_sDamselDieLR);
-        if (isCollisionBottom(i, 1) && !PE(p)->bounced) PE(p)->bounced = 1;
+        if (isCollisionBottom(i, 1) && !PEN(p)->bounced) PEN(p)->bounced = 1;
         if (isCollisionBottom(i, 2) ||
             collision_rect_p(X(i) - 4, Y(i) - 6, X(i) + 4, Y(i) + 8, OBJ_oWeb, 0, NOONE) != NOONE) {
-            if (!PE(p)->edead) {
+            if (!PEN(p)->edead) {
                 if (PE(p)->counter > 0) PE(p)->counter -= 1;
                 else PE(p)->status = D_RUN;
             }
             if (PE(p)->hp <= 0) {
                 pin_set_sprite(i, GSPR_sDamselDieL);
                 PE(p)->status = D_DEAD;
-                if (!PE(p)->edead) {
-                    PE(p)->edead = 1;
+                if (!PEN(p)->edead) {
+                    PEN(p)->edead = 1;
                     PG.damselsKilled += 1;
                     PG.kills += 1;
                 }
@@ -189,7 +189,7 @@ static void damsel_step(int i)
         if (!PE(p)->held && NEQ(PE(p)->xVel, N(0)) && NEQ(PE(p)->yVel, N(0))) {
             if (CP(X(i), Y(i) + 8, OBJ_oSacAltarLeft)) PUNTR(6012);
         } else
-            PE(p)->sacCount = 20;
+            PEN(p)->sacCount = 20;
     }
 }
 
@@ -245,9 +245,9 @@ int pdam_collision(int self, int other)
     struct pin *p = &PX(self);
     if (p->obj != OBJ_oDamsel) return 0;
     (void)other;
-    if (PE(p)->status != D_THROWN && (PE(p)->status < D_EXIT || PE(p)->status == D_SLAVE || PE(p)->status == D_KISS) && PE(p)->hit == 0) {
+    if (PE(p)->status != D_THROWN && (PE(p)->status < D_EXIT || PE(p)->status == D_SLAVE || PE(p)->status == D_KISS) && PEN(p)->hit == 0) {
         PE(p)->yVel = N(-2);
-        PE(p)->hit = 10;
+        PEN(p)->hit = 10;
         if (PE(p)->forSale) scrShopkeeperAnger(self, 3);
     }
     return 1;
@@ -272,7 +272,7 @@ int pdam_destroy(int i)
     struct pin *p = &PX(i);
     if (p->obj != OBJ_oDamsel) return 0;
     if (PE(p)->held) PL.holdItem = NOONE;
-    if (PE(p)->bombID != NOONE) PE(&PX(PE(p)->bombID))->enemyID = NOONE;
+    if (PEN(p)->bombID != NOONE) PE(&PX(PEN(p)->bombID))->enemyID = NOONE;
     return 1;
 }
 
@@ -292,7 +292,7 @@ void pen_item_hit_damsel(int it)
     struct pin *o;
     if (obj == NOONE) return;
     o = &PX(obj);
-    if (!o->invincible && PE(o)->status != 99 && PE(o)->hit == 0) {
+    if (!o->invincible && PE(o)->status != 99 && PEN(o)->hit == 0) {
         if (!(PE(o)->held && PE(&PX(it))->safe)) {
             scrCreateBlood(it, o->x, o->y, 1);
             o = &PX(obj);
@@ -305,7 +305,7 @@ void pen_item_hit_damsel(int it)
             PE(o)->yVel = N(-6);
             PE(o)->status = D_THROWN;
             PE(o)->counter = 120;
-            PE(o)->hit = 10;
+            PEN(o)->hit = 10;
             PE(o)->xVel = NMUL(PE(&PX(it))->xVel, N(0.3));
             if (PX(it).type == T_ARROW || PX(it).type == T_FISHBONE) pin_destroy(it);
             if (PE(o)->forSale) scrShopkeeperAnger(it, 3);

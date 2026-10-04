@@ -51,12 +51,12 @@ void pen_enemy_create(int i)
     PE(p)->hp = 1;
     p->type = T_ENONE;
     PE(p)->active = 1;
-    PE(p)->bloodLeft = 4;
+    PEN(p)->bloodLeft = 4;
     PE(p)->heavy = 1;
     PE(p)->myGrav = N(0.6);
-    PE(p)->myGravNorm = N(0.6);
-    PE(p)->myGravWater = N(0.2);
-    PE(p)->yVelLimit = N(10);
+    PEN(p)->myGravNorm = N(0.6);
+    PEN(p)->myGravWater = N(0.2);
+    PEN(p)->yVelLimit = N(10);
     PE(p)->bounceFactor = N(0.5);
     PE(p)->frictionFactor = N(0.3);
     PE(p)->held = 0;
@@ -67,13 +67,13 @@ void pen_enemy_create(int i)
     PE(p)->canPickUp = 1;
     PE(p)->cost = 0;
     PE(p)->forSale = 0;
-    PE(p)->sacCount = 20;
-    PE(p)->countsAsKill = 1;
-    PE(p)->burning = 0;
-    PE(p)->swimming = 0;
-    PE(p)->stunTime = 200;
+    PEN(p)->sacCount = 20;
+    PEN(p)->countsAsKill = 1;
+    PEN(p)->burning = 0;
+    PEN(p)->swimming = 0;
+    PEN(p)->stunTime = 200;
     PE(p)->facing = 0;
-    PE(p)->bombID = NOONE;
+    PEN(p)->bombID = NOONE;
 }
 
 static void make_active(struct pin *p) { PE(p)->xVel = PE(p)->yVel = PE(p)->xAcc = PE(p)->yAcc = 0; }
@@ -92,8 +92,8 @@ int pen_create(int i, int fromgen)
         PE(p)->hp = 1;
         p->invincible = 0;
         PE(p)->status = 0;
-        PE(p)->bounced = 0;
-        PE(p)->edead = 0;
+        PEN(p)->bounced = 0;
+        PEN(p)->edead = 0;
         PE(p)->counter = 0;
         PE(p)->facing = E_RIGHT;
         return 1;
@@ -124,7 +124,7 @@ int pen_create(int i, int fromgen)
         make_active(p);
         setCollisionBounds(i, 1, 5, 15, 16);
         PE(p)->myGrav = N(0.2);
-        PE(p)->myGravNorm = N(0.2);
+        PEN(p)->myGravNorm = N(0.2);
         p->ispd = (img_t)0.4;
         PE(p)->hp = 1;
         p->invincible = 0;
@@ -149,12 +149,12 @@ int pen_create(int i, int fromgen)
         make_active(p);
         setCollisionBounds(i, 2, 16, 30, 32);
         PE(p)->myGrav = N(0.3);
-        PE(p)->myGravNorm = N(0.3);
+        PEN(p)->myGravNorm = N(0.3);
         p->ispd = (img_t)0.8;
         PE(p)->hp = 1;
         p->invincible = 0;
-        PE(p)->whipped = 10;
-        PE(p)->squirtTimer = (int16_t)RAND(100, 1000);
+        PEN(p)->whipped = 10;
+        PEN(p)->squirtTimer = (int16_t)RAND(100, 1000);
         PE(p)->status = 0;
         return 1;
     case OBJ_oCaveman:                                                 /* objects/oCaveman/Create_0.gml */
@@ -168,10 +168,10 @@ int pen_create(int i, int fromgen)
         PE(p)->hp = 3;
         p->invincible = 0;
         PE(p)->status = 0;
-        PE(p)->bounced = 0;
-        PE(p)->edead = 0;
+        PEN(p)->bounced = 0;
+        PEN(p)->edead = 0;
         PE(p)->counter = 0;
-        PE(p)->sightCounter = 0;
+        PEN(p)->sightCounter = 0;
         PE(p)->facing = E_RIGHT;
         PE(p)->colLeft = PE(p)->colRight = PE(p)->colBot = PE(p)->colTop = 0;
         return 1;
@@ -185,8 +185,8 @@ int pen_create(int i, int fromgen)
         PE(p)->hp = 1;
         p->invincible = 0;
         PE(p)->status = 0;
-        PE(p)->bounced = 0;
-        PE(p)->edead = 0;
+        PEN(p)->bounced = 0;
+        PEN(p)->edead = 0;
         PE(p)->counter = 20;
         PE(p)->facing = E_RIGHT;
         if (pl() != NOONE && DLT(X(pl()), X(i) + 8)) PE(p)->facing = E_LEFT;
@@ -198,7 +198,7 @@ int pen_create(int i, int fromgen)
         PE(p)->yAcc = N(0.2);
         return 1;
     case OBJ_oEnemySight:                                              /* objects/oEnemySight/Create_0.gml */
-        PE(p)->owner = 0;
+        PEN(p)->owner = 0;
         return 1;
     case OBJ_oBone:                                                    /* objects/oBone/Create_0.gml */
         create_detritus(i);
@@ -239,7 +239,7 @@ int pen_create(int i, int fromgen)
         setCollisionBounds(i, -14, -16, 14, 16);
         PE(p)->myGrav = N(0.6);
         p->invincible = 1;
-        PE(p)->bounced = 0;
+        PEN(p)->bounced = 0;
         PE(p)->colLeft = PE(p)->colRight = 0;
         return 1;
     case OBJ_oScarab: case OBJ_oFrog: case OBJ_oFireFrog: case OBJ_oZombie: case OBJ_oVampire: case OBJ_oMonkey:
@@ -262,7 +262,7 @@ int pen_hit_common(int e, int kind)
             o = &PX(e);
             PE(o)->hp -= 1;
             PE(o)->status = E_STUNNED;
-            PE(o)->counter = PE(o)->stunTime;
+            PE(o)->counter = PEN(o)->stunTime;
             PE(o)->yVel = N(-6);
         }
     } else if (o->type == T_SHOPKEEPER) {
@@ -274,11 +274,11 @@ int pen_hit_common(int e, int kind)
             PE(o)->status = 2;
         }
     } else if (o->type == T_GIANTSPIDER) {
-        if (PE(o)->whipped == 0) {
+        if (PEN(o)->whipped == 0) {
             blood(e, X(e) + 16, Y(e) + 24, 1);
             o = &PX(e);
             PE(o)->hp -= 1;
-            PE(o)->whipped = 10;
+            PEN(o)->whipped = 10;
         }
     } else if (o->obj == OBJ_oManTrap || o->obj == OBJ_oVampire || o->obj == OBJ_oYeti || o->obj == OBJ_oHawkman ||
                o->obj == OBJ_oTombLord || o->obj == OBJ_oAlienBoss || o->obj == OBJ_oUFO) {
@@ -309,29 +309,29 @@ void pen_parent_step(int i)
         if (PL.facing == RIGHT) { pin_setx(p, q->x - PI(4)); PE(p)->facing = 1; }
         if (PL.state == DUCKING && NLT(NABS(PE(q)->xVel), N(2))) pin_sety(p, q->y - PI(10));
         else pin_sety(p, q->y - PI(12));
-        p->depth = 1;
+        pin_setdepth(p, 1);
         if (PL.holdItem == NOONE || PE(p)->status < 98) PE(p)->held = 0;
     } else
-        p->depth = 60;
+        pin_setdepth(p, 60);
     if (CPn(X(i) + dfloor(sprw(i) / 2.0), Y(i) + dfloor(sprh(i) / 2.0), OBJ_oWaterSwim, i)) {   /* :34 */
-        if (!PE(p)->swimming) {
+        if (!PEN(p)->swimming) {
             pin_create((pos)(X(i) + dfloor(sprw(i) / 2.0)), p->y, OBJ_oSplash);
             p = &PX(i);
-            PE(p)->swimming = 1;
+            PEN(p)->swimming = 1;
         }
-        PE(p)->myGrav = PE(p)->myGravWater;
+        PE(p)->myGrav = PEN(p)->myGravWater;
         if (p->obj == OBJ_oFireFrog) PUNTR(5011);
     } else {
-        PE(p)->swimming = 0;
-        PE(p)->myGrav = PE(p)->myGravNorm;
+        PEN(p)->swimming = 0;
+        PE(p)->myGrav = PEN(p)->myGravNorm;
     }
-    if (PE(p)->burning > 0) {                                              /* :57 */
+    if (PEN(p)->burning > 0) {                                              /* :57 */
         if (RAND(1, 5) == 1) {
             int yy = RAND(0, sprh(i)), xx = RAND(0, sprw(i));
             pin_create(p->x + PI(xx), p->y + PI(yy), OBJ_oBurn);
             p = &PX(i);
         }
-        PE(p)->burning -= 1;
+        PEN(p)->burning -= 1;
     }
     if (CP(X(i) + dfloor(sprw(i) / 2.0), Y(i) - 1, OBJ_oLava)) PUNTR(5012);                   /* :63 */
     if (CP(X(i) + dfloor(sprw(i) / 2.0), Y(i) + sprh(i) - 2, OBJ_oLava)) PUNTR(5012);
@@ -341,7 +341,7 @@ void pen_parent_step(int i)
         if (!bloodless_of(i) && spikes != NOONE) pin_set_sprite(spikes, GSPR_sSpikesBlood);
         if (PE(p)->hp > 0) {
             PE(p)->hp = 0;
-            PE(p)->countsAsKill = 0;
+            PEN(p)->countsAsKill = 0;
             if (!bloodless_of(i)) blood(i, X(i) + sprw(i) / 2.0, Y(i) + sprh(i) / 2.0, 3);
             p = &PX(i);
             if (caveman_like(p->type) || p->type == T_SHOPKEEPER) PE(p)->status = 99;
@@ -354,7 +354,7 @@ void pen_parent_step(int i)
         if (!PE(p)->held && NEQ(PE(p)->xVel, N(0)) && NEQ(PE(p)->yVel, N(0))) {
             if (CP(X(i) + 8, Y(i) + 16, OBJ_oSacAltarLeft)) PUNTR(5014);
         } else
-            PE(p)->sacCount = 20;
+            PEN(p)->sacCount = 20;
     }
     if (PE(p)->status == 98 && (NGT(NABS(PE(p)->xVel), N(2)) || NGT(NABS(PE(p)->yVel), N(2)))) {   /* :170 projectile */
         int obj = collision_rect_p(X(i), Y(i), X(i) + 16, Y(i) + 16, OBJ_oEnemy, 0, i);
@@ -372,7 +372,7 @@ void pen_parent_step(int i)
 /* if (countsAsKill) { global.enemyKills[k] (statistics), global.<kind> += 1, global.kills += 1 } */
 static void kill_count(int i)
 {
-    if (!PE(&PX(i))->countsAsKill) return;
+    if (!PEN(&PX(i))->countsAsKill) return;
     switch (PX(i).obj) {
     case OBJ_oSnake: PG.snakes += 1; break;
     case OBJ_oBat: PG.bats += 1; break;
@@ -392,7 +392,7 @@ static void snake_step(int i)
     if (!eview(i, 20, 4)) return;
     moveTo(i, PE(p)->xVel, PE(p)->yVel, 0, 0);
     PE(p)->yVel += PE(p)->myGrav;
-    if (NGT(PE(p)->yVel, PE(p)->yVelLimit)) PE(p)->yVel = PE(p)->yVelLimit;
+    if (NGT(PE(p)->yVel, PEN(p)->yVelLimit)) PE(p)->yVel = PEN(p)->yVelLimit;
     if (CP(X(i) + 8, Y(i) + 8, OBJ_oSolid)) PE(p)->hp = 0;
     if (PE(p)->hp < 1) {                                                   /* :15 */
         blood(i, X(i) + 8, Y(i) + 8, 3);
@@ -542,7 +542,7 @@ static void spider_step(int i)
     if (eview(i, 20, 4)) {
         moveTo(i, PE(p)->xVel, PE(p)->yVel, 0, 0);
         PE(p)->yVel += PE(p)->myGrav;
-        if (NGT(PE(p)->yVel, PE(p)->yVelLimit)) PE(p)->yVel = PE(p)->yVelLimit;
+        if (NGT(PE(p)->yVel, PEN(p)->yVelLimit)) PE(p)->yVel = PEN(p)->yVelLimit;
         if (CP(X(i) + 8, Y(i) + 8, OBJ_oSolid)) PE(p)->hp = 0;
         if (PE(p)->hp < 1) {
             blood(i, X(i) + 8, Y(i) + 8, 3);
@@ -588,8 +588,8 @@ static void giantspider_step(int i)
     if (!eview(i, 32, 0)) return;
     moveTo(i, PE(p)->xVel, PE(p)->yVel, 0, 0);
     PE(p)->yVel += PE(p)->myGrav;
-    if (NGT(PE(p)->yVel, PE(p)->yVelLimit)) PE(p)->yVel = PE(p)->yVelLimit;
-    if (PE(p)->whipped > 0) PE(p)->whipped -= 1;
+    if (NGT(PE(p)->yVel, PEN(p)->yVelLimit)) PE(p)->yVel = PEN(p)->yVelLimit;
+    if (PEN(p)->whipped > 0) PEN(p)->whipped -= 1;
     if (CP(X(i) + 16, Y(i) + 24, OBJ_oSolid)) PE(p)->hp = 0;
     if (PE(p)->hp < 1) {                                                   /* :16 */
         int n = RAND(1, 3), k;
@@ -621,11 +621,11 @@ static void giantspider_step(int i)
         PE(p)->xVel = (c != NOONE && DLT(X(c), X(i) + 16)) ? N(-1) : N(1);
     }
     dist = distance_to_object_p(i, OBJ_oCharacter);
-    if (PE(p)->squirtTimer > 0) PE(p)->squirtTimer -= 1;
+    if (PEN(p)->squirtTimer > 0) PEN(p)->squirtTimer -= 1;
     if (PE(p)->status == 0) {                                              /* IDLE */
         if (p->spr != GSPR_sGiantSpiderFlip) pin_set_sprite(i, GSPR_sGiantSpider);
         PE(p)->alarm[0] = RAND(5, 20);
-        if (PE(p)->squirtTimer == 0) PE(p)->status = 5;
+        if (PEN(p)->squirtTimer == 0) PE(p)->status = 5;
         else PE(p)->status = 2;
     } else if (PE(p)->status == 3) {                                       /* CRAWL */
         pin_set_sprite(i, GSPR_sGiantSpiderCrawl);
@@ -634,10 +634,10 @@ static void giantspider_step(int i)
         else if (isCollisionLeft(i, 1)) PE(p)->xVel = N(1);
     } else if (PE(p)->status == 5) {                                       /* SQUIRT */
         pin_set_sprite(i, GSPR_sGiantSpiderSquirt);
-        if (DGE(p->img, 5) && PE(p)->squirtTimer == 0) {
+        if (DGE(p->img, 5) && PEN(p)->squirtTimer == 0) {
             pin_create(p->x + PI(16), p->y + PI(16), OBJ_oWebBall);
             p = &PX(i);
-            PE(p)->squirtTimer = (int16_t)RAND(100, 1000);
+            PEN(p)->squirtTimer = (int16_t)RAND(100, 1000);
         }
     } else if (PE(p)->status == 2) {                                       /* RECOVER */
         if (isCollisionBottom(i, 1)) PE(p)->xVel = 0;
@@ -674,15 +674,15 @@ void scrCheckCollisions(int i)
 static void caveman_sight(int i)
 {
     struct pin *p = &PX(i);
-    if (PE(p)->sightCounter > 0) PE(p)->sightCounter -= 1;
+    if (PEN(p)->sightCounter > 0) PEN(p)->sightCounter -= 1;
     else {
         int s = pin_create(p->x, p->y, OBJ_oEnemySight);
         double dir = PE(&PX(i))->facing == E_LEFT ? 180 : 0;
         PE(&PX(s))->direction = dir;
-        PE(&PX(s))->hspeed = 10 * pcos_cr(degtorad_d(dir));                  /* speed = 10 */
-        PE(&PX(s))->vspeed = -10 * psin_cr(degtorad_d(dir));
-        PE(&PX(s))->owner = (int16_t)instance_place_p(i, X(i), Y(i), OBJ_oCaveman);
-        PE(&PX(i))->sightCounter = 5;
+        PEN(&PX(s))->hspeed = 10 * pcos_cr(degtorad_d(dir));                  /* speed = 10 */
+        PEN(&PX(s))->vspeed = -10 * psin_cr(degtorad_d(dir));
+        PEN(&PX(s))->owner = (int16_t)instance_place_p(i, X(i), Y(i), OBJ_oCaveman);
+        PEN(&PX(i))->sightCounter = 5;
     }
 }
 
@@ -694,7 +694,7 @@ static void caveman_step(int i)
     if (!PE(p)->active) return;
     moveTo(i, PE(p)->xVel, PE(p)->yVel, 0, 0);
     if (!PE(p)->held) PE(p)->yVel += PE(p)->myGrav;
-    if (NGT(PE(p)->yVel, PE(p)->yVelLimit)) PE(p)->yVel = PE(p)->yVelLimit;
+    if (NGT(PE(p)->yVel, PEN(p)->yVelLimit)) PE(p)->yVel = PEN(p)->yVelLimit;
     PE(p)->colLeft = PE(p)->colRight = PE(p)->colBot = PE(p)->colTop = 0;
     if (isCollisionLeft(i, 1)) PE(p)->colLeft = 1;
     if (isCollisionRight(i, 1)) PE(p)->colRight = 1;
@@ -715,7 +715,7 @@ static void caveman_step(int i)
     if (PE(p)->status != E_DEAD && PE(p)->status != E_STUNNED && PE(p)->hp < 1) PE(p)->status = E_DEAD;
     if (PE(p)->colBot && PE(p)->status != E_STUNNED) PE(p)->yVel = 0;
     if (PE(p)->status == 0) {                                              /* IDLE :45 */
-        PE(p)->bounced = 0;
+        PEN(p)->bounced = 0;
         if (PE(p)->colBot && (CPn(X(i) - 1, Y(i), OBJ_oSolid, i) || CPn(X(i) + 16, Y(i), OBJ_oSolid, i))) {
             PE(p)->yVel = N(-6);
             PE(p)->xVel = PE(p)->facing == E_LEFT ? N(-1) : N(1);
@@ -757,10 +757,10 @@ static void caveman_step(int i)
         PE(p)->xVel = PE(p)->facing == E_LEFT ? N(-3) : N(3);
     } else if (PE(p)->status == E_STUNNED) {                               /* :137 */
         if (NEQ(PE(p)->xVel, N(0)) && PE(p)->hp > 0) pin_set_sprite(i, GSPR_sCavemanStunL);
-        else if (PE(p)->bounced) pin_set_sprite(i, NLT(PE(p)->yVel, N(0)) ? GSPR_sCavemanBounceL : GSPR_sCavemanFallL);
+        else if (PEN(p)->bounced) pin_set_sprite(i, NLT(PE(p)->yVel, N(0)) ? GSPR_sCavemanBounceL : GSPR_sCavemanFallL);
         else pin_set_sprite(i, NGT(NABS(PE(p)->xVel), N(0)) ? GSPR_sCavemanDieLL : GSPR_sCavemanDieLR);
-        if (PE(p)->colBot && !PE(p)->bounced) {
-            PE(p)->bounced = 1;
+        if (PE(p)->colBot && !PEN(p)->bounced) {
+            PEN(p)->bounced = 1;
             blood(i, X(i) + 8, Y(i) + 8, 1);
             p = &PX(i);
         }
@@ -776,9 +776,9 @@ static void caveman_step(int i)
             }
         }
     } else if (PE(p)->status == E_DEAD) {                                  /* :171 */
-        if (!PE(p)->edead) {
+        if (!PEN(p)->edead) {
             kill_count(i);
-            PE(p)->edead = 1;
+            PEN(p)->edead = 1;
         }
         pin_set_sprite(i, GSPR_sCavemanDeadL);
         if (NGT(NABS(PE(p)->xVel), N(0)) || NGT(NABS(PE(p)->yVel), N(0))) PE(p)->status = E_STUNNED;
@@ -803,7 +803,7 @@ static void skeleton_step(int i)
     if (!eview(i, 20, 4)) return;
     moveTo(i, PE(p)->xVel, PE(p)->yVel, 0, 0);
     PE(p)->yVel += PE(p)->myGrav;
-    if (NGT(PE(p)->yVel, PE(p)->yVelLimit)) PE(p)->yVel = PE(p)->yVelLimit;
+    if (NGT(PE(p)->yVel, PEN(p)->yVelLimit)) PE(p)->yVel = PEN(p)->yVelLimit;
     if (CP(X(i) + 8, Y(i) + 8, OBJ_oSolid)) PE(p)->hp = 0;
     if (PE(p)->hp < 1) {                                                   /* :15 */
         int k, skull;
@@ -883,9 +883,9 @@ static void boulder_step(int i)
         if (NGT(PE(p)->yVel, N(3))) PE(p)->yVel = NMUL(-PE(p)->yVel, N(0.3));
         else PE(p)->yVel = 0;
         if (NNE(NABS(PE(p)->xVel), N(0))) PE(p)->xVel = NMUL(PE(p)->xVel, N(0.99));
-        if (!PE(p)->bounced && NEQ(PE(p)->xVel, N(0))) {
+        if (!PEN(p)->bounced && NEQ(PE(p)->xVel, N(0))) {
             PE(p)->xVel = DLT(X(pl()), X(i)) ? N(-4.5) : N(4.5);
-            PE(p)->bounced = 1;
+            PEN(p)->bounced = 1;
         }
         if (NLT(NABS(PE(p)->xVel), N(0.5))) PE(p)->xVel = 0;
     }
@@ -961,9 +961,9 @@ void pen_motion(void)
     /* only oEnemySight sets hspeed / vspeed (caveman_sight; pin_add zeroes them): its instances in creation order */
     for (k = pw_ohead[OBJ_oEnemySight]; k >= 0; k = pw_inext[k]) {
         struct pin *p = &PW.in[k];
-        if (!p->alive || (dzero(PE(p)->hspeed) && dzero(PE(p)->vspeed))) continue;
-        pin_setx(p, (pos)((double)p->x + PE(p)->hspeed));
-        pin_sety(p, (pos)((double)p->y + PE(p)->vspeed));
+        if (!p->alive || (dzero(PEN(p)->hspeed) && dzero(PEN(p)->vspeed))) continue;
+        pin_setx(p, (pos)((double)p->x + PEN(p)->hspeed));
+        pin_sety(p, (pos)((double)p->y + PEN(p)->vspeed));
     }
 }
 
@@ -1089,11 +1089,11 @@ static void enemy_whipped(int i, int w)
     struct pin *p = &PX(i);
     (void)w;
     PE(p)->hp -= 1;                                                        /* other.damage: 1 (oWhip, oWhipPre) */
-    PE(p)->countsAsKill = 1;
-    if (PE(p)->bloodLeft > 0) {
+    PEN(p)->countsAsKill = 1;
+    if (PEN(p)->bloodLeft > 0) {
         blood(i, X(i) + sprw(i) / 2.0, Y(i) + sprh(i) / 2.0, 1);
         p = &PX(i);
-        if (PE(p)->hp < 0) PE(p)->bloodLeft -= 1;
+        if (PE(p)->hp < 0) PEN(p)->bloodLeft -= 1;
     }
 }
 
@@ -1114,9 +1114,9 @@ static void caveman_hit_player(int i, int c)
             } else
                 PE(p)->hp -= (int16_t)(1 * (PL.fallTimer / 16 + 1));
             PL.fallTimer = 0;
-            PE(p)->countsAsKill = 1;
+            PEN(p)->countsAsKill = 1;
             PE(p)->status = E_STUNNED;
-            PE(p)->counter = PE(p)->stunTime;
+            PE(p)->counter = PEN(p)->stunTime;
             PE(p)->yVel = N(-6);
             if (DLT(PTOD(o->x), X(i) + 8)) PE(p)->xVel += N(1);
             else PE(p)->xVel -= N(1);
@@ -1140,14 +1140,14 @@ static void caveman_whipped(int i, int w)
     struct pin *p = &PX(i);
     if (PE(p)->status < E_STUNNED) {
         PE(p)->hp -= 1;
-        if (PE(p)->bloodLeft > 0) {
+        if (PEN(p)->bloodLeft > 0) {
             blood(i, X(i) + sprw(i) / 2.0, Y(i) + sprh(i) / 2.0, 1);
             p = &PX(i);
-            if (PE(p)->hp < 0) PE(p)->bloodLeft -= 1;
+            if (PE(p)->hp < 0) PEN(p)->bloodLeft -= 1;
         }
-        PE(p)->countsAsKill = 1;
+        PEN(p)->countsAsKill = 1;
         PE(p)->status = E_STUNNED;
-        PE(p)->counter = PE(p)->stunTime;
+        PE(p)->counter = PEN(p)->stunTime;
         PE(p)->yVel = N(-3);
         PE(p)->xVel = DLT(X(w), X(i) + 8) ? N(2) : N(-2);
         p->ispd = (img_t)0.5;
@@ -1189,11 +1189,11 @@ int pen_collision(int self, int other)
         return 1;
     case OBJ_oGiantSpider:
         if (obj_is(oo, OBJ_oCharacter)) giant_hit_player(self, other);
-        else if (PE(&PX(self))->whipped == 0) {                              /* Collision_oWhip (oWhipPre: oEnemy's) */
+        else if (PEN(&PX(self))->whipped == 0) {                              /* Collision_oWhip (oWhipPre: oEnemy's) */
             if (oo == OBJ_oWhip) {
                 PE(&PX(self))->hp -= 1;
                 pin_create(PX(self).x + PI(16), PX(self).y + PI(24), OBJ_oBlood);
-                PE(&PX(self))->whipped = 10;
+                PEN(&PX(self))->whipped = 10;
             } else
                 enemy_whipped(self, other);
         } else if (oo == OBJ_oWhipPre)
@@ -1297,7 +1297,7 @@ int pen_jar_hit(int jar, int skull)
                     if (o->obj != OBJ_oManTrap) pin_create(o->x, o->y, OBJ_oBlood);
                     o = &PX(e);
                     PE(o)->status = E_STUNNED;
-                    PE(o)->counter = PE(o)->stunTime;
+                    PE(o)->counter = PEN(o)->stunTime;
                     PE(o)->yVel = N(-6);
                 }
             } else {

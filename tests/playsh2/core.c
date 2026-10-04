@@ -6,7 +6,14 @@
 #include "pint.h"
 #include "core.h"
 
-/* the GML instance variables: in struct pin_ext (PE(p)) since 18aca5f, in struct pin before */
+/* the GML instance variables: in struct pin_ext (PE(p)) since 18aca5f, in struct pin before; alpha moved there
+   later (snapcfg.h: written by the check scripts from the snapshot's play.h) */
+#include "snapcfg.h"
+#ifdef ALPHA_IN_EXT
+#define ALPHA(p) (PE(p)->alpha)
+#else
+#define ALPHA(p) ((p)->alpha)
+#endif
 #ifdef PE
 #define XT struct pin_ext
 #define XP(p) PE(p)
@@ -66,7 +73,7 @@ uint32_t sum_play(void)
         const XT *e = XP(p);
         hw((uint32_t)p->id); hw((uint32_t)p->obj); hw((uint32_t)p->spr);
         hf(p->x); hf(p->y); hf(p->img); hf(p->ispd); hf(p->depth);
-        hd(p->xscale); hd(p->yscale); hd(p->angle); hd(p->alpha);
+        hd(p->xscale); hd(p->yscale); hd(p->angle); hd(ALPHA(p));
         hd(e->xVel); hd(e->yVel); hd(e->xAcc); hd(e->yAcc); hd(e->myGrav); hd(e->grav); hd(e->life);
         hd(e->px); hd(e->py); hd(e->direction);
         hw(p->visible); hw(e->held); hw((uint32_t)e->state); hw((uint32_t)e->counter);

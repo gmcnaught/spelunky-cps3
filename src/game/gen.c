@@ -579,6 +579,7 @@ static int scrInitLevel(void)
         int p = instance_first(OBJ_oPlayer1), e = instance_first(OBJ_oEntrance);
         W.in[p].x = (int16_t)(W.in[e].x + 8);
         W.in[p].y = (int16_t)(W.in[e].y + 8);
+        inst_moved(p);
         if (inst_hook) inst_hook(IH_MOVE, p, 0, 0, 0);                        /* the collision tree (pcol.c) */
     }
 
