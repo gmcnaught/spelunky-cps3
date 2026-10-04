@@ -1,0 +1,14 @@
+# P7 reference (docs/CONTENT.md package C, ice): a UFO brought down (hp < 1): oUFOCrash falls and explodes on a solid (steps 61-71); random-walk search route (playhost)
+# seed 32
+# level 12
+# globals pickupItem=Rock
+30 -
+2 L
+1 UA
+10 -
+12 RJ
+1 UA
+20 -
+4 LJ
+1 UA
+9 -

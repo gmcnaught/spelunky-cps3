@@ -1,0 +1,21 @@
+# P7 reference (docs/CONTENT.md package C, ice): UFO lasers: one hits an enemy (oLaser Collision_oEnemy, step 114), one a solid (Collision_oSolid, 178); random-walk search route (playhost)
+# seed 98
+# level 11
+# globals pickupItem=Rock
+30 -
+12 RJ
+8 -
+12 RJ
+20 -
+4 -
+20 J
+20 -
+8 R
+1 UA
+10 -
+20 R
+20 LJ
+1 UA
+6 -
+4 R
+4 RJ

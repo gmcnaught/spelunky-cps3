@@ -1,0 +1,25 @@
+# P7 reference (docs/CONTENT.md package C, ice): the alien craft: the barrier (oBarrier Collision_*) from the first step; random-walk search route (playhost)
+# seed 111
+# level 9
+# globals madeMoai=1,pickupItem=Rock
+30 -
+2 RJ
+4 LJ
+1 B
+10 -
+8 R
+12 L
+8 L
+20 L
+1 LJ
+2 D
+12 RJ
+4 D
+2 RJ
+1 RJ
+1 L
+1 A
+6 -
+4 R
+1 A
+20 -
