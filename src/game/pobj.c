@@ -543,7 +543,7 @@ void ev_destroy(int i)
 #if !defined(PCOL_EXACT) && !defined(PLAY_FIXED) && !defined(NUM_IS_CLASS) && !defined(PLAY_NOREST)
 #define PLAY_REST 1
 #ifndef REST_MAX
-#define REST_MAX 256             /* rst[] entries (a power of 2): instance p's is rst[p->ext & (REST_MAX - 1)] */
+#define REST_MAX 128             /* rst[] entries (a power of 2): instance p's is rst[p->ext & (REST_MAX - 1)] */
 #endif
 struct rest_st { float x, y; double xv, yv, mg; uint8_t cl, cr, cb, ct, stuck; int16_t status; };
 /* a fixed point (rest_end): xVel = yVel = +0 there, so only the other fields are kept; myGrav by its bits. Two
