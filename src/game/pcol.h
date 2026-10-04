@@ -11,9 +11,13 @@ void pcol_after_reset(void);           /* pw_reset: a new room (StartRoom's Rebu
 void pcol_added(int i);                /* pin_add: a new instance (no tree action) */
 void pcol_create(int i);               /* instance_create: CRoom::AddInstance + CollisionInsert, before Create */
 void pcol_room_inst(int i);            /* a room instance at room start (StartRoom: CollisionMarkDirty) */
+void pcol_changed(int i);              /* a setter changed a collision field (pworld.c pw_changed) */
 void pcol_mark(int i);                 /* a change of position / sprite / mask / scale / angle (MarkDirty) */
 void pcol_destroyed(int i);            /* instance_destroy: removed from the tree at the next RemoveMarked */
 void pcol_touch(int i);                /* the runner computes i's bounding box (Compute_BoundingBox(true)) */
+void pcol_load_done(void);              /* play_level_start loaded the level: no instance is quiet now */
+int pcol_quiet(void);                  /* some level-load instance is not yet looked at (pcol_touch_stale inexact) */
+void pcol_touch_stale(int obj, int notme, int upto);  /* the touches of a creation-order scan up to `upto` */
 /* ShouldUseFastCollision(obj) then, when it gives 1, UpdateTree: -1 no instance (no search at all), 1 search the
    tree (pcol_search), 2 test the object's instances in creation order (touching each, pcol_touch) */
 int pcol_query(int obj);

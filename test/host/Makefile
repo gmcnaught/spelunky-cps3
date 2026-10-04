@@ -34,7 +34,7 @@ $(GEN)/playtables.h $(GEN)/playtables.c: $(GEN)/objects.h
 # the play loop: binary64 (default) and s7.24 / s13.18 fixed point (-DPLAY_FIXED)
 $(OUT)/playhost: playhost.c $(SRC) $(PSRC) $(ROOT)/src/game/*.h $(GEN)/playtables.h
 	mkdir -p $(OUT)
-	$(CC) $(CFLAGS) $(INC) -o $@ playhost.c $(SRC) $(PSRC)
+	$(CC) $(CFLAGS) -DPLAY_STATS $(INC) -o $@ playhost.c $(SRC) $(PSRC)
 
 $(OUT)/playhost_fx: playhost.c $(SRC) $(PSRC) $(ROOT)/src/game/*.h $(GEN)/playtables.h
 	mkdir -p $(OUT)
@@ -45,7 +45,7 @@ $(OUT)/playhost_fx: playhost.c $(SRC) $(PSRC) $(ROOT)/src/game/*.h $(GEN)/playta
 #   PLAYHOST=build/host/playhost_nc scripts/p4_trace.sh <route> <seed> --no-run
 $(OUT)/playhost_nc: playhost.c $(SRC) $(PSRC) $(ROOT)/src/game/*.h $(GEN)/playtables.h
 	mkdir -p $(OUT)
-	$(CC) $(CFLAGS) -ffp-contract=off $(INC) -o $@ playhost.c $(SRC) $(PSRC)
+	$(CC) $(CFLAGS) -DPLAY_STATS -ffp-contract=off $(INC) -o $@ playhost.c $(SRC) $(PSRC)
 
 # the play code with struct pin's collision fields const (play.h PIN_CONST_CHECK): a write that bypasses the
 # pin_set* setters (and so the collision tree's dirty marks) is a compile error. Compile only (no binary)

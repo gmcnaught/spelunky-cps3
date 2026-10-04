@@ -89,6 +89,11 @@ struct pin {
     num px, py;             /* oRopeThrow px, py */
     double direction;       /* oArrow */
     int8_t lbo, tbo, rbo, bbo; /* setCollisionBounds offsets */
+    /* the bounding box cache (pworld.c pin_bbox): bbk 0 not computed since the last change of x / y / sprite /
+       mask / scale (the setters clear it), BB_INT the box is bl, bt, br, bb exactly, BB_DBL computed in double
+       each time, BB_NOSPR no sprite */
+    int16_t bl, bt, br, bb;
+    uint8_t bbk;
     uint8_t treasure, etype, style;
     /* enemies, damsel, shopkeeper (penemy.c, pdamsel.c, pshop.c): oEnemy / oDamsel Create's variables */
     uint8_t countsAsKill, swimming, edead, bounced, startled, angered, pickedUp;
@@ -118,9 +123,9 @@ static inline int pin_is(int i, int obj) { return i >= 0 && PW.in[i].alive && ob
 
 /* the setters of the collision-relevant fields: store, and on a real change (!=; the scales and the angle as the
    runner's floats) tell the collision tree (pcol.c: CollisionMarkDirty) */
-void pcol_changed(int i);
+void pw_changed(int i);                           /* pworld.c: the box cache, the solid grid, pcol_changed */
 #define PIN_WR(T, f) (*(T *)&(f))
-static inline void pin_changed_(struct pin *p) { pcol_changed((int)(p - PW.in)); }
+static inline void pin_changed_(struct pin *p) { pw_changed((int)(p - PW.in)); }
 static inline void pin_setx(struct pin *p, pos v) { pos o = p->x; PIN_WR(pos, p->x) = v; if (o != v) pin_changed_(p); }
 static inline void pin_sety(struct pin *p, pos v) { pos o = p->y; PIN_WR(pos, p->y) = v; if (o != v) pin_changed_(p); }
 static inline void pin_setxy(struct pin *p, pos x, pos y)
@@ -161,6 +166,17 @@ static inline void pin_setangle(struct pin *p, double v)
     if (o != (float)v) pin_changed_(p);
 }
 
+/* host cost counters (PLAY_STATS builds: playhost prints them per step): boxes computed in double, instances
+   visited by linear scans, the calls of the collision and instance functions */
+#ifdef PLAY_STATS
+struct pw_stats { uint32_t bbox, bbox_int, visit, point, line, rect, place, exists, with, dist, nearest, snap, snapv,
+                  anim; };
+extern struct pw_stats pw_st;
+#define PWST(f, n) (pw_st.f += (uint32_t)(n))
+#else
+#define PWST(f, n) ((void)0)
+#endif
+
 /* ---- pworld.c: instances, collision functions ------------------------------------------------------------ */
 void pw_reset(void);
 int pin_add(int obj, pos x, pos y, int32_t id);   /* no event */
@@ -169,6 +185,10 @@ void pin_destroy(int i);                          /* instance_destroy: Destroy e
 void pin_kill(int i);                             /* gone without the Destroy event (instance_destroy(id, false)) */
 void pin_set_sprite(int i, int spr);
 int pin_bbox(int i, double *l, double *t, double *r, double *b);
+int pin_box_outside(int i, int w, int h);
+/* the alive instances of each object in creation order: pw_ohead[obj], then pw_inext[i] (NOONE ends) */
+extern int16_t pw_ohead[OBJ_COUNT], pw_inext[PIN_MAX];
+int pw_count(int obj);                            /* alive instances of obj with its descendants */           /* its box is outside [0, w] x [0, h] (Outside Room) */
 int collision_point_p(double px, double py, int obj, int prec, int notme_self);
 int collision_line_p(double x1, double y1, double x2, double y2, int obj, int prec, int notme_self);
 int collision_rect_p(double x1, double y1, double x2, double y2, int obj, int prec, int notme_self);

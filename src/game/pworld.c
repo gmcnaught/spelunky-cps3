@@ -2,14 +2,147 @@
  * Searches return the oldest matching instance (P2: collision_point, instance_place, instance_find, obj.var). */
 #include "play.h"
 #include "pcol.h"
+#include "inst.h"                 /* GRID_W, GRID_H: the solid grid covers the generator's level grid */
 
 struct pworld PW;
+#ifdef PLAY_STATS
+struct pw_stats pw_st;
+#endif
 
 static int spr_of(const struct pin *p) { return p->mask >= 0 ? p->mask : p->spr; }
+static void grid_reset(void);
+static void grid_unlink(int i);
+static void grid_dirty(int i);
+static int16_t ghead[GRID_H][GRID_W];
+static int16_t gnext[PIN_MAX], gcell[PIN_MAX], gdnext[PIN_MAX];
+static uint8_t gond[PIN_MAX];
+static int16_t gdhead = NOONE;
+static int gmaxw, gmaxh;
+
+/* ---- per-object instance lists: the alive instances of each object in creation order (index order), and the
+   alive count of each object with its descendants. Linked at pin_add, unlinked when alive goes to 0 ------------ */
+int16_t pw_ohead[OBJ_COUNT], pw_inext[PIN_MAX];
+static int16_t otail[OBJ_COUNT], iprev[PIN_MAX];
+static int16_t olive[OBJ_COUNT];
+/* the objects that are obj or its descendants: odesc[odesc0[obj] .. odesc0[obj + 1]) */
+static int16_t odesc0[OBJ_COUNT + 1];
+static int16_t *odesc;
+static int16_t odesc_buf[2048];
+
+static void odesc_init(void)
+{
+    int o, a, n = 0;
+    for (a = 0; a < OBJ_COUNT; a++) {
+        odesc0[a] = (int16_t)n;
+        for (o = 0; o < OBJ_COUNT; o++)
+            if (obj_is(o, a)) {
+                if (n == (int)(sizeof odesc_buf / sizeof odesc_buf[0])) { PUNTR(9003); break; }
+                odesc_buf[n++] = (int16_t)o;
+            }
+    }
+    odesc0[OBJ_COUNT] = (int16_t)n;
+    odesc = odesc_buf;
+}
+
+static void olists_reset(void)
+{
+    int o;
+    if (!odesc) odesc_init();
+    for (o = 0; o < OBJ_COUNT; o++) {
+        pw_ohead[o] = otail[o] = NOONE;
+        olive[o] = 0;
+    }
+    grid_reset();
+}
+
+static void olive_add(int obj, int d)
+{
+    int a;
+    for (a = obj; a >= 0; a = objdefs[a].parent) olive[a] = (int16_t)(olive[a] + d);
+}
+
+static void olink(int i)
+{
+    int o = PW.in[i].obj;
+    pw_inext[i] = NOONE;
+    iprev[i] = otail[o];
+    if (otail[o] >= 0) pw_inext[otail[o]] = (int16_t)i; else pw_ohead[o] = (int16_t)i;
+    otail[o] = (int16_t)i;
+    olive_add(o, 1);
+}
+
+static void ounlink(int i)
+{
+    int o = PW.in[i].obj;
+    if (iprev[i] >= 0) pw_inext[iprev[i]] = pw_inext[i]; else pw_ohead[o] = pw_inext[i];
+    if (pw_inext[i] >= 0) iprev[pw_inext[i]] = iprev[i]; else otail[o] = iprev[i];
+    olive_add(o, -1);
+    grid_unlink(i);
+}
+
+/* the alive instances of obj (with its descendants) in creation order: a merge of the objects' lists. More than
+   FAM_K non-empty lists: it->lin = 1, the caller scans every instance instead */
+#define FAM_K 24
+struct fam { int16_t cur[FAM_K]; int n, lin, k, obj; };
+
+static void fam_begin(struct fam *it, int obj)
+{
+    int j;
+    it->n = 0;
+    it->lin = 0;
+    it->k = -1;
+    it->obj = obj;
+    if (obj < 0) { it->lin = 1; return; }       /* -2: every instance */
+    for (j = odesc0[obj]; j < odesc0[obj + 1]; j++) {
+        int h = pw_ohead[odesc[j]];
+        if (h < 0) continue;
+        if (it->n == FAM_K) { it->lin = 1; return; }
+        it->cur[it->n++] = (int16_t)h;
+    }
+}
+
+static int fam_next(struct fam *it)
+{
+    int j, b = 0, v;
+    if (it->n == 0) return NOONE;
+    for (j = 1; j < it->n; j++)
+        if (it->cur[j] < it->cur[b]) b = j;
+    v = it->cur[b];
+    PWST(visit, 1);
+    if (pw_inext[v] >= 0) it->cur[b] = pw_inext[v];
+    else it->cur[b] = it->cur[--it->n];
+    return v;
+}
+
+/* the next instance of the family (creation order), with the scan of every instance as the fallback */
+static int fam_get(struct fam *it)
+{
+    if (!it->lin) return fam_next(it);
+    while (++it->k < PW.n) {
+        const struct pin *p = &PW.in[it->k];
+        PWST(visit, 1);
+        if (p->alive && (it->obj < 0 || obj_is(p->obj, it->obj))) return it->k;
+    }
+    return NOONE;
+}
+
+/* no alive instance of obj (with descendants) */
+static int fam_none(int obj) { return obj >= 0 && olive[obj] == 0; }
+
+/* a setter changed x / y / sprite / mask / scale / angle (play.h pin_changed_) */
+void pw_changed(int i)
+{
+    PW.in[i].bbk = 0;
+    grid_dirty(i);
+    pcol_changed(i);
+}
+
+int pw_count(int obj) { return olive[obj]; }
 
 void pw_reset(void)
 {
     PW.n = 0;
+    olists_reset();
     pcol_after_reset();
 }
 
@@ -48,6 +181,10 @@ int pin_add(int obj, pos x, pos y, int32_t id)
     for (k = 0; k < 12; k++)
         p->alarm[k] = -1;
     p->trapID = p->enemyID = NOONE;
+    olink(i);
+    gcell[i] = NOONE;
+    gond[i] = 0;
+    grid_dirty(i);
     pcol_added(i);
     return i;
 }
@@ -65,6 +202,7 @@ void pin_destroy(int i)
     if (i < 0 || !PW.in[i].alive)
         return;
     PW.in[i].alive = 0;          /* GameMaker marks it first: a search inside its Destroy event skips it */
+    ounlink(i);
     ev_destroy(i);
     pcol_destroyed(i);           /* in the collision tree until the next RemoveMarked */
 }
@@ -72,6 +210,7 @@ void pin_destroy(int i)
 void pin_kill(int i)
 {
     if (i >= 0) {
+        if (PW.in[i].alive) ounlink(i);
         PW.in[i].alive = 0;
         pcol_destroyed(i);
     }
@@ -85,6 +224,8 @@ void pin_set_sprite(int i, int spr)
     struct pin *p = &PW.in[i];
     if (p->spr != spr) {
         PIN_WR(int16_t, p->spr) = (int16_t)spr;
+        p->bbk = 0;
+        grid_dirty(i);
         if (spr >= 0 && (p->img >= (img_t)psprite[spr].frames || p->img < 0))
             p->img = 0;
         pcol_mark(i);                                /* SetSpriteIndex: CollisionMarkDirty */
@@ -92,23 +233,106 @@ void pin_set_sprite(int i, int spr)
 }
 
 /* ---- bounding boxes ------------------------------------------------------------------------------------- */
-int pin_bbox(int i, double *l, double *t, double *r, double *b)
+#define BB_INT 1
+#define BB_DBL 2
+#define BB_NOSPR 3
+
+/* v as an int in (-30000, 30000) when it is a whole number */
+static int pos_int(pos v, int32_t *o)
 {
-    const struct pin *p = &PW.in[i];
-    int s = spr_of(p);
-    const struct gsprcol *c;
-    double xs, ys, x = PTOD(p->x), y = PTOD(p->y);
-    if (s < 0)
-        return 0;
-    c = &gsprcol[s];
-    xs = p->xscale;
-    ys = p->yscale;
+#ifdef PLAY_FIXED
+    if ((v & ((1 << PFRAC_BITS) - 1)) != 0) return 0;
+    *o = v >> PFRAC_BITS;
+    return *o > -30000 && *o < 30000;
+#else
+    int32_t t;
+    if (!(v > -30000 && v < 30000)) return 0;
+    t = (int32_t)v;
+    if ((pos)t != v) return 0;
+    *o = t;
+    return 1;
+#endif
+}
+
+static void bbox_dbl(const struct pin *p, const struct gsprcol *c, double *l, double *t, double *r, double *b)
+{
+    double xs = p->xscale, ys = p->yscale, x = PTOD(p->x), y = PTOD(p->y);
+    PWST(bbox, 1);
     if (xs >= 0) *l = x + xs * (c->l - c->xo);
     else *l = x + xs * (c->r + 1 - c->xo);
     *r = *l + (xs < 0 ? -xs : xs) * (c->r - c->l + 1);
     if (ys >= 0) *t = y + ys * (c->t - c->yo);
     else *t = y + ys * (c->b + 1 - c->yo);
     *b = *t + (ys < 0 ? -ys : ys) * (c->b - c->t + 1);
+}
+
+/* the cache kind of instance i's box (computed when a setter cleared it): with scales of exactly +-1 and whole x, y
+   the double formula's results are the integers below */
+static int bbkind(int i)
+{
+    struct pin *p = &PW.in[i];
+    if (p->bbk == 0) {
+        int s = spr_of(p);
+        int32_t x, y;
+        if (s < 0)
+            p->bbk = BB_NOSPR;
+        else {
+            const struct gsprcol *c = &gsprcol[s];
+            int xs = p->xscale == 1 ? 1 : p->xscale == -1 ? -1 : 0, ys = p->yscale == 1 ? 1 : p->yscale == -1 ? -1 : 0;
+            if (xs && ys && pos_int(p->x, &x) && pos_int(p->y, &y)) {
+                int32_t l = xs > 0 ? x + (c->l - c->xo) : x - (c->r + 1 - c->xo);
+                int32_t t = ys > 0 ? y + (c->t - c->yo) : y - (c->b + 1 - c->yo);
+                PWST(bbox_int, 1);
+                p->bl = (int16_t)l;
+                p->br = (int16_t)(l + (c->r - c->l + 1));
+                p->bt = (int16_t)t;
+                p->bb = (int16_t)(t + (c->b - c->t + 1));
+                p->bbk = BB_INT;
+            } else
+                p->bbk = BB_DBL;
+        }
+    }
+    return p->bbk;
+}
+
+int pin_bbox(int i, double *l, double *t, double *r, double *b)
+{
+    const struct pin *p = &PW.in[i];
+    switch (bbkind(i)) {
+    case BB_NOSPR:
+        return 0;
+    case BB_INT:
+        *l = p->bl; *t = p->bt; *r = p->br; *b = p->bb;
+        return 1;
+    default:
+        bbox_dbl(p, &gsprcol[spr_of(p)], l, t, r, b);
+        return 1;
+    }
+}
+
+/* the box as integers when it is cached so (BB_INT); 0 otherwise (no sprite, or not whole: use pin_bbox) */
+static int pin_ibox(int i, int32_t *b)
+{
+    const struct pin *p = &PW.in[i];
+    if (bbkind(i) != BB_INT) return 0;
+    b[0] = p->bl; b[1] = p->bt; b[2] = p->br; b[3] = p->bb;
+    return 1;
+}
+
+int pin_box_outside(int i, int w, int h)
+{
+    int32_t q[4];
+    double l, t, r, b;
+    if (pin_ibox(i, q)) return q[2] < 0 || q[0] > w || q[3] < 0 || q[1] > h;
+    if (!pin_bbox(i, &l, &t, &r, &b)) return 0;
+    return r < 0 || l > w || b < 0 || t > h;
+}
+
+/* floor(v) as an int when |v| < 30000 */
+static int dfloor_int(double v, int32_t *o)
+{
+    if (!(v > -30000 && v < 30000)) return 0;
+    *o = dfloor(v);
     return 1;
 }
 
@@ -150,18 +374,119 @@ static int precise(int i)
 
 static int match(int k, int obj, int notme_self)
 {
+    PWST(visit, 1);
     return PW.in[k].alive && k != notme_self && (obj == -2 ? 1 : obj_is(PW.in[k].obj, obj));
 }
 
-/* obj: an OBJ_* (with children), or -2 - k for "instance k only" via the _i helpers below */
-static int point_hit(int k, double px, double py, int prec)
+/* a point query: px >= l && px < r with l, r whole is floor(px) >= l && floor(px) < r */
+struct pq { double px, py; int32_t ix, iy; int iok; };
+
+static void pq_init(struct pq *q, double px, double py)
+{
+    q->px = px;
+    q->py = py;
+    q->iok = dfloor_int(px, &q->ix) && dfloor_int(py, &q->iy);
+}
+
+static int point_hit(int k, const struct pq *q, int prec)
 {
     double l, t, r, b;
-    if (!pin_bbox(k, &l, &t, &r, &b))
-        return 0;
-    if (!(px >= l && px < r && py >= t && py < b))
-        return 0;
-    return !prec || !precise(k) || mask_at(k, px, py);
+    int32_t ib[4];
+    if (q->iok && pin_ibox(k, ib)) {
+        if (!(q->ix >= ib[0] && q->ix < ib[2] && q->iy >= ib[1] && q->iy < ib[3]))
+            return 0;
+    } else {
+        if (!pin_bbox(k, &l, &t, &r, &b))
+            return 0;
+        if (!(q->px >= l && q->px < r && q->py >= t && q->py < b))
+            return 0;
+    }
+    return !prec || !precise(k) || mask_at(k, q->px, q->py);
+}
+
+/* ---- the solid grid: every alive instance of the oSolid family with a sprite, in the 16 px cell of its box's
+   top-left corner (clamped to GRID_W x GRID_H); gmax* the widest / tallest box in cells. A point is in a box whose
+   cell is within gmax cells up-left of the point's. Instances whose box changed wait on gdirty until the next
+   grid query ---------------------------------------------------------------------------------------------- */
+
+static int clampi(int v, int lo, int hi) { return v < lo ? lo : v > hi ? hi : v; }
+
+static void grid_reset(void)
+{
+    int x, y;
+    for (y = 0; y < GRID_H; y++)
+        for (x = 0; x < GRID_W; x++) ghead[y][x] = NOONE;
+    gdhead = NOONE;
+    gmaxw = gmaxh = 1;
+}
+
+static void grid_unlink(int i)
+{
+    int c = gcell[i];
+    int16_t *pp;
+    if (c < 0) return;
+    for (pp = &ghead[c / GRID_W][c % GRID_W]; *pp != i; pp = &gnext[*pp]) {}
+    *pp = gnext[i];
+    gcell[i] = NOONE;
+}
+
+/* a solid's box may have changed (or it was added): placed again at the next query */
+static void grid_dirty(int i)
+{
+    if (gond[i] || !obj_is(PW.in[i].obj, OBJ_oSolid)) return;
+    gond[i] = 1;
+    gdnext[i] = gdhead;
+    gdhead = (int16_t)i;
+}
+
+static void grid_flush(void)
+{
+    while (gdhead >= 0) {
+        int i = gdhead, cx, cy, w, h;
+        int32_t ib[4];
+        double l, t, r, b;
+        gdhead = gdnext[i];
+        gond[i] = 0;
+        grid_unlink(i);
+        if (!PW.in[i].alive) continue;
+        if (pin_ibox(i, ib)) {
+            cx = ib[0] >> 4; cy = ib[1] >> 4;
+            w = ((ib[2] - ib[0]) >> 4) + 1; h = ((ib[3] - ib[1]) >> 4) + 1;
+        } else if (pin_bbox(i, &l, &t, &r, &b) && l > -30000 && l < 30000 && t > -30000 && t < 30000 &&
+                   r - l < 30000 && b - t < 30000) {
+            cx = dfloor(l) >> 4; cy = dfloor(t) >> 4;
+            w = (dfloor(r - l) >> 4) + 2; h = (dfloor(b - t) >> 4) + 2;
+        } else
+            continue;                             /* no sprite: never hit */
+        if (w > gmaxw) gmaxw = w;
+        if (h > gmaxh) gmaxh = h;
+        cx = clampi(cx, 0, GRID_W - 1);
+        cy = clampi(cy, 0, GRID_H - 1);
+        gcell[i] = (int16_t)(cy * GRID_W + cx);
+        gnext[i] = ghead[cy][cx];
+        ghead[cy][cx] = (int16_t)i;
+    }
+}
+
+/* the oldest instance of obj (oSolid or a descendant; but notme) whose box (and mask) holds the point */
+static int grid_point(int obj, int notme, const struct pq *q, int prec)
+{
+    int x0, x1, y0, y1, x, y, best = NOONE;
+    grid_flush();
+    x1 = clampi(q->ix >> 4, 0, GRID_W - 1);
+    y1 = clampi(q->iy >> 4, 0, GRID_H - 1);
+    x0 = clampi((q->ix >> 4) - gmaxw, 0, GRID_W - 1);
+    y0 = clampi((q->iy >> 4) - gmaxh, 0, GRID_H - 1);
+    for (y = y0; y <= y1; y++)
+        for (x = x0; x <= x1; x++) {
+            int k;
+            for (k = ghead[y][x]; k >= 0; k = gnext[k]) {
+                PWST(visit, 1);
+                if ((best >= 0 && k > best) || k == notme || !obj_is(PW.in[k].obj, obj)) continue;
+                if (point_hit(k, q, prec)) best = k;
+            }
+        }
+    return best;
 }
 
 /* Command_CollisionPoint tests the object's instances in creation order (Collision_Point computes each stale box:
@@ -169,12 +494,23 @@ static int point_hit(int k, double px, double py, int prec)
 int collision_point_p(double px, double py, int obj, int prec, int notme_self)
 {
     int k;
-    for (k = 0; k < PW.n; k++)
-        if (match(k, obj, notme_self)) {
-            pcol_touch(k);
-            if (point_hit(k, px, py, prec))
-                return k;
-        }
+    struct pq q;
+    struct fam it;
+    PWST(point, 1);
+    if (fam_none(obj)) return NOONE;
+    pq_init(&q, px, py);
+    if (q.iok && obj >= 0 && obj_is(obj, OBJ_oSolid) && !pcol_quiet()) {
+        k = grid_point(obj, notme_self, &q, prec);
+        pcol_touch_stale(obj, notme_self, k);
+        return k;
+    }
+    fam_begin(&it, obj);
+    while ((k = fam_get(&it)) != NOONE) {
+        if (k == notme_self) continue;
+        pcol_touch(k);
+        if (point_hit(k, &q, prec))
+            return k;
+    }
     return NOONE;
 }
 
@@ -205,9 +541,37 @@ static int seg_box(double x1, double y1, double x2, double y2, double l, double 
     return 1;
 }
 
-static int line_hit(int k, double x1, double y1, double x2, double y2, int prec)
+/* a line query with whole-number ends: their bounding box, and whether the line is axis-aligned */
+struct lq { int iok, axis; int32_t lx, ly, hx, hy; };
+
+static int whole(double v, int32_t *o)
+{
+    if (!dfloor_int(v, o)) return 0;
+    return (double)*o == v;
+}
+
+static void lq_init(struct lq *q, double x1, double y1, double x2, double y2)
+{
+    int32_t a, b, c, d;
+    q->iok = whole(x1, &a) && whole(y1, &b) && whole(x2, &c) && whole(y2, &d);
+    if (!q->iok) return;
+    q->lx = a < c ? a : c; q->hx = a < c ? c : a;
+    q->ly = b < d ? b : d; q->hy = b < d ? d : b;
+    q->axis = a == c || b == d;
+}
+
+/* seg_box clips to the closed box [l, r - 1e-9] x [t, b - 1e-9]: with whole numbers, a segment whose bounding box
+   misses [l, r - 1] x [t, b - 1] misses it, and an axis-aligned one that meets it hits it */
+static int line_hit(int k, const struct lq *q, double x1, double y1, double x2, double y2, int prec)
 {
     double l, t, r, b, t0, t1;
+    int32_t ib[4];
+    if (q->iok && pin_ibox(k, ib)) {
+        if (q->hx < ib[0] || q->lx >= ib[2] || q->hy < ib[1] || q->ly >= ib[3])
+            return 0;
+        if (q->axis && (!prec || !precise(k)))
+            return 1;
+    }
     if (!pin_bbox(k, &l, &t, &r, &b))
         return 0;
     if (!seg_box(x1, y1, x2, y2, l, t, r, b, &t0, &t1))
@@ -230,12 +594,12 @@ static int line_hit(int k, double x1, double y1, double x2, double y2, int prec)
 /* collision_line / collision_rectangle / instance_place: ShouldUseFastCollision; with the tree (pcol_query 1),
    the first hit in the tree's search order (the search callbacks return false at the first hit); otherwise the
    object's instances in creation order */
-struct qctx { int obj, notme, prec, self, hit; double x1, y1, x2, y2, dx, dy; };
+struct qctx { int obj, notme, prec, self, hit; double x1, y1, x2, y2, dx, dy; struct lq lq; struct rq *rq; };
 
 static int line_cb(int k, void *v)
 {
     struct qctx *q = (struct qctx *)v;
-    if (k >= PIN_MAX || !match(k, q->obj, q->notme) || !line_hit(k, q->x1, q->y1, q->x2, q->y2, q->prec)) return 1;
+    if (k >= PIN_MAX || !match(k, q->obj, q->notme) || !line_hit(k, &q->lq, q->x1, q->y1, q->x2, q->y2, q->prec)) return 1;
     q->hit = k;
     return 0;
 }
@@ -251,9 +615,11 @@ static void qrect(double x1, double y1, double x2, double y2, float *r)
 int collision_line_p(double x1, double y1, double x2, double y2, int obj, int prec, int notme_self)
 {
     int k, q = pcol_query(obj);
+    struct qctx c;
+    PWST(line, 1);
     if (q < 0) return NOONE;
+    lq_init(&c.lq, x1, y1, x2, y2);
     if (q == 1) {
-        struct qctx c;
         float r[4];
         c.obj = obj; c.notme = notme_self; c.prec = prec; c.hit = NOONE;
         c.x1 = x1; c.y1 = y1; c.x2 = x2; c.y2 = y2;
@@ -261,25 +627,52 @@ int collision_line_p(double x1, double y1, double x2, double y2, int obj, int pr
         pcol_search(r[0], r[1], r[2], r[3], line_cb, &c);
         return c.hit;
     }
-    for (k = 0; k < PW.n; k++)
-        if (match(k, obj, notme_self)) {
+    {
+        struct fam it;
+        fam_begin(&it, obj);
+        while ((k = fam_get(&it)) != NOONE) {
+            if (k == notme_self) continue;
             pcol_touch(k);
-            if (line_hit(k, x1, y1, x2, y2, prec))
+            if (line_hit(k, &c.lq, x1, y1, x2, y2, prec))
                 return k;
         }
+    }
     return NOONE;
 }
 
-static int rect_hit(int k, double x1, double y1, double x2, double y2, int prec)
+/* a rectangle query: its sides rounded (floor(v + 0.5)) once */
+struct rq { double lx, hx, ly, hy; int32_t ilx, ihx, ily, ihy; int iok; };
+
+static void rq_init(struct rq *q, double x1, double y1, double x2, double y2)
+{
+    double lx = x1 < x2 ? x1 : x2, hx = x1 < x2 ? x2 : x1, ly = y1 < y2 ? y1 : y2, hy = y1 < y2 ? y2 : y1;
+    q->iok = dfloor_int(lx + 0.5, &q->ilx) && dfloor_int(hx + 0.5, &q->ihx) && dfloor_int(ly + 0.5, &q->ily) &&
+             dfloor_int(hy + 0.5, &q->ihy);
+    if (q->iok) {
+        q->lx = q->ilx; q->hx = q->ihx; q->ly = q->ily; q->hy = q->ihy;
+    } else {
+        q->lx = dfloor(lx + 0.5);
+        q->hx = dfloor(hx + 0.5);
+        q->ly = dfloor(ly + 0.5);
+        q->hy = dfloor(hy + 0.5);
+    }
+}
+
+static int rect_hit(int k, const struct rq *q, int prec)
 {
     double l, t, r, b, a0, a1, b0, b1;
-    double lx = x1 < x2 ? x1 : x2, hx = x1 < x2 ? x2 : x1, ly = y1 < y2 ? y1 : y2, hy = y1 < y2 ? y2 : y1;
+    double lx = q->lx, hx = q->hx, ly = q->ly, hy = q->hy;
+    int32_t ib[4];
+    if (q->iok && pin_ibox(k, ib)) {
+        int32_t i0 = q->ilx > ib[0] ? q->ilx : ib[0], i1 = q->ihx < ib[2] ? q->ihx : ib[2];
+        int32_t j0 = q->ily > ib[1] ? q->ily : ib[1], j1 = q->ihy < ib[3] ? q->ihy : ib[3];
+        if (!(i0 < i1 && j0 < j1))
+            return 0;
+        if (!prec || !precise(k))
+            return 1;
+    }
     if (!pin_bbox(k, &l, &t, &r, &b))
         return 0;
-    lx = dfloor(lx + 0.5);
-    hx = dfloor(hx + 0.5);
-    ly = dfloor(ly + 0.5);
-    hy = dfloor(hy + 0.5);
     a0 = lx > l ? lx : l;
     a1 = hx < r ? hx : r;
     b0 = ly > t ? ly : t;
@@ -301,7 +694,7 @@ static int rect_hit(int k, double x1, double y1, double x2, double y2, int prec)
 static int rect_cb(int k, void *v)
 {
     struct qctx *q = (struct qctx *)v;
-    if (k >= PIN_MAX || !match(k, q->obj, q->notme) || !rect_hit(k, q->x1, q->y1, q->x2, q->y2, q->prec)) return 1;
+    if (k >= PIN_MAX || !match(k, q->obj, q->notme) || !rect_hit(k, q->rq, q->prec)) return 1;
     q->hit = k;
     return 0;
 }
@@ -309,22 +702,29 @@ static int rect_cb(int k, void *v)
 int collision_rect_p(double x1, double y1, double x2, double y2, int obj, int prec, int notme_self)
 {
     int k, q = pcol_query(obj);
+    struct rq rq;
+    PWST(rect, 1);
     if (q < 0) return NOONE;
+    rq_init(&rq, x1, y1, x2, y2);
     if (q == 1) {
         struct qctx c;
         float r[4];
-        c.obj = obj; c.notme = notme_self; c.prec = prec; c.hit = NOONE;
+        c.obj = obj; c.notme = notme_self; c.prec = prec; c.hit = NOONE; c.rq = &rq;
         c.x1 = x1; c.y1 = y1; c.x2 = x2; c.y2 = y2;
         qrect(x1, y1, x2, y2, r);
         pcol_search(r[0], r[1], r[2], r[3], rect_cb, &c);
         return c.hit;
     }
-    for (k = 0; k < PW.n; k++)
-        if (match(k, obj, notme_self)) {
+    {
+        struct fam it;
+        fam_begin(&it, obj);
+        while ((k = fam_get(&it)) != NOONE) {
+            if (k == notme_self) continue;
             pcol_touch(k);
-            if (rect_hit(k, x1, y1, x2, y2, prec))
+            if (rect_hit(k, &rq, prec))
                 return k;
         }
+    }
     return NOONE;
 }
 
@@ -332,6 +732,13 @@ int collision_rect_p(double x1, double y1, double x2, double y2, int obj, int pr
 static int overlap_at(int a, double dx, double dy, int b)
 {
     double l, t, r, bb, l2, t2, r2, b2;
+    int32_t ia[4], ib[4], idx, idy;
+    if (pin_ibox(a, ia) && pin_ibox(b, ib) && whole(dx, &idx) && whole(dy, &idy)) {
+        if (!(ia[0] + idx < ib[2] && ib[0] < ia[2] + idx && ia[1] + idy < ib[3] && ib[1] < ia[3] + idy))
+            return 0;
+        if (!precise(a) && !precise(b))
+            return 1;
+    }
     if (!pin_bbox(a, &l, &t, &r, &bb) || !pin_bbox(b, &l2, &t2, &r2, &b2))
         return 0;
     l += dx; r += dx; t += dy; bb += dy;
@@ -371,6 +778,7 @@ static int place_cb(int k, void *v)
 /* Command_InstancePlace: SetPosition(px, py) (a real move marks self dirty), the search, SetPosition back */
 int instance_place_p(int self, double px, double py, int obj)
 {
+    PWST(place, 1);
     int k, q = pcol_query(obj);
     double dx = px - PTOD(PW.in[self].x), dy = py - PTOD(PW.in[self].y);
     int moved = (float)px != (float)PTOD(PW.in[self].x) || (float)py != (float)PTOD(PW.in[self].y);
@@ -388,8 +796,11 @@ int instance_place_p(int self, double px, double py, int obj)
         return c.hit;
     }
     if (moved) pcol_place_marks(self);
-    for (k = 0; k < PW.n; k++)
-        if (match(k, obj, self)) {
+    {
+        struct fam it;
+        fam_begin(&it, obj);
+        while ((k = fam_get(&it)) != NOONE) {
+            if (k == self) continue;
             pcol_touch(k);
             pcol_touch_at(self, dx, dy);
             if (overlap_at(self, dx, dy, k)) {
@@ -397,6 +808,7 @@ int instance_place_p(int self, double px, double py, int obj)
                 return k;
             }
         }
+    }
     if (moved) pcol_place_marks(self);
     return NOONE;
 }
@@ -405,10 +817,12 @@ int instance_nearest_p(double px, double py, int obj)
 {
     int k, best = NOONE;
     double bd = 0;
-    for (k = 0; k < PW.n; k++) {
+    struct fam it;
+    PWST(nearest, 1);
+    if (fam_none(obj)) return NOONE;
+    fam_begin(&it, obj);
+    while ((k = fam_get(&it)) != NOONE) {
         double dx, dy, d;
-        if (!match(k, obj, NOONE))
-            continue;
         dx = px - PTOD(PW.in[k].x);
         dy = py - PTOD(PW.in[k].y);
         d = dx * dx + dy * dy;
@@ -422,24 +836,28 @@ int instance_nearest_p(double px, double py, int obj)
 
 int instance_first_p(int obj)
 {
-    int k;
-    for (k = 0; k < PW.n; k++)
-        if (match(k, obj, NOONE))
-            return k;
-    return NOONE;
+    struct fam it;
+    PWST(exists, 1);
+    if (fam_none(obj)) return NOONE;
+    fam_begin(&it, obj);
+    return fam_get(&it);
 }
 
 int instance_exists_p(int obj)
 {
-    return instance_first_p(obj) != NOONE;
+    PWST(exists, 1);
+    if (obj < 0) return instance_first_p(obj) != NOONE;
+    return olive[obj] > 0;
 }
 
 int instance_number_p(int obj)
 {
-    int k, n = 0;
-    for (k = 0; k < PW.n; k++)
-        if (match(k, obj, NOONE))
-            n++;
+    struct fam it;
+    int n = 0;
+    PWST(exists, 1);
+    if (obj >= 0) return olive[obj];
+    fam_begin(&it, obj);
+    while (fam_get(&it) != NOONE) n++;
     return n;
 }
 
@@ -468,22 +886,30 @@ double distance_to_object_p(int self, int obj)
 {
     int k;
     double best = 1000000;
+    struct fam it;
+    PWST(dist, 1);
     pcol_touch(self);                                /* F_DistanceToObject computes the boxes */
-    for (k = 0; k < PW.n; k++)
-        if (match(k, obj, NOONE)) {
-            pcol_touch(k);
-            double d = distance_to_instance_p(self, k);
-            if (d < best) best = d;
-        }
+    if (fam_none(obj)) return best;
+    fam_begin(&it, obj);
+    while ((k = fam_get(&it)) != NOONE) {
+        double d;
+        pcol_touch(k);
+        d = distance_to_instance_p(self, k);
+        if (d < best) best = d;
+    }
     return best;
 }
 
 int pw_with(int obj, int16_t *out, int max)
 {
-    int k, n = 0;
-    for (k = PW.n - 1; k >= 0; k--)
-        if (match(k, obj, NOONE) && n < max)
-            out[n++] = (int16_t)k;
+    int k, n = 0, m = 0, j;
+    struct fam it;
+    static int16_t all[PIN_MAX];
+    PWST(with, 1);
+    if (fam_none(obj)) return 0;
+    fam_begin(&it, obj);                             /* newest first: the last max of the creation order */
+    while ((k = fam_get(&it)) != NOONE) all[m++] = (int16_t)k;
+    for (j = m - 1; j >= 0 && n < max; j--) out[n++] = all[j];
     if (n == 2) {
         int16_t t = out[0];
         out[0] = out[1];

@@ -117,13 +117,97 @@ static void rt_reset(void)
     rn[rroot].level = 0;
 }
 
-static float rarea(const float *r)
+/* float comparisons as integer ones (the SH-2 has no FPU): the bits mapped so that signed order is the float order,
+   -0 as +0 (equal as floats); no NaN occurs here */
+static int32_t fkey(float f)
 {
-    float w = r[2] - r[0], h = r[3] - r[1];
-    return w * h;
+    union { float f; int32_t i; } u;
+    int32_t b;
+    u.f = f;
+    b = u.i;
+    if (b == (int32_t)0x80000000) return 0;
+    return b >= 0 ? b : (int32_t)(b ^ 0x7fffffff);
+}
+#define FLT(a, b) (fkey(a) < fkey(b))
+#define FGT(a, b) (fkey(a) > fkey(b))
+#define FEQ(a, b) (fkey(a) == fkey(b))
+
+/* ---- the area arithmetic (float, the runner's) with an exact integer path: a float that is a whole number below
+   2^14 in magnitude gives its int without soft-float (fint), and float sums / products / fmaf of such values are the
+   integer results while those stay below 2^24 in magnitude. struct xv holds a value as an int (k & 1) and / or a
+   float (k & 2) ------------------------------------------------------------------------------------------------- */
+struct xv { float f; int32_t i; uint8_t k; };
+
+/* 2^(e - 127 + 9) for e = 127 .. 140: m * this has the integer part of m * 2^(e - 150) in its high word */
+static const uint32_t fint_mul[14] = { 1u << 9, 1u << 10, 1u << 11, 1u << 12, 1u << 13, 1u << 14, 1u << 15, 1u << 16,
+                                       1u << 17, 1u << 18, 1u << 19, 1u << 20, 1u << 21, 1u << 22 };
+
+static int fint(float f, int32_t *o)
+{
+    union { float f; uint32_t u; } v;
+    uint32_t e, m, hi, lo;
+    uint64_t p;
+    v.f = f;
+    if ((v.u & 0x7fffffffu) == 0) { *o = 0; return 1; }
+    e = (v.u >> 23) & 0xffu;
+    if (e < 127 || e > 140) return 0;
+    m = (v.u & 0x7fffffu) | 0x800000u;
+    p = (uint64_t)m * fint_mul[e - 127];
+    hi = (uint32_t)(p >> 32);
+    lo = (uint32_t)p;
+    if (lo != 0) return 0;
+    *o = (v.u & 0x80000000u) ? -(int32_t)hi : (int32_t)hi;
+    return 1;
+}
+
+#define XV_LIM 16777216                       /* 2^24: below it, the float results are the integers */
+static int xv_small(int32_t i) { return i > -XV_LIM && i < XV_LIM; }
+
+static float xv_f(struct xv *v)
+{
+    if (!(v->k & 2)) { v->f = (float)v->i; v->k |= 2; }
+    return v->f;
+}
+
+static void xv_setf(struct xv *v, float f) { v->f = f; v->k = 2; }
+static void xv_seti(struct xv *v, int32_t i) { v->i = i; v->k = 1; }
+
+/* a - b as the float subtraction gives it */
+static void xv_sub(struct xv *o, struct xv *a, struct xv *b)
+{
+    if ((a->k & 1) && (b->k & 1) && xv_small(a->i - b->i)) xv_seti(o, a->i - b->i);
+    else xv_setf(o, xv_f(a) - xv_f(b));
+}
+
+/* a > b, a == b as float comparisons */
+static int xv_gt(struct xv *a, struct xv *b)
+{
+    if ((a->k & 1) && (b->k & 1)) return a->i > b->i;
+    return FGT(xv_f(a), xv_f(b));
+}
+
+static int xv_eq(struct xv *a, struct xv *b)
+{
+    if ((a->k & 1) && (b->k & 1)) return a->i == b->i;
+    return FEQ(xv_f(a), xv_f(b));
+}
+
+/* the area of r: (r[2] - r[0]) * (r[3] - r[1]) in float */
+static void rarea(struct xv *o, const float *r)
+{
+    int32_t a, b, c, d;
+    if (fint(r[0], &a) && fint(r[1], &b) && fint(r[2], &c) && fint(r[3], &d) && xv_small((c - a) * (d - b))) {
+        xv_seti(o, (c - a) * (d - b));
+        return;
+    }
+    {
+        float w = r[2] - r[0], h = r[3] - r[1];
+        xv_setf(o, w * h);
+    }
 }
 
 static void rcomb(float *o, const float *a, const float *b);
+
 
 /* w * h - a with one rounding: the arm64 runner's fnmsub (s registers). fmaf, not (float)((double)w * h - a):
    the product is exact in double but the difference is rounded twice (to double, then to float) */
@@ -132,25 +216,30 @@ static float fms(float w, float h, float a)
     return fmaf(w, h, -a);
 }
 
-/* the area of the combined rectangle less a (fused) */
-static float rcomb_growth(const float *a, const float *b, float area)
+/* the area of the combined rectangle less area (fused: one rounding) */
+static void rcomb_growth(struct xv *res, const float *a, const float *b, struct xv *area)
 {
     float o[4];
+    int32_t x0, y0, x1, y1;
     rcomb(o, a, b);
-    return fms(o[2] - o[0], o[3] - o[1], area);
+    if ((area->k & 1) && fint(o[0], &x0) && fint(o[1], &y0) && fint(o[2], &x1) && fint(o[3], &y1)) {
+        int32_t g = (x1 - x0) * (y1 - y0) - area->i;
+        if (xv_small(g)) { xv_seti(res, g); return; }
+    }
+    xv_setf(res, fms(o[2] - o[0], o[3] - o[1], xv_f(area)));
 }
 
 static void rcomb(float *o, const float *a, const float *b)
 {
-    o[0] = a[0] < b[0] ? a[0] : b[0];
-    o[1] = a[1] < b[1] ? a[1] : b[1];
-    o[2] = a[2] > b[2] ? a[2] : b[2];
-    o[3] = a[3] > b[3] ? a[3] : b[3];
+    o[0] = FLT(a[0], b[0]) ? a[0] : b[0];
+    o[1] = FLT(a[1], b[1]) ? a[1] : b[1];
+    o[2] = FGT(a[2], b[2]) ? a[2] : b[2];
+    o[3] = FGT(a[3], b[3]) ? a[3] : b[3];
 }
 
 static int roverlap(const float *a, const float *b)
 {
-    return !(a[0] > b[2] || b[0] > a[2] || a[1] > b[3] || b[1] > a[3]);
+    return !(FGT(a[0], b[2]) || FGT(b[0], a[2]) || FGT(a[1], b[3]) || FGT(b[1], a[3]));
 }
 
 static void rcover(int n, float *o)
@@ -166,9 +255,11 @@ static void rcover(int n, float *o)
 static struct {
     int8_t part[RMAX + 1];
     int8_t count[2];
-    float cover[2][4], area[2];
+    float cover[2][4];
+    struct xv area[2];
     struct rbr buf[RMAX + 1];
-    float cover_split[4], cover_split_area;
+    float cover_split[4];
+    struct xv cover_split_area;
 } pv;
 
 static void classify(int idx, int g)
@@ -179,21 +270,22 @@ static void classify(int idx, int g)
         for (k = 0; k < 4; k++) pv.cover[g][k] = pv.buf[idx].r[k];
     } else
         rcomb(pv.cover[g], pv.buf[idx].r, pv.cover[g]);
-    pv.area[g] = rarea(pv.cover[g]);
+    rarea(&pv.area[g], pv.cover[g]);
     pv.count[g]++;
 }
 
 static void pick_seeds(void)
 {
-    float area[RMAX + 1], worst, waste;
+    struct xv area[RMAX + 1], worst, waste, g, m1;
     int a, b, s0 = -1, s1 = -1, first = 1;
-    for (a = 0; a <= RMAX; a++) area[a] = rarea(pv.buf[a].r);
-    worst = -1.0f - pv.cover_split_area;
+    for (a = 0; a <= RMAX; a++) rarea(&area[a], pv.buf[a].r);
+    xv_seti(&m1, -1);
+    xv_sub(&worst, &m1, &pv.cover_split_area);
     for (a = 0; a < RMAX; a++)
         for (b = a + 1; b <= RMAX; b++) {
-            waste = rcomb_growth(pv.buf[a].r, pv.buf[b].r, area[a]);
-            waste = waste - area[b];
-            if (waste > worst || (waste == worst && first)) {
+            rcomb_growth(&g, pv.buf[a].r, pv.buf[b].r, &area[a]);
+            xv_sub(&waste, &g, &area[b]);
+            if (xv_gt(&waste, &worst) || (xv_eq(&waste, &worst) && first)) {
                 worst = waste;
                 s0 = a;
                 s1 = b;
@@ -212,20 +304,25 @@ static void choose_partition(void)
     for (idx = 0; idx < total; idx++) pv.part[idx] = -1;
     pick_seeds();
     while (pv.count[0] + pv.count[1] < total && pv.count[0] < total - minfill && pv.count[1] < total - minfill) {
-        float biggest = -1.0f;
+        struct xv biggest;
+        xv_seti(&biggest, -1);
         for (idx = 0; idx < total; idx++) {
-            float g0, g1, diff;
+            struct xv g0, g1, diff;
             if (pv.part[idx] != -1) continue;
-            g0 = rcomb_growth(pv.buf[idx].r, pv.cover[0], pv.area[0]);
-            g1 = rcomb_growth(pv.buf[idx].r, pv.cover[1], pv.area[1]);
-            diff = g1 - g0;
-            if (diff >= 0) g = 0;
-            else { g = 1; diff = -diff; }
-            if (diff > biggest) {
+            rcomb_growth(&g0, pv.buf[idx].r, pv.cover[0], &pv.area[0]);
+            rcomb_growth(&g1, pv.buf[idx].r, pv.cover[1], &pv.area[1]);
+            xv_sub(&diff, &g1, &g0);
+            if ((diff.k & 1) ? diff.i >= 0 : fkey(diff.f) >= 0) g = 0;
+            else {
+                g = 1;
+                if (diff.k & 1) diff.i = -diff.i;
+                if (diff.k & 2) diff.f = -diff.f;
+            }
+            if (xv_gt(&diff, &biggest)) {
                 biggest = diff;
                 chosen = idx;
                 better = g;
-            } else if (diff == biggest && pv.count[g] < pv.count[better]) {
+            } else if (xv_eq(&diff, &biggest) && pv.count[g] < pv.count[better]) {
                 chosen = idx;
                 better = g;
             }
@@ -252,7 +349,7 @@ static int add_branch(const struct rbr *br, int n, int *newn)
     pv.buf[RMAX] = *br;
     for (k = 0; k < 4; k++) pv.cover_split[k] = pv.buf[0].r[k];
     for (k = 1; k <= RMAX; k++) rcomb(pv.cover_split, pv.cover_split, pv.buf[k].r);
-    pv.cover_split_area = rarea(pv.cover_split);
+    rarea(&pv.cover_split_area, pv.cover_split);
     choose_partition();
     *newn = nalloc();
     rn[*newn].level = p->level;
@@ -267,11 +364,14 @@ static int add_branch(const struct rbr *br, int n, int *newn)
 static int pick_branch(const float *r, int n)
 {
     const struct rnode *p = &rn[n];
-    float best_incr = -1.0f, best_area = 0;
+    struct xv best_incr, best_area, area, incr;
     int k, best = 0, first = 1;
+    xv_seti(&best_incr, -1);
+    xv_seti(&best_area, 0);
     for (k = 0; k < p->count; k++) {
-        float area = rarea(p->b[k].r), incr = rcomb_growth(r, p->b[k].r, area);
-        if (best_incr > incr || first || (incr == best_incr && best_area > area)) {
+        rarea(&area, p->b[k].r);
+        rcomb_growth(&incr, r, p->b[k].r, &area);
+        if (first || xv_gt(&best_incr, &incr) || (xv_eq(&incr, &best_incr) && xv_gt(&best_area, &area))) {
             best = k;
             best_area = area;
             best_incr = incr;
@@ -710,6 +810,30 @@ static void touch_e(int e)
 }
 
 void pcol_touch(int i) { touch_e(i); }
+
+/* the touches of a creation-order scan of obj's instances (but notme) up to and including `upto` (NOONE: all) that
+   do something: those of stale tree members, which all are on the dirty list; in creation order (the scans of
+   pworld.c that find their hit another way). Not exact while some entry is quiet (quiet_any: sync1 there clears
+   EF_NOSNAP too): the caller scans then */
+int pcol_quiet(void) { return quiet_any; }
+
+/* the level is loaded (play_level_start): the loader's writes are done; from here every change is a mark */
+void pcol_load_done(void) { sync_all(); }
+
+void pcol_touch_stale(int obj, int notme, int upto)
+{
+    static int16_t st[PIN_MAX];
+    int n = 0, e, k, j;
+    for (e = dhead; e >= 0; e = dn[e]) {
+        if (!(ef[e] & EF_STALE) || e == notme || (upto >= 0 && e > upto) || !PW.in[e].alive ||
+            !obj_is(PW.in[e].obj, obj))
+            continue;
+        for (j = n; j > 0 && st[j - 1] > e; j--) st[j] = st[j - 1];
+        st[j] = (int16_t)e;
+        n++;
+    }
+    for (k = 0; k < n; k++) touch_e(st[k]);
+}
 
 void pcol_event_done(int i) { if (i >= 0 && PW.in[i].alive) sync1(i); }
 

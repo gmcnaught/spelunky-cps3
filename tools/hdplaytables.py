@@ -13,6 +13,7 @@ in Docker as tools/hdgentables.py does).
    with inheritance resolved (the runner's GetEventRecursive: an object without an event runs its parent's), the
    alarms it has, and its collision targets.
 """
+import struct
 import os
 import re
 import subprocess
@@ -122,7 +123,10 @@ def main():
           '   masks cropped to the bounding box (gsprcol l..r x t..b), MSB first, rows padded to bytes */',
           'struct psprite { int16_t w, h; int16_t frames; uint8_t stype, sep; float speed; int16_t nmasks;',
           '                 int32_t maskoff; };',
-          'extern const struct psprite psprite[GSPR_COUNT];', 'extern const uint8_t pmaskdata[];', '',
+          'extern const struct psprite psprite[GSPR_COUNT];', 'extern const uint8_t pmaskdata[];',
+          '/* the animation per sprite as float32 (prun.c animate): image_index advance per step at image_speed 1',
+          '   (type 1: speed; type 0: speed / 30.0f) and the frame count */',
+          'extern const float pspr_anim[GSPR_COUNT][2];', '',
           '/* per object (objects.h order): runtime object index (event dispatch order), events with inheritance',
           '   resolved (EV_*), alarms (bit k: Alarm k), collision targets (objects.h indices) */',
           'struct pobj { int16_t rt; uint8_t visible, persistent; uint16_t ev; uint16_t alarms; int16_t ncol;',
@@ -148,6 +152,14 @@ def main():
     for s, mo in zip(sprs, sprrows):
         c.append(f'    {{ {s["w"]}, {s["h"]}, {s["frames"]}, {s["stype"]}, {s["sep"]}, {s["speed"]!r}f, {s["nm"]}, {mo} }},'
                  f'  /* {s["name"]} */')
+    c += ['};', '']
+    def f32(v):
+        return struct.unpack('<f', struct.pack('<f', v))[0]
+    c.append('const float pspr_anim[GSPR_COUNT][2] = {')
+    for s_ in sprs:
+        sp = f32(s_['speed'])
+        st = sp if s_['stype'] == 1 else f32(sp / 30.0)   # float32 / float32: one rounding through double
+        c.append(f'    {{ {st!r}f, {float(s_["frames"])!r}f }},  /* {s_["name"]} */')
     c += ['};', '']
     hidx = {n: i for i, n in enumerate(hobjs)}
     cols = []

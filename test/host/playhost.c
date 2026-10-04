@@ -125,6 +125,13 @@ static void rec_cb(int phase)
 }
 
 static uint32_t cmax[6], csteps;
+#ifdef PLAY_STATS
+#define NPW ((int)(sizeof(struct pw_stats) / 4))
+static uint32_t pwmax[NPW];
+static uint64_t pwsum[NPW];
+static const char *const pwname[NPW] = { "bbox", "bbox_int", "visit", "point", "line", "rect", "place", "exists",
+                                         "with", "dist", "nearest", "snap", "snapv", "anim" };
+#endif
 
 int main(int argc, char **argv)
 {
@@ -179,7 +186,21 @@ int main(int argc, char **argv)
         t_done = k;                                /* the phase-0 record comes before the step's input */
         {   /* collision tree cost (pcol.c): per-step totals and maxima, printed at the end */
             struct pcol_stats b = pcol_st;
+#ifdef PLAY_STATS
+            struct pw_stats w0 = pw_st;
+#endif
             r = play_step(k < nsteps ? masks[k] : 0, rec_cb);
+#ifdef PLAY_STATS
+            {
+                const uint32_t *a = (const uint32_t *)&w0, *c = (const uint32_t *)&pw_st;
+                int j;
+                for (j = 0; j < NPW; j++) {
+                    uint32_t d = c[j] - a[j];
+                    pwsum[j] += d;
+                    if (d > pwmax[j]) pwmax[j] = d;
+                }
+            }
+#endif
             {
                 uint32_t ir = (pcol_st.inserts - b.inserts) + (pcol_st.removes - b.removes);
                 uint32_t v = pcol_st.visits - b.visits, sy = pcol_st.syncs - b.syncs;
@@ -210,5 +231,14 @@ int main(int argc, char **argv)
             (unsigned long)pcol_st.nodes_max, (unsigned long)cmax[0], (unsigned long)cmax[1], (unsigned long)cmax[2]);
     fprintf(stderr, "PCOL per-step max: inserts %lu removes %lu searches %lu; pairs in a pass %lu\n",
             (unsigned long)cmax[3], (unsigned long)cmax[4], (unsigned long)cmax[5], (unsigned long)pcol_st.pairs_max);
+#ifdef PLAY_STATS
+    {   /* pworld / prun counters per step (the level start excluded): mean / max */
+        int j;
+        fprintf(stderr, "PW per step (mean/max):");
+        for (j = 0; j < NPW; j++)
+            fprintf(stderr, " %s %.1f/%lu", pwname[j], csteps ? (double)pwsum[j] / csteps : 0.0, (unsigned long)pwmax[j]);
+        fprintf(stderr, "\n");
+    }
+#endif
     return 0;
 }

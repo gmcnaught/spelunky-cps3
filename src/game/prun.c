@@ -20,7 +20,6 @@ struct dcount play_dcount;
 
 /* ---- dispatch order: object index order (pobj[].rt), then creation order -------------------------------- */
 static int16_t order[PIN_MAX];
-static int16_t bucket_n[RTOBJ_COUNT + 1];
 
 /* the tracer gives oGamepad a Begin Step and an End Step (tools/tracer.py) */
 static uint16_t objev(int obj)
@@ -28,28 +27,43 @@ static uint16_t objev(int obj)
     return (uint16_t)(pobj[obj].ev | (obj == OBJ_oGamepad ? EV_BEGIN | EV_END : 0));
 }
 
-/* the alive instances whose object has `ev` (EV_* bit; 0: every instance), in dispatch order */
-static int snapshot(uint16_t ev, uint16_t alarm_bit)
+/* the objects with an event, in runtime object order: key 0-11 alarm k, 12 Step, 13 Outside Room, 14 End Step */
+#define EVK_STEP 12
+#define EVK_OUTSIDE 13
+#define EVK_END 14
+static int16_t evobj[1024];
+static int16_t evobj0[16];
+
+static void evobj_init(void)
 {
-    int k, n = 0, b;
-    static int16_t start[RTOBJ_COUNT + 1];
-    for (b = 0; b <= RTOBJ_COUNT; b++) bucket_n[b] = 0;
-    for (k = 0; k < PW.n; k++) {
-        const struct pin *p = &PW.in[k];
-        if (!p->alive) continue;
-        if (ev && !(objev(p->obj) & ev)) continue;
-        if (alarm_bit && !(pobj[p->obj].alarms & alarm_bit)) continue;
-        bucket_n[pobj[p->obj].rt]++;
-        n++;
+    int key, rt, n = 0;
+    for (key = 0; key < 15; key++) {
+        evobj0[key] = (int16_t)n;
+        for (rt = 0; rt < RTOBJ_COUNT; rt++) {
+            int o = obj_byrt[rt], has;
+            if (key < 12) has = (pobj[o].alarms >> key) & 1;
+            else has = (objev(o) & (key == EVK_STEP ? EV_STEP : key == EVK_OUTSIDE ? EV_OUTSIDE : EV_END)) != 0;
+            if (!has) continue;
+            if (n == (int)(sizeof evobj / sizeof evobj[0])) { PUNTR(9004); break; }
+            evobj[n++] = (int16_t)o;
+        }
     }
-    start[0] = 0;
-    for (b = 0; b < RTOBJ_COUNT; b++) start[b + 1] = (int16_t)(start[b] + bucket_n[b]);
-    for (k = 0; k < PW.n; k++) {
-        const struct pin *p = &PW.in[k];
-        if (!p->alive) continue;
-        if (ev && !(objev(p->obj) & ev)) continue;
-        if (alarm_bit && !(pobj[p->obj].alarms & alarm_bit)) continue;
-        order[start[pobj[p->obj].rt]++] = (int16_t)k;
+    evobj0[15] = (int16_t)n;
+}
+
+/* the alive instances whose object has the event `key`, in dispatch order: the objects in runtime order, each
+   object's instances in creation order (pworld.c's lists) */
+static int snapshot(int key)
+{
+    int j, n = 0;
+    if (evobj0[15] == 0) evobj_init();
+    PWST(snap, 1);
+    for (j = evobj0[key]; j < evobj0[key + 1]; j++) {
+        int i;
+        for (i = pw_ohead[evobj[j]]; i >= 0; i = pw_inext[i]) {
+            PWST(snapv, 1);
+            order[n++] = (int16_t)i;
+        }
     }
     return n;
 }
@@ -116,9 +130,15 @@ static void draw_and_view(void)
     PW.vdirty = 0;
 }
 
+static uint32_t fbits(float f) { union { float f; uint32_t u; } v; v.f = f; return v.u; }
+
+/* image_index += image_speed x the sprite's speed (pspr_anim: speed / 30.0f for type 0, the frame count, as the
+   expressions computed them); a one-frame sprite at image_index +0 advancing exactly 1 (image_speed 1, speed 1)
+   goes 0 -> 1 -> 0 with an Animation End: the same without the float arithmetic */
 static void animate(void)
 {
     int k, n = PW.n;
+    PWST(anim, n);
     for (k = 0; k < n; k++) {
         struct pin *p = &PW.in[k];
         if (!p->alive) continue;
@@ -127,11 +147,15 @@ static void animate(void)
             continue;
         }
         {
-            const struct psprite *s = &psprite[p->spr];
-            img_t sp = s->stype == 1 ? s->speed : s->speed / 30.0f;
-            img_t fr = (img_t)s->frames;
-            p->img = p->img + p->ispd * sp;
+            const float *an = pspr_anim[p->spr];
+            img_t sp = an[0], fr = an[1];
             play_cur_obj = p->obj;
+            if (fbits(p->img) == 0 && fbits(p->ispd) == 0x3f800000u && fbits(sp) == 0x3f800000u &&
+                fbits(fr) == 0x3f800000u) {
+                if (pobj[p->obj].ev & EV_ANIMEND) { ev_animend(k); pcol_event_done(k); }
+                continue;
+            }
+            p->img = p->img + p->ispd * sp;
             if (p->img >= fr) {
                 p->img = p->img - fr;
                 if (pobj[p->obj].ev & EV_ANIMEND) { ev_animend(k); pcol_event_done(k); }
@@ -229,6 +253,7 @@ void play_level_start(int32_t next_id)
     play_time = 1;                                                             /* oGame.time = 1 */
     play_rooms_entered++;
     PW.room_new = 1;
+    pcol_load_done();
 }
 
 /* ---- one step -------------------------------------------------------------------------------------------- */
@@ -278,7 +303,7 @@ int play_step(uint16_t keys, void (*record_cb)(int phase))
     }
     view_in_step = 1;
     for (a = 0; a < 12; a++) {                                                 /* alarms */
-        n = snapshot(0, (uint16_t)(1u << a));
+        n = snapshot(a);
         for (k = 0; k < n; k++) {
             int i = order[k];
             struct pin *p = &PX(i);
@@ -294,7 +319,7 @@ int play_step(uint16_t keys, void (*record_cb)(int phase))
         int r = room_change();
         return r ? r : PLAY_ROOM_EARLY;
     }
-    n = snapshot(EV_STEP, 0);                                                  /* Step */
+    n = snapshot(EVK_STEP);                                                  /* Step */
     for (k = 0; k < n; k++) {
         int i = order[k];
         if (!PX(i).alive) continue;
@@ -308,20 +333,18 @@ int play_step(uint16_t keys, void (*record_cb)(int phase))
     if (play_goto_room >= 0)
         return room_change();
     pen_motion();                                                              /* P5 hook: speed / direction */
-    n = snapshot(EV_OUTSIDE, 0);                                               /* Outside Room */
+    n = snapshot(EVK_OUTSIDE);                                               /* Outside Room */
     for (k = 0; k < n; k++) {
         int i = order[k];
-        double l, t, r, b;
         if (!PX(i).alive) continue;
         pcol_touch(i);                                                         /* HandleOther computes the box */
-        if (!pin_bbox(i, &l, &t, &r, &b)) continue;
-        if (r < 0 || l > PW.room_w || b < 0 || t > PW.room_h) { ev_outside(i); pcol_event_done(i); }
+        if (pin_box_outside(i, PW.room_w, PW.room_h)) { ev_outside(i); pcol_event_done(i); }
     }
     pcol_handle();                                                             /* collision events */
     view_in_step = 0;
     if (play_goto_room >= 0)
         return room_change();
-    n = snapshot(EV_END, 0);                                                   /* End Step */
+    n = snapshot(EVK_END);                                                   /* End Step */
     for (k = 0; k < n; k++) {
         int i = order[k];
         if (!PX(i).alive) continue;
