@@ -592,7 +592,7 @@ static void characterStepEvent(int i)
             PL.xFric = N(0.2);
             PL.yFric = N(0.2);
             PL.fallTimer = 0;
-        } else if (collision_point_p(PTOD(p->x), PTOD(p->y), OBJ_oWater, 1, NOONE) != NOONE) {
+        } else if (collision_point_p(PTOD(p->x), PTOD(p->y), OBJ_oWater, 0, NOONE) != NOONE) {   /* -1, -1: false */
             pswamp_player(2009, i, 0);
         } else {
             PL.swimming = 0;
@@ -1061,7 +1061,7 @@ void pl_step(int i)
     } else
         PL.whoaTimer = PL.whoaTimerMax;
     if (PL.firing > 0) PL.firing -= 1;                                         /* :174 */
-    if (collision_point_p(PTOD(p->x), PTOD(p->y), OBJ_oWaterSwim, 1, NOONE) != NOONE) pswamp_player(2032, i, 0);
+    if (collision_point_p(PTOD(p->x), PTOD(p->y), OBJ_oWaterSwim, 0, NOONE) != NOONE) pswamp_player(2032, i, 0);   /* -1, -1: false */
     if (PL.burning > 0) {                                                      /* :188 */
         if (RAND(1, 5) == 1) {
             int yb = RAND(4, 12);                                              /* arguments: last first */
