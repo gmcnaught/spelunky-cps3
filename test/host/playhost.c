@@ -208,7 +208,7 @@ int main(int argc, char **argv)
             (unsigned long)pcol_st.inserts, (unsigned long)pcol_st.removes, (unsigned long)pcol_st.searches,
             (unsigned long)pcol_st.visits, (unsigned long)pcol_st.syncs, (unsigned long)pcol_st.flushes,
             (unsigned long)pcol_st.nodes_max, (unsigned long)cmax[0], (unsigned long)cmax[1], (unsigned long)cmax[2]);
-    fprintf(stderr, "PCOL per-step max: inserts %lu removes %lu searches %lu\n", (unsigned long)cmax[3],
-            (unsigned long)cmax[4], (unsigned long)cmax[5]);
+    fprintf(stderr, "PCOL per-step max: inserts %lu removes %lu searches %lu; pairs in a pass %lu\n",
+            (unsigned long)cmax[3], (unsigned long)cmax[4], (unsigned long)cmax[5], (unsigned long)pcol_st.pairs_max);
     return 0;
 }

@@ -157,30 +157,30 @@ void moveTo(int i, num a0, num a1, int32_t *xio, int32_t *yio)
     if (a1 < 0) yVelInteger = -yVelInteger;
     NOPS(10);
     if (xVelInteger > 0)                                                       /* :39 */
-        for (; p->x < mtXPrev + PI(xVelInteger); p->x += PI(1)) {
+        for (; p->x < mtXPrev + PI(xVelInteger); pin_setx(p, p->x + (PI(1)))) {
             int solidId = getIdCollisionRight(i, 1);
             if (solidId != NOONE) {
                 if (objdefs[PX(solidId).obj].parent == OBJ_oMoveableSolid && is_character(i)) {
                     /* with solidId: `break` leaves the with, not the for */
                     if (!place_meeting_p(solidId, PTOD(PX(solidId).x) + 1, PTOD(PX(solidId).y), OBJ_oSolid))
-                        PX(solidId).x += PI(1);
+                        pin_setx(&PX(solidId), PX(solidId).x + (PI(1)));
                 } else
                     break;
             }
         }
     if (xVelInteger < 0)                                                       /* :64 */
-        for (; p->x > mtXPrev + PI(xVelInteger); p->x -= PI(1)) {
+        for (; p->x > mtXPrev + PI(xVelInteger); pin_setx(p, p->x - (PI(1)))) {
             int solidId = getIdCollisionLeft(i, 1);
             if (solidId != NOONE) {
                 if (objdefs[PX(solidId).obj].parent == OBJ_oMoveableSolid && is_character(i)) {
                     if (!place_meeting_p(solidId, PTOD(PX(solidId).x) - 1, PTOD(PX(solidId).y), OBJ_oSolid))
-                        PX(solidId).x -= PI(1);
+                        pin_setx(&PX(solidId), PX(solidId).x - (PI(1)));
                 } else
                     break;
             }
         }
     if (yVelInteger > 0)                                                       /* :89 */
-        for (; p->y < mtYPrev + PI(yVelInteger); p->y += PI(1)) {
+        for (; p->y < mtYPrev + PI(yVelInteger); pin_sety(p, p->y + (PI(1)))) {
             if (isCollisionBottom(i, 1))
                 break;
             if (is_character(i))
@@ -188,7 +188,7 @@ void moveTo(int i, num a0, num a1, int32_t *xio, int32_t *yio)
                     break;
         }
     if (yVelInteger < 0)                                                       /* :98 */
-        for (; p->y > mtYPrev + PI(yVelInteger); p->y -= PI(1))
+        for (; p->y > mtYPrev + PI(yVelInteger); pin_sety(p, p->y - (PI(1))))
             if (isCollisionTop(i, 1))
                 break;
     if (xio) *xio = xVelInteger;
@@ -241,8 +241,8 @@ int isRealLevel(void)
 void move_snap(int i, int hs, int vs)
 {
     struct pin *p = &PX(i);
-    if (hs > 0) p->x = PI(dround(PTOD(p->x) / hs) * hs);
-    if (vs > 0) p->y = PI(dround(PTOD(p->y) / vs) * vs);
+    if (hs > 0) pin_setx(p, PI(dround(PTOD(p->x) / hs) * hs));
+    if (vs > 0) pin_sety(p, PI(dround(PTOD(p->y) / vs) * vs));
 }
 
 /* x > xview - m and x < xview + 320 + m and y > yview - m and y < yview + 240 + m */

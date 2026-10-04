@@ -52,17 +52,28 @@ enum ptype {
 };
 extern const char *const ptype_names[T_COUNT];
 
+/* x, y, sprite_index, mask_index, image_xscale / yscale / angle: written only through the pin_set* setters below
+   (a change marks the instance dirty in the collision tree, as the runner's SetPosition / SetSpriteIndex / ...
+   do). make -C test/host constcheck compiles the play code with these fields const (PIN_CONST_CHECK): a direct
+   write anywhere is an error there */
+#ifdef PIN_CONST_CHECK
+#define PIN_RO const
+#else
+#define PIN_RO
+#endif
 struct pin {
     int32_t id;
     int16_t obj;            /* OBJ_* */
-    int16_t spr;            /* sprite_index (GSPR_*, -1 none) */
-    int16_t mask;           /* mask_index (-1: the sprite) */
+    PIN_RO int16_t spr;     /* sprite_index (GSPR_*, -1 none) */
+    PIN_RO int16_t mask;    /* mask_index (-1: the sprite) */
     uint8_t alive, visible, persistent;
     uint8_t ingrid;
-    pos x, y, xprev, yprev;
+    PIN_RO pos x, y;
+    pos xprev, yprev;
     float depth;            /* a float in the runner (-99999991 reads -99999992) */
     img_t img, ispd;        /* image_index, image_speed */
-    double xscale, yscale, angle, alpha;
+    PIN_RO double xscale, yscale, angle;
+    double alpha;
     int32_t alarm[12];
     /* the GML instance variables the translated events use (named as in GML) */
     num xVel, yVel, xAcc, yAcc, myGrav, grav;
@@ -104,6 +115,51 @@ extern struct pworld PW;
 
 #define PX(i) (PW.in[i])
 static inline int pin_is(int i, int obj) { return i >= 0 && PW.in[i].alive && obj_is(PW.in[i].obj, obj); }
+
+/* the setters of the collision-relevant fields: store, and on a real change (!=; the scales and the angle as the
+   runner's floats) tell the collision tree (pcol.c: CollisionMarkDirty) */
+void pcol_changed(int i);
+#define PIN_WR(T, f) (*(T *)&(f))
+static inline void pin_changed_(struct pin *p) { pcol_changed((int)(p - PW.in)); }
+static inline void pin_setx(struct pin *p, pos v) { pos o = p->x; PIN_WR(pos, p->x) = v; if (o != v) pin_changed_(p); }
+static inline void pin_sety(struct pin *p, pos v) { pos o = p->y; PIN_WR(pos, p->y) = v; if (o != v) pin_changed_(p); }
+static inline void pin_setxy(struct pin *p, pos x, pos y)
+{
+    pos ox = p->x, oy = p->y;
+    PIN_WR(pos, p->x) = x;
+    PIN_WR(pos, p->y) = y;
+    if (ox != x || oy != y) pin_changed_(p);
+}
+static inline void pin_setspr(struct pin *p, int v)         /* sprite_index without pin_set_sprite's image rule */
+{
+    int o = p->spr;
+    PIN_WR(int16_t, p->spr) = (int16_t)v;
+    if (o != v) pin_changed_(p);
+}
+static inline void pin_setmask(struct pin *p, int v)
+{
+    int o = p->mask;
+    PIN_WR(int16_t, p->mask) = (int16_t)v;
+    if (o != v) pin_changed_(p);
+}
+static inline void pin_setxscale(struct pin *p, double v)
+{
+    float o = (float)p->xscale;
+    PIN_WR(double, p->xscale) = v;
+    if (o != (float)v) pin_changed_(p);
+}
+static inline void pin_setyscale(struct pin *p, double v)
+{
+    float o = (float)p->yscale;
+    PIN_WR(double, p->yscale) = v;
+    if (o != (float)v) pin_changed_(p);
+}
+static inline void pin_setangle(struct pin *p, double v)
+{
+    float o = (float)p->angle;
+    PIN_WR(double, p->angle) = v;
+    if (o != (float)v) pin_changed_(p);
+}
 
 /* ---- pworld.c: instances, collision functions ------------------------------------------------------------ */
 void pw_reset(void);

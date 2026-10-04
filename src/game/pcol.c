@@ -38,10 +38,9 @@
  * (pcol_probe); build/host/treeprobe with tools/treeprobe.py; playhost's "PCOL" cost lines (pcol_st). The C side
  * of TRACE_TREEAT / TRACE_GENPROBE and the PCOL_DEBUG logs (PCOL_LOG, PCOL_WATCH, PCOL_DIRTY, PCOL_TREEAT,
  * PCOL_GENPROBE, PCOL_V) were removed after 6e359da (git show 6e359da:src/game/pcol.c to restore them).
- * Not modelled: the C code writes x / y / sprite fields directly, so a change is seen when pcol.c next looks (an
- * event's end, a collision function, pin_set_sprite); a write undone before that (y += 1 then y -= 1) is not a
- * mark here although the runner marks it. The 8 routes do not depend on it; exact in general needs a sync after
- * every write (pcol_event_done(i) wrapped around each, tested: same results).
+ * Marks: the play code writes x / y / sprite / mask / scales / angle only through play.h's pin_set* setters, which
+ * mark the instance at each real change as SetPosition does (a write undone later, y += 1 then y -= 1, is two marks
+ * as in the runner); make -C test/host constcheck makes any direct write a compile error.
  *
  * HandleCollision: UpdateTree; each instance of the test list (newest mark first) searches the tree with its box;
  * each instance found that is not itself and has not searched yet in this pass forms a pair (searcher, found) when
@@ -75,8 +74,11 @@ struct pcol_stats pcol_st;
 /* ---- the R-tree ----------------------------------------------------------------------------------------------- */
 #define RMAX 6
 #define RMIN 2
-#define RT_NODES 1024            /* the routes use at most 260 */
-#define ENT_MAX (PIN_MAX + INST_MAX)
+/* 640 nodes (124 bytes each): the most seen is 421 (olmec, level 16; 260-281 in the mines; playhost over 20 seeds x
+   16 levels); running out stops the play loop with untranslated code 9101 */
+#define RT_NODES 640
+/* entries: play instance i is entry i; while a level is generated (gmode), generator instance w is entry w */
+#define ENT_MAX (PIN_MAX > INST_MAX ? PIN_MAX : INST_MAX)
 struct rbr { float r[4]; int16_t id; };        /* r: min x, min y, max x, max y; id: child node or entry */
 struct rnode { int16_t count, level; struct rbr b[RMAX]; };
 static struct rnode rn[RT_NODES];
@@ -88,7 +90,7 @@ static uint8_t rlock;
 static int nalloc(void)
 {
     int n;
-    if (rnfree == 0) {                          /* never in the references (RT_NODES is twice the largest use) */
+    if (rnfree == 0) {                          /* never in the references (RT_NODES is 1.5 x the largest use) */
         PUNTR(9101);
         return 0;
     }
@@ -472,33 +474,36 @@ static void obj_count(int obj, int d)
 #define EF_STALE 2
 #define EF_PEND 4      /* destroyed: leaves at the next RemoveMarked */
 #define EF_GEN 8       /* a generator entry renamed to this play index (pin_add keeps its state) */
-#define EF_NOSNAP 16   /* no snapshot yet (taken at the next look without a mark) */
+#define EF_NOSNAP 16   /* loaded with the level: its field writes are not marks until pcol.c first looks at it */
 #define EF_USED 32
+#define EF_OND 64      /* on the dirty list */
+#define EF_ONT 128     /* on the test list */
+#define EPASS_NONE 0xFF
+static uint8_t gmode;                  /* a level is being generated: entries are generator instances */
 static uint8_t ef[ENT_MAX];
 static int16_t dn[ENT_MAX], dp[ENT_MAX], tn[ENT_MAX], tp[ENT_MAX];
-static uint8_t ond[ENT_MAX], ont[ENT_MAX];
 static int16_t dhead = -1, thead = -1;
-static float er[ENT_MAX][4];
-static uint32_t epass[ENT_MAX];
-static uint32_t pass_no;
+static float er[ENT_MAX][4];           /* the rectangle the entry was put in with (RemoveRect's search key) */
+static uint8_t epass[ENT_MAX];         /* the HandleCollision pass that entry searched in (EPASS_NONE: none since the
+                                          last wrap; pass_no runs 0 .. 254, then every epass is reset) */
+static uint8_t pass_no;
 static int16_t pend[ENT_MAX];
 static int npend;
 static int32_t gen_first_id;           /* the generator's first instance_create id (room instances are below) */
 static uint8_t gen_pending;            /* a level was generated: the next pw_reset loads it */
 
-struct snap { pos x, y; int16_t spr, mask; float xs, ys, ang; };
-static struct snap sn[PIN_MAX];
+static uint8_t quiet_any;              /* some entry has EF_NOSNAP */
 
-static int eobj(int e) { return e < PIN_MAX ? PW.in[e].obj : W.in[e - PIN_MAX].obj; }
+static int eobj(int e) { return gmode ? W.in[e].obj : PW.in[e].obj; }
 static int esolid(int e) { return objdefs[eobj(e)].solid; }
 static int emember(int e) { return (oinfo[eobj(e)] & (OI_MEMBER | OI_DYN)) || esolid(e); }
 
 static void dlist_remove(int e)
 {
-    if (!ond[e]) return;
+    if (!(ef[e] & EF_OND)) return;
     if (dp[e] >= 0) dn[dp[e]] = dn[e]; else dhead = dn[e];
     if (dn[e] >= 0) dp[dn[e]] = dp[e];
-    ond[e] = 0;
+    ef[e] &= (uint8_t)~EF_OND;
 }
 
 static void dlist_front(int e)
@@ -508,15 +513,15 @@ static void dlist_front(int e)
     dn[e] = dhead;
     if (dhead >= 0) dp[dhead] = (int16_t)e;
     dhead = (int16_t)e;
-    ond[e] = 1;
+    ef[e] |= EF_OND;
 }
 
 static void tlist_remove(int e)
 {
-    if (!ont[e]) return;
+    if (!(ef[e] & EF_ONT)) return;
     if (tp[e] >= 0) tn[tp[e]] = tn[e]; else thead = tn[e];
     if (tn[e] >= 0) tp[tn[e]] = tp[e];
-    ont[e] = 0;
+    ef[e] &= (uint8_t)~EF_ONT;
 }
 
 static void tlist_front(int e)
@@ -526,7 +531,7 @@ static void tlist_front(int e)
     tn[e] = thead;
     if (thead >= 0) tp[thead] = (int16_t)e;
     thead = (int16_t)e;
-    ont[e] = 1;
+    ef[e] |= EF_ONT;
 }
 
 /* sin and cos of a float angle in radians (|a| <= 2 pi), rounded to float as glibc's sincosf: the polynomials in
@@ -558,7 +563,7 @@ static void ebbox(int e, float dx, float dy, float *o)
     float x, y, xs = 1, ys = 1, ang = 0, w, h, t0, t1;
     int s;
     const struct gsprcol *c;
-    if (e < PIN_MAX) {
+    if (!gmode) {
         const struct pin *p = &PW.in[e];
         s = p->mask >= 0 ? p->mask : p->spr;
         x = (float)PTOD(p->x);
@@ -567,7 +572,7 @@ static void ebbox(int e, float dx, float dy, float *o)
         ys = (float)p->yscale;
         ang = (float)p->angle;
     } else {
-        const struct inst *g = &W.in[e - PIN_MAX];
+        const struct inst *g = &W.in[e];
         s = g->spr;
         x = (float)g->x;
         y = (float)g->y;
@@ -655,39 +660,29 @@ static void mark_e(int e)
     if (oinfo[o] & OI_F08) tlist_front(e);
 }
 
-/* ---- change detection for play instances (the C code writes x, y, ... directly) ------------------------------ */
-static void snap_take(int i)
+/* ---- changes of play instances: the pin_set* setters (play.h) call pcol_changed on a real change of x, y,
+   sprite_index, mask_index, image_xscale / yscale / angle (SetPosition, SetSpriteIndex, ...: CollisionMarkDirty
+   then). An instance loaded with the level (EF_NOSNAP) takes its loader's writes without a mark until pcol.c
+   first looks at it (sync1) or any UpdateTree (sync_all) */
+void pcol_changed(int i)
 {
-    const struct pin *p = &PW.in[i];
-    struct snap *s = &sn[i];
-    s->x = p->x; s->y = p->y; s->spr = p->spr; s->mask = p->mask;
-    s->xs = (float)p->xscale; s->ys = (float)p->yscale; s->ang = (float)p->angle;
-    ef[i] &= (uint8_t)~EF_NOSNAP;
-}
-
-static int snap_changed(int i)
-{
-    const struct pin *p = &PW.in[i];
-    const struct snap *s = &sn[i];
-    return s->x != p->x || s->y != p->y || s->spr != p->spr || s->mask != p->mask || s->xs != (float)p->xscale ||
-           s->ys != (float)p->yscale || s->ang != (float)p->angle;
+    if (!PW.in[i].alive || (ef[i] & EF_NOSNAP)) return;
+    mark_e(i);
 }
 
 static void sync1(int i)
 {
-    if (ef[i] & EF_NOSNAP) { snap_take(i); return; }
-    if (snap_changed(i)) {
-        snap_take(i);
-        mark_e(i);
-    }
+    ef[i] &= (uint8_t)~EF_NOSNAP;
 }
 
 static void sync_all(void)
 {
     int i;
+    if (!quiet_any) return;
     pcol_st.syncs++;
     for (i = 0; i < PW.n; i++)
         if (PW.in[i].alive) sync1(i);
+    quiet_any = 0;
 }
 
 /* UpdateTree */
@@ -707,7 +702,7 @@ static void flush(void)
 
 static void touch_e(int e)
 {
-    if (e < PIN_MAX) sync1(e);
+    if (!gmode) sync1(e);
     if (ef[e] & EF_STALE) {
         ef[e] &= (uint8_t)~EF_STALE;
         cupdate(e);
@@ -735,8 +730,7 @@ void pcol_place_marks(int self)
 
 void pcol_mark(int i)
 {
-    if (ef[i] & EF_NOSNAP) { snap_take(i); }
-    else snap_take(i);
+    sync1(i);
     mark_e(i);
 }
 
@@ -745,7 +739,7 @@ static void entry_clear(int e)
     dlist_remove(e);
     tlist_remove(e);
     ef[e] = 0;
-    epass[e] = 0xFFFFFFFFu;
+    epass[e] = EPASS_NONE;
 }
 
 /* ---- rooms --------------------------------------------------------------------------------------------------- */
@@ -756,8 +750,7 @@ static void room_reset(void)
     rt_reset();
     for (e = 0; e < ENT_MAX; e++) {
         ef[e] = 0;
-        ond[e] = ont[e] = 0;
-        epass[e] = 0xFFFFFFFFu;
+        epass[e] = EPASS_NONE;
     }
     dhead = thead = -1;
     npend = 0;
@@ -802,8 +795,8 @@ static void rebuild_all(void)
     int e;
     rt_reset();
     for (e = 0; e < ENT_MAX; e++) ef[e] &= (uint8_t)~EF_TREE;
-    for (e = 0; e < PW.n; e++)
-        if (PW.in[e].alive && !edead(e)) {
+    for (e = 0; e < (gmode ? W.n : PW.n); e++)
+        if ((gmode ? W.in[e].alive : PW.in[e].alive) && !edead(e)) {
             mark_e(e);
             ef[e] &= (uint8_t)~EF_STALE;
             cupdate(e);
@@ -819,40 +812,35 @@ void pcol_destroyed(int i)
     pend[npend++] = (int16_t)i;
 }
 
-/* the generated level (entries PIN_MAX + w): RemoveMarked after the room's Create events, then the alive ones are
-   renamed to their play index (play_level_start adds them in creation order) */
+/* the generated level (entries w): RemoveMarked after the room's Create events, then the alive ones are renamed to
+   their play index (play_level_start adds them in creation order), in place: map[w] <= w, so ascending w reads each
+   entry before anything is written over it */
 static void gen_load(void)
 {
-    static int16_t map[INST_MAX];
-    int w, n = 0, k;
+    int16_t *map = pend;                          /* free: remove_marked empties it */
+    int w, n = 0, k, e;
     remove_marked();
     for (w = 0; w < W.n; w++) map[w] = (int16_t)(W.in[w].alive ? n++ : -1);
-    /* tree leaves */
-    for (k = 0; k < RT_NODES; k++) {
+#define GMAP(x) ((x) < 0 ? (int16_t)-1 : map[x])
+    for (k = 0; k < RT_NODES; k++) {              /* tree leaves */
         int j;
         if (rn[k].level != 0) continue;
-        for (j = 0; j < rn[k].count; j++)
-            if (rn[k].b[j].id >= PIN_MAX) rn[k].b[j].id = map[rn[k].b[j].id - PIN_MAX];
+        for (j = 0; j < rn[k].count; j++) rn[k].b[j].id = GMAP(rn[k].b[j].id);
     }
-    /* entries: copy (play indices are below their generator index + PIN_MAX, so ascending order is safe) */
-    {
-        int16_t dl[ENT_MAX], tl[ENT_MAX];
-        int nd = 0, nt = 0, e;
-        for (e = dhead; e >= 0; e = dn[e]) dl[nd++] = (int16_t)(e >= PIN_MAX ? map[e - PIN_MAX] : e);
-        for (e = thead; e >= 0; e = tn[e]) tl[nt++] = (int16_t)(e >= PIN_MAX ? map[e - PIN_MAX] : e);
-        for (e = 0; e < ENT_MAX; e++) ond[e] = ont[e] = 0;
-        dhead = thead = -1;
-        for (w = 0; w < W.n; w++) {
-            int i = map[w], g = PIN_MAX + w;
-            if (i < 0) continue;
-            ef[i] = (uint8_t)((ef[g] & (EF_TREE | EF_STALE)) | EF_GEN | EF_NOSNAP | EF_USED);
-            er[i][0] = er[g][0]; er[i][1] = er[g][1]; er[i][2] = er[g][2]; er[i][3] = er[g][3];
-            epass[i] = epass[g];
-        }
-        for (e = PIN_MAX; e < ENT_MAX; e++) ef[e] = 0;
-        for (k = nd - 1; k >= 0; k--) if (dl[k] >= 0) dlist_front(dl[k]);
-        for (k = nt - 1; k >= 0; k--) if (tl[k] >= 0) tlist_front(tl[k]);
+    for (w = 0; w < W.n; w++) {                   /* entries, with their dirty / test list links */
+        int i = map[w];
+        if (i < 0) continue;
+        ef[i] = (uint8_t)((ef[w] & (EF_TREE | EF_STALE | EF_OND | EF_ONT)) | EF_GEN | EF_NOSNAP | EF_USED);
+        er[i][0] = er[w][0]; er[i][1] = er[w][1]; er[i][2] = er[w][2]; er[i][3] = er[w][3];
+        epass[i] = epass[w];
+        dn[i] = GMAP(dn[w]); dp[i] = GMAP(dp[w]); tn[i] = GMAP(tn[w]); tp[i] = GMAP(tp[w]);
     }
+    dhead = GMAP(dhead);
+    thead = GMAP(thead);
+#undef GMAP
+    for (e = n; e < ENT_MAX; e++) { ef[e] = 0; epass[e] = EPASS_NONE; }
+    quiet_any = 1;
+    gmode = 0;
 }
 
 void pcol_after_reset(void)
@@ -860,8 +848,10 @@ void pcol_after_reset(void)
     if (gen_pending) {
         gen_pending = 0;
         gen_load();
-    } else
+    } else {
         room_reset();
+        gmode = 0;
+    }
 }
 
 void pcol_added(int i)
@@ -872,7 +862,6 @@ void pcol_added(int i)
     }
     entry_clear(i);
     ef[i] = EF_USED;
-    snap_take(i);
     obj_count(PW.in[i].obj, 1);
 }
 
@@ -881,7 +870,6 @@ void pcol_added(int i)
    again newest first by the next UpdateTree), then CRoom::AddInstance's CollisionInsert puts it in */
 void pcol_create(int i)
 {
-    snap_take(i);
     mark_e(i);
     ef[i] &= (uint8_t)~EF_STALE;
     cupdate(i);                                   /* Compute_BoundingBox(true) */
@@ -891,6 +879,7 @@ void pcol_create(int i)
 void pcol_room_inst(int i)
 {
     ef[i] |= EF_NOSNAP;                           /* the loader sets its fields after pin_add */
+    quiet_any = 1;
     mark_e(i);
 }
 
@@ -912,7 +901,7 @@ static int query_e(int obj, int gen)
         int e, n = gen ? W.n : PW.n;
         set_dyn(obj);
         for (e = 0; e < n; e++) {
-            int ent = gen ? PIN_MAX + e : e;
+            int ent = e;
             int alive = gen ? W.in[e].alive : PW.in[e].alive;
             struct rbr b;
             if (!alive || edead(ent) || !obj_is(eobj(ent), obj) || (ef[ent] & EF_TREE)) continue;
@@ -943,7 +932,9 @@ static int query_e(int obj, int gen)
 int pcol_query(int obj) { return query_e(obj, 0); }
 
 /* HandleCollision */
-#define PAIRS_MAX 4096
+/* collision pairs in one pass: at most 28 seen (the routes, and 300 idle steps with enemies over 20 seeds x 16
+   levels); more stops the play loop with untranslated code 9102 */
+#define PAIRS_MAX 256
 static int16_t pa[PAIRS_MAX], pb[PAIRS_MAX];
 static int npairs;
 static int hc_self;
@@ -962,7 +953,11 @@ static int collision_result(int e, void *ctx)
 {
     (void)ctx;
     if (e == hc_self || epass[e] == pass_no) return 1;
-    if ((has_col(hc_self, e) || has_col(e, hc_self)) && npairs < PAIRS_MAX) {
+    if (has_col(hc_self, e) || has_col(e, hc_self)) {
+        if (npairs == PAIRS_MAX) {
+            PUNTR(9102);
+            return 0;
+        }
         pa[npairs] = (int16_t)hc_self;
         pb[npairs] = (int16_t)e;
         npairs++;
@@ -1003,7 +998,12 @@ void pcol_handle(void)
         }
         epass[s] = pass_no;
     }
-    pass_no++;
+    if ((uint32_t)npairs > pcol_st.pairs_max) pcol_st.pairs_max = (uint32_t)npairs;
+    if (++pass_no == EPASS_NONE) {                /* wrap: no entry has searched in the passes to come */
+        int e;
+        for (e = 0; e < ENT_MAX; e++) epass[e] = EPASS_NONE;
+        pass_no = 0;
+    }
     for (k = 0; k < nkeep; k++)                   /* each pushed on the front of the test list */
         tlist_front(keep[k]);
     for (k = 0; k < npairs; k++) {
@@ -1023,7 +1023,7 @@ static int pr_n, pr_max, pr_obj;
 static int probe_cb(int e, void *ctx)
 {
     (void)ctx;
-    if (e < PIN_MAX && PW.in[e].alive && !edead(e) && obj_is(PW.in[e].obj, pr_obj) && pr_n < pr_max)
+    if (!gmode && PW.in[e].alive && !edead(e) && obj_is(PW.in[e].obj, pr_obj) && pr_n < pr_max)
         pr_ids[pr_n++] = PW.in[e].id;
     return 1;
 }
@@ -1044,16 +1044,17 @@ int pcol_probe(int obj, int32_t *ids, int max)
 /* ---- the generator (inst.c's hook) --------------------------------------------------------------------------- */
 void pcol_gen_hook(int op, int w, int a, int b, int c)
 {
-    int e = PIN_MAX + w, k;
+    int e = w, k;
     switch (op) {
     case IH_RESET:                                /* StartRoom: RebuildTree(true) */
         room_reset();
+        gmode = 1;
         gen_first_id = a;
         gen_pending = 1;
         break;
     case IH_CREATE:
         ef[e] = EF_USED;
-        epass[e] = 0xFFFFFFFFu;
+        epass[e] = EPASS_NONE;
         obj_count(W.in[w].obj, 1);
         /* a room instance (StartRoom: put in by RebuildTree(true), marked dirty; Observed: tools/tracer.py
            TRACE_GENPROBE before scrLevelGen equals this only with oPlayer1 in the tree) or instance_create (the
@@ -1081,14 +1082,14 @@ void pcol_gen_hook(int op, int w, int a, int b, int c)
         if (op == IH_DIST) touch_e(e);
         for (k = 0; k < W.n; k++) {
             if (op == IH_POINT && w >= 0 && k > w) break;
-            if (W.in[k].alive && obj_is(W.in[k].obj, a) && (ef[PIN_MAX + k] & EF_STALE)) touch_e(PIN_MAX + k);
+            if (W.in[k].alive && obj_is(W.in[k].obj, a) && (ef[k] & EF_STALE)) touch_e(k);
         }
         break;
     case IH_RECT:                                 /* collision_rectangle(.., a = obj) = w */
         if (query_e(a, 1) == 2)
             for (k = 0; k < W.n; k++) {
                 if (w >= 0 && k > w) break;
-                if (W.in[k].alive && obj_is(W.in[k].obj, a) && (ef[PIN_MAX + k] & EF_STALE)) touch_e(PIN_MAX + k);
+                if (W.in[k].alive && obj_is(W.in[k].obj, a) && (ef[k] & EF_STALE)) touch_e(k);
             }
         break;
     case IH_PLACE: {                              /* instance_place by w (a = obj) = b; c = dx + 4096 * dy + offset */
@@ -1102,7 +1103,7 @@ void pcol_gen_hook(int op, int w, int a, int b, int c)
             for (k = 0; k < W.n; k++) {
                 if (b >= 0 && k > b) break;
                 if (!W.in[k].alive || k == w || !obj_is(W.in[k].obj, a)) continue;
-                touch_e(PIN_MAX + k);
+                touch_e(k);
                 if (ef[e] & EF_STALE) {
                     ef[e] &= (uint8_t)~EF_STALE;
                     cupdate_at(e, (float)dx, (float)dy);

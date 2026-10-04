@@ -69,8 +69,8 @@ static void damsel_step(int i)
         int door = instance_place_p(i, X(i), Y(i), OBJ_oExit);
         PG.damsels += 1;
         PG.xdamsels += 1;
-        p->x = PX(door).x + PI(8);
-        p->y = PX(door).y + PI(8);
+        pin_setx(p, PX(door).x + PI(8));
+        pin_sety(p, PX(door).y + PI(8));
         pin_set_sprite(i, GSPR_sDamselExit2);
         p->status = D_EXIT;
         p->xVel = 0;
@@ -202,7 +202,7 @@ int pdam_step(int i)
         if (p->spr == GSPR_sDamselKissL && DEQ(p->img, 7))
             pin_create(p->x - PI(8), p->y - PI(8), OBJ_oHeart);
         return 1;
-    case OBJ_oHeart: p->y -= PI(1); return 1;                          /* objects/oHeart/Step_0.gml */
+    case OBJ_oHeart: pin_sety(p, p->y - (PI(1))); return 1;                          /* objects/oHeart/Step_0.gml */
     }
     return 0;
 }
@@ -258,7 +258,7 @@ int pdam_draw(int i)
 {
     struct pin *p = &PX(i);
     if (p->obj != OBJ_oDamsel) return p->obj == OBJ_oDamselKiss || p->obj == OBJ_oHeart;
-    p->xscale = p->facing == RIGHT ? -1 : 1;
+    pin_setxscale(p, p->facing == RIGHT ? -1 : 1);
     if (p->cost > 0) {
         p->cimg += 1;
         if (p->cimg > 9) p->cimg = 0;

@@ -47,6 +47,11 @@ $(OUT)/playhost_nc: playhost.c $(SRC) $(PSRC) $(ROOT)/src/game/*.h $(GEN)/playta
 	mkdir -p $(OUT)
 	$(CC) $(CFLAGS) -ffp-contract=off $(INC) -o $@ playhost.c $(SRC) $(PSRC)
 
+# the play code with struct pin's collision fields const (play.h PIN_CONST_CHECK): a write that bypasses the
+# pin_set* setters (and so the collision tree's dirty marks) is a compile error. Compile only (no binary)
+constcheck: $(GEN)/objects.h $(GEN)/gentables.h $(GEN)/playtables.h
+	for f in $(PSRC) playhost.c treeprobe.c; do $(CC) -std=c99 -fsyntax-only -Wall -Wno-unused-parameter -DPIN_CONST_CHECK $(INC) $$f || exit 1; done
+
 # binary64 with its operations counted (the num class of pnum.h: -DPLAY_COUNT, everything compiled as C++)
 $(OUT)/playhost_count: playhost.c $(SRC) $(PSRC) $(ROOT)/src/game/*.h $(GEN)/playtables.h
 	mkdir -p $(OUT)
@@ -59,4 +64,4 @@ sh2: $(GEN)/objects.h $(GEN)/gentables.h $(GEN)/playtables.h
 	for f in $(SRC) $(PSRC); do sh-elf-gcc -m2 -std=c99 -O2 -Wall -ffreestanding -fno-bit-tests $(INC) -c $$f -o $(OUT)/sh2/$$(basename $$f .c).o || exit 1; done
 	sh-elf-gcc -m2 -std=c99 -O2 -Wall -Wextra -ffreestanding -fno-bit-tests -c $(ROOT)/src/sh2/fma.c -o $(OUT)/sh2/fma.o
 
-.PHONY: all sh2
+.PHONY: all sh2 constcheck

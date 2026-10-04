@@ -1,6 +1,6 @@
 /* GameMaker 2024.14's collision tree and collision events (pcol.c): the hooks the play loop and the generator
- * call. Entries: play instance i is entry i; generator instance w is entry PIN_MAX + w while the level is
- * generated (inst.c calls inst_hook), renamed to its play index when the level is loaded (pw_reset). */
+ * call. Entries: play instance i is entry i; generator instance w is entry w while the level is generated (inst.c
+ * calls inst_hook), renamed to its play index when the level is loaded (pw_reset). */
 #ifndef PCOL_H
 #define PCOL_H
 #include <stdint.h>
@@ -32,7 +32,7 @@ void pcol_event_done(int i);           /* after an event of instance i: its own 
 /* playhost --tree-probe: what tools/tracer.py TRACE_TREE writes (collision_rectangle_list over the room) */
 int pcol_probe(int obj, int32_t *ids, int max);
 /* statistics for the cost report */
-struct pcol_stats { uint32_t inserts, removes, searches, visits, syncs, nodes_max, flushes; };
+struct pcol_stats { uint32_t inserts, removes, searches, visits, syncs, nodes_max, flushes, pairs_max; };
 extern struct pcol_stats pcol_st;
 
 /* generator hook (inst.h: inst_hook) */

@@ -305,10 +305,10 @@ void pen_parent_step(int i)
         p->xVel = 0;
         p->yVel = 0;
         p->myGrav = 0;
-        if (PL.facing == LEFT) { p->x = q->x - PI(12); p->facing = 0; }
-        if (PL.facing == RIGHT) { p->x = q->x - PI(4); p->facing = 1; }
-        if (PL.state == DUCKING && NLT(NABS(q->xVel), N(2))) p->y = q->y - PI(10);
-        else p->y = q->y - PI(12);
+        if (PL.facing == LEFT) { pin_setx(p, q->x - PI(12)); p->facing = 0; }
+        if (PL.facing == RIGHT) { pin_setx(p, q->x - PI(4)); p->facing = 1; }
+        if (PL.state == DUCKING && NLT(NABS(q->xVel), N(2))) pin_sety(p, q->y - PI(10));
+        else pin_sety(p, q->y - PI(12));
         p->depth = 1;
         if (PL.holdItem == NOONE || p->status < 98) p->held = 0;
     } else
@@ -426,7 +426,7 @@ static void snake_step(int i)
             p->xVel = 0;
         }
     }
-    if (isCollisionSolid(i)) p->y -= PI(2);                            /* :77 */
+    if (isCollisionSolid(i)) pin_sety(p, p->y - (PI(2)));                            /* :77 */
     if (p->status != E_STUNNED) {
         p->ispd = NEQ(p->xVel, N(0)) ? (img_t)0.2 : (img_t)0.4;
         pin_set_sprite(i, GSPR_sSnakeWalkL);
@@ -659,10 +659,10 @@ void scrCheckCollisions(int i)
 {
     struct pin *p = &PX(i);
     setCollisionBounds(i, 2, 6, 14, 16);
-    if (p->colLeft && !p->colRight) p->x += PI(1);
-    else if (p->colRight) p->x -= PI(1);
+    if (p->colLeft && !p->colRight) pin_setx(p, p->x + (PI(1)));
+    else if (p->colRight) pin_setx(p, p->x - (PI(1)));
     if (p->colLeft || p->colRight) p->xVel = NMUL(-p->xVel, N(0.5));
-    if (p->colTop && !p->colBot) p->y += PI(1);
+    if (p->colTop && !p->colBot) pin_sety(p, p->y + (PI(1)));
     else if (p->colBot) {
         if (NGT(p->yVel, N(1))) p->yVel = NMUL(-p->yVel, N(0.5));
         else if (NLT(NABS(p->yVel), N(1))) p->yVel = 0;
@@ -831,7 +831,7 @@ static void skeleton_step(int i)
             p->facing = p->facing == E_LEFT ? E_RIGHT : E_LEFT;
         p->xVel = p->facing == E_LEFT ? N(-1) : N(1);
     }
-    if (isCollisionSolid(i)) p->y -= PI(2);
+    if (isCollisionSolid(i)) pin_sety(p, p->y - (PI(2)));
     if (p->status != E_STUNNED) pin_set_sprite(i, p->status == 1 ? GSPR_sSkeletonWalkLeft : GSPR_sSkeletonLeft);
 }
 
@@ -841,10 +841,10 @@ static void fakebones_step(int i)
     struct pin *q;
     if (!eview(i, 16, 0)) return;
     if (!CP(X(i) + 8, Y(i) + 16, OBJ_oSolid)) {
-        PADDN(p->y, p->yVel);
+        pin_sety(p, PADDV(p->y, p->yVel));
         p->yVel += p->yAcc;
     }
-    if (CP(X(i) + 8, Y(i) + 15, OBJ_oSolid)) p->y -= PI(1);
+    if (CP(X(i) + 8, Y(i) + 15, OBJ_oSolid)) pin_sety(p, p->y - (PI(1)));
     q = &PX(pl());
     {
         double dy = PTOD(q->y) - (Y(i) + 8), dx = PTOD(q->x) - (X(i) + 8);
@@ -856,8 +856,8 @@ static void fakebones_step(int i)
 static void webball_step(int i)
 {
     struct pin *p = &PX(i);
-    PADDN(p->x, p->xVel);
-    PADDN(p->y, p->yVel);
+    pin_setx(p, PADDV(p->x, p->xVel));
+    pin_sety(p, PADDV(p->y, p->yVel));
     if (NLT(p->yVel, N(6))) p->yVel += N(0.2);
     if (NGT(p->life, N(0))) p->life -= N(1);
     else pin_set_sprite(i, GSPR_sWebCreate);
@@ -871,11 +871,11 @@ static void boulder_step(int i)
     moveTo(i, p->xVel, p->yVel, 0, 0);
     if (NLT(p->yVel, N(8))) p->yVel += p->myGrav;
     if (DLE(X(i) - 17, 16) && NLT(p->xVel, N(0))) {
-        p->x += PI(1);
+        pin_setx(p, p->x + (PI(1)));
         p->xVel = -p->xVel;
     }
     if (DGE(X(i) + 17, 656) && NGT(p->xVel, N(0))) {
-        p->x -= PI(1);
+        pin_setx(p, p->x - (PI(1)));
         p->xVel = -p->xVel;
     }
     if (isCollisionTop(i, 1) && NLT(p->yVel, N(0))) p->yVel = NMUL(-p->yVel, N(0.8));
@@ -892,8 +892,8 @@ static void boulder_step(int i)
     if (!CP(X(i), Y(i) + 16, OBJ_oSolid)) {
         p->colLeft = collision_rect_p(X(i) - 16, Y(i) - 16, X(i) - 8, Y(i) + 16, OBJ_oSolid, 0, i) != NOONE;
         p->colRight = collision_rect_p(X(i) + 8, Y(i) - 16, X(i) + 16, Y(i) + 16, OBJ_oSolid, 0, i) != NOONE;
-        if (p->colLeft && !p->colRight) p->x += PI(1);
-        else if (p->colRight && !p->colLeft) p->x -= PI(1);
+        if (p->colLeft && !p->colRight) pin_setx(p, p->x + (PI(1)));
+        else if (p->colRight && !p->colLeft) pin_setx(p, p->x - (PI(1)));
     }
     p->ispd = (img_t)(NTOD(NABS(p->xVel)) / 5);
     if (NLT(p->xVel, N(0))) pin_set_sprite(i, GSPR_sBoulderRotateL);
@@ -908,7 +908,7 @@ static void boulder_solid(int i, int o)
         p->xVel = NMUL(-p->xVel, N(0.5));
     else {
         if (NLT(NABS(p->xVel), N(1)) || DGT(Y(o), Y(i) + 13))
-            p->y -= PI(1);
+            pin_sety(p, p->y - (PI(1)));
         else {
             /* with other: tile_layer_find / tile_delete at depth 3 (drawing only), then the spikes on it */
             int sp = collision_point_p(X(o) + 8, Y(o) - 1, OBJ_oSpikes, 1, NOONE);   /* instance_position */
@@ -936,7 +936,7 @@ int pen_step(int i)
     case OBJ_oSkeleton: skeleton_step(i); return 1;
     case OBJ_oFakeBones: fakebones_step(i); return 1;
     case OBJ_oWebBall: webball_step(i); return 1;
-    case OBJ_oYellHelp: PSUBN(p->y, N(0.1)); return 1;
+    case OBJ_oYellHelp: pin_sety(p, PSUBV(p->y, N(0.1))); return 1;
     case OBJ_oBone:                                                    /* objects/oBone/Step_0.gml */
         detritus_step(i);
         if (isCollisionBottom(i, 1)) {
@@ -961,8 +961,8 @@ void pen_motion(void)
     for (k = 0; k < PW.n; k++) {
         struct pin *p = &PW.in[k];
         if (!p->alive || (p->hspeed == 0 && p->vspeed == 0)) continue;
-        p->x = (pos)((double)p->x + p->hspeed);
-        p->y = (pos)((double)p->y + p->vspeed);
+        pin_setx(p, (pos)((double)p->x + p->hspeed));
+        pin_sety(p, (pos)((double)p->y + p->vspeed));
     }
 }
 
@@ -1424,45 +1424,45 @@ void pen_moving_solids(void)
                 int brk;
                 if (xi > 0) {
                     brk = 0;
-                    for (; p->x < mstXPrev + PI(xi); p->x += PI(1)) {
+                    for (; p->x < mstXPrev + PI(xi); pin_setx(p, p->x + (PI(1)))) {
                         if (viscidTop_of(s) && cct(s, 1) && (viscidOk == 1 || viscidOk == 2)) {
-                            if (!isCollisionRight(c, 1)) { q->x += PI(1); viscidOk = 2; }
+                            if (!isCollisionRight(c, 1)) { pin_setx(q, q->x + (PI(1))); viscidOk = 2; }
                         } else if (ccr(s, 1)) {
                             if (isCollisionRight(c, 1)) { brk = 1; break; }
-                            q->x += PI(1);
+                            pin_setx(q, q->x + (PI(1)));
                         }
                         if (brk) break;
                     }
                 }
                 if (xi < 0) {
                     brk = 0;
-                    for (; p->x > mstXPrev + PI(xi); p->x -= PI(1)) {
+                    for (; p->x > mstXPrev + PI(xi); pin_setx(p, p->x - (PI(1)))) {
                         if (viscidTop_of(s) && cct(s, 1) && (viscidOk == 1 || viscidOk == 2)) {
-                            if (!isCollisionLeft(c, 1)) { q->x -= PI(1); viscidOk = 2; }
+                            if (!isCollisionLeft(c, 1)) { pin_setx(q, q->x - (PI(1))); viscidOk = 2; }
                         } else if (ccl(s, 1)) {
                             if (isCollisionLeft(c, 1)) { brk = 1; break; }
-                            q->x -= PI(1);
+                            pin_setx(q, q->x - (PI(1)));
                         }
                         if (brk) break;
                     }
                 }
                 if (yi > 0) {
-                    for (; p->y < mstYPrev + PI(yi); p->y += PI(1)) {
+                    for (; p->y < mstYPrev + PI(yi); pin_sety(p, p->y + (PI(1)))) {
                         if (viscidTop_of(s) && cct(s, 2)) {
-                            p->y += PI(5);
-                            if (!isCollisionBottom(c, 1)) q->y += PI(1);
-                            p->y -= PI(5);
+                            pin_sety(p, p->y + (PI(5)));
+                            if (!isCollisionBottom(c, 1)) pin_sety(q, q->y + (PI(1)));
+                            pin_sety(p, p->y - (PI(5)));
                         } else if (ccb(s, 1)) {
                             if (isCollisionBottom(c, 1)) break;
-                            q->y += PI(1);
+                            pin_sety(q, q->y + (PI(1)));
                         }
                     }
                 }
                 if (yi < 0) {
-                    for (; p->y > mstYPrev + PI(yi); p->y -= PI(1)) {
+                    for (; p->y > mstYPrev + PI(yi); pin_sety(p, p->y - (PI(1)))) {
                         if (cct(s, 1)) {
                             if (isCollisionTop(c, 1)) break;
-                            q->y -= PI(1);
+                            pin_sety(q, q->y - (PI(1)));
                         }
                         if (ccb(s, 1)) {
                             if (PL.jumpTime < PL.jumpTimeTotal) {
@@ -1474,8 +1474,8 @@ void pen_moving_solids(void)
                 }
                 if (viscidOk == 2) viscidOk = 0;
             } else {
-                p->x += PI(xi);
-                p->y += PI(yi);
+                pin_setx(p, p->x + (PI(xi)));
+                pin_sety(p, p->y + (PI(yi)));
             }
         }
     }

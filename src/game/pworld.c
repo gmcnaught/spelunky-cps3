@@ -30,20 +30,20 @@ int pin_add(int obj, pos x, pos y, int32_t id)
     }
     p->id = id;
     p->obj = (int16_t)obj;
-    p->spr = gobjspr[obj];
-    p->mask = -1;
+    PIN_WR(int16_t, p->spr) = gobjspr[obj];         /* a new instance: pcol_added takes it as it is */
+    PIN_WR(int16_t, p->mask) = -1;
     p->alive = 1;
     p->visible = pobj[obj].visible;
     p->persistent = pobj[obj].persistent;
-    p->x = x;
-    p->y = y;
+    PIN_WR(pos, p->x) = x;
+    PIN_WR(pos, p->y) = y;
     p->xprev = x;
     p->yprev = y;
     p->depth = objdefs[obj].depth;
     p->img = 0;
     p->ispd = 1;
-    p->xscale = p->yscale = 1;
-    p->angle = 0;
+    PIN_WR(double, p->xscale) = PIN_WR(double, p->yscale) = 1;
+    PIN_WR(double, p->angle) = 0;
     p->alpha = 1;
     for (k = 0; k < 12; k++)
         p->alarm[k] = -1;
@@ -84,7 +84,7 @@ void pin_set_sprite(int i, int spr)
 {
     struct pin *p = &PW.in[i];
     if (p->spr != spr) {
-        p->spr = (int16_t)spr;
+        PIN_WR(int16_t, p->spr) = (int16_t)spr;
         if (spr >= 0 && (p->img >= (img_t)psprite[spr].frames || p->img < 0))
             p->img = 0;
         pcol_mark(i);                                /* SetSpriteIndex: CollisionMarkDirty */

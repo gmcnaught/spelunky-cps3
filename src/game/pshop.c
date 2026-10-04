@@ -193,8 +193,8 @@ static void shopkeeper_step(int i)
     }
     if (p->status == S_IDLE) {                                         /* :108 */
         p->bounced = 0;
-        if (p->colLeft) p->x += PI(1);
-        if (p->colRight) p->x -= PI(1);
+        if (p->colLeft) pin_setx(p, p->x + (PI(1)));
+        if (p->colRight) pin_setx(p, p->x - (PI(1)));
         if (p->colLeft && p->colRight) p->status = S_ATTACK;
         p->facing = DLT(PTOD(q->x), X(i) + 8) ? E_LEFT : E_RIGHT;
         if (NLT(p->yVel, N(0)) && p->colTop) p->yVel = 0;
@@ -369,8 +369,8 @@ int pshop_step(int i)
     switch (p->obj) {
     case OBJ_oShopkeeper: shopkeeper_step(i); return 1;
     case OBJ_oBullet:                                                  /* objects/oBullet/Step_0.gml */
-        PADDN(p->x, p->xVel);
-        PADDN(p->y, p->yVel);
+        pin_setx(p, PADDV(p->x, p->xVel));
+        pin_sety(p, PADDV(p->y, p->yVel));
         return 1;
     }
     return 0;
@@ -440,15 +440,15 @@ static void shop_hit_player(int i, int c)
             if (DGT(PTOD(o->x), X(i) + 8)) {
                 p->facing = E_RIGHT;
                 pin_set_sprite(i, GSPR_sShopThrowL);
-                o->x = p->x;
-                o->y = p->y;
+                pin_setx(o, p->x);
+                pin_sety(o, p->y);
                 o->yVel = N(-6);
                 o->xVel = N(6);
             } else {
                 p->facing = E_LEFT;
                 pin_set_sprite(i, GSPR_sShopThrowL);
-                o->x = p->x + PI(16);
-                o->y = p->y;
+                pin_setx(o, p->x + PI(16));
+                pin_sety(o, p->y);
                 o->yVel = N(-6);
                 o->xVel = N(-6);
             }
@@ -456,7 +456,7 @@ static void shop_hit_player(int i, int c)
             PL.bounced = 0;
             PL.wallHurt = 1;
             if (PL.holdItem != NOONE) {
-                if (PX(PL.holdItem).type == T_GOLDIDOL) PX(PL.holdItem).y -= PI(8);
+                if (PX(PL.holdItem).type == T_GOLDIDOL) pin_sety(&PX(PL.holdItem), PX(PL.holdItem).y - (PI(8)));
                 scrDropItem(o->xVel, o->yVel);
             }
         }

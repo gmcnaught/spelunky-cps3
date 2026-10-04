@@ -82,7 +82,7 @@ void play_transition_start(int room)
         int i;
         if (!g->alive) continue;
         i = pin_add(g->obj, PI(g->x), PI(g->y), g->id);
-        PX(i).spr = g->spr;
+        pin_setspr(&PX(i), g->spr);
         PX(i).depth = g->depth;
         if (obj_is(g->obj, OBJ_oSolid)) PX(i).invincible = (g->flags & IF_INVINCIBLE) != 0;
     }
@@ -155,8 +155,8 @@ static void transition_alarm0(int i)
             if (TR.drawLoot == 0) {                                            /* :117 */
                 TR.drawPosX = 96;
                 TR.drawPosY = 91;
-                PX(sp).x = PI(96);
-                PX(sp).y = PI(91);
+                pin_setx(&PX(sp), PI(96));
+                pin_sety(&PX(sp), PI(91));
                 TR.drawLoot = 1;
             }
             /* the kill counts (P5: the Mines' kinds; the other areas' are 0 here) */
@@ -227,7 +227,7 @@ static void transition_step(int i)
 static void pdummy_step(int i)
 {
     struct pin *p = &PX(i);
-    PADDN(p->y, p->yVel);
+    pin_sety(p, PADDV(p->y, p->yVel));
     if (p->status != 99 && collision_point_p(PTOD(p->x) + 8, PTOD(p->y), OBJ_oDamselKiss, 0, NOONE) != NOONE) {   /* P5 */
         int person = instance_nearest_p(PTOD(p->x) + 8, PTOD(p->y), OBJ_oDamselKiss);
         if (!PX(person).trigger) {                                             /* not kissed */
@@ -245,7 +245,7 @@ static void pdummy_step(int i)
             if (p->spr != GSPR_sPExit && p->spr != GSPR_sDamselExit && p->spr != GSPR_sTunnelExit)
                 pin_set_sprite(i, GSPR_sPExit);
         } else
-            p->x += PI(2);
+            pin_setx(p, p->x + (PI(2)));
     } else if (p->status != 99)                                                /* STOPPED: nothing */
         PUNTR(4021);
 }
@@ -301,5 +301,5 @@ int ptrans_create(int i)
 
 void ptrans_draw(int i)
 {
-    if (PX(i).obj == OBJ_oPDummy) PX(i).xscale = PX(i).facing == 1 ? -1 : 1;  /* objects/oPDummy/Draw_0.gml */
+    if (PX(i).obj == OBJ_oPDummy) pin_setxscale(&PX(i), PX(i).facing == 1 ? -1 : 1);  /* objects/oPDummy/Draw_0.gml */
 }

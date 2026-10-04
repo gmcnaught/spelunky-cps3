@@ -81,6 +81,8 @@ typedef float pos;                            /* the runner keeps x, y as floats
 /* x += v (GML): the double sum stored back as a float */
 #define PADDN(dst, n) ((dst) = (pos)((double)(dst) + (double)(n)))
 #define PSUBN(dst, n) ((dst) = (pos)((double)(dst) - (double)(n)))
+#define PADDV(cur, n) ((pos)((double)(cur) + (double)(n)))     /* the value PADDN stores (pin_setx / pin_sety) */
+#define PSUBV(cur, n) ((pos)((double)(cur) - (double)(n)))
 #define NP(p)         ((num)(p))              /* pos -> num */
 #define PTOD(p)       ((double)(p))
 #define NFLOOR(a)     dfloor((double)(a))
@@ -113,6 +115,8 @@ typedef int32_t pos;                          /* s13.18 */
 #define PN(n)         ((pos)((n) >> 6))
 #define PADDN(dst, n) ((dst) += (pos)((n) >> 6))
 #define PSUBN(dst, n) ((dst) -= (pos)((n) >> 6))
+#define PADDV(cur, n) ((pos)((cur) + (pos)((n) >> 6)))
+#define PSUBV(cur, n) ((pos)((cur) - (pos)((n) >> 6)))
 #define NP(p)         ((num)((p) << 6))
 #define PTOD(p)       ((double)(p) / 262144.0)
 static inline int32_t fx_floor(int32_t a, int b) { return a >> b; }

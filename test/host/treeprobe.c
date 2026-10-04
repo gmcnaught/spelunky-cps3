@@ -40,8 +40,7 @@ int main(int argc, char **argv)
     pcol_remove_marked();
     dump();
     for (k = 0; k < nm; k++) {
-        PX(idx[move[k]]).x += PI(16);
-        pcol_mark(idx[move[k]]);
+        pin_setx(&PX(idx[move[k]]), PX(idx[move[k]]).x + PI(16));   /* SetPosition: CollisionMarkDirty */
     }
     dump();
     return 0;

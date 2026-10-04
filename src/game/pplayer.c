@@ -272,7 +272,7 @@ static void characterStepEvent(int i)
         PL.kJumped = 0;
         PL.ladderTimer = 10;
         PL.ladder = collision_point_p(PTOD(p->x), PTOD(p->y), OBJ_oLadder, 0, NOONE);
-        if (PL.ladder != NOONE) p->x = PX(PL.ladder).x + PI(8);
+        if (PL.ladder != NOONE) pin_setx(p, PX(PL.ladder).x + PI(8));
         if (PL.kLeft) PL.facing = LEFT;
         else if (PL.kRight) PL.facing = RIGHT;
         if (PL.kUp) {
@@ -471,8 +471,8 @@ static void characterStepEvent(int i)
             } else {
                 PL.state = JUMPING;
                 p->yAcc += NMULI(PL.initialJumpAcc, 2);
-                if (PL.facing == RIGHT) p->x -= PI(2);
-                else p->x += PI(2);
+                if (PL.facing == RIGHT) pin_setx(p, p->x - (PI(2)));
+                else pin_setx(p, p->x + (PI(2)));
             }
             PL.hangCount = PL.hangCountMax;
         }
@@ -496,12 +496,12 @@ static void characterStepEvent(int i)
                 PL.ladder = ladder;
                 if (ladder != NOONE) {
                     if (NABS(NP(p->x - (PX(ladder).x + PI(8)))) < N(4)) {
-                        p->x = PX(ladder).x + PI(8);
+                        pin_setx(p, PX(ladder).x + PI(8));
                         p->xVel = p->yVel = p->xAcc = p->yAcc = 0;
                         PL.state = CLIMBING;
                     }
                 } else {
-                    p->y += PI(1);
+                    pin_sety(p, p->y + (PI(1)));
                     PL.state = FALLING;
                     p->yAcc += p->grav;
                 }
@@ -537,10 +537,10 @@ static void characterStepEvent(int i)
         PL.ladder = ladder;
         if (ladder != NOONE) {
             if (NABS(NP(p->x - (PX(ladder).x + PI(8)))) < N(4)) {
-                p->x = PX(ladder).x + PI(8);
+                pin_setx(p, PX(ladder).x + PI(8));
                 if (collision_point_p(PTOD(p->x), PTOD(p->y), OBJ_oLadder, 0, NOONE) == NOONE &&
                     collision_point_p(PTOD(p->x), PTOD(p->y), OBJ_oLadderTop, 0, NOONE) == NOONE)
-                    p->y = PX(ladder).y + PI(14 - (gsprcol[p->spr].yo - 1));      /* :637 sprite_yoffset */
+                    pin_sety(p, PX(ladder).y + PI(14 - (gsprcol[p->spr].yo - 1)));      /* :637 sprite_yoffset */
                 p->xVel = p->yVel = p->xAcc = p->yAcc = 0;
                 PL.state = CLIMBING;
             }
@@ -614,7 +614,7 @@ static void characterStepEvent(int i)
             PL.state = DUCKTOHANG;
             if (PL.holdItem != NOONE) {
                 PX(PL.holdItem).held = 0;
-                if (PX(PL.holdItem).type == T_GOLDIDOL) PX(PL.holdItem).y -= PI(8);
+                if (PX(PL.holdItem).type == T_GOLDIDOL) pin_sety(&PX(PL.holdItem), PX(PL.holdItem).y - (PI(8)));
                 scrDropItem(N(-1), N(-4));
             }
             if (instance_exists_p(OBJ_oMonkey)) PUNTR(2010);
@@ -623,15 +623,15 @@ static void characterStepEvent(int i)
                    collision_point_p(x + 1, y + 9, OBJ_oSolid, 0, NOONE) == NOONE && PL.kRight) {
             PL.state = DUCKTOHANG;
             if (PL.holdItem != NOONE) {
-                if (PX(PL.holdItem).type == T_GOLDIDOL) PX(PL.holdItem).y -= PI(8);
+                if (PX(PL.holdItem).type == T_GOLDIDOL) pin_sety(&PX(PL.holdItem), PX(PL.holdItem).y - (PI(8)));
                 scrDropItem(N(1), N(-4));
             }
             if (instance_exists_p(OBJ_oMonkey)) PUNTR(2010);
         }
     }
     if (PL.state == DUCKTOHANG) {                                              /* :870 */
-        p->x = PL.xPrev;
-        p->y = PL.yPrev;
+        pin_setx(p, PL.xPrev);
+        pin_sety(p, PL.yPrev);
         p->xVel = p->yVel = p->xAcc = p->yAcc = 0;
         p->grav = 0;
     }
@@ -671,7 +671,7 @@ static void characterStepEvent(int i)
         int32_t slopeChangeInY;
         if (PL.maxSlope > 0 && platformCharacterIs(ON_GROUND) && NNE(p->xVel, N(0))) {
             slopeYPrev = p->y;
-            for (; p->y >= slopeYPrev - PI(PL.maxSlope); p->y -= PI(1))
+            for (; p->y >= slopeYPrev - PI(PL.maxSlope); pin_sety(p, p->y - (PI(1))))
                 if (PL.colTop)
                     break;
             slopeChangeInY = PFLOOR(slopeYPrev - p->y);
@@ -693,8 +693,8 @@ static void characterStepEvent(int i)
             if (DGT(dist, (xVelInteger < 0 ? -xVelInteger : xVelInteger))) {
                 double ratio;
                 int32_t axi = xVelInteger < 0 ? -xVelInteger : xVelInteger;
-                p->x = xPrev2;
-                p->y = yPrevHigh;
+                pin_setx(p, xPrev2);
+                pin_sety(p, yPrevHigh);
                 ratio = axi / dist * 0.9;
                 moveTo(i, NI(dround(xVelInteger * ratio)), NI(dround(yVelInteger * ratio + slopeChangeInY)),
                        &xVelInteger, &yVelInteger);
@@ -704,12 +704,12 @@ static void characterStepEvent(int i)
     }
     if (!PL.colBot && PL.maxDownSlope > 0 && xVelInteger != 0 && platformCharacterIs(ON_GROUND)) {   /* :1004 */
         pos upYPrev = p->y;
-        for (; p->y <= upYPrev + PI(PL.maxDownSlope); p->y += PI(1))
+        for (; p->y <= upYPrev + PI(PL.maxDownSlope); pin_sety(p, p->y + (PI(1))))
             if (PL.colBot) {
                 upYPrev = p->y;
                 break;
             }
-        p->y = upYPrev;
+        pin_sety(p, upYPrev);
     }
     characterSprite(i);                                                        /* :1018 */
     PL.statePrevPrev = PL.statePrev;
@@ -860,8 +860,8 @@ static void exit_level(int i)
                 door = instance_place_p(i, PTOD(p->x), PTOD(p->y), OBJ_oExit);
                 PG.damsels += 1;
                 PG.xdamsels += 1;
-                PX(h).x = PX(door).x + PI(8);
-                PX(h).y = PX(door).y + PI(8);
+                pin_setx(&PX(h), PX(door).x + PI(8));
+                pin_sety(&PX(h), PX(door).y + PI(8));
                 pin_set_sprite(h, GSPR_sDamselExit);
                 PX(h).status = 4;
                 PX(h).held = 0;
@@ -901,8 +901,8 @@ static void exit_level(int i)
     }
     door = instance_place_p(i, PTOD(p->x), PTOD(p->y), OBJ_oExit);              /* :859 */
     if (door != NOONE) {
-        p->x = PX(door).x + PI(8);
-        p->y = PX(door).y + PI(8);
+        pin_setx(p, PX(door).x + PI(8));
+        pin_sety(p, PX(door).y + PI(8));
     }
     PG.money += PG.collect;                                                    /* :867 */
     PG.xmoney += PG.collect;
@@ -990,7 +990,7 @@ static void hurt_logic(int i)
     PL.colSpikes = 0;                                                          /* :1652 */
     if (collision_rect_p(x - 4, y - 4, x + 4, y + 8, OBJ_oSpikes, 0, NOONE) != NOONE) PL.colSpikes = 1;
     if (PL.colSpikes && PL.dead) {
-        if (collision_point_p(x, y + 9, OBJ_oSolid, 0, NOONE) == NOONE) PADDN(p->y, N(0.05));
+        if (collision_point_p(x, y + 9, OBJ_oSolid, 0, NOONE) == NOONE) pin_sety(p, PADDV(p->y, N(0.05)));
         else p->myGrav = N(0.6);
     } else
         p->myGrav = N(0.6);
@@ -1294,14 +1294,14 @@ void pl_step(int i)
                 if (p->x < o->x) {
                     if (collision_point_p(px1 + 8, py1, OBJ_oSolid, 0, NOONE) == NOONE) {
                         double ox = PTOD(o->x), oy = PTOD(o->y);
-                        if (collision_rect_p(ox - 8, oy, ox - 7, oy + 16, OBJ_oSolid, 0, NOONE) == NOONE) o->x -= PI(8);
-                        else if (collision_rect_p(ox + 7, oy, ox + 8, oy + 16, OBJ_oSolid, 0, NOONE) == NOONE) o->x += PI(8);
+                        if (collision_rect_p(ox - 8, oy, ox - 7, oy + 16, OBJ_oSolid, 0, NOONE) == NOONE) pin_setx(o, o->x - (PI(8)));
+                        else if (collision_rect_p(ox + 7, oy, ox + 8, oy + 16, OBJ_oSolid, 0, NOONE) == NOONE) pin_setx(o, o->x + (PI(8)));
                         else t = 0;
                     } else t = 0;
                 } else if (collision_point_p(px1 - 8, py1, OBJ_oSolid, 0, NOONE) == NOONE) {
                     double ox = PTOD(o->x), oy = PTOD(o->y);
-                    if (collision_rect_p(ox + 7, oy, ox + 8, oy + 16, OBJ_oSolid, 0, NOONE) == NOONE) o->x += PI(8);
-                    else if (collision_rect_p(ox - 8, oy, ox - 7, oy + 16, OBJ_oSolid, 0, NOONE) == NOONE) o->x -= PI(8);
+                    if (collision_rect_p(ox + 7, oy, ox + 8, oy + 16, OBJ_oSolid, 0, NOONE) == NOONE) pin_setx(o, o->x + (PI(8)));
+                    else if (collision_rect_p(ox - 8, oy, ox - 7, oy + 16, OBJ_oSolid, 0, NOONE) == NOONE) pin_setx(o, o->x - (PI(8)));
                     else t = 0;
                 } else t = 0;
                 if (!t)
@@ -1555,8 +1555,8 @@ void pl_step(int i)
                         int door = instance_place_p(i, PTOD(p->x), PTOD(p->y), OBJ_oExit);
                         PG.damsels += 1;
                         PG.xdamsels += 1;
-                        PX(h).x = PX(door).x + PI(8);
-                        PX(h).y = PX(door).y + PI(8);
+                        pin_setx(&PX(h), PX(door).x + PI(8));
+                        pin_sety(&PX(h), PX(door).y + PI(8));
                         pin_set_sprite(h, GSPR_sDamselExit2);
                         PX(h).status = 4;
                         PX(h).held = 0;
@@ -1630,7 +1630,7 @@ void pl_animend(int i)
         if (PL.holdItem != NOONE) PX(PL.holdItem).visible = 1;
     } else if (p->spr == GSPR_sDuckToHangL || p->spr == GSPR_sDamselDtHL || p->spr == GSPR_sTunnelDtHL) {
         int obj;
-        p->y = p->y + PI(16);
+        pin_sety(p, p->y + PI(16));
         move_snap(i, 1, 8);
         p->xVel = p->yVel = p->xAcc = p->yAcc = 0;
         p->grav = 0;
@@ -1643,16 +1643,16 @@ void pl_animend(int i)
         }
         if (obj != NOONE) {
             PL.state = CLIMBING;
-            p->x = PX(obj).x + PI(8);
+            pin_setx(p, PX(obj).x + PI(8));
         } else if (PL.facing == LEFT) {
             PL.state = HANGING;
             PL.facing = RIGHT;
-            p->x = p->x - PI(6);
-            p->x += PI(1);
+            pin_setx(p, p->x - PI(6));
+            pin_setx(p, p->x + (PI(1)));
         } else {
             PL.state = HANGING;
             PL.facing = LEFT;
-            p->x = p->x + PI(6);
+            pin_setx(p, p->x + PI(6));
         }
     } else if (spr_is_exit(p->spr)) {
         if (PG.collect > 0) {
@@ -1684,14 +1684,14 @@ void pl_collision(int i, int other)
     } else if (obj_is(PX(other).obj, OBJ_oPushBlock)) {
         double dx = PTOD(p->x) - (PTOD(PX(other).x) + 8), dy = PTOD(p->y) - (PTOD(PX(other).y) + 8);
         if (dx * dx + dy * dy < 121 && p->y >= PX(other).y)
-            p->x = p->xprev;
+            pin_setx(p, p->xprev);
     }
 }
 
 /* scripts/characterDrawEvent: the drawing sets image_xscale from facing */
 void pl_draw(int i)
 {
-    PX(i).xscale = PL.facing == RIGHT ? -1 : 1;
+    pin_setxscale(&PX(i), PL.facing == RIGHT ? -1 : 1);
 }
 
 static int scrPlayerIsDucking(int i)
@@ -1729,12 +1729,12 @@ void scrUseItem(void)
                     ox = PTOD(r->x);
                     oy = PTOD(r->y);
                     if (p->x < r->x && collision_point_p(PTOD(p->x) + 2, PTOD(p->y), OBJ_oSolid, 0, NOONE) == NOONE) {
-                        if (collision_rect_p(ox - 8, oy, ox - 7, oy + 16, OBJ_oSolid, 0, NOONE) == NOONE) r->x -= PI(8);
-                        else if (collision_rect_p(ox + 7, oy, ox + 8, oy + 16, OBJ_oSolid, 0, NOONE) == NOONE) r->x += PI(8);
+                        if (collision_rect_p(ox - 8, oy, ox - 7, oy + 16, OBJ_oSolid, 0, NOONE) == NOONE) pin_setx(r, r->x - (PI(8)));
+                        else if (collision_rect_p(ox + 7, oy, ox + 8, oy + 16, OBJ_oSolid, 0, NOONE) == NOONE) pin_setx(r, r->x + (PI(8)));
                         else t = 0;
                     } else if (collision_point_p(PTOD(p->x) - 2, PTOD(p->y), OBJ_oSolid, 0, NOONE) == NOONE) {
-                        if (collision_rect_p(ox + 7, oy, ox + 8, oy + 16, OBJ_oSolid, 0, NOONE) == NOONE) r->x += PI(8);
-                        else if (collision_rect_p(ox - 8, oy, ox - 7, oy + 16, OBJ_oSolid, 0, NOONE) == NOONE) r->x -= PI(8);
+                        if (collision_rect_p(ox + 7, oy, ox + 8, oy + 16, OBJ_oSolid, 0, NOONE) == NOONE) pin_setx(r, r->x + (PI(8)));
+                        else if (collision_rect_p(ox - 8, oy, ox - 7, oy + 16, OBJ_oSolid, 0, NOONE) == NOONE) pin_setx(r, r->x - (PI(8)));
                         else t = 0;
                     }
                     if (!t) {
@@ -1755,7 +1755,7 @@ void scrUseItem(void)
                 pin_destroy(PL.holdItem);
                 PL.holdItem = NOONE;
             } else {
-                o->x = p->x;
+                pin_setx(o, p->x);
                 o->xVel = 0;
                 o->yVel = N(-12);
             }
@@ -1769,7 +1769,7 @@ void scrUseItem(void)
         if (o->type == T_DAMSEL) {                                             /* scrUseItem :596 (P5) */
             o->status = 2;
             o->counter = o->stunMax;
-            o->y -= PI(4);
+            pin_sety(o, o->y - (PI(4)));
         }
         o->held = 0;
         o->safe = 1;
@@ -1777,11 +1777,11 @@ void scrUseItem(void)
         if (PL.facing == LEFT) {
             if (o->heavy) o->xVel = N(-4) + p->xVel;
             else o->xVel = N(-8) + p->xVel;
-            if (collision_point_p(PTOD(p->x) - 8, PTOD(p->y), OBJ_oSolid, 0, NOONE) != NOONE) o->x += PI(8);
+            if (collision_point_p(PTOD(p->x) - 8, PTOD(p->y), OBJ_oSolid, 0, NOONE) != NOONE) pin_setx(o, o->x + (PI(8)));
         } else if (PL.facing == RIGHT) {
             if (o->heavy) o->xVel = N(4) + p->xVel;
             else o->xVel = N(8) + p->xVel;
-            if (collision_point_p(PTOD(p->x) + 8, PTOD(p->y), OBJ_oSolid, 0, NOONE) != NOONE) o->x -= PI(8);
+            if (collision_point_p(PTOD(p->x) + 8, PTOD(p->y), OBJ_oSolid, 0, NOONE) != NOONE) pin_setx(o, o->x - (PI(8)));
         }
         if (o->heavy) o->yVel = N(-2);
         else o->yVel = N(-3);
@@ -1791,7 +1791,7 @@ void scrUseItem(void)
         }
         if (PL.kDown) {
             if (platformCharacterIs(ON_GROUND)) {
-                o->y -= PI(2);
+                pin_sety(o, o->y - (PI(2)));
                 o->xVel = NMUL(o->xVel, N(0.6));
                 o->yVel = N(0.5);
             } else
@@ -1814,8 +1814,8 @@ void scrUseItem(void)
         else PL.holdItem = NOONE;
     }
     if (PL.kDown && PL.holdItem != NOONE) {                                    /* :679 */
-        PX(PL.holdItem).x = p->x;
-        PX(PL.holdItem).y = p->y;
+        pin_setx(&PX(PL.holdItem), p->x);
+        pin_sety(&PX(PL.holdItem), p->y);
     }
     if (PL.holdItem == NOONE) PL.pickupItemType = T_NONE;
 }

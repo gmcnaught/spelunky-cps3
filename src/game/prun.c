@@ -181,7 +181,7 @@ void play_level_start(int32_t next_id)
         {
             struct pin *p = &PX(i);
             int a;
-            p->spr = g->spr;
+            pin_setspr(p, g->spr);
             p->depth = g->depth;
             for (a = 0; a < 12; a++) p->alarm[a] = g->alarm[a];
             p->facing = g->facing;

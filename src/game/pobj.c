@@ -526,19 +526,19 @@ void item_step(int i)
         struct pin *pl = &PX(PL.idx);
         p->xVel = 0;
         p->yVel = 0;
-        if (PL.facing == LEFT) p->x = pl->x - PI(4);
-        if (PL.facing == RIGHT) p->x = pl->x + PI(4);
+        if (PL.facing == LEFT) pin_setx(p, pl->x - PI(4));
+        if (PL.facing == RIGHT) pin_setx(p, pl->x + PI(4));
         if (p->heavy) {
             if (p->type == T_GOLDIDOL || p->type == T_CRYSTALSKULL || p->type == T_LAMP || p->type == T_DAMSEL) {
-                if (PL.state == DUCKING && NLT(NABS(pl->xVel), N(2))) p->y = pl->y + PI(2);
-                else p->y = pl->y;
+                if (PL.state == DUCKING && NLT(NABS(pl->xVel), N(2))) pin_sety(p, pl->y + PI(2));
+                else pin_sety(p, pl->y);
             } else {
-                if (PL.state == DUCKING && NLT(NABS(pl->xVel), N(2))) p->y = pl->y - PI(2);
-                else p->y = pl->y - PI(4);
+                if (PL.state == DUCKING && NLT(NABS(pl->xVel), N(2))) pin_sety(p, pl->y - PI(2));
+                else pin_sety(p, pl->y - PI(4));
             }
         } else {
-            if (PL.state == DUCKING && NLT(NABS(pl->xVel), N(2))) p->y = pl->y + PI(4);
-            else p->y = pl->y + PI(2);
+            if (PL.state == DUCKING && NLT(NABS(pl->xVel), N(2))) pin_sety(p, pl->y + PI(4));
+            else pin_sety(p, pl->y + PI(2));
         }
         p->depth = 1;
         if (PL.holdItem == NOONE) p->held = 0;
@@ -563,8 +563,8 @@ void item_step(int i)
             if (NLT(NABS(p->xVel), N(0.1))) p->xVel = 0;
             else if (NNE(NABS(p->xVel), N(0))) p->xVel = NMUL(p->xVel, p->frictionFactor);
             if (NLT(NABS(p->yVel), N(1))) {
-                p->y -= PI(1);
-                if (!isCollisionBottom(i, 1)) p->y += PI(1);
+                pin_sety(p, p->y - (PI(1)));
+                if (!isCollisionBottom(i, 1)) pin_sety(p, p->y + (PI(1)));
                 p->yVel = 0;
             }
         }
@@ -573,23 +573,23 @@ void item_step(int i)
             PUNTR(1031);
         } else if (p->type == T_ARROW && NGT(NABS(p->xVel), N(6))) {
             if (p->colLeft) {
-                p->x -= PI(2);
+                pin_setx(p, p->x - (PI(2)));
                 p->xVel = 0;
                 p->yVel = 0;
             } else if (p->colRight) {
-                p->x += PI(2);
+                pin_setx(p, p->x + (PI(2)));
                 p->xVel = 0;
                 p->yVel = 0;
             }
             p->stuck = 1;
         } else if (p->colLeft && !p->stuck) {
-            if (!p->colRight) p->x += PI(1);
+            if (!p->colRight) pin_setx(p, p->x + (PI(1)));
         } else if (p->colRight && !p->stuck)
-            p->x -= PI(1);
+            pin_setx(p, p->x - (PI(1)));
         if (p->sticky && p->type == T_BOMB && p->spr == GSPR_sBombArmed) {
         } else if (isCollisionTop(i, 1)) {                                     /* :153 */
             if (NLT(p->yVel, N(0))) p->yVel = NMUL(-p->yVel, N(0.8));
-            else p->y += PI(1);
+            else pin_sety(p, p->y + (PI(1)));
             p->myGrav = N(0.6);
         }
         if (collision_rect_p(PTOD(p->x) - 3, PTOD(p->y) - 3, PTOD(p->x) + 3, PTOD(p->y) + 3, OBJ_oLava, 0, NOONE) != NOONE)
@@ -604,9 +604,9 @@ void item_step(int i)
         if (isCollisionRight(i, 1)) p->colRight = 1;
         if (isCollisionBottom(i, 1)) p->colBot = 1;
         if (isCollisionTop(i, 1)) p->colTop = 1;
-        if (p->colTop && !p->colBot) p->y += PI(1);
-        else if (p->colLeft && !p->colRight) p->x += PI(1);
-        else if (p->colRight && !p->colLeft) p->x -= PI(1);
+        if (p->colTop && !p->colBot) pin_sety(p, p->y + (PI(1)));
+        else if (p->colLeft && !p->colRight) pin_setx(p, p->x + (PI(1)));
+        else if (p->colRight && !p->colLeft) pin_setx(p, p->x - (PI(1)));
         else {
             p->xVel = 0;
             p->yVel = 0;
@@ -630,10 +630,10 @@ static void jar_step(int i, int skull)
     p->colTop = p->colLeft = p->colRight = p->colBot = 0;
     if (p->held) {
         struct pin *pl = &PX(PL.idx);
-        if (PL.facing == LEFT) p->x = pl->x - PI(4);
-        else if (PL.facing == RIGHT) p->x = pl->x + PI(4);
-        if (PL.state == DUCKING && NLT(NABS(pl->xVel), N(2))) p->y = pl->y + PI(4);
-        else p->y = pl->y;
+        if (PL.facing == LEFT) pin_setx(p, pl->x - PI(4));
+        else if (PL.facing == RIGHT) pin_setx(p, pl->x + PI(4));
+        if (PL.state == DUCKING && NLT(NABS(pl->xVel), N(2))) pin_sety(p, pl->y + PI(4));
+        else pin_sety(p, pl->y);
         p->depth = 1;
     } else {
         moveTo(i, p->xVel, p->yVel, 0, 0);
@@ -659,14 +659,14 @@ static void jar_step(int i, int skull)
             else if (NNE(NABS(p->xVel), N(0))) p->xVel = NMUL(p->xVel, N(0.3));
         }
         if (p->colLeft) {
-            if (!p->colRight) p->x += PI(1);
+            if (!p->colRight) pin_setx(p, p->x + (PI(1)));
             p->yVel = 0;
         } else if (p->colRight) {
-            p->x -= PI(1);
+            pin_setx(p, p->x - (PI(1)));
             p->yVel = 0;
         }
         if (isCollisionBottom(i, 0) && NLT(NABS(p->yVel), N(1))) {
-            p->y -= PI(1);
+            pin_sety(p, p->y - (PI(1)));
             p->yVel = 0;
         }
         p->depth = 100;
@@ -706,23 +706,23 @@ static void treasure_step(int i)
     if (NGT(p->yVel, N(8))) p->yVel = N(8);
     if (isCollisionTop(i, 1)) {
         if (NLT(p->yVel, N(0))) p->yVel = NMUL(-p->yVel, N(0.8));
-        else p->y += PI(1);
+        else pin_sety(p, p->y + (PI(1)));
     }
     if (p->colLeft || p->colRight) p->xVel = NMUL(-p->xVel, N(0.5));
     if (p->colBot) {
         if (NLT(NABS(p->xVel), N(0.1))) p->xVel = 0;
         else if (NNE(NABS(p->xVel), N(0))) p->xVel = NMUL(p->xVel, N(0.3));
-        p->y -= PI(1);
+        pin_sety(p, p->y - (PI(1)));
         if (!isCollisionBottom(i, 1)) {
-            p->y += PI(1);
+            pin_sety(p, p->y + (PI(1)));
             p->status = 0;                                                     /* status = STATIC (not state) */
         }
         p->yVel = 0;
     }
     if (p->colLeft) {
-        if (!p->colRight) p->x += PI(1);
+        if (!p->colRight) pin_setx(p, p->x + (PI(1)));
     } else if (p->colRight)
-        p->x -= PI(1);
+        pin_setx(p, p->x - (PI(1)));
     if (G.hasSpectacles || PG.hasUdjatEye) p->depth = 0;
     else p->depth = 101;
     NOPS(8);
@@ -760,8 +760,8 @@ static void rubble_step(int i)
 {
     struct pin *p = &PX(i);
     double x, y;
-    PADDN(p->x, p->xVel);
-    PADDN(p->y, p->yVel);
+    pin_setx(p, PADDV(p->x, p->xVel));
+    pin_sety(p, PADDV(p->y, p->yVel));
     p->yVel += p->yAcc;
     NOPS(3);
     x = PTOD(p->x);
@@ -793,11 +793,11 @@ static void ropethrow_step(int i)
     if (p->armed && NGE(p->yVel, N(0))) {
         move_snap(i, 16, 1);
         if (p->px < NP(p->x)) {
-            if (collision_point_p(PTOD(p->x) - 8, PTOD(p->y), OBJ_oSolid, 0, NOONE) == NOONE) p->x -= PI(8);
-            else p->x += PI(8);
+            if (collision_point_p(PTOD(p->x) - 8, PTOD(p->y), OBJ_oSolid, 0, NOONE) == NOONE) pin_setx(p, p->x - (PI(8)));
+            else pin_setx(p, p->x + (PI(8)));
         } else {
-            if (collision_point_p(PTOD(p->x) + 8, PTOD(p->y), OBJ_oSolid, 0, NOONE) == NOONE) p->x += PI(8);
-            else p->x -= PI(8);
+            if (collision_point_p(PTOD(p->x) + 8, PTOD(p->y), OBJ_oSolid, 0, NOONE) == NOONE) pin_setx(p, p->x + (PI(8)));
+            else pin_setx(p, p->x - (PI(8)));
         }
         pin_create(p->x, p->y, OBJ_oRopeTop);
         p = &PX(i);
@@ -809,11 +809,11 @@ static void ropethrow_step(int i)
     if (p->falling) {
         p->xVel = 0;
         p->yVel = 0;
-        p->y += PI(8);
+        pin_sety(p, p->y + (PI(8)));
         p->fallCount += 1;
         if (isCollisionBottom(i, 1) || p->fallCount > 16) {
             p->falling = 0;
-            p->y -= PI(8);
+            pin_sety(p, p->y - (PI(8)));
             pin_destroy(i);
         } else
             pin_create(p->x - PI(8), p->y, OBJ_oRope);
@@ -835,7 +835,7 @@ static void arrow_step(int i)
         else if (xv < 0 && yv > 0) p->direction = 180 + patan_deg(yv / -xv);
         else if (xv < 0) p->direction = 180;
         else if (!p->stuck) p->direction = 0;
-        p->angle = (float)p->direction;                                     /* image_angle: a float */
+        pin_setangle(p, (float)p->direction);                                     /* image_angle: a float */
     }
 }
 
@@ -865,11 +865,11 @@ static void whip_step(int i, int pre)
         return;
     }
     if (p->spr == (pre ? GSPR_sWhipPreR : GSPR_sWhipRight)) {
-        p->x = PX(PL.idx).x + PI(pre ? -16 : 16);
-        p->y = PX(PL.idx).y;
+        pin_setx(p, PX(PL.idx).x + PI(pre ? -16 : 16));
+        pin_sety(p, PX(PL.idx).y);
     } else if (p->spr == (pre ? GSPR_sWhipPreL : GSPR_sWhipLeft)) {
-        p->x = PX(PL.idx).x + PI(pre ? 16 : -16);
-        p->y = PX(PL.idx).y;
+        pin_setx(p, PX(PL.idx).x + PI(pre ? 16 : -16));
+        pin_sety(p, PX(PL.idx).y);
     }
 }
 
@@ -895,7 +895,7 @@ static void gameStepEvent(void)
                 p->yVel += p->myGrav;
                 if (NGT(p->yVel, N(8))) p->yVel = N(8);
                 NOPS(2);
-                for (; DLT(PTOD(p->y), PTOD(yMPrev) + NTOD(p->yVel)); p->y += PI(1)) {
+                for (; DLT(PTOD(p->y), PTOD(yMPrev) + NTOD(p->yVel)); pin_sety(p, p->y + (PI(1)))) {
                     if (place_meeting_p(j, PTOD(p->x), PTOD(p->y) + 1, OBJ_oSolid)) {
                         p->yVel = 0;
                         break;
@@ -999,20 +999,20 @@ void ev_step(int i)
         }
         break;
     case OBJ_oPoof:
-        PADDN(p->x, p->xVel);
-        PADDN(p->y, p->yVel);
+        pin_setx(p, PADDV(p->x, p->xVel));
+        pin_sety(p, PADDV(p->y, p->yVel));
         break;
-    case OBJ_oSmokePuff: PSUBN(p->y, p->yVel); break;
+    case OBJ_oSmokePuff: pin_sety(p, PSUBV(p->y, p->yVel)); break;
     case OBJ_oBurn:
-        PADDN(p->y, p->yVel);
+        pin_sety(p, PADDV(p->y, p->yVel));
         if (collision_point_p(PTOD(p->x), PTOD(p->y), OBJ_oSolid, 0, NOONE) != NOONE) pin_destroy(i);
         break;
     case OBJ_oItemsGet:
-        PSUBN(p->y, p->yVel);
-        p->x = PI(PCEIL(p->x));
-        p->y = PI(PCEIL(p->y));
+        pin_sety(p, PSUBV(p->y, p->yVel));
+        pin_setx(p, PI(PCEIL(p->x)));
+        pin_sety(p, PI(PCEIL(p->y)));
         break;
-    case OBJ_oBigCollect: p->y -= PI(1); break;
+    case OBJ_oBigCollect: pin_sety(p, p->y - (PI(1))); break;
     case OBJ_oRubble: case OBJ_oRubbleSmall: rubble_step(i); break;
     case OBJ_oPushBlock:                                                       /* inherited: no parent Step */
         if (collision_point_p(PTOD(p->x) + 8, PTOD(p->y) + 14, OBJ_oLava, 0, NOONE) != NOONE &&
@@ -1033,10 +1033,10 @@ void ev_step(int i)
         break;                                                                 /* firing = false; the rest commented */
     case OBJ_oBones:                                                           /* objects/oBones/Step_0.gml */
         if (collision_point_p(PTOD(p->x) + 8, PTOD(p->y) + 16, OBJ_oSolid, 0, NOONE) == NOONE) {
-            PADDN(p->y, p->yVel);
+            pin_sety(p, PADDV(p->y, p->yVel));
             p->yVel += p->yAcc;
         }
-        if (collision_point_p(PTOD(p->x) + 8, PTOD(p->y) + 15, OBJ_oSolid, 0, NOONE) != NOONE) p->y -= PI(1);
+        if (collision_point_p(PTOD(p->x) + 8, PTOD(p->y) + 15, OBJ_oSolid, 0, NOONE) != NOONE) pin_sety(p, p->y - (PI(1)));
         break;
     case OBJ_oGamepad: break;                                                  /* prun.c */
     default:
@@ -1118,7 +1118,7 @@ void ev_alarm(int i, int a)
             if (xAct > PFLOOR(p->x) - 16) xAct = PFLOOR(p->x) - 16;
             p->xAct = (int16_t)xAct;
             obj = pin_create(PI(xAct), p->y, OBJ_oArrowTrapTest);
-            PX(obj).xscale = dceil(((PFLOOR(PX(i).x) - 1) - xAct) / 16.0);
+            pin_setxscale(&PX(obj), dceil(((PFLOOR(PX(i).x) - 1) - xAct) / 16.0));
             PX(obj).trapID = (int16_t)i;
         }
         break;
@@ -1135,7 +1135,7 @@ void ev_alarm(int i, int a)
             if (xAct < 32) xAct = 32;
             p->xAct = (int16_t)xAct;
             obj = pin_create(PI(x + 16), p->y, OBJ_oArrowTrapTest);
-            PX(obj).xscale = dceil((xAct - 16) / 16.0);
+            pin_setxscale(&PX(obj), dceil((xAct - 16) / 16.0));
             PX(obj).trapID = (int16_t)i;
         }
         break;
