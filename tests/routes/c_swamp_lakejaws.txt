@@ -1,0 +1,16 @@
+# P7 reference (docs/CONTENT.md package B (swamp)): a forced lake level (rLevel3, global.lake); the player drops into
+# the lake; oJaws (the mega mouth, 64,592) swims, turns both ways, pauses, attacks the swimming player; he dies there
+# seed 279
+# level 6
+# globals lake=1
+# room rLevel3
+10 -
+8 NR
+4 NR
+16 -
+30 R
+30 L
+8 R
+8 NL
+30 LJ
+120 -

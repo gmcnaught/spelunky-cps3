@@ -1,6 +1,6 @@
 /* P7 package B (swamp): docs/CONTENT.md §2. Water (the player's swimming, oWaterSwim, oBubble, oDrip, checkWater),
  * piranhas and fish bones, dead fish, the cemetery (oZombie, oGrave, oVampire), the ghost (oGame :45, oGhost) and the
- * cape (oCape; the pickup is package E's). Translated statement for statement from refs/hd/src/objects/<obj>/<event>.gml
+ * cape (oCape; the pickup is package E's), the lake's mega mouth (oJaws). Translated statement for statement from refs/hd/src/objects/<obj>/<event>.gml
  * (line numbers in comments), overriding the weak defaults of pcontent.c.
  * GML keeps running after instance_destroy() inside an event: so does this code (RNG draws included). Function
  * arguments are evaluated last to first (instance_create(x + rand.., y + rand.., o) draws y's numbers first); the
@@ -14,8 +14,8 @@
 #include "pcontent.h"
 #include "../snd/sndgame.h"                     /* the GML sound calls (src/snd) */
 
-#define DIR(p)         (PE(p)->direction)       /* dir (oPiranha, oDeadFish, oVampire, oGhost) */
-#define BUBBLETIMER(p) (PEN(p)->turnTimer)      /* oPiranha / oDeadFish bubbleTimer */
+#define DIR(p)         (PE(p)->direction)       /* dir (oPiranha, oDeadFish, oVampire, oGhost, oJaws) */
+#define BUBBLETIMER(p) (PEN(p)->turnTimer)      /* oPiranha / oDeadFish / oJaws bubbleTimer */
 #define CANBITE(p)     (PE(p)->trigger)         /* oPiranha canBite */
 #define CAPEOPEN(p)    (PE(p)->trigger)         /* oCape open */
 #define VDEAD(p)       (PEN(p)->edead)          /* oVampire dead */
@@ -181,6 +181,24 @@ static int create(int i, int fromgen)
         PE(p)->xVel = 0;
         PE(p)->yVel = 0;
         PE(p)->yAcc = N(0.6);
+        return 1;
+    case OBJ_oJaws:                                            /* objects/oJaws/Create_0.gml (oEnemy's first) */
+        pen_enemy_create(i);
+        p->type = T_MEGAMOUTH;
+        p->ispd = (img_t)0.5;
+        setCollisionBounds(i, 0, 0, 48, 32);
+        PE(p)->xVel = 0;
+        PE(p)->yVel = 0;
+        PE(p)->xAcc = N(0.2);
+        PE(p)->yAcc = N(0.2);
+        DIR(p) = 180;
+        PE(p)->facing = 0;
+        PE(p)->hp = 40;
+        p->invincible = 0;
+        BUBBLETIMER(p) = 0;
+        PE(p)->canPickUp = 0;
+        PE(p)->status = 0;
+        PE(p)->counter = 0;
         return 1;
     case OBJ_oGrave:                                           /* objects/oGrave/Create_0.gml (oSolid's first) */
         if (!fromgen) {
@@ -368,6 +386,117 @@ static void fishbone_step(int i)
         else DIR(p) = 0;
         pin_setangle(p, (float)DIR(p));                        /* image_angle: a float */
     }
+}
+
+/* ---- oJaws (the mega mouth): objects/oJaws/Step_0.gml ------------------------------------------------------ */
+enum { J_IDLE, J_ATTACK, J_PAUSE, J_TURN };
+
+static void jaws_dir_reset(struct pin *p)                      /* if (dir > 90 and dir < 270) dir = 180 else 0 */
+{
+    DIR(p) = DGT(DIR(p), 90) && DLT(DIR(p), 270) ? 180 : 0;
+}
+
+static void jaws_turn_left(int i)                              /* status = TURN; dir = 180; x -= 48; sJawsTurnL */
+{
+    struct pin *p = &PX(i);
+    PE(p)->status = J_TURN;
+    DIR(p) = 180;
+    pin_setx(p, p->x - PI(48));
+    pin_set_sprite(i, GSPR_sJawsTurnL);
+    pin_setimg(&PX(i), 0);
+}
+
+static void jaws_turn_right(int i)                             /* status = TURN; dir = 0; sJawsTurnR */
+{
+    struct pin *p = &PX(i);
+    PE(p)->status = J_TURN;
+    DIR(p) = 0;
+    pin_set_sprite(i, GSPR_sJawsTurnR);
+    pin_setimg(&PX(i), 0);
+}
+
+static void jaws_step(int i)
+{
+    struct pin *p = &PX(i);
+    int pl = PL.idx;
+    if (!eview(i, 48, 48)) return;                             /* :1 the view +- 48 */
+    if (!CP(X(i) + 8, Y(i) + 16, OBJ_oWater)) PE(p)->hp -= 1;  /* :5 */
+    if (PE(p)->hp < 1) {                                       /* :10 */
+        int k;
+        kill_count(i, &PG.megamouths);
+        {
+            int yy = RAND(0, 4), xx = RAND(0, 4);
+            scrCreateBlood(i, PX(i).x + PI(22 + xx), PX(i).y + PI(14 + yy), 4);
+        }
+        for (k = 0; k < 4; k++) {
+            int yy = RAND(0, 6), xx = RAND(0, 4);
+            pin_create(PX(i).x + PI(22 + xx), PX(i).y + PI(14 + yy), OBJ_oBone);
+        }
+        for (k = 0; k < 4; k++) {
+            int obj = pin_create(PX(i).x + PI(16), PX(i).y + PI(16), OBJ_oCrate);
+            int a = RAND(0, 3), b = RAND(0, 3);
+            PE(&PX(obj))->xVel = NI(a - b);
+            PE(&PX(obj))->yVel = NI(-RAND(1, 2));
+        }
+        pin_destroy(i);
+    }
+    p = &PX(i);
+    /* :34 dist = point_distance(x, y, oPlayer1.x, oPlayer1.y): not read */
+    if (PE(p)->status == J_IDLE) {                             /* :36 */
+        if (DEQ(DIR(p), 0)) {
+            if (CP(X(i) + 18, Y(i) + 16, OBJ_oWater) && !CP(X(i) + 18, Y(i) + 16, OBJ_oSolid)) moveTo(i, N(2), 0, 0, 0);
+            else if (collision_rect_p(X(i) - 32, Y(i), X(i), Y(i) + 32, OBJ_oSolid, 0, NOONE) == NOONE) jaws_turn_left(i);
+        } else {
+            if (CP(X(i) - 2, Y(i) + 16, OBJ_oWater) && !CP(X(i) - 2, Y(i) + 16, OBJ_oSolid)) moveTo(i, N(-2), 0, 0, 0);
+            else if (collision_rect_p(X(i) + 16, Y(i), X(i) + 48, Y(i) + 32, OBJ_oSolid, 0, NOONE) == NOONE)
+                jaws_turn_right(i);
+        }
+        p = &PX(i);
+        if (!isCollisionBottom(i, 2)) pin_sety(p, p->y + PI(1));   /* :66 */
+        if (PL.swimming && !PL.dead) PE(p)->status = J_ATTACK;
+    } else if (PE(p)->status == J_PAUSE) {                     /* :76 */
+        if (PE(p)->counter > 0) PE(p)->counter -= 1;
+        else {
+            PE(p)->status = J_IDLE;
+            jaws_dir_reset(p);
+        }
+    } else if (PE(p)->status == J_ATTACK && instance_exists_p(OBJ_oPlayer1)) {   /* :85 */
+        if (PL.swimming && !PL.dead) {
+            int turn = 0;
+            if (p->spr == GSPR_sJawsLeft || p->spr == GSPR_sJawsRight)
+                DIR(p) = point_direction_d(X(i) + 8, Y(i) + 16, X(pl), Y(pl) - 8);
+            if (DLT(X(pl), X(i) + 8)) {
+                if (p->spr == GSPR_sJawsRight &&
+                    collision_rect_p(X(i) - 32, Y(i), X(i), Y(i) + 32, OBJ_oSolid, 0, NOONE) == NOONE) {
+                    jaws_turn_left(i);
+                    turn = 1;
+                }
+            } else {
+                if (p->spr == GSPR_sJawsLeft && !CP(X(i) - 2, Y(i) + 16, OBJ_oSolid)) {
+                    jaws_turn_right(i);
+                    turn = 1;
+                }
+            }
+            p = &PX(i);
+            if (!turn) {                                       /* :117 */
+                double r = degtorad_d(DIR(p));
+                double cx = X(i) + pcos_cr(r), cy = Y(i) - psin_cr(r);
+                if (CP(cx, cy, OBJ_oWater) && !CP(cx, cy, OBJ_oSolid)) move_dir(i, 3, DIR(p));
+            }
+        } else {
+            PE(p)->status = J_IDLE;
+            jaws_dir_reset(p);
+        }
+    }
+    p = &PX(i);
+    if (BUBBLETIMER(p) > 0) BUBBLETIMER(p) -= 1;               /* :133 */
+    else {
+        pin_create(p->x, p->y + PI(16), OBJ_oBubble);
+        BUBBLETIMER(&PX(i)) = 40;                              /* bubbleTimerMax */
+    }
+    p = &PX(i);
+    if (p->spr == GSPR_sJawsLeft) setCollisionBounds(i, 0, 0, 64, 32);          /* :140 */
+    else if (p->spr == GSPR_sJawsRight) setCollisionBounds(i, -48, 0, 16, 32);
 }
 
 /* ---- oZombie: objects/oZombie/Step_0.gml ------------------------------------------------------------------ */
@@ -855,6 +984,7 @@ int pswamp_ev(int ev, int i, int arg)
         case OBJ_oGhost: ghost_step(i); return 1;
         case OBJ_oCape: cape_step(i); return 1;
         case OBJ_oDrip: rubblepiece_step(i); return 1;
+        case OBJ_oJaws: jaws_step(i); return 1;
         case OBJ_oBubble:                                      /* objects/oBubble/Step_0.gml */
             pin_sety(p, PADDV(p->y, PE(p)->yVel));
             if (!CP(X(i), Y(i), OBJ_oWater)) pin_destroy(i);
@@ -870,6 +1000,19 @@ int pswamp_ev(int ev, int i, int arg)
         return 0;
     case FEV_ANIMEND:
         if (o == OBJ_oBubble) { pin_destroy(i); return 1; }   /* objects/oBubble/Other_7.gml */
+        if (o == OBJ_oJaws) {                                  /* objects/oJaws/Other_7.gml */
+            if (p->spr == GSPR_sJawsTurnL) {
+                pin_set_sprite(i, GSPR_sJawsLeft);
+                PE(p)->status = J_PAUSE;
+                PE(p)->counter = 40;
+            } else if (p->spr == GSPR_sJawsTurnR) {
+                pin_set_sprite(i, GSPR_sJawsRight);
+                PE(p)->status = J_PAUSE;
+                PE(p)->counter = 40;
+                pin_setx(&PX(i), PX(i).x + PI(48));
+            }
+            return 1;
+        }
         if (o == OBJ_oGhost) {                                 /* objects/oGhost/Other_7.gml */
             if (p->spr == GSPR_sGhostTurnRight) pin_set_sprite(i, GSPR_sGhostRight);
             else if (p->spr == GSPR_sGhostTurnLeft) pin_set_sprite(i, GSPR_sGhostLeft);

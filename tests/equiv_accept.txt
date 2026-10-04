@@ -3,3 +3,4 @@
 # Accepted only while the route check passes and the first gbag difference is at exactly this record.
 p4_bomb_throw_s3 172 explosion debris visited in another order: gold chunk / nugget resting positions a few px apart, money equal
 c_temple_olmec_s1 768 explosion debris visited in another order: gold chunk resting positions a few px apart, money equal
+c_swamp_lakejaws_s279 186 piranhas hitting the swimming player in one step visited in another order: oBlood / oBloodTrail made at his position 7 px apart, life sequence equal
