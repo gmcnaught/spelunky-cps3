@@ -31,7 +31,7 @@ void calcBounds(int i, double *lb, double *tb, double *rb, double *bb)
 }
 
 /* calculateCollisionBounds as ints when x and y are whole numbers (then the rounding below is the identity) */
-static int ibounds(int i, int32_t *lb, int32_t *tb, int32_t *rb, int32_t *bb)
+static inline __attribute__((always_inline)) int ibounds(int i, int32_t *lb, int32_t *tb, int32_t *rb, int32_t *bb)
 {
     const struct pin *p = &PX(i);
     int32_t x, y;

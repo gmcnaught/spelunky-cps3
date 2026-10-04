@@ -312,7 +312,22 @@ int pcol_count(int obj);
 int collision_line_i(int32_t x1, int32_t y1, int32_t x2, int32_t y2, int obj, int prec, int notme_self);
 int collision_rect_i(int32_t x1, int32_t y1, int32_t x2, int32_t y2, int obj, int prec, int notme_self);
 int collision_line_any_i(int32_t x1, int32_t y1, int32_t x2, int32_t y2, int obj, int prec, int notme_self); /* != NOONE */
-int pin_xy_int(int i, int32_t *x, int32_t *y);    /* x, y as ints when both are whole numbers */
+/* v as an int in (-30000, 30000) when it is a whole number; x and y as ints when both are (inline: the results stay
+   in registers, no stack traffic in the collision helpers) */
+static inline int pos_int(pos v, int32_t *o)
+{
+#ifdef PLAY_FIXED
+    if ((v & ((1 << PFRAC_BITS) - 1)) != 0) return 0;
+    *o = v >> PFRAC_BITS;
+    return *o > -30000 && *o < 30000;
+#else
+    return fwhole(v, o) && *o > -30000 && *o < 30000;
+#endif
+}
+static inline int pin_xy_int(int i, int32_t *x, int32_t *y)
+{
+    return pos_int(PW.in[i].x, x) && pos_int(PW.in[i].y, y);
+}
 /* the resting-object skip (pobj.c): the solid summary's change clock, whether a region's cells kept still since a
    clock value, and a count of pw_changed calls on one instance */
 uint32_t pw_rest_clock(void);
