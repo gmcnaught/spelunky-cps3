@@ -88,7 +88,7 @@ static int create(int i, int fromgen)
     const struct inst *g = play_gen_inst;
     switch (p->obj) {
     case OBJ_oPiranha: case OBJ_oDeadFish:                     /* objects/oPiranha|oDeadFish/Create_0.gml */
-        if (p->obj == OBJ_oPiranha) p->type = T_ENONE;         /* type = "Piranha" (tested by object here) */
+        if (p->obj == OBJ_oPiranha) p->type = T_PIRANHA;       /* type = "Piranha" (oDeadFish keeps "NONE") */
         p->ispd = (img_t)0.5;
         setCollisionBounds(i, 0, 0, 8, 8);
         PE(p)->xVel = 0;
@@ -131,7 +131,7 @@ static int create(int i, int fromgen)
         setCollisionBounds(i, 2, 0, sprw(i) - 2, sprh(i));
         PE(p)->xVel = N(2.5);
         p->ispd = (img_t)0.5;
-        p->type = T_ENONE;                                     /* type = "Vampire" (tested by object here) */
+        p->type = T_VAMPIRE;                                   /* type = "Vampire" */
         PE(p)->hp = 6;
         p->invincible = 0;
         PE(p)->myGrav = N(0.2);
@@ -1053,17 +1053,6 @@ int pswamp_enemy(int site, int e, int arg)
             return 1;
         }
         return o->obj == OBJ_oVampire;                         /* bloodless (and its own collision event) */
-    case 5010:                                                 /* oItem Step :245, oEnemy Step :180: type "Vampire" */
-        if (o->obj != OBJ_oVampire) return 0;
-        if (arg == 0 ? PE(o)->status != E_STUNNED : PE(o)->status < E_STUNNED) {
-            /* scrCreateBlood(x + 8, y + 8, 1): bloodless */
-            PE(o)->hp -= 1;
-            PE(o)->status = E_STUNNED;
-            PE(o)->counter = PEN(o)->stunTime;
-            PE(o)->yVel = N(-6);
-            snd_play(SND_xhit);                                /* oItem :263, oEnemy :198 */
-        }
-        return 1;
     case 5016:                                                 /* oItem Step :243: vampires are weak to stakes */
         if (o->obj != OBJ_oVampire) return 0;
         if (PE(o)->status != 98) PE(o)->hp -= 3;
