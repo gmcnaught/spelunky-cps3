@@ -646,6 +646,8 @@ static uint8_t gen_pending;            /* a level was generated: the next pw_res
 static uint8_t quiet_any;              /* some entry has EF_NOSNAP */
 
 static int eobj(int e) { return gmode ? W.in[e].obj : PW.in[e].obj; }
+/* creation order of entries: the index in the generator, the creation number in play (slots are reused) */
+static int32_t ekey(int e) { return gmode ? e : pw_seq[e]; }
 static int esolid(int e) { return objdefs[eobj(e)].solid; }
 static int emember(int e) { return (oinfo[eobj(e)] & (OI_MEMBER | OI_DYN)) || esolid(e); }
 
@@ -862,7 +864,7 @@ static void stk_compact(void)
     for (k = 0; k < nstk; k++) {
         int16_t e = stk[k];
         if (!(ef[e] & EF_STALE)) continue;
-        for (j = n; j > 0 && stk[j - 1] > e; j--) stk[j] = stk[j - 1];
+        for (j = n; j > 0 && ekey(stk[j - 1]) > ekey(e); j--) stk[j] = stk[j - 1];
         if (j > 0 && stk[j - 1] == e) {                 /* a repeat: undo the shift */
             for (; j < n; j++) stk[j] = stk[j + 1];
             continue;
@@ -956,7 +958,7 @@ static void touch_stale(int obj, int notme, int upto)
     stk_compact();
     for (k = 0; k < nstk; k++) {
         int e = stk[k], alive = gmode ? W.in[e].alive : PW.in[e].alive;
-        if (upto >= 0 && e > upto) break;
+        if (upto >= 0 && ekey(e) > ekey(upto)) break;
         if (e == notme || !alive || !obj_is(eobj(e), obj) || !(ef[e] & EF_STALE)) continue;
         touch_e(e);
     }
@@ -1023,7 +1025,7 @@ static void remove_marked(void)
     int k, j, many = npend >= 251;
     for (k = 1; k < npend; k++) {                     /* creation order (the active list) */
         int16_t v = pend[k];
-        for (j = k; j > 0 && pend[j - 1] > v; j--) pend[j] = pend[j - 1];
+        for (j = k; j > 0 && ekey(pend[j - 1]) > ekey(v); j--) pend[j] = pend[j - 1];
         pend[j] = v;
     }
     for (k = 0; k < npend; k++) {
@@ -1047,11 +1049,11 @@ static void remove_marked(void)
 /* RebuildTree(false): every instance in creation order: marked dirty, put in */
 static void rebuild_all(void)
 {
-    int e;
+    int e, j;
     rt_reset();
     for (e = 0; e < ENT_MAX; e++) ef[e] &= (uint8_t)~EF_TREE;
-    for (e = 0; e < (gmode ? W.n : PW.n); e++)
-        if ((gmode ? W.in[e].alive : PW.in[e].alive) && !edead(e)) {
+    for (j = 0; j < (gmode ? W.n : PW.nord); j++)
+        if (e = gmode ? j : pw_ord[j], (gmode ? W.in[e].alive : PW.in[e].alive) && !edead(e)) {
             mark_e(e);
             ef[e] &= (uint8_t)~EF_STALE;
             cupdate(e);
@@ -1155,11 +1157,11 @@ static int query_e(int obj, int gen)
     if (cnt == 0) return -1;
     if (cnt < rn[rroot].level) return 2;
     if (!(oinfo[obj] & (OI_MEMBER | OI_DYN))) {
-        int e, n = gen ? W.n : PW.n;
+        int e, n = gen ? W.n : PW.nord;
         set_dyn(obj);
         for (e = 0; e < n; e++) {
-            int ent = e;
-            int alive = gen ? W.in[e].alive : PW.in[e].alive;
+            int ent = gen ? e : pw_ord[e];
+            int alive = gen ? W.in[ent].alive : PW.in[ent].alive;
             struct rbr b;
             if (!alive || edead(ent) || !obj_is(eobj(ent), obj) || (ef[ent] & EF_TREE)) continue;
             if (!gen) sync1(ent);

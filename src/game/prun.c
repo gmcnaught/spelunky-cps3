@@ -127,23 +127,21 @@ static void view_update(void)
  * animation (oGame's image_index 1) but no drawing (the player's image_xscale 1). */
 static void draw_and_view(void)
 {
-    int k, j, m = 0, n0 = PW.n;
-    /* the instances with a Draw event in creation order (the objects' lists merged), then any created meanwhile
-       (indices from n0 on, as the scan of every instance reached them) */
-    if (evobj0[16] == 0) evobj_init();
-    for (j = evobj0[EVK_DRAW]; j < evobj0[EVK_DRAW + 1]; j++)
-        for (k = pw_ohead[evobj[j]]; k >= 0; k = pw_inext[k]) {
-            int a = m++;
-            while (a > 0 && order[a - 1] > k) { order[a] = order[a - 1]; a--; }
-            order[a] = (int16_t)k;
-        }
+    int k, j, m = 0, n0 = PW.nord;
+    /* the instances with a Draw event in creation order (an object with an event is not terrain: the list of the
+       alive non-terrain instances, pworld.c, in creation order), then any created meanwhile (pw_ord from n0 on,
+       as the scan of every instance reached them) */
+    for (k = pw_nthead; k >= 0; k = pw_ntnext[k])
+        if (objev(PW.in[k].obj) & EV_DRAW) order[m++] = (int16_t)k;
     for (j = 0; j < m; j++) {
         k = order[j];
         if (PW.in[k].alive && PW.in[k].visible) { ev_draw(k); pcol_event_done(k); }
     }
-    for (k = n0; k < PW.n; k++)
+    for (j = n0; j < PW.nord; j++) {
+        k = pw_ord[j];
         if (PW.in[k].alive && PW.in[k].visible && (pobj[PW.in[k].obj].ev & EV_DRAW))
             { ev_draw(k); pcol_event_done(k); }
+    }
     ptrans_draw_gui();                                                         /* Draw GUI (after Draw) */
     view_update();
     PW.vdirty = 0;
@@ -156,8 +154,11 @@ static uint32_t fbits(float f) { union { float f; uint32_t u; } v; v.f = f; retu
    goes 0 -> 1 -> 0 with an Animation End: the same without the float arithmetic */
 static void animate(void)
 {
-    int k, n = PW.n, next;
-    for (k = pw_ahead; k >= 0 && k < n; k = next) {   /* the instances of the step's start, creation order */
+    int k, next, ev = 0;
+    int16_t s0 = PW.seq;
+    /* the instances of the step's start, creation order: only an Animation End event creates instances (appended
+       to the list), so the creation number is looked at only after one ran */
+    for (k = pw_ahead; k >= 0 && !(ev && pw_seq[k] >= s0); k = next) {
         struct pin *p = &PW.in[k];
         next = pw_anext[k];
         PWST(anim, 1);
@@ -172,16 +173,16 @@ static void animate(void)
             play_cur_obj = p->obj;
             if (fbits(p->img) == 0 && fbits(p->ispd) == 0x3f800000u && fbits(sp) == 0x3f800000u &&
                 fbits(fr) == 0x3f800000u) {
-                if (pobj[p->obj].ev & EV_ANIMEND) { ev_animend(k); pcol_event_done(k); }
+                if (pobj[p->obj].ev & EV_ANIMEND) { ev_animend(k); pcol_event_done(k); ev = 1; }
                 continue;
             }
             pin_setimg(p, p->img + p->ispd * sp);
             if (p->img >= fr) {
                 pin_setimg(p, p->img - fr);
-                if (pobj[p->obj].ev & EV_ANIMEND) { ev_animend(k); pcol_event_done(k); }
+                if (pobj[p->obj].ev & EV_ANIMEND) { ev_animend(k); pcol_event_done(k); ev = 1; }
             } else if (p->img < 0) {
                 pin_setimg(p, p->img + fr);
-                if (pobj[p->obj].ev & EV_ANIMEND) { ev_animend(k); pcol_event_done(k); }
+                if (pobj[p->obj].ev & EV_ANIMEND) { ev_animend(k); pcol_event_done(k); ev = 1; }
             }
         }
     }
@@ -413,5 +414,6 @@ int play_step(uint16_t keys, void (*record_cb)(int phase))
         return room_change();
     pcol_remove_marked();                                                      /* DoAStep_Draw: RemoveMarked */
     draw_and_view();                                                           /* 4 */
+    pw_release();                                                              /* the removed slots go back */
     return 0;
 }

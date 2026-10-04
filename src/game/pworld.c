@@ -1,6 +1,7 @@
 /* Play world: instances and GameMaker 2024.14's collision functions (rules and evidence: play.h).
  * Searches return the oldest matching instance (P2: collision_point, instance_place, instance_find, obj.var). */
 #include "play.h"
+#include "pint.h"                 /* PL (pw_release) */
 #include "pcol.h"
 #include "inst.h"                 /* GRID_W, GRID_H: the solid grid covers the generator's level grid */
 
@@ -22,6 +23,7 @@ static int spr_of(const struct pin *p) { return p->mask >= 0 ? p->mask : p->spr;
 static void grid_reset(void);
 static void grid_unlink(int i);
 static void grid_dirty(int i);
+static void grid_flush(void);
 static int16_t ghead[GRID_H][GRID_W];       /* the oSolid family (point queries) */
 static int16_t thead[GRID_H][GRID_W];       /* the other terrain (the drawing only) */
 static int tmaxw, tmaxh;
@@ -33,6 +35,22 @@ static int gmaxw, gmaxh;
 /* ---- per-object instance lists: the alive instances of each object in creation order (index order), and the
    alive count of each object with its descendants. Linked at pin_add, unlinked when alive goes to 0 ------------ */
 int16_t pw_ohead[OBJ_COUNT], pw_inext[PIN_MAX];
+int16_t pw_seq[PIN_MAX];
+int16_t pw_ord[PIN_MAX];
+/* the free slots freel[0 .. nfree) (taken last in, first out), and the removed ones waiting for the step's end at
+   the top, freel[PIN_MAX - 1 - k] for k < nrmq (a slot is in one part at most) */
+static int16_t freel[PIN_MAX];
+#ifndef PW_RELEASE_BATCH
+#define PW_RELEASE_BATCH 64
+#endif
+#define PW_RELEASE_ROOM 256
+#ifndef PW_SEQ_RENUM
+#define PW_SEQ_RENUM (32766 - PIN_MAX)           /* at most PIN_MAX creations between two releases */
+#endif
+#define rmq(k) freel[PIN_MAX - 1 - (k)]
+static int nfree, nrmq;
+static uint8_t relmark[PIN_MAX];
+static uint8_t dead_ok;                          /* PIN_DEAD written in this room (after the loader: W.in) */
 /* every alive instance in creation order: pw_ahead, then pw_anext[i] (an instance unlinked keeps its pw_anext, so a
    walk that saw it continues from it) */
 int16_t pw_ahead, pw_anext[PIN_MAX];
@@ -125,7 +143,7 @@ static int fam_next(struct fam *it)
     int j, b = 0, v;
     if (it->n == 0) return NOONE;
     for (j = 1; j < it->n; j++)
-        if (it->cur[j] < it->cur[b]) b = j;
+        if (PIN_OLDER(it->cur[j], it->cur[b])) b = j;
     v = it->cur[b];
     PWST(visit, 1);
     if (pw_inext[v] >= 0) it->cur[b] = pw_inext[v];
@@ -137,10 +155,11 @@ static int fam_next(struct fam *it)
 static int fam_get(struct fam *it)
 {
     if (!it->lin) return fam_next(it);
-    while (++it->k < PW.n) {
-        const struct pin *p = &PW.in[it->k];
+    while (++it->k < PW.nord) {
+        int s = pw_ord[it->k];
+        const struct pin *p = &PW.in[s];
         PWST(visit, 1);
-        if (p->alive && (it->obj < 0 || obj_is(p->obj, it->obj))) return it->k;
+        if (p->alive && (it->obj < 0 || obj_is(p->obj, it->obj))) return s;
     }
     return NOONE;
 }
@@ -313,6 +332,8 @@ static int en_alloc(void)
 void pw_removed(int i)
 {
     struct pin *p = &PW.in[i];
+    rmq(nrmq) = (int16_t)i;                          /* its slot goes back at the step's end (pw_release) */
+    nrmq++;
     if (p->ext > 0) {
         if (pin_ext[p->ext].en > 0) {
             enfree[nenfree++] = pin_ext[p->ext].en;
@@ -326,6 +347,70 @@ void pw_removed(int i)
 #else
     p->ext = 0;
 #endif
+}
+
+/* a reference kept across steps: to PIN_DEAD when its slot goes back */
+#define REL(r) do { if ((r) >= 0 && relmark[r]) (r) = PIN_DEAD; } while (0)
+
+/* the end of a step: the slots of the instances RemoveMarked removed go back on the free list. Kept across steps
+   (pint.h, play.h): oPlayer1's idx / ladder / holdItem, the instance variables trapID, enemyID, bombID of the
+   alive instances; the per-slot state of pcol.c went in RemoveMarked, the grid's dirty list is flushed here */
+void pw_release(void)
+{
+    int k, j, s, flush = 0;
+    /* in batches (the compaction of pw_ord and the sweep cost about PW.nord): 64 removed, or the unused slots and
+       the free ones close to running out (a step creates fewer than PW_RELEASE_ROOM) */
+    if (nrmq < PW_RELEASE_BATCH && nfree + (PIN_DEAD - PW.n) >= PW_RELEASE_ROOM) return;
+    if (nrmq == 0) return;
+    if (!dead_ok) {
+        struct pin *d = &PW.in[PIN_DEAD];
+        unsigned char *b = (unsigned char *)d;
+        unsigned k2;
+        for (k2 = 0; k2 < sizeof *d; k2++) b[k2] = 0;
+        PIN_WR(int16_t, d->spr) = -1;
+        PIN_WR(int16_t, d->mask) = -1;
+#ifdef PIN_EXT_CHECK
+        d->ext = -1;                                 /* PE(PIN_DEAD) is an error */
+#endif
+        dead_ok = 1;
+    }
+    for (k = 0; k < nrmq; k++) {
+        s = rmq(k);
+        relmark[s] = 1;
+        flush |= gond[s];
+    }
+    if (flush) grid_flush();
+    REL(PL.idx);
+    REL(PL.ladder);
+    REL(PL.holdItem);
+    for (s = pw_nthead; s >= 0; s = pw_ntnext[s]) {
+        struct pin_ext *x;
+        if (PW.in[s].ext <= 0) continue;
+        x = &pin_ext[PW.in[s].ext];
+        REL(x->trapID);
+        REL(x->enemyID);
+        if (x->en > 0) REL(pin_en[x->en].bombID);
+    }
+    for (k = j = 0; k < PW.nord; k++)
+        if (!relmark[pw_ord[k]]) pw_ord[j++] = pw_ord[k];
+    PW.nord = (int16_t)j;
+    if (PW.seq > PW_SEQ_RENUM) {                     /* creation numbers from 0 again, in the same order */
+        for (k = 0; k < PW.nord; k++) pw_seq[pw_ord[k]] = (int16_t)k;
+        PW.seq = PW.nord;
+    }
+    for (k = 0; k < nrmq; k++) {
+        s = rmq(k);
+        relmark[s] = 0;
+        freel[nfree++] = (int16_t)s;
+#ifdef PIN_EXT_CHECK
+        {   /* the check build: a free slot read through an index kept elsewhere shows in the output */
+            struct pin *d = &PW.in[s];
+            PIN_WR(pos, d->x) = PIN_WR(pos, d->y) = (pos)PI(8000);
+            d->id = -7777;
+        }
+#endif
+    }
+    nrmq = 0;
 }
 
 #ifdef PIN_EXT_CHECK
@@ -379,7 +464,13 @@ struct pin_en *pin_en_checked(const struct pin *p)
 
 void pw_reset(void)
 {
+    int k;
     PW.n = 0;
+    PW.nord = 0;
+    PW.seq = 0;
+    nfree = nrmq = 0;
+    dead_ok = 0;
+    for (k = 0; k < nddlist; k++) ddmark[ddlist[k]] = 0;
     nddlist = 0;                                     /* a new room: the drawing starts from scratch */
     ext_reset();
     olists_reset();
@@ -390,11 +481,17 @@ int pin_add(int obj, pos x, pos y, int32_t id)
 {
     int i, k;
     struct pin *p;
-    if (PW.n >= PIN_MAX) {
-        PUNTR(9001);
-        return PIN_MAX - 1;
+    if (nfree > 0)
+        i = freel[--nfree];
+    else {
+        if (PW.n >= PIN_DEAD) {
+            PUNTR(9001);
+            return PIN_DEAD;
+        }
+        i = PW.n++;
     }
-    i = PW.n++;
+    pw_seq[i] = PW.seq++;
+    pw_ord[PW.nord++] = (int16_t)i;
     p = &PW.in[i];
     {   /* zero every field */
         unsigned char *b = (unsigned char *)p;
@@ -419,8 +516,7 @@ int pin_add(int obj, pos x, pos y, int32_t id)
     PIN_WR(float, p->angle) = 0;
     p->ext = (int16_t)(pin_needs_ext(obj) ? ext_alloc() : 0);   /* with pin_add's defaults (ext_defaults) */
     if (p->ext && pin_needs_en(obj)) pin_ext[p->ext].en = (int16_t)en_alloc();
-    ddmark[i] = 0;
-    pw_draw_mark(i);
+    pw_draw_mark(i);                                 /* (a reused slot may still be on the list: marked once) */
     (void)k;
     olink(i);
     gcell[i] = NOONE;
@@ -1010,7 +1106,7 @@ static int grid_point(int obj, int notme, const struct pq *q, int prec)
             int k;
             for (k = ghead[y][x]; k >= 0; k = gnext[k]) {
                 PWST(visit, 1);
-                if ((best >= 0 && k > best) || k == notme || !obj_is(PW.in[k].obj, obj)) continue;
+                if ((best >= 0 && PIN_OLDER(best, k)) || k == notme || !obj_is(PW.in[k].obj, obj)) continue;
                 if (point_hit(k, q, prec)) best = k;
             }
         }

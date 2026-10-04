@@ -33,8 +33,8 @@ static void record(int phase)
            PG.bombs, PG.rope, PG.money, PW.xview, PW.yview,
            instance_exists_p(OBJ_oGame) ? (long)play_time : -1000000000L, play_untranslated, play_dops,
            play_untr_obj >= 0 ? objdefs[play_untr_obj].name : "-");
-    for (k = PW.n - 1; k >= 0; k--) {
-        const struct pin *p = &PW.in[k];
+    for (k = PW.nord - 1; k >= 0; k--) {                /* newest first */
+        const struct pin *p = &PW.in[pw_ord[k]];
         int a, any = 0;
         if (!p->alive || p->obj == OBJ_oGamepad) continue;
         printf("I %ld %s", (long)p->id, objdefs[p->obj].name);
@@ -235,8 +235,8 @@ int main(int argc, char **argv)
             (unsigned long)pcol_st.visits, (unsigned long)pcol_st.syncs, (unsigned long)pcol_st.flushes,
             (unsigned long)pcol_st.nodes_max, (unsigned long)cmax[0], (unsigned long)cmax[1], (unsigned long)cmax[2]);
     fprintf(stderr, "PCOL per-step max: inserts %lu removes %lu searches %lu; pairs in a pass %lu; pin_ext records %d; pin_en %d; "
-            "instances created %d\n", (unsigned long)cmax[3], (unsigned long)cmax[4], (unsigned long)cmax[5],
-            (unsigned long)pcol_st.pairs_max, pw_ext_used_max(), pw_en_used_max(), PW.n);
+            "instances created %d; slots used %d\n", (unsigned long)cmax[3], (unsigned long)cmax[4], (unsigned long)cmax[5],
+            (unsigned long)pcol_st.pairs_max, pw_ext_used_max(), pw_en_used_max(), (int)PW.seq, PW.n);
 #ifdef PLAY_STATS
     {   /* pworld / prun counters per step (the level start excluded): mean / max */
         int j;

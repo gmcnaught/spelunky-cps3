@@ -127,7 +127,9 @@ struct pin {
    >= i. Nothing reads W during play */
 struct pworld {
     struct pin *in;
-    int16_t n;              /* instances created (alive or not); index = creation order */
+    int16_t n;              /* slots used (the high-water mark: every slot below it was used in this room) */
+    int16_t nord;           /* pw_ord's length */
+    int16_t seq;            /* the next creation number (pw_seq; renumbered from 0 by pw_release near 32767) */
     int32_t next_id;
     int16_t room;           /* room index (names file R lines) of the current room */
     int16_t room_w, room_h;
@@ -138,6 +140,16 @@ struct pworld {
     uint8_t room_new;       /* a room started since the last step (the tracer's phase-0 record is due) */
 };
 extern struct pworld PW;
+/* creation order: pw_seq[i] is slot i's creation number in this room (older < newer); pw_ord[0 .. PW.nord) the
+   slots in creation order (alive, or dead and not yet back on the free list) */
+extern int16_t pw_seq[PIN_MAX];
+extern int16_t pw_ord[PIN_MAX];
+#define PIN_OLDER(a, b) (pw_seq[a] < pw_seq[b])
+/* slot reuse: an instance's slot goes back on the free list at the end of the step whose RemoveMarked removed it
+   (pw_release); the references kept across steps that pointed to it then point to PIN_DEAD, a slot never used
+   (alive 0), as GameMaker's instance id of a destroyed instance names no instance */
+#define PIN_DEAD (PIN_MAX - 1)
+void pw_release(void);
 
 #define PX(i) (PW.in[i])
 #ifndef EXT_MAX
