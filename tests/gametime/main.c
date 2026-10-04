@@ -1,4 +1,6 @@
-/* tests/gametime: the game program's frame budget. src/main/main.c's frame loop is compiled here (included below)
+/* tests/gametime: the game program's frame budget in three sections: the attract mode (src/front, ATTRACT_FRAMES
+ * frames from boot), game 1 (route 1, build/route.h) and game 2 (route 2, build/route2.h), each started by a coin
+ * and Start. src/main/main.c's frame loop is compiled here (included below)
  * with its calls wrapped, so each part of every frame is timed with the FRT (phi / 32, wraps counted at each read:
  * the frame loop reads it many times a frame):
  *   vbl   draw_vblank() + cps3v_vblank()      (the VBlank work: tilemap registers, scrolls, sprite-list DMA)
@@ -39,11 +41,13 @@ static void t_draw_vblank(void)
 }
 static void t_cps3v_vblank(void) { uint32_t t = now(); cps3v_vblank(); fr_vbl += (now() - t) * 32; }
 static void t_snd_frame(void) { uint32_t t = now(); snd_frame(); fr_snd = (now() - t) * 32; }
+static uint8_t seen0[NSEC];
 static int t_shell_frame(uint32_t p0, uint32_t p1, uint32_t lines)
 {
     uint32_t t, c, steps0 = (uint32_t)game_steps;
-    int r;
-    if (M.state) {                                /* the route has ended: the results screen, an empty display list */
+    int r, sec = (int)M.sec;
+    volatile struct sec *s;
+    if (M.state) {                                /* done: the results screen, an empty display list */
         cps3v_begin();
         cps3v_end();
         return 0;
@@ -52,35 +56,45 @@ static int t_shell_frame(uint32_t p0, uint32_t p1, uint32_t lines)
     t = now();
     r = shell_frame(p0, p1, lines);
     c = (now() - t) * 32;
-    if (steps0 == 0 && game_steps == 0) {         /* attract and the frame that starts the game (game_begin: the */
-        if (c > M.start_clk) M.start_clk = c;     /* level start): not in the frame figures */
+    if (sec >= NSEC) return r;
+    s = &M.s[sec];
+    if (sec > 0 && !seen0[sec]) {                 /* a game section begins with game_begin (game_steps back to 0, */
+        if (game_steps != 0 && (uint32_t)game_steps >= steps0) return r;   /* maybe a step in the same frame): */
+        seen0[sec] = 1;                           /* the attract frames before it are not counted, the frame */
+        if (c > s->start_clk) s->start_clk = c;   /* with game_begin is the start */
         return r;
     }
-    M.frames++;
-    M.vbl_sum += fr_vbl; max_to(&M.vbl_max, fr_vbl);
-    M.snd_sum += fr_snd; max_to(&M.snd_max, fr_snd);
-    if (r && (uint32_t)game_steps != steps0) {    /* a game step ran in this frame: a new pair starts */
+    if (sec > 0 && game_steps == 0) {             /* a game's frames before its first step: the start (game_begin's */
+        if (c > s->start_clk) s->start_clk = c;   /* level start in one of them): not in the frame figures */
+        return r;
+    }
+    s->frames++;
+    s->vbl_sum += fr_vbl; max_to(&s->vbl_max, fr_vbl);
+    s->snd_sum += fr_snd; max_to(&s->snd_max, fr_snd);
+    if (r && (sec == 0 || (uint32_t)game_steps != steps0)) {   /* a step (attract step or game step) ran */
         if (pair_open) {                          /* the previous pair is complete */
-            uint32_t lo = M.pair_sum_lo + pair_acc;
-            if (lo < M.pair_sum_lo) M.pair_sum_hi++;
-            M.pair_sum_lo = lo;
-            if (M.pairs < PAIRS) M.pair[M.pairs] = pair_acc;
-            if (pair_acc > M.pair_max) { M.pair_max = pair_acc; M.pair_max_at = M.pairs; }
-            if (pair_acc > 2 * 419470u) M.over++;
-            M.pairs++;
+            uint32_t lo = s->pair_sum_lo + pair_acc;
+            if (lo < s->pair_sum_lo) s->pair_sum_hi++;
+            s->pair_sum_lo = lo;
+            if (s->pairs < PAIRS) s->pair[s->pairs] = pair_acc;
+            if (pair_acc > s->pair_max) { s->pair_max = pair_acc; s->pair_max_at = s->pairs; }
+            if (pair_acc > 2 * 419470u) s->over++;
+            s->pairs++;
         }
         pair_open = 1;
         pair_acc = 0;
-        M.steps++;
-        M.step_sum += c - tdraw; max_to(&M.step_max, c - tdraw);
-        M.draw_sum += tdraw; max_to(&M.draw_max, tdraw);
+        s->steps++;
+        s->step_sum += c - tdraw; max_to(&s->step_max, c - tdraw);
+        s->draw_sum += tdraw; max_to(&s->draw_max, tdraw);
     } else {
-        M.shl_sum += c; max_to(&M.shl_max, c);
+        s->shl_sum += c; max_to(&s->shl_max, c);
     }
     pair_acc += fr_vbl + fr_snd + c;
-    if (game_over) {
-        M.state = 1;
-        jt_show();
+    if (sec > 0 && game_over) {                   /* the game ended: next section */
+        pair_open = 0;
+        gt_section_end();
+    } else if (sec == 0 && M.sec != 0) {
+        pair_open = 0;
     }
     return r;
 }

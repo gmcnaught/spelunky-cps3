@@ -19,6 +19,10 @@ else git archive "${GAME_REV:-HEAD}" src/game | tar -x -C "$G" --strip-component
 cp build/gen/objects.[ch] build/gen/gentables.[ch] build/gen/playtables.[ch] "$G/"
 sed -i '' "s/^#define PIN_MAX 4096\$/#define PIN_MAX ${PIN:-1000}/" "$G/play.h"
 grep -q "^#define PIN_MAX ${PIN:-1000}\$" "$G/play.h"; touch "$G/stamp"
+# SNAP_FILE / SNAP_SED: an experimental edit of the snapshot (measurements only; src/game is never touched)
+if [ -n "${SNAP_SED:-}" ]; then sed -i '' "$SNAP_SED" "$G/$SNAP_FILE"; fi
+# snapcfg.h (tests/playsh2/core.c): where the snapshot keeps alpha
+sed -n '/^struct pin_ext {/,/^};/p' "$G/play.h" | grep -q "alpha" && echo "#define ALPHA_IN_EXT 1" > "$G/snapcfg.h" || : > "$G/snapcfg.h"
 scripts/dmake.sh $T OUT=build/$V OPT="${OPT:--O2}" PROF=${PROF:-0} PROF_KIND=${PROF_KIND:-3} PROF_SKIP=${PROF_SKIP:-1} PROF_WRAP=${PROF_WRAP:-0} SOFTFP=${SOFTFP:-0} ATTR=${ATTR:-0} FPCHECK=${FPCHECK:-0} >/dev/null
 # host reference (the same core.c and jobs.h; one process per job)
 cc -std=c99 -O2 -ffp-contract=off -w -I$T -I$B -I$G -o $B/host $T/host.c $T/core.c $G/*.c -lm   # no contraction: as the SH-2 (pcol.c's fused operations are explicit fmaf)

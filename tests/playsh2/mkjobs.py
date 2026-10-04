@@ -31,11 +31,11 @@ def masks(path):
         out += [m] * n
     return out[:100000]
 
-# --jt: generation (seed, level) cases and routes that fit main RAM at PIN_MAX = INST_MAX = 790 (host results equal
-# to the unpatched build: scripts/playsh2_jt.sh checks it)
+# --jt: one generation case per area and every route (since e380bb6 all of it fits main RAM at PIN_MAX 1000; host
+# results equal to the unpatched build: scripts/playsh2_jt.sh checks it)
 JT = '--jt' in sys.argv
-JT_GEN = [(120965577, 2), (120965577, 9)]
-JT_ROUTES = ['p4_push_rope', 'p5_l3spider']
+JT_GEN = [(120965577, 2), (120965577, 6), (120965577, 10), (120965577, 14), (120965577, 16)]
+JT_ROUTES = None                               # all
 
 def main():
     args = [a for a in sys.argv[1:] if a != '--jt']
@@ -53,7 +53,7 @@ def main():
     L.append('};')
     jobs = [(s, lv, -1) for s in GEN_SEEDS for lv in GEN_LEVELS] + [(r[1], 0, k) for k, r in enumerate(R)]
     if JT:                                     # the jtcps3 variant: a few jobs that fit main RAM (scripts/playsh2_jt.sh)
-        jobs = [(s, lv, -1) for s, lv in JT_GEN] + [(r[1], 0, k) for k, r in enumerate(R) if r[0] in JT_ROUTES]
+        jobs = [(s, lv, -1) for s, lv in JT_GEN] + [(r[1], 0, k) for k, r in enumerate(R) if JT_ROUTES is None or r[0] in JT_ROUTES]
     L.append('#define NJOBS %d' % len(jobs))
     L.append('static const struct job jobs[NJOBS] = {')
     for s, lv, r in jobs: L.append('    { %du, %d, %d },' % (s, lv, r))

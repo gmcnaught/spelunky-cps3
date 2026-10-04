@@ -15,7 +15,7 @@ emu.register_frame_done(function()
   if wait > 0 then return end
   manager.machine.video:snapshot()
   local f = io.open(out, "w")
-  f:write(string.format("S %d\n", mem:read_u32(0x02000000 + 4 * 60)))
+  f:write(string.format("S %d\n", mem:read_u32(0x02000000 + 4 * 15)))
   for j = 0, njobs - 1 do
     local s = "J " .. j
     for k = 0, 5 do s = s .. string.format(" %d", mem:read_u32(0x02000000 + 4 * (16 + 8 * j + k))) end

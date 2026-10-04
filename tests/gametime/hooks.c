@@ -7,6 +7,8 @@
 #include "play.h"
 #include "route.h"
 #include "gametime.h"
+#include "front.h"
+extern uint32_t front_seed;
 
 volatile struct marker M __attribute__((section(".trace"), used));
 
@@ -59,6 +61,10 @@ static void frt_start(void)
 
 extern char __sprbss_a_start[] __asm__("__sprbss_a_start"), __sprbss_a_end[] __asm__("__sprbss_a_end");
 extern char __sprbss_b_start[] __asm__("__sprbss_b_start"), __sprbss_b_end[] __asm__("__sprbss_b_end");
+#include "route2.h"
+#ifndef ATTRACT_FRAMES
+#define ATTRACT_FRAMES 3600                       /* the attract section: 60 s from boot */
+#endif
 void main_boot(void)
 {
     uint32_t *d;
@@ -67,7 +73,8 @@ void main_boot(void)
     for (d = (uint32_t *)__sprbss_b_start; d < (uint32_t *)__sprbss_b_end; d++) *d = 0;
     frt_start();
     for (d = (uint32_t *)&M, k = 0; k < (int)(sizeof M / 4); k++) d[k] = 0;
-    M.magic = 0x47544d31;                         /* 'GTM1' */
+    M.magic = 0x47544d32;                         /* 'GTM2' */
+    front_seed = ROUTE_SEED;                      /* the intro's randomize() */
     game_cfg.route = route_keys;
     game_cfg.nroute = ROUTE_N;
     game_cfg.tail = ROUTE_TAIL;
@@ -77,13 +84,34 @@ void main_boot(void)
     game_cfg.enemies = ROUTE_ENEMIES;
 }
 
-static uint32_t frame;
+/* the cabinet: nothing during the attract section; then a coin and Start (game 1, route 1); after game 1 is over,
+   route 2 set up, another coin and Start (game 2) */
+static uint32_t frame, coin_at = ATTRACT_FRAMES;
+void gt_section_end(void)
+{
+    M.sec++;
+    if (M.sec == 1) return;                       /* game 1 starts with the coin at ATTRACT_FRAMES */
+    if (M.sec == 2) {
+        game_cfg.route = route2_keys;
+        game_cfg.nroute = ROUTE2_N;
+        game_cfg.tail = ROUTE2_TAIL;
+        game_cfg.seed = ROUTE2_SEED;
+        game_cfg.level = ROUTE2_LEVEL;
+        game_cfg.money = ROUTE2_MONEY;
+        game_cfg.enemies = ROUTE2_ENEMIES;
+        coin_at = frame + 60;
+        return;
+    }
+    M.state = 1;
+    jt_show();
+}
 void main_inputs(uint32_t *pad0, uint32_t *pad1, uint32_t *lines)
 {
     frame++;
-    *pad0 = frame >= 40 && frame < 44 ? CPS3_START : 0;
+    if (M.sec == 0 && frame == ATTRACT_FRAMES) gt_section_end();
+    *pad0 = frame >= coin_at + 20 && frame < coin_at + 24 ? CPS3_START : 0;
     *pad1 = 0;
-    *lines = frame >= 20 && frame < 24 ? CR_COIN1 : 0;
+    *lines = frame >= coin_at && frame < coin_at + 4 ? CR_COIN1 : 0;
 }
 
 static uint32_t td0;
@@ -111,19 +139,39 @@ static void line2(int row, const char *a, uint32_t x, const char *b, uint32_t y)
     if (b) put_u(put_s(p, b), y);
     big_text(row, l);
 }
+static void put_col(char *l, int col, uint32_t v)
+{
+    char t[12];
+    put_u(t, v);
+    for (int k = 0; t[k]; k++) l[col + k] = t[k];
+}
 void jt_show(void)
 {
-    uint32_t n = M.steps ? M.steps : 1, f = M.frames ? M.frames : 1, pn = M.pairs ? M.pairs : 1;
-    uint64_t ps = (uint64_t)M.pair_sum_hi << 32 | M.pair_sum_lo;
+    static const char *const rows[] = { "VB AV", "VB MAX", "SN AV", "SN MAX", "ST AV", "ST MAX", "DR AV", "DR MAX",
+                                        "SH AV", "SH MAX", "PR AV", "PR MAX", "PR OVER", "PAIRS", "START" };
+    char l[48];
+    int r, c;
     big_init();
-    line2(0, "VB ", M.vbl_sum / f, " X ", M.vbl_max);
-    line2(1, "SN ", M.snd_sum / f, " X ", M.snd_max);
-    line2(2, "ST ", M.step_sum / n, " X ", M.step_max);
-    line2(3, "DR ", M.draw_sum / n, " X ", M.draw_max);
-    line2(4, "SH ", M.shl_sum / (f > n ? f - n : 1), " X ", M.shl_max);
-    line2(5, "PR ", (uint32_t)(ps / pn), " X ", M.pair_max);
-    line2(6, "OVER ", M.over, " OF ", pn);
-    line2(7, "START ", M.start_clk, 0, 0);
-    cps3v_text(0, 26, "VB VBLANK SN SOUND ST STEP DR DRAW SH SHELL");
-    cps3v_text(0, 27, "PR 2-FRAME PAIR; MEAN X MAX; " ROUTE_NAME);
+    big_text(0, "FRAME BUDGET");
+    cps3v_text(0, 3, "        ATTRACT    GAME 1     GAME 2");
+    for (r = 0; r < 15; r++) {
+        for (c = 0; c < 47; c++) l[c] = ' ';
+        l[47] = 0;
+        for (c = 0; rows[r][c]; c++) l[c] = rows[r][c];
+        for (c = 0; c < NSEC; c++) {
+            const volatile struct sec *s = &M.s[c];
+            uint32_t f = s->frames ? s->frames : 1, n = s->steps ? s->steps : 1, p = s->pairs ? s->pairs : 1;
+            uint64_t ps = (uint64_t)s->pair_sum_hi << 32 | s->pair_sum_lo;
+            uint32_t v[15] = { s->vbl_sum / f, s->vbl_max, s->snd_sum / f, s->snd_max, s->step_sum / n, s->step_max,
+                               s->draw_sum / n, s->draw_max, s->shl_sum / (f > n ? f - n : 1), s->shl_max,
+                               (uint32_t)(ps / p), s->pair_max, s->over, s->pairs, s->start_clk };
+            put_col(l, 8 + 11 * c, v[r]);
+        }
+        l[42] = 0;
+        cps3v_text(0, 4 + r, l);
+    }
+    cps3v_text(0, 20, "VB VBLANK SN SOUND ST STEP DR DRAW SH SHELL");
+    cps3v_text(0, 21, "PR 2-FRAME PAIR, OVER: PAIRS > 838940");
+    cps3v_text(0, 22, "GAME 1 " ROUTE_NAME);
+    cps3v_text(0, 23, "GAME 2 " ROUTE2_NAME);
 }

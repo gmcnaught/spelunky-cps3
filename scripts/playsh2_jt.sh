@@ -1,23 +1,23 @@
 #!/bin/sh
-# tests/playsh2's jtcps3 variant (JT=1): 2 generation cases and 2 routes (p4_push_rope, p5_l3spider) that fit the
-# CPS3's 512 KB of main RAM with PIN_MAX = INST_MAX = 790 and pcol.c's RT_NODES = 360 (no sprite or character RAM
-# used as memory; the host check below shows the limits change nothing for these jobs); the program
-# times them with the FRT and shows the results on screen in large text (sprite RAM self-test, per job total
-# clocks, step mean / max, checksum OK against host values built in). This script: the host check that the patched
+# tests/playsh2's jtcps3 variant (JT=1): one generation case per area and all 18 routes in the CPS3's 512 KB of main
+# RAM with PIN_MAX 1000 (since e380bb6 everything fits; no sprite or character RAM used as memory; the host check
+# below shows the limit changes nothing for these jobs); the program times them with the FRT and shows the results
+# on screen (large: PASS n/N and the sprite RAM self-test; a table: per job total clocks, step mean / max, checksum
+# OK against host values built in). This script: the host check that the patched
 # limits change nothing for these jobs, the expected hashes, the build, a MAME run with a snapshot of the screen.
 #   scripts/playsh2_jt.sh          -> tests/playsh2/build/jt/elf/mame/sfiii3na (the set), build/jt/out/{snap,jt.txt}
 set -e
 cd "$(dirname "$0")/.."
-T=tests/playsh2; B=$T/build; J=$B/jt; O=$J/out; N=790; RT=${RT:-360}
+T=tests/playsh2; B=$T/build; J=$B/jt; O=$J/out; N=${PIN:-1000}
 rm -rf "$O" "$B/g" "$J/gA"; mkdir -p "$O/w" "$B/g" "$J/gA"
 git archive "${GAME_REV:-HEAD}" src/game | tar -x -C "$J/gA" --strip-components=2
 cp build/gen/objects.[ch] build/gen/gentables.[ch] build/gen/playtables.[ch] "$J/gA/"
 cp "$J/gA"/* "$B/g/"
 sed -i '' "s/^#define PIN_MAX 4096\$/#define PIN_MAX $N/" "$B/g/play.h"
-sed -i '' "s/^#define INST_MAX 2048 .*/#define INST_MAX $N/" "$B/g/inst.h"
-sed -i '' "s/^#define RT_NODES 640\$/#define RT_NODES $RT/" "$B/g/pcol.c"
-grep -q "^#define PIN_MAX $N\$" "$B/g/play.h"; grep -q "^#define INST_MAX $N\$" "$B/g/inst.h"
-grep -q "^#define RT_NODES $RT\$" "$B/g/pcol.c"; touch "$B/g/stamp"
+grep -q "^#define PIN_MAX $N\$" "$B/g/play.h"; touch "$B/g/stamp"
+# snapcfg.h (tests/playsh2/core.c): where the snapshot keeps alpha
+sed -n '/^struct pin_ext {/,/^};/p' "$B/g/play.h" | grep -q "alpha" && echo "#define ALPHA_IN_EXT 1" > "$B/g/snapcfg.h" || : > "$B/g/snapcfg.h"
+cp "$B/g/snapcfg.h" "$J/gA/"
 python3 $T/mkjobs.py "$J/jobs.h" tests/routes --jt
 # the host, unpatched (A) and with the limits (B): the same records, then the expected hashes
 for v in A B; do
@@ -32,7 +32,7 @@ while [ $j -lt $NJ ]; do
   echo "    $("$J/hostB" --jthash $j)," >> "$J/jt_expect.h"; j=$((j + 1))
 done
 { echo "};"
-  echo "#define JT_LABEL \"G:L2,L9 S120965577 R:P4_PUSH_ROPE,P5_L3SPIDER\""; } >> "$J/jt_expect.h"
+  echo "#define JT_LABEL \"\""; } >> "$J/jt_expect.h"
 scripts/dmake.sh $T OUT=build/jt/elf JT=1 SOFTFP=1 >/dev/null
 PSH2_OUT="$O/jt.txt" PSH2_NJOBS=$NJ mame sfiii3na -rompath "$J/elf/mame" -skip_gameinfo -nothrottle -sound none \
   -video none -seconds_to_run 3000 -cfg_directory "$O/w/cfg" -nvram_directory "$O/w/nvram" -snapshot_directory "$O/snap" \

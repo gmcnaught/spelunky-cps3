@@ -21,7 +21,7 @@
    keep it at the start of main RAM, the .trace section (not cleared between jobs) */
 #ifdef JT
 #define PBASE 0x02000000
-static uint32_t p_block[64] __attribute__((section(".trace"), used));
+static uint32_t p_block[16 + 8 * 32] __attribute__((section(".trace"), used));
 #else
 #define PBASE 0x04100000
 #endif
@@ -220,39 +220,56 @@ static uint32_t spr_test(void)
     for (k = 0; k < 0x8000; k++) w[k] = 0;
     return bad;
 }
+/* the results: a summary in large text (rows 0-2), then a small-text table, one job a row (cell rows 4-27): job,
+   checksum against the host, name (6 characters), total clocks, step mean, step max (within column 42: the
+   columns right of it are off screen) */
+static char *pad(char *p, const char *start, int w)
+{
+    while (p - start < w) *p++ = ' ';
+    *p = 0;
+    return p;
+}
 static void jt_show(uint32_t spr_bad)
 {
     char line[64], *p;
-    int j, row = 0, pass = 0;
+    int j, pass = 0, ng = 0, nr = 0;
+    for (j = 0; j < NJOBS; j++) pass += JTR(j, 4) == jt_expect[j];
     big_init();
-    p = put_s(line, "SPRITE RAM ");
-    if (spr_bad) put_u(put_s(p, "BAD "), spr_bad); else put_s(p, "OK");
-    big_text(row++, line);
-    for (j = 0; j < NJOBS; j++) {
-        int ok = JTR(j, 4) == jt_expect[j], r = jobs[j].route >= 0;
-        static int ng, nr;
-        pass += ok;
-        p = line;
-        *p++ = r ? 'R' : 'G';
-        p = put_u(p, (uint32_t)(r ? ++nr : ++ng));
-        p = put_s(p, " T ");
-        p = put_u(p, JTR(j, 0));
-        p = put_s(p, ok ? " OK" : " BAD");
-        big_text(row++, line);
-        if (r) {
-            p = put_s(line, "  AV ");
-            p = put_u(p, JTR(j, 1) ? JTR(j, 2) / JTR(j, 1) : 0);
-            p = put_s(p, " X ");
-            put_u(p, JTR(j, 3));
-            big_text(row++, line);
-        }
-    }
     p = put_s(line, pass == NJOBS ? "PASS " : "FAIL ");
     p = put_u(p, (uint32_t)pass);
     p = put_s(p, "/");
-    put_u(p, NJOBS);
-    big_text(row++, line);
-    cps3v_text(0, 27, JT_LABEL);
+    p = put_u(p, NJOBS);
+    p = put_s(p, spr_bad ? " SPR BAD" : " SPR OK");
+    big_text(0, line);
+    cps3v_text(0, 3, "JOB CHK NAME   TOTAL      MEAN    MAX");
+    for (j = 0; j < NJOBS && j < 24; j++) {
+        int r = jobs[j].route >= 0;
+        const char *nm = r ? routes[jobs[j].route].name : "";
+        p = line;
+        *p++ = r ? 'R' : 'G';
+        p = put_u(p, (uint32_t)(r ? ++nr : ++ng));
+        p = pad(p, line, 4);
+        p = put_s(p, JTR(j, 4) == jt_expect[j] ? "OK" : "BAD");
+        p = pad(p, line, 8);
+        if (r) {
+            const char *q = nm + (nm[0] == 'p' && nm[2] == '_' ? 3 : 0);
+            int k;
+            for (k = 0; q[k] && k < 6; k++) *p++ = (char)(q[k] >= 'a' && q[k] <= 'z' ? q[k] - 32 : q[k]);
+            *p = 0;
+        } else {
+            p = put_s(p, "LVL ");
+            p = put_u(p, (uint32_t)jobs[j].level);
+        }
+        p = pad(p, line, 15);
+        p = put_u(p, JTR(j, 0));
+        if (r) {
+            p = pad(p, line, 26);
+            p = put_u(p, JTR(j, 1) ? JTR(j, 2) / JTR(j, 1) : 0);
+            p = pad(p, line, 34);
+            p = put_u(p, JTR(j, 3));
+        }
+        cps3v_text(0, 4 + j, line);
+    }
 }
 #endif
 
@@ -265,8 +282,8 @@ int main(void)
     cps3_init();                                          /* video, the text layer (VBlank masked again below) */
     cps3v_text(2, 2, "SPELUNKY CPS3 PLAYSH2 JTCPS3 TIMING: RUNNING");
     spr_bad = spr_test();
-    for (j = 0; j < 64; j++) R32(PBASE + 4 * j) = 0;
-    R32(PBASE + 4 * 60) = spr_bad;
+    for (j = 0; j < 16 + 8 * 32; j++) R32(PBASE + 4 * j) = 0;
+    R32(PBASE + 4 * 15) = spr_bad;
 #endif
     P_STATE = 0;
     P_NREC = 0;
