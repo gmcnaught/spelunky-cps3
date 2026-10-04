@@ -1151,12 +1151,91 @@ static void dice_body(int i)
     }
 }
 
+/* scripts/scrGenerateItem's high end set (setType 1) in play */
+static int generate_item_set1(pos x, pos y)
+{
+    int o;
+    if (RAND(1, 40) == 1) o = OBJ_oJetpack;
+    else if (RAND(1, 25) == 1) o = OBJ_oCapePickup;
+    else if (RAND(1, 20) == 1) o = OBJ_oShotgun;
+    else if (RAND(1, 10) == 1) o = OBJ_oGloves;
+    else if (RAND(1, 10) == 1) o = OBJ_oTeleporter;
+    else if (RAND(1, 8) == 1) o = OBJ_oMattock;
+    else if (RAND(1, 8) == 1) o = OBJ_oPaste;
+    else if (RAND(1, 8) == 1) o = OBJ_oSpringShoes;
+    else if (RAND(1, 8) == 1) o = OBJ_oSpikeShoes;
+    else if (RAND(1, 8) == 1) o = OBJ_oCompass;
+    else if (RAND(1, 8) == 1) o = OBJ_oPistol;
+    else if (RAND(1, 8) == 1) o = OBJ_oMachete;
+    else o = OBJ_oBombBox;
+    return pin_create(x, y, o);
+}
+
+static void poofs(pos x, pos y)
+{
+    int obj = pin_create(x - PI(4), y + PI(6), OBJ_oPoof);
+    PE(&PX(obj))->xVel = N(-0.4);
+    obj = pin_create(x + PI(4), y + PI(6), OBJ_oPoof);
+    PE(&PX(obj))->xVel = N(0.4);
+}
+
+/* oShopkeeper Step :185-252: the craps shop's roll (shopkeeper i; two dice and a bet placed) */
+static void dice_roll(int i)
+{
+    int16_t w[256];
+    int n = pw_with(OBJ_oDice, w, 256), k, rolled = 1, value = 0;
+    char b[12];
+    (void)i;
+    for (k = 0; k < n; k++) {
+        if (!PX(w[k]).alive) continue;
+        if (!PE(&PX(w[k]))->fired) rolled = 0;
+        value += PE(&PX(w[k]))->value;
+    }
+    if (!rolled) return;
+    if (value == 7) {
+        const char *m1 = "YOU ROLLED A SEVEN!", *m2 = "YOU WIN A PRIZE!";
+        PL.bet = 0;
+        n = pw_with(OBJ_oItem, w, 256);
+        for (k = 0; k < n; k++) {
+            struct pin *p = &PX(w[k]);
+            int obj;
+            if (!p->alive || !PE(p)->inDiceHouse) continue;
+            poofs(p->x, p->y);
+            obj = generate_item_set1(PX(w[k]).x, PX(w[k]).y);
+            PE(&PX(obj))->inDiceHouse = 1;
+            p = &PX(w[k]);
+            if (PX(PL.idx).x < p->x) pin_setx(p, p->x - PI(32));
+            else pin_setx(p, p->x + PI(32));
+            poofs(p->x, p->y);
+            p = &PX(w[k]);
+            PE(p)->cost = 0;
+            PE(p)->forSale = 0;
+            PE(p)->inDiceHouse = 0;
+        }
+        pmsg_tr(&m1, 0, 0, &m2, 0, 0, 200);
+    } else {
+        const char *m1[3] = { "YOU ROLLED A ", pmsg_num(value, b), "!" };
+        const char *m2 = value > 7 ? "CONGRATULATIONS! YOU WIN!" : "I'M SORRY, BUT YOU LOSE!";
+        if (value > 7) {
+            PG.collect += PL.bet * 2;
+            PG.collectCounter += 20;
+            if (PG.collectCounter > 100) PG.collectCounter = 100;
+        }
+        PL.bet = 0;
+        if (value > 7) pmsg_tr(m1, 3, 0, &m2, 0, 0, 200);
+        else pmsg_tr(m1, 3, 0, &m2, 1, 1u << 1, 200);                          /* message2Highlights[0] = 1 */
+    }
+    n = pw_with(OBJ_oDice, w, 256);
+    for (k = 0; k < n; k++) if (PX(w[k]).alive) PE(&PX(w[k]))->fired = 0;
+}
+
 int pitems_world(int site, int i, int arg)
 {
     (void)arg;
     switch (site) {
     case 1002: PE(&PX(i))->value = RAND(1, 6); return 1;                       /* objects/oDice/Create_0.gml :8 */
     case 1064: dice_body(i); return 1;
+    case 7010: dice_roll(i); return 1;
     case 1065: {                                                               /* oDice Step :222-227; rolled: fired */
         struct pin *p = &PX(i);
         if (PE(p)->fired) scrShopkeeperAnger(i, 0);                            /* NO CHEATING! */
