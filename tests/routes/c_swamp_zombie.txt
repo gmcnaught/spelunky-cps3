@@ -1,0 +1,18 @@
+# P7 reference (docs/CONTENT.md package B (swamp)): a zombie; start 104,88, oZombie at 112,144
+# seed 215
+# level 5
+60 -
+8 RJ
+30 -
+1 A
+30 -
+1 A
+30 -
+1 A
+30 -
+1 A
+30 -
+1 A
+30 -
+1 A
+120 -

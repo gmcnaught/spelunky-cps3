@@ -33,6 +33,8 @@ Method from ../maldita.castilla-cps3/tools/tracer.py. Changes, all GML compiled 
   - TRACE_LEVEL=N (P5): the title flow sets global.currLevel = N before room_goto(rLevel) (as the generator mode
     does per case; oDebug's level keys do the same): the route starts on level N. playhost --level N.
     TRACE_MONEY=M (P5) likewise sets global.money = M (shop routes). playhost --money M.
+    TRACE_GLOBALS=name=value,... (P7) likewise sets globals there: numbers as they are, anything else as a string
+    ("~" for a space), e.g. pickupItem=Shotgun (oLevel Create gives it to the player: scrHoldItem) or hasJetpack=1.
     TRACE_NODARK=0 (P7) sets global.noDarkLevel = false there (scrClearGlobals leaves it true, so a route that starts
     on level N could never be a dark level).
   - TRACE_EVLOG=1 (probe runs only): every object event except Draw and oGamepad / oScreen / oIntro's appends
@@ -42,7 +44,8 @@ Method from ../maldita.castilla-cps3/tools/tracer.py. Changes, all GML compiled 
   - TRACE_BOOT=1 (P8, the front end): no room flow (the intro and title run as on a cabinet, the route's keys from
     the first step in rIntro); the trace starts at the first Begin Step in rIntro. oIntro's randomize() is still
     random_set_seed(SEED); the trcSnd log starts there too.
-  - TRACE_ROOM=<room> (P8): the title flow goes to that room instead of rLevel and the trace starts there
+  - TRACE_ROOM=<room> (P8): the title flow goes to that room instead of rLevel and the trace starts there (rOlmec:
+    a level room like rLevel, global.gameStart true; with TRACE_LEVEL=16, P7)
     (rHighscores: the attract cycle's scores room, entered directly as src/front does), global.gameStart false
     (as the title's SCORES door leaves it: oGame's Create then generates no level).
   - TRACE_GUI=r1,r2,...: oGamepad Draw GUI End (new) saves gui_<r>.png at record r: application_surface with the
@@ -410,6 +413,13 @@ def gml(segs, seed):
         reseed = 'global.noDarkLevel = false;\n    ' + reseed
     if os.environ.get('TRACE_MONEY'):
         reseed = f'global.money = {int(os.environ["TRACE_MONEY"])};\n    ' + reseed
+    for kv in filter(None, os.environ.get('TRACE_GLOBALS', '').split(',')):
+        k, v = kv.split('=', 1)
+        try:
+            float(v)
+        except ValueError:
+            v = '"' + v.replace('~', ' ') + '"'
+        reseed = f'global.{k} = {v};\n    ' + reseed
     noenemy = ''
     if os.environ.get('TRACE_NOENEMY') == '1':
         noenemy = ('if (room == rLevel || room == rLevel2 || room == rLevel3 || room == rOlmec)\n{\n' +
@@ -448,7 +458,7 @@ else if (global.trc_phase == 1 && room == rTitle)
 {{
     global.trc_phase = 2;
     global.usedShortcut = false;
-    global.gameStart = {'true' if ROOM == 'rLevel' else 'false'};
+    global.gameStart = {'true' if ROOM in ('rLevel', 'rOlmec') else 'false'};
     {reseed}
     room_goto({ROOM});
 }}'''

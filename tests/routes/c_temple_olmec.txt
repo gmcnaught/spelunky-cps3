@@ -1,0 +1,10 @@
+# P7 reference (docs/CONTENT.md package D, temple): rOlmec; wait out the intro, walk right towards Olmec, wait under him
+# seed 1
+# level 16
+# room rOlmec
+400 -
+100 R
+20 RJ
+60 R
+20 RJ
+300 -

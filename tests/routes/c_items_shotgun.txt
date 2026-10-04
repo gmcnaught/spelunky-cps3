@@ -1,0 +1,20 @@
+# P7 reference (docs/CONTENT.md package E, items): start holding the Shotgun and use it (TRACE_GLOBALS=pickupItem=Shotgun)
+# seed 559
+# level 1
+# globals pickupItem=Shotgun
+30 -
+1 A
+30 -
+12 R
+1 A
+30 -
+1 UA
+30 -
+12 L
+1 A
+30 -
+1 DA
+40 -
+20 R
+1 A
+60 -
