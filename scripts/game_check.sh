@@ -27,6 +27,7 @@ GAME_OUT="$O/out.txt" GAME_NSNAPS=$n mame sfiii3na -rompath "$O/elf/mame" -skip_
   -video none -seconds_to_run ${SECONDS_TO_RUN:-20000} -cfg_directory "$O/w/cfg" -nvram_directory "$O/w/nvram" \
   -snapshot_directory "$O/snap" -diff_directory "$O/w/diff" -state_directory "$O/w/sta" -inipath "$O/w" \
   -autoboot_script scripts/lua/gamesnap.lua >"$O/mame.log" 2>&1 || true
+rm -rf "$O/elf/mame" "$O"/elf/*.bin "$O/w"         # the ROM set (80 MB) is not kept: the disk is small
 fail=0; k=0; H=--hud; [ "${HUD:-1}" = 0 ] && H=
 for rec in $(echo "$RECS" | tr ',' ' '); do
   s=$(printf '%s/snap/sfiii3na/%04d.png' "$O" $k)

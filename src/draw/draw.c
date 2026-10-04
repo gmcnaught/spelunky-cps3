@@ -17,6 +17,7 @@
 #include "drawtab.h"
 #include "draw.h"
 #include "hud.h"
+#include "hudart.h"
 #include "pint.h"
 
 #define UNIT(m)      CPS3V_MAP_UNIT(m)
@@ -95,6 +96,11 @@ static uint16_t mwant[NMAPS][MAPC_MAX] DRAW_MAPS_SECTION;
 static uint16_t mshown[NMAPS][MAPC_MAX] DRAW_MAPS_SECTION;
 static uint32_t mframe[NMAPS][MAPC_MAX / 32 + 1];            /* want cell taken by an instance this frame */
 static int16_t mown[NMAPS][MAPC_MAX] DRAW_MAPS_SECTION;     /* that instance */
+/* oItem's cimg (its Draw event's price-tag frame counter; the play code keeps oDamsel's only): per instance slot,
+   with the id it belongs to; counted at each draw_frame for every visible item with a price, as the Draw event is
+   run for every visible instance */
+static uint8_t icimg[PIN_MAX] DRAW_MAPS_SECTION;
+static int32_t icid[PIN_MAX] DRAW_MAPS_SECTION;
 static uint32_t mdepth_key[NMAPS];                /* fkey of the map's depth */
 static float mdepth[NMAPS];
 static int nmaps;                                 /* tilemaps in use (1..3 of them) */
@@ -153,6 +159,19 @@ static void spr_out(int s, int32_t img, int x, int y, int flip)
     if (img < 0) img = 0;
     if ((uint32_t)img >= sd->nframes) img = (int32_t)((uint32_t)img % sd->nframes);
     frame_out(sd->frame + img, x - ox, y - oy, flip);
+}
+
+/* global.sSmallCollectNew frame k (tools/hudart.py: 8 x 10 at a tile's top-left, origin 4, 4) at room (x, y) */
+static void collect_out(int k, int x, int y)
+{
+    int px = x - HUD_COLLECT_XORIG - ox, py = y - HUD_COLLECT_YORIG - oy;
+    if (px >= VIEW_W || py >= SCREEN_H || px <= -16 || py <= -16) return;
+    if (ent_n >= DRAW_ENTRIES_MAX) {
+        draw_st.dropped++;
+        return;
+    }
+    cps3v_sprite(px, py, 1, 1, HUD_TILE_COLLECT(k), HUD_PAL, 0);
+    ent_n++;
 }
 
 static void band_out(int tm)
@@ -455,13 +474,13 @@ static void inst_out(int i)
     case DK_NONE: break;
     case DK_TODO: draw_st.todo++; self_out(p, x, y); break;
     case DK_SELF: self_out(p, x, y); break;
-    case DK_DAMSEL:                               /* objects/oDamsel/Draw_0.gml */
-        self_out(p, x, y);
-        if (p->cost > 0) draw_st.todo++;          /* global.sSmallCollectNew (sprite_add'ed: no art yet) */
+    case DK_DAMSEL:                               /* objects/oDamsel/Draw_0.gml: the price tag at cimg, which */
+        self_out(p, x, y);                        /* the play code's ev_draw has counted on already */
+        if (p->cost > 0) collect_out(p->cimg ? p->cimg - 1 : 9, x, y - 12);
         break;
-    case DK_ITEM:                                 /* objects/oItem/Draw_0.gml */
+    case DK_ITEM:                                 /* objects/oItem/Draw_0.gml (cimg counted in draw_frame) */
         plain_out(p, x, y);
-        if (p->cost > 0) draw_st.todo++;
+        if (p->cost > 0) collect_out(icimg[i] ? icimg[i] - 1 : 9, x, y - 12);
         break;
     case DK_ENEMY:                                /* objects/oEnemy/Draw_0.gml (oEnemy: LEFT 0, RIGHT 1) */
         if (p->spr < 0) break;
@@ -622,6 +641,13 @@ void draw_frame(void)
         if (!p->alive || !p->visible) continue;
         dk = draw_kind[p->obj];
         if (dk == DK_NONE) continue;
+        if (dk == DK_ITEM && p->cost > 0) {       /* oItem Draw: cimg += 1, 0 after 9 */
+            if (icid[k] != p->id) {
+                icid[k] = p->id;
+                icimg[k] = 0;
+            }
+            icimg[k] = icimg[k] >= 9 ? 0 : icimg[k] + 1;
+        }
         kx = fkey(p->x);
         ky = fkey(p->y);
         if (kx < xlo || kx >= xhi || ky < ylo || ky >= yhi) continue;

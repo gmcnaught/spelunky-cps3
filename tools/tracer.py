@@ -37,6 +37,14 @@ Method from ../maldita.castilla-cps3/tools/tracer.py. Changes, all GML compiled 
     id * 4096 + k to global.trc_evl (k: the names file's "C k <object> <event>" lines); the record writes the
     list since the last record. Used to determine the runner's event and instance order.
   - TRACE_SHOT=r1,r2,...: oGamepad Post-Draw (new) saves application_surface after record r (shot_gml).
+  - TRACE_HUD=1: every record also carries the HUD globals the trace otherwise lacks (global.collect,
+    messageTimer, message1 / message2 with their highlights, bloodLevel, drawHUD) in an SPT4 extension block.
+  - TRACE_SND=1: every record also carries the sound calls made since the previous record, in call order (SPT4
+    extension block): the scripts playSound, playMusic, startMusic, stopAllMusic, setSoundVol are replaced by
+    their HD source with a log call first (snd_scripts), and the builtin audio_stop_sound / audio_pause_all /
+    audio_resume_all / audio_stop_all / audio_play_sound calls in the code entries of SND_SITES go through logging
+    wrappers (gml_GlobalScript_trcSnd). Logging starts at the title flow's room_goto(rLevel), so the level room's
+    own start (oLevel Create: startMusic) is in record 0. Without either flag the records stay SPT3, byte for byte.
   - TRACE_TREE=r1,r2,... (probe runs only): after record r, tree_<r>.txt lists collision_rectangle_list over the
     whole room (unordered) for each object of TRACE_TREE_OBJS (default oSolid): the runner's collision-tree
     search order (src/game/pcol.c). The query flushes the tree's dirty list (UpdateTree): playhost --tree-probe.
@@ -89,6 +97,14 @@ Trace format (little-endian; the chunks concatenated in order, scripts/hd_trace.
     per tile: string background name (NUL-terminated), f64 left, top, w, h, x, y, depth (the layer's depth)
   after the instances (and tiles), every record (SPT3):
     u32  count, s32 entries      TRACE_EVLOG's event log (count 0 without TRACE_EVLOG)
+  SPT4 (TRACE_HUD / TRACE_SND): an SPT3 record, then
+    u32  flags           bit 0 HUD block, bit 1 sound block
+    HUD block: f64 collect, messageTimer, bloodLevel, drawHUD; message1, message2 each as
+      u8 type (0 string, 1 array of parts), then a string or u32 n + n strings; then the highlights:
+      u32 n + n f64 (global.messageHighlights / message2Highlights when an array; n = 0 otherwise: only arrays
+      highlight, scripts/drawHighlightedMessage)
+    sound block: u32 count; per call u8 kind (SND_KINDS index), string asset (audio_get_name; "" none), f64 arg
+      (playMusic: loop; setSoundVol: the volume argument; audio_play_sound: priority * 2 + loop; else 0)
   Magic "SPT3" (0x33545053, P4). "SPT2": no view, time, image_speed, vars or event log. "SPT1" (before
   2026-10-03 P3): also no image_xscale..visible fields and no tiles. decode reads all three.
 Names file (<out.droid>.names): one line per resource, "O <index> <name>", "S ...", "R ...".
@@ -109,6 +125,18 @@ KEYS = {'R': (1, 'right'), 'L': (2, 'left'), 'U': (4, 'up'), 'D': (8, 'down'), '
 MAGIC = 0x33545053   # "SPT3" (SPT2: without view / time / image_speed / vars / event log; SPT1: without the
 MAGIC2 = 0x32545053  #  drawing fields and tiles; both still decoded)
 MAGIC1 = 0x31545053
+MAGIC4 = 0x34545053  # "SPT4": SPT3 + the TRACE_HUD / TRACE_SND extension block
+TRACE_HUD = os.environ.get('TRACE_HUD') == '1'
+TRACE_SND = os.environ.get('TRACE_SND') == '1'
+# sound log kinds (SPT4 sound block)
+SND_KINDS = ['', 'playSound', 'playMusic', 'startMusic', 'stopAllMusic', 'setSoundVol', 'audio_stop_sound',
+             'audio_pause_all', 'audio_resume_all', 'audio_stop_all', 'audio_play_sound']
+# code entries whose builtin audio calls go through the logging wrappers (refs/hd/src: every such call in the
+# objects and scripts the play loop translates, tools/sndhooks.py; the direct audio_play_sound of the title /
+# ending rooms)
+SND_SITES = ['gml_Object_oPlayer1_Step_0', 'gml_GlobalScript_scrFireBow', 'gml_Object_oGame_Step_0',
+             'gml_Object_oTitle_Alarm_3', 'gml_Object_oEndCustom_Alarm_0', 'gml_Object_oPDummy2_Alarm_2',
+             'gml_Object_oCamel_Step_0']
 # SPT3 per-instance variables (bit k of the var mask: TRACE_VARS[k] exists and converts to a number by real())
 TRACE_VARS = ['state', 'xAcc', 'yAcc', 'held', 'armed', 'status', 'fallTimer', 'stunTimer', 'dead', 'stunned',
               'jumpTime', 'whipping', 'hangCount', 'ladderTimer', 'pushTimer', 'runHeld', 'life', 'holdItem',
@@ -143,12 +171,74 @@ def num(expr):
     return f'(is_numeric({expr}) ? {expr} : {BAD})'
 
 
+def gvar(name):
+    """a global as a number (BAD when missing or not a number; booleans as 0 / 1)"""
+    return (f'(variable_global_exists("{name}") ? (is_numeric(global.{name}) || is_bool(global.{name}) ? '
+            f'real(global.{name}) : {BAD}) : {BAD})')
+
+
+def ext_gml():
+    """GML appending the SPT4 extension block (TRACE_HUD / TRACE_SND) to buffer b"""
+    if not (TRACE_HUD or TRACE_SND):
+        return ''
+    out = f'''
+    buffer_write(b, buffer_u32, {(1 if TRACE_HUD else 0) | (2 if TRACE_SND else 0)});'''
+    if TRACE_HUD:
+        out += f'''
+    buffer_write(b, buffer_f64, {gvar('collect')});
+    buffer_write(b, buffer_f64, {gvar('messageTimer')});
+    buffer_write(b, buffer_f64, {gvar('bloodLevel')});
+    buffer_write(b, buffer_f64, {gvar('drawHUD')});'''
+        for m, h in (('message1', 'messageHighlights'), ('message2', 'message2Highlights')):
+            out += f'''
+    {{
+        var mm = variable_global_exists("{m}") ? global.{m} : "";
+        if (is_array(mm))
+        {{
+            buffer_write(b, buffer_u8, 1);
+            buffer_write(b, buffer_u32, array_length(mm));
+            for (var k = 0; k < array_length(mm); k++) buffer_write(b, buffer_string, string(mm[k]));
+        }}
+        else
+        {{
+            buffer_write(b, buffer_u8, 0);
+            buffer_write(b, buffer_string, string(mm));
+        }}
+        var hh = variable_global_exists("{h}") ? global.{h} : undefined;
+        if (is_array(hh))
+        {{
+            buffer_write(b, buffer_u32, array_length(hh));
+            for (var k = 0; k < array_length(hh); k++) buffer_write(b, buffer_f64, real(hh[k]));
+        }}
+        else buffer_write(b, buffer_u32, 0);
+    }}'''
+    if TRACE_SND:
+        out += '''
+    buffer_write(b, buffer_u32, global.trc_sndn);
+    for (var k = 0; k < global.trc_sndn; k++)
+    {
+        var e = global.trc_snd[k];
+        buffer_write(b, buffer_u8, e[0]);
+        buffer_write(b, buffer_string, e[1]);
+        buffer_write(b, buffer_f64, e[2]);
+    }
+    global.trc_snd = [];
+    global.trc_sndn = 0;'''
+    return out
+
+
+# SPT4 per instance, after the variables: f64 cimg (oItem / oDamsel's price-tag frame counter; BAD if absent: the
+# var mask is full)
+SPT4_INST = f'''
+        buffer_write(b, buffer_f64, variable_instance_exists(id, "cimg") ? {num('cimg')} : {BAD});'''
+
+
 def record(phase):
     """GML writing one record into global.trc_buf"""
     return f'''
 {{
     var b = global.trc_buf;
-    buffer_write(b, buffer_u32, {MAGIC});
+    buffer_write(b, buffer_u32, {MAGIC4 if TRACE_HUD or TRACE_SND else MAGIC});
     buffer_write(b, buffer_u8, {phase});
     buffer_write(b, buffer_s32, global.trc_rec);
     buffer_write(b, buffer_s32, global.trc_t);
@@ -213,13 +303,13 @@ def record(phase):
             }}
         }}
         buffer_write(b, buffer_u32, vm);
-        for (var k = 0; k < array_length(vn); k++) if (vm & (1 << k)) buffer_write(b, buffer_f64, vv[k]);
+        for (var k = 0; k < array_length(vn); k++) if (vm & (1 << k)) buffer_write(b, buffer_f64, vv[k]);{SPT4_INST if TRACE_HUD or TRACE_SND else ''}
     }}
     buffer_poke(b, npos, buffer_u32, n);
     {tiles_gml() if phase == 0 else ''}
     buffer_write(b, buffer_u32, global.trc_evn);
     for (var k = 0; k < global.trc_evn; k++) buffer_write(b, buffer_s32, global.trc_evl[k]);
-    global.trc_evn = 0;
+    global.trc_evn = 0;{ext_gml()}
     global.trc_rec += 1;
 }}
 '''
@@ -298,7 +388,7 @@ global.trc_lastroom = -1;
 global.trc_buf = -1;
 global.trc_evl = [];
 global.trc_evn = 0;
-global.trc_ends = [{', '.join(ends) or '0'}];
+{'global.trc_snd = [];' + chr(10) + 'global.trc_sndn = 0;' + chr(10) if TRACE_SND else ''}global.trc_ends = [{', '.join(ends) or '0'}];
 global.trc_masks = [{', '.join(masks) or '0'}];
 '''
     keys = ''.join(f'''
@@ -444,10 +534,50 @@ g.QueueAppend("gml_Object_oGamepad_Create_0", {q(create)});
 g.QueueReplace("gml_Object_oGamepad_Step_0", {q(step)});
 g.QueueReplace("gml_Object_oGamepad_Step_1", {q(begin)});
 g.QueueReplace("gml_Object_oGamepad_Step_2", {q(end)});
-{shots}{evlog_csx() if os.environ.get('TRACE_EVLOG') == '1' else ''}{genprobe_csx(q)}{treeat_csx(q)}
+{shots}{evlog_csx() if os.environ.get('TRACE_EVLOG') == '1' else ''}{genprobe_csx(q)}{treeat_csx(q)}{snd_csx(q)}
 File.WriteAllText({q(names)}, sb.ToString());
 g.Import();
 '''
+
+
+SND_WRAP = '''
+function trcSnd(k, s, a) {
+    if (variable_global_exists("trc_phase") && global.trc_phase == 2 && !global.trc_done) {
+        var nm = "";
+        if (!is_undefined(s)) { try { nm = audio_get_name(s); } catch (e) { nm = "?"; } }
+        global.trc_snd[global.trc_sndn] = [k, nm, a];
+        global.trc_sndn += 1;
+    }
+}
+function trcStopSound(s) { trcSnd(6, s, 0); return audio_stop_sound(s); }
+function trcPauseAll() { trcSnd(7, undefined, 0); return audio_pause_all(); }
+function trcResumeAll() { trcSnd(8, undefined, 0); return audio_resume_all(); }
+function trcStopAll() { trcSnd(9, undefined, 0); return audio_stop_all(); }
+function trcPlaySound(s, p, l) { trcSnd(10, s, p * 2 + (l ? 1 : 0)); return audio_play_sound(s, p, l); }
+'''
+# script -> the log call put first in its function body (SND_KINDS index, asset argument, extra argument)
+SND_SCRIPTS = {'playSound': 'trcSnd(1, argument0, 0);', 'playMusic': 'trcSnd(2, argument0, argument1 ? 1 : 0);',
+               'startMusic': 'trcSnd(3, undefined, 0);', 'stopAllMusic': 'trcSnd(4, undefined, 0);',
+               'setSoundVol': 'trcSnd(5, argument0, argument1);'}
+
+
+def snd_csx(q):
+    """TRACE_SND=1: the logging wrappers (gml_GlobalScript_trcSnd), the five audio scripts replaced by HD's source
+    (refs/hd/src/scripts) with the log call first, the builtin calls of SND_SITES renamed to the wrappers"""
+    if not TRACE_SND:
+        return ''
+    src = os.path.join(HERE, '..', 'refs', 'hd', 'src', 'scripts')
+    out = f'g.QueueReplace("gml_GlobalScript_trcSnd", {q(SND_WRAP)});\n'
+    for name, call in SND_SCRIPTS.items():
+        t = open(os.path.join(src, name, name + '.gml'), encoding='utf-8').read()
+        k = t.index('{', t.index('function ' + name)) + 1
+        out += f'g.QueueReplace("gml_GlobalScript_{name}", {q(t[:k] + chr(10) + "    " + call + t[k:])});\n'
+    for site in SND_SITES:
+        for a, b in (('audio_stop_sound(', 'trcStopSound('), ('audio_pause_all(', 'trcPauseAll('),
+                     ('audio_resume_all(', 'trcResumeAll('), ('audio_stop_all(', 'trcStopAll('),
+                     ('audio_play_sound(', 'trcPlaySound(')):
+            out += f'g.QueueFindReplace("{site}", {q(a)}, {q(b)});\n'
+    return out
 
 
 def genprobe_csx(q):
@@ -599,10 +729,10 @@ def records(data):
     while o < len(data):
         h = H.unpack_from(data, o)
         o += H.size
-        if h[0] not in (MAGIC, MAGIC2, MAGIC1):
+        if h[0] not in (MAGIC, MAGIC2, MAGIC1, MAGIC4):
             raise ValueError(f'bad magic at {o - H.size}')
         v2 = h[0] != MAGIC1
-        v3 = h[0] == MAGIC
+        v3 = h[0] in (MAGIC, MAGIC4)
         hd = dict(zip(['magic', 'phase', 'rec', 't', 'input', 'room', 'currLevel', 'seed', 'plife', 'bombs',
                        'rope', 'money', 'n'], h))
         if v3:
@@ -642,6 +772,11 @@ def records(data):
                     if vm & (1 << k):
                         ins['vars'][nm] = struct.unpack_from('<d', data, o)[0]
                         o += 8
+                if h[0] == MAGIC4:
+                    (cv,) = struct.unpack_from('<d', data, o)
+                    o += 8
+                    if cv > BAD:
+                        ins['vars']['cimg'] = cv
             insts.append(ins)
         hd['tiles'] = []
         if v2 and hd['phase'] == 0:
@@ -659,6 +794,45 @@ def records(data):
             o += 4
             hd['ev'] = list(struct.unpack_from(f'<{ne}i', data, o))
             o += 4 * ne
+        if h[0] == MAGIC4:
+            (fl,) = struct.unpack_from('<I', data, o)
+            o += 4
+
+            def sz():
+                nonlocal o
+                e = data.index(b'\0', o)
+                v = data[o:e].decode('utf-8', 'replace')
+                o = e + 1
+                return v
+            if fl & 1:
+                hud = dict(zip(['collect', 'messageTimer', 'bloodLevel', 'drawHUD'], struct.unpack_from('<4d', data, o)))
+                o += 32
+                for m in ('message1', 'message2'):
+                    t = data[o]
+                    o += 1
+                    if t:
+                        (n,) = struct.unpack_from('<I', data, o)
+                        o += 4
+                        hud[m] = [sz() for _ in range(n)]
+                    else:
+                        hud[m] = sz()
+                    (n,) = struct.unpack_from('<I', data, o)
+                    o += 4
+                    hud[m + '_hl'] = list(struct.unpack_from(f'<{n}d', data, o))
+                    o += 8 * n
+                hd['hud'] = hud
+            if fl & 2:
+                (n,) = struct.unpack_from('<I', data, o)
+                o += 4
+                calls = []
+                for _ in range(n):
+                    k = data[o]
+                    o += 1
+                    a = sz()
+                    (x,) = struct.unpack_from('<d', data, o)
+                    o += 8
+                    calls.append((SND_KINDS[k] if k < len(SND_KINDS) else str(k), a, x))
+                hd['snd'] = calls
         yield hd, insts
 
 

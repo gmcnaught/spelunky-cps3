@@ -2,7 +2,9 @@
 """The HUD's art that tools/hdsprites.py does not convert (it reads refs/hd/src/sprites only): HD's English sprite
 fonts and the money sign, loaded at run time by HD from datafiles (scripts/scrInit: global.fontLargeDefault /
 fontSmallDefault from locale/locales/en/charset/charset.png / charset_small.png; scripts/setLocale: global.fontLarge
-/ fontSmall from the same files for "en"; scripts/loadLocalizedSprites: global.sMoneySignNew from images/money_sign.png).
+/ fontSmall from the same files for "en"; scripts/loadLocalizedSprites: global.sMoneySignNew from images/money_sign.png,
+global.sSmallCollectNew from images/small_collect.png: sprite_add(.., 20 frames, .., origin 4, 4), the price tag oItem /
+oDamsel draw at y - 12).
 
     tools/hudart.py <hd src dir> <gen dir>      (after tools/hdsprites.py: reads <gen dir>/gfx.json)
 
@@ -11,6 +13,7 @@ Writes <gen dir>/hudart.h, hud.bin (tiles), hud.json (flash offsets, palettes). 
     large font glyph k (16 x 16)          HUD_FIRST_TILE + k                 k = character - 32 (charset ' '..'Z')
     small font glyph k (8 x 8, top-left)  HUD_FIRST_TILE + HUD_NGLYPHS + k
     money sign (16 x 16)                  HUD_FIRST_TILE + 2 * HUD_NGLYPHS
+    price tag frame k (8 x 10, top-left)  HUD_FIRST_TILE + 2 * HUD_NGLYPHS + 1 + k      k = 0 .. 19
   palettes (colour 0 transparent): colour code HUD_PAL (the art's colours) at flash HUD_PAL_AT; colour code
   HUD_PAL + 1 at HUD_PAL_AT + 512: the same colours multiplied by c_yellow (255, 255, 0), as draw_text with
   draw_set_color(c_yellow) blends them.
@@ -36,7 +39,8 @@ def sources(src):
         raise SystemExit(f'charset is {cs!r}, expected {CHARSET!r}')
     return (Image.open(os.path.join(src, LOC, 'charset', 'charset.png')).convert('RGBA'),
             Image.open(os.path.join(src, LOC, 'charset', 'charset_small.png')).convert('RGBA'),
-            Image.open(os.path.join(src, LOC, 'images', 'money_sign.png')).convert('RGBA'))
+            Image.open(os.path.join(src, LOC, 'images', 'money_sign.png')).convert('RGBA'),
+            Image.open(os.path.join(src, LOC, 'images', 'small_collect.png')).convert('RGBA'))
 
 
 def tint(rgb, blend):
@@ -47,7 +51,7 @@ def tint(rgb, blend):
 def main():
     src, gen = sys.argv[1], sys.argv[2]
     meta = json.load(open(os.path.join(gen, 'gfx.json')))
-    large, small, money = sources(src)
+    large, small, money, collect = sources(src)
     rgbs = []                        # palette index - 1 -> source (r, g, b)
     index = {}
 
@@ -69,6 +73,8 @@ def main():
     tiles = [cell(large, 16 * k, 0, 16, 16) for k in range(n)]
     tiles += [cell(small, 8 * k, 0, 8, 8) for k in range(n)]
     tiles.append(cell(money, 0, 0, 16, 16))
+    tw = collect.width // 20                     # sprite_add's 20 frames side by side
+    tiles += [cell(collect, tw * k, 0, tw, collect.height) for k in range(20)]
     if len(rgbs) > 255:
         raise SystemExit('more than 255 HUD colours')
     pal = [0] + [hdsprites.bgr555(*c) for c in rgbs]
@@ -92,6 +98,8 @@ def main():
          '#define HUD_GLYPH_LARGE(c) (HUD_FIRST_TILE + (unsigned)(c) - 32u)',
          '#define HUD_GLYPH_SMALL(c) (HUD_FIRST_TILE + HUD_NGLYPHS + (unsigned)(c) - 32u)',
          '#define HUD_TILE_MONEYSIGN (HUD_FIRST_TILE + 2u * HUD_NGLYPHS)',
+         '#define HUD_TILE_COLLECT(k) (HUD_FIRST_TILE + 2u * HUD_NGLYPHS + 1u + (unsigned)(k))  /* price tag, 20 */',
+         f'#define HUD_COLLECT_XORIG 4\n#define HUD_COLLECT_YORIG 4\n#define HUD_COLLECT_FRAMES 20',
          '#endif', '']
     open(os.path.join(gen, 'hudart.h'), 'w').write('\n'.join(h))
     print(f'{len(tiles)} HUD tiles from {first:#x} at flash {tiles_at:#x}, {len(rgbs)} colours, palettes at {pal_at:#x}')

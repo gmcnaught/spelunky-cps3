@@ -196,6 +196,9 @@ def drawables(names, tiles, insts, g, kind, blink=-1):
                     spr('sShotgunRight', 0, x + 10, y + 10, False)
         for f, X, Y, flip in ops:
             out.append((depth, base + k, 'frame', f, X, Y, flip))
+        if kd in ('ITEM', 'DAMSEL') and v.get('cost', 0) > 0 and 'cimg' in v:
+            # the price tag: draw_sprite_ext(global.sSmallCollectNew, cimg, x, y - 12, ..) (SPT4 traces: cimg)
+            out.append((depth, base + k, 'tag', int(v['cimg']), x, y - 12, False))
     out.sort(key=lambda e: (-e[0], e[1]))
     return out
 
@@ -212,27 +215,113 @@ def hud_case(hd, insts, names, vx, vy):
             h = i['vars'].get('holdItem')
             if h is not None and int(h) in ids:
                 c['held'] = HELD.get(names['O'][ids[int(h)]['obj']], 'OTHER')
-    # global.drawHUD (not traced): false from the death (oPlayer1 Step :1459-1464, plife < 1 -> dead) to the next level
-    c['visible'] = int(any(names['O'][i['obj']] == 'oPlayer1' and not int(i['vars'].get('dead', 0)) for i in insts))
+    player = any(names['O'][i['obj']] == 'oPlayer1' for i in insts)
+    h = hd.get('hud')
+    if h is None:
+        # without TRACE_HUD: global.drawHUD is false from the death (oPlayer1 Step :1459-1464) to the next level
+        c['visible'] = int(any(names['O'][i['obj']] == 'oPlayer1' and not int(i['vars'].get('dead', 0)) for i in insts))
+        return c
+    # TRACE_HUD records: the globals as the runner has them at oGamepad's End Step (showMessages counts
+    # messageTimer down in the Draw GUI after it: a timer > 0 there is a drawn message)
+    c['visible'] = int(bool(h['drawHUD'] > 0) and player)
+    c['collect'] = int(h['collect']) if h['collect'] > -1e8 else 0
+    c['blood_level'] = int(h['bloodLevel']) if h['bloodLevel'] > -1e8 else 0
+    c['message_timer'] = int(h['messageTimer']) if h['messageTimer'] > -1e8 else 0
+    for m in ('message1', 'message2'):
+        v = h[m]
+        c[m] = v if isinstance(v, str) else list(v)
+        if not isinstance(v, str):
+            c[m + '_yellow'] = [int(x) for x in h[m + '_hl']]
     return c
 
 
 SRC = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'refs', 'hd', 'src')
 
 
+TAG = os.path.join(SRC, 'datafiles', 'locale', 'locales', 'en', 'images', 'small_collect.png')
+
+
+def compose555(dr, g, vx, vy, W=320, H=240):
+    """tools/viewlevel.py's compose as bgr555 words (None: nothing), plus the price tag ('tag': HD's
+    small_collect.png, 20 frames side by side, origin 4, 4)"""
+    import hdsprites
+    pal = g.meta['palette']
+    first = g.meta['first_tile']
+    img = [[None] * W for _ in range(H)]
+
+    def blit_tile(tile, px, py, flip=False):
+        t = tile - first
+        tb = g.gfx[256 * t:256 * t + 256]
+        for yy in range(16):
+            Y = py + yy
+            if 0 <= Y < H:
+                row = img[Y]
+                for xx in range(16):
+                    X = px + xx
+                    c = tb[16 * yy + (15 - xx if flip else xx)]
+                    if c and 0 <= X < W:
+                        row[X] = pal[c]
+
+    def blit_frame(f, x, y, flip):
+        p0, n = g.frm[f]
+        for dx, dy, pw, ph, tile in g.pcs[p0:p0 + n]:
+            for i in range(pw):
+                for j in range(ph):
+                    if flip:
+                        blit_tile(tile + i * ph + j, x - dx - 16 * pw + 16 * (pw - 1 - i), y + dy + 16 * j, True)
+                    else:
+                        blit_tile(tile + i * ph + j, x + dx + 16 * i, y + dy + 16 * j)
+    tag = None
+    bg = g.sprid['bgCave']
+    for ry in range((vy // 64) * 64, vy + H, 64):
+        for rx in range((vx // 64) * 64, vx + W, 64):
+            blit_frame(g.spr[bg][9], rx - vx, ry - vy, False)
+    for d in dr:
+        if d[2] == 'cell':
+            blit_tile(d[3], 16 * d[4] - vx, 16 * d[5] - vy)
+        elif d[2] == 'frame':
+            blit_frame(d[3], d[4] - vx, d[5] - vy, d[6])
+        else:
+            if tag is None:
+                tag = Image.open(TAG).convert('RGBA')
+            tw = tag.width // 20
+            k = d[3] % 20
+            tp = tag.load()
+            for yy in range(tag.height):
+                for xx in range(tw):
+                    r, gg, b, a = tp[tw * k + xx, yy]
+                    X, Y = d[4] - 4 - vx + xx, d[5] - 4 - vy + yy
+                    if a >= 128 and 0 <= X < W and 0 <= Y < H:
+                        img[Y][X] = hdsprites.bgr555(r, gg, b)
+    return img
+
+
 def view555(g, names, tiles, hd, insts, kind, art=None):
-    """the model's 320 x 240 view as bgr555 words (0: nothing), with the HUD when art (hudcheck.Art) is given"""
+    """the model's 320 x 240 view as bgr555 words (None: nothing), with the HUD when art (hudcheck.Art) is given"""
     import hudcheck
     vx, vy = view_after(hd, insts, names)
-    view = viewlevel.compose(drawables(names, tiles, insts, g, kind, hd.get('blinkToggle', -1)), g, vx, vy)
-    pal = g.meta['palette']
     v = hudcheck.View()
-    for y in range(240):
-        for x in range(320):
-            v.px[y][x] = pal[view[y][x]] if view[y][x] else None
+    v.px = compose555(drawables(names, tiles, insts, g, kind, hd.get('blinkToggle', -1)), g, vx, vy)
     if art:
         hudcheck.model(hud_case(hd, insts, names, vx, vy), art, 320, v)
     return v, (vx, vy)
+
+
+def shot555(v, shot, mask=None):
+    """pixels of the view whose 5-bit colour differs from the runner's frame (first 320 columns)"""
+    import hdsprites
+    s = Image.open(shot).convert('RGB').load()
+    n = 0
+    m = Image.new('L', (320, 240)) if mask else None
+    for y in range(240):
+        for x in range(320):
+            if (v.px[y][x] or 0) != hdsprites.bgr555(*s[x, y]):
+                n += 1
+                if m:
+                    m.putpixel((x, y), 255)
+    if m:
+        m.save(mask)
+    return n
 
 
 def hostcmp(trace, names_path, gen, d, hud):
@@ -307,23 +396,14 @@ def hostcmp(trace, names_path, gen, d, hud):
 
 
 def model(trace, names_path, rec, gen, hud=False):
+    """(the 320 x 240 view without the HUD, MAME's screen with the HUD if asked, the camera)"""
+    import hudcheck
     g = viewlevel.Gen(gen)
-    src = SRC
     names, tiles, hd, insts, _ = load(trace, names_path, rec)
-    vx, vy = view_after(hd, insts, names)
-    dr = drawables(names, tiles, insts, g, kinds(g, src), hd.get('blinkToggle', -1))
-    view = viewlevel.compose(dr, g, vx, vy)
-    scr = viewlevel.screen(view, g)
-    if hud:
-        import hudcheck
-        pal = g.meta['palette']
-        v = hudcheck.View()
-        for y in range(240):
-            for x in range(320):
-                v.px[y][x] = pal[view[y][x]] if view[y][x] else None
-        hudcheck.model(hud_case(hd, insts, names, vx, vy), hudcheck.Art(src), 320, v)
-        scr = hudcheck.screen(v)
-    return g, view, scr, (vx, vy)
+    kind = kinds(g, SRC)
+    v, cam = view555(g, names, tiles, hd, insts, kind)
+    scr = hudcheck.screen(view555(g, names, tiles, hd, insts, kind, hudcheck.Art(SRC))[0] if hud else v)
+    return g, v, scr, cam
 
 
 def diff5(a, b, mask=None):
@@ -359,7 +439,7 @@ def main():
     fail = n != 0
     if opt('--shot'):
         s = opt('--shot')
-        k = viewlevel.shot_diff(view, g, s, s.replace('.png', '.mdiff.png'))
+        k = shot555(view, s, s.replace('.png', '.mdiff.png'))
         msg += f'; runner frame vs model {k} of {320 * 240} px'
         fail = fail or k != 0
     print(msg)
