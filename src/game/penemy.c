@@ -24,7 +24,11 @@ static int CP(double x, double y, int obj) { return collision_point_p(x, y, obj,
 static int CPn(double x, double y, int obj, int self) { (void)self; return collision_point_p(x, y, obj, 0, NOONE) != NOONE; }
 static int sprw(int i) { int s = PX(i).spr; return s >= 0 ? (int)(psprite[s].w * PX(i).xscale) : 0; }
 static int sprh(int i) { int s = PX(i).spr; return s >= 0 ? (int)(psprite[s].h * PX(i).yscale) : 0; }
-static int bloodless_of(int i) { return PX(i).obj == OBJ_oSkeleton; }
+static int bloodless_of(int i)                                     /* Create's bloodless = true */
+{
+    int o = PX(i).obj;
+    return o == OBJ_oSkeleton || o == OBJ_oDeadFish || o == OBJ_oVampire || o == OBJ_oScarab || o == OBJ_oTombLord;
+}
 static void blood(int self, double x, double y, int n)            /* scrCreateBlood with self's bloodless */
 {
     if (bloodless_of(self)) return;

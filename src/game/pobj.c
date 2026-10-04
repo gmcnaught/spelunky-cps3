@@ -950,8 +950,8 @@ static void game_step(int i)
             pswamp_world(1052, i, 0);
     }
     if (G.checkWater) {                                                        /* :64 */
-        if (instance_exists_p(OBJ_oWater)) pswamp_world(1053, i, 0);
-        G.checkWater = 0;                                                      /* waterCounter == 0 */
+        if (instance_exists_p(OBJ_oWater)) pswamp_world(1053, i, 0);          /* clears it when waterCounter == 0 */
+        else G.checkWater = 0;                                                 /* waterCounter == 0 */
     }
     if (instance_exists_p(OBJ_oPlayer1) && PL.dead) {                          /* :127 game over */
         if (PGAME.drawStatus == 0) {
