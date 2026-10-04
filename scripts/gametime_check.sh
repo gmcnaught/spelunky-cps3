@@ -15,6 +15,10 @@ git archive "${GAME_REV:-HEAD}" src/game | tar -x -C "$G" --strip-components=2
 cp build/gen/objects.[ch] build/gen/gentables.[ch] build/gen/playtables.[ch] "$G/"
 sed -i '' "s/^#define PIN_MAX 4096\$/#define PIN_MAX ${PIN:-1000}/" "$G/play.h"
 grep -q "^#define PIN_MAX ${PIN:-1000}\$" "$G/play.h"
+# EXACT=1: the exact build (src/game/pcol.c with PCOL_EXACT: the runner's R-tree order in play); default the
+# shipping build's collision grid (src/game/pcolgrid.h). GRID_SHIFT=<n>: grid cells of 2^n px (default 4)
+if [ "${EXACT:-0}" = 1 ]; then { echo "#define PCOL_EXACT 1"; cat "$G/pcol.c"; } > "$G/pcol.tmp" && mv "$G/pcol.tmp" "$G/pcol.c"; fi
+if [ -n "${GRID_SHIFT:-}" ]; then { echo "#define PCOL_GRID_SHIFT $GRID_SHIFT"; cat "$G/pcol.c"; } > "$G/pcol.tmp" && mv "$G/pcol.tmp" "$G/pcol.c"; fi
 touch "$G/stamp"
 python3 tools/drawtables.py refs/hd/src build/gen >/dev/null
 MK="OUT=build/run/elf ROUTE=$R SEED=$S LEVEL=$L MONEY=$M ENEMIES=$E ROUTE2=$R2 SEED2=$S2 LEVEL2=$L2 MONEY2=$M2 ENEMIES2=$E2 ATTRACT_FRAMES=${ATTRACT_FRAMES:-3600}"

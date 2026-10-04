@@ -1,0 +1,4 @@
+# scripts/equiv_check.sh: accepted state-gate differences (docs/EQUIV.md §4). One per line:
+#   <route>_s<seed> <first gbag record> <reason>
+# Accepted only while the route check passes and the first gbag difference is at exactly this record.
+p4_bomb_throw_s3 172 explosion debris visited in another order: gold chunk / nugget resting positions a few px apart, money equal

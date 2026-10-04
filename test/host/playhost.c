@@ -19,6 +19,7 @@
 #include <string.h>
 #include "pint.h"
 #include "pcol.h"
+#include "rng.h"
 #include "../../src/snd/snd.h"
 void sndhost_init(void);                         /* sndhost.c: src/snd, its call log as SND lines */
 
@@ -35,6 +36,13 @@ static void record(int phase)
            PG.bombs, PG.rope, PG.money, PW.xview, PW.yview,
            instance_exists_p(OBJ_oGame) ? (long)play_time : -1000000000L, play_untranslated, play_dops,
            play_untr_obj >= 0 ? objdefs[play_untr_obj].name : "-");
+#ifdef PLAY_RNGLOG
+    {   /* tools/equivcheck.py: the RNG state at the record (index, FNV-1a of the 16 words) */
+        uint32_t h = 2166136261u;
+        for (k = 0; k < 16; k++) h = (h ^ g_rng.s[k]) * 16777619u;
+        printf("Q %u %08x\n", (unsigned)g_rng.i, (unsigned)h);
+    }
+#endif
     for (k = PW.nord - 1; k >= 0; k--) {                /* newest first */
         const struct pin *p = &PW.in[pw_ord[k]];
         int a, any = 0;

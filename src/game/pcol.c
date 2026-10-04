@@ -652,6 +652,8 @@ static void s_keys(void)
     s_kv = 1;
 }
 
+static void search_run(void);           /* the tree, or pcolgrid.h in play */
+
 static int search_rec(int n)
 {
     int k;
@@ -696,7 +698,7 @@ void pcol_search_i(int32_t l, int32_t t, int32_t r, int32_t b, int (*cb)(int e, 
     s_ctx = ctx;
     rlock = 1;
     pcol_st.searches++;
-    search_rec(rroot);
+    search_run();
     rlock = 0;
 }
 
@@ -712,7 +714,7 @@ void pcol_search(float l, float t, float r, float b, int (*cb)(int e, void *ctx)
     s_ctx = ctx;
     rlock = 1;
     pcol_st.searches++;
-    search_rec(rroot);
+    search_run();
     rlock = 0;
 }
 
@@ -786,6 +788,8 @@ static int16_t dn[ENT_MAX], dp[ENT_MAX], tn[ENT_MAX], tp[ENT_MAX];
 static int16_t dhead = -1, thead = -1;
 static rk er[ENT_MAX][4];           /* the rectangle the entry was put in with (RemoveRect's search key) */
 static uint8_t erw[ENT_MAX];           /* its form (struct rbr w) */
+#include "pcolgrid.h"                   /* the shipping build's play-time grid (PCOL_EXACT: the tree) */
+static void search_run(void) { if (PCOL_GRID_ON) pgrid_search(); else search_rec(rroot); }
 static uint8_t epass[ENT_MAX];         /* the HandleCollision pass that entry searched in (EPASS_NONE: none since the
                                           last wrap; pass_no runs 0 .. 254, then every epass is reset) */
 static uint8_t pass_no;
@@ -1024,6 +1028,13 @@ static void cupdate_at(int e, float dx, float dy)
     if (rlock) return;
     if (!emember(e)) return;
     ebbox_rect(e, dx, dy, &b);
+    if (PCOL_GRID_ON) {                           /* pcolgrid.h */
+        pcol_st.inserts++;
+        er_set(e, &b);
+        ef[e] |= EF_TREE;
+        pgrid_put(e);
+        return;
+    }
     if (ef[e] & EF_TREE) {
         pcol_st.removes++;
         remove_entry(e);
@@ -1179,6 +1190,7 @@ static void entry_clear(int e)
 {
     dlist_remove(e);
     tlist_remove(e);
+    if (PCOL_GRID_ON) pgrid_out(e);
     ef[e] = 0;
     epass[e] = EPASS_NONE;
 }
@@ -1201,6 +1213,7 @@ static void room_reset(void)
         ocnt[o] = 0;
     }
     rlock = 0;
+    pgrid_clear();
 }
 
 static void rebuild_all(void);
@@ -1216,7 +1229,7 @@ static void remove_marked(void)
     }
     for (k = 0; k < npend; k++) {
         int e = pend[k];
-        if ((ef[e] & EF_TREE) && !many) {
+        if ((ef[e] & EF_TREE) && !many && !PCOL_GRID_ON) {
             pcol_st.removes++;
             remove_entry(e);
         }
@@ -1233,6 +1246,7 @@ static void rebuild_all(void)
 {
     int e, j;
     rt_reset();
+    if (PCOL_GRID_ON) pgrid_clear();
     for (e = 0; e < ENT_MAX; e++) ef[e] &= (uint8_t)~EF_TREE;
     for (j = 0; j < (gmode ? W.n : PW.nord); j++)
         if (e = gmode ? j : pw_ord[j], (gmode ? W.in[e].alive : PW.in[e].alive) && !edead(e)) {
@@ -1284,6 +1298,7 @@ static void gen_load(void)
     for (e = 0; e < n; e++) if ((ef[e] & (EF_STALE | EF_OND)) == (EF_STALE | EF_OND)) stk[nstk++] = (int16_t)e;
     quiet_any = 1;
     gmode = 0;
+    if (PCOL_GRID_ON) pgrid_load(n);
 }
 
 void pcol_after_reset(void)
@@ -1353,6 +1368,12 @@ static int query_e(int obj, int gen)
             ebbox_rect(ent, 0, 0, &b);
             b.id = (int16_t)ent;
             pcol_st.inserts++;
+            if (!gen && PCOL_GRID_ON) {
+                er_set(ent, &b);
+                ef[ent] |= EF_TREE;
+                pgrid_put(ent);
+                continue;
+            }
             insert_rect(&b, 0);
             er_set(ent, &b);
             ef[ent] |= EF_TREE;

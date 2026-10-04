@@ -32,7 +32,7 @@ static int bloodless_of(int i)                                     /* Create's b
 static void blood(int self, double x, double y, int n)            /* scrCreateBlood with self's bloodless */
 {
     if (bloodless_of(self)) return;
-    scrCreateBlood(self, (pos)x, (pos)y, n);
+    scrCreateBlood(self, P(x), P(y), n);
 }
 /* "Caveman" / "ManTrap" / "Yeti" / "Hawkman" (no Create sets "Hawkman": oHawkman's type is "Yeti") */
 static int caveman_like(int t) { return t == T_CAVEMAN || t == T_MANTRAP || t == T_YETI; }
@@ -362,7 +362,7 @@ void pen_parent_step(int i)
         pin_setdepth(p, 60);
     if (CPn(X(i) + dfloor(sprw(i) / 2.0), Y(i) + dfloor(sprh(i) / 2.0), OBJ_oWaterSwim, i)) {   /* :34 */
         if (!PEN(p)->swimming) {
-            pin_create((pos)(X(i) + dfloor(sprw(i) / 2.0)), p->y, OBJ_oSplash);
+            pin_create(P(X(i) + dfloor(sprw(i) / 2.0)), p->y, OBJ_oSplash);
             p = &PX(i);
             PEN(p)->swimming = 1;
             snd_play(SND_xsplash);                                             /* :40 */
@@ -1019,8 +1019,8 @@ void pen_motion(void)
     for (k = pw_ohead[OBJ_oEnemySight]; k >= 0; k = pw_inext[k]) {
         struct pin *p = &PW.in[k];
         if (!p->alive || (dzero(PEN(p)->hspeed) && dzero(PEN(p)->vspeed))) continue;
-        pin_setx(p, (pos)((double)p->x + PEN(p)->hspeed));
-        pin_sety(p, (pos)((double)p->y + PEN(p)->vspeed));
+        pin_setx(p, P(PTOD(p->x) + PEN(p)->hspeed));
+        pin_sety(p, P(PTOD(p->y) + PEN(p)->vspeed));
     }
 }
 

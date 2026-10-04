@@ -9,7 +9,10 @@ OUT := $(ROOT)/build/host
 SRC := $(ROOT)/src/game/rng.c $(ROOT)/src/game/inst.c $(ROOT)/src/game/gen.c $(ROOT)/src/game/genroom.c \
        $(ROOT)/src/game/genobj.c $(ROOT)/src/game/genent.c $(GEN)/objects.c $(GEN)/gentables.c
 CFLAGS ?= -std=c99 -O2 -Wall -Wextra -Wno-unused-parameter
-INC := -I$(ROOT)/src/game -I$(ROOT)/src/front -I$(GEN) -I$(ROOT)/../cps3-testgame/sdk/include -I$(ROOT)/build/snd -DSND_LOG
+# every host build here is the exact one (PCOL_EXACT: the runner's R-tree order in play; the translation reference)
+# except playhost_grid (the shipping build's collision grid, src/game/pcolgrid.h)
+INC0 := -I$(ROOT)/src/game -I$(ROOT)/src/front -I$(GEN) -I$(ROOT)/../cps3-testgame/sdk/include -I$(ROOT)/build/snd -DSND_LOG
+INC := $(INC0) -DPCOL_EXACT
 
 PSRC := $(ROOT)/src/game/pworld.c $(ROOT)/src/game/pscript.c $(ROOT)/src/game/pobj.c $(ROOT)/src/game/pplayer.c \
         $(ROOT)/src/game/prun.c $(ROOT)/src/game/pcol.c $(ROOT)/src/game/ptrans.c $(GEN)/playtables.c \
@@ -19,7 +22,7 @@ PSRC := $(ROOT)/src/game/pworld.c $(ROOT)/src/game/pscript.c $(ROOT)/src/game/po
 # host only (stdio): the SDK voice stubs and the SND lines (not in the sh2 objects)
 HSRC := sndhost.c
 
-all: $(OUT)/genhost $(OUT)/playhost $(OUT)/playhost_fx $(OUT)/playhost_nc
+all: $(OUT)/genhost $(OUT)/playhost $(OUT)/playhost_fx $(OUT)/playhost_nc $(OUT)/playhost_grid $(OUT)/playhost_eq
 
 $(GEN)/objects.h $(GEN)/objects.c:
 	cd $(ROOT) && python3 tools/hdobjects.py refs/hd/src build/gen/objects.h
@@ -46,6 +49,16 @@ $(OUT)/playhost: playhost.c $(SRC) $(PSRC) $(ROOT)/src/game/*.h $(GEN)/playtable
 $(OUT)/playhost_fx: playhost.c $(SRC) $(PSRC) $(ROOT)/src/game/*.h $(GEN)/playtables.h $(ROOT)/build/snd/sndnames.h $(ROOT)/src/snd/snd.h
 	mkdir -p $(OUT)
 	$(CC) $(CFLAGS) -DPLAY_FIXED $(INC) -o $@ playhost.c $(SRC) $(PSRC) $(HSRC)
+
+# the gameplay-equivalence pair (scripts/equiv_check.sh, tools/equivcheck.py; docs/EQUIV.md): the shipping build's
+# collision grid and the exact build, both with the RNG state per record (PLAY_RNGLOG: Q lines)
+$(OUT)/playhost_grid: playhost.c $(SRC) $(PSRC) $(ROOT)/src/game/*.h $(GEN)/playtables.h $(ROOT)/build/snd/sndnames.h $(ROOT)/src/snd/snd.h
+	mkdir -p $(OUT)
+	$(CC) $(CFLAGS) -DPLAY_STATS -DPLAY_RNGLOG $(INC0) -o $@ playhost.c $(SRC) $(PSRC) $(HSRC)
+
+$(OUT)/playhost_eq: playhost.c $(SRC) $(PSRC) $(ROOT)/src/game/*.h $(GEN)/playtables.h $(ROOT)/build/snd/sndnames.h $(ROOT)/src/snd/snd.h
+	mkdir -p $(OUT)
+	$(CC) $(CFLAGS) -DPLAY_STATS -DPLAY_RNGLOG $(INC) -o $@ playhost.c $(SRC) $(PSRC) $(HSRC)
 
 # binary64 with no floating-point contraction anywhere (clang on arm64 contracts a * b + c by default; the runner's
 # fused operations are explicit fmaf calls in pcol.c): the routes must give the same records as playhost
@@ -74,6 +87,7 @@ $(OUT)/colprobe: colprobe.c $(SRC) $(PSRC) $(ROOT)/src/game/*.h $(GEN)/playtable
 # pin_set* setters (and so the collision tree's dirty marks) is a compile error. Compile only (no binary)
 constcheck: $(GEN)/objects.h $(GEN)/gentables.h $(GEN)/playtables.h
 	for f in $(PSRC) playhost.c treeprobe.c; do $(CC) -std=c99 -fsyntax-only -Wall -Wno-unused-parameter -DPIN_CONST_CHECK $(INC) $$f || exit 1; done
+	$(CC) -std=c99 -fsyntax-only -Wall -Wno-unused-parameter -DPIN_CONST_CHECK $(INC0) $(ROOT)/src/game/pcol.c
 
 # binary64 with its operations counted (the num class of pnum.h: -DPLAY_COUNT, everything compiled as C++)
 $(OUT)/playhost_count: playhost.c $(SRC) $(PSRC) $(ROOT)/src/game/*.h $(GEN)/playtables.h $(ROOT)/build/snd/sndnames.h $(ROOT)/src/snd/snd.h

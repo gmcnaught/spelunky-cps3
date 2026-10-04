@@ -626,7 +626,7 @@ static void bullet_collision(int b, int other)
     } else if (oo == OBJ_oDamsel) {
         if (!o->invincible) {
             if (PEN(o)->bloodLeft > 0) {
-                scrCreateBlood(other, (pos)(X(other) + sprw(other) / 2.0), (pos)(Y(other) + sprh(other) / 2.0), 1);
+                scrCreateBlood(other, P(X(other) + sprw(other) / 2.0), P(Y(other) + sprh(other) / 2.0), 1);
                 o = &PX(other);
                 if (PE(o)->hp < 0) PEN(o)->bloodLeft -= 1;
             }
@@ -659,7 +659,7 @@ static void bullet_collision(int b, int other)
             }
             if (PEN(o)->bloodLeft > 0) {
                 if (o->obj != OBJ_oSkeleton)
-                    scrCreateBlood(other, (pos)(X(other) + sprw(other) / 2.0), (pos)(Y(other) + sprh(other) / 2.0), 1);
+                    scrCreateBlood(other, P(X(other) + sprw(other) / 2.0), P(Y(other) + sprh(other) / 2.0), 1);
                 o = &PX(other);
                 if (PE(o)->hp < 0) PEN(o)->bloodLeft -= 1;
             }

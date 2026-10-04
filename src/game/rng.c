@@ -13,8 +13,21 @@ void rng_seed(struct rng *r, uint32_t seed)
     r->i = 0;
 }
 
+#ifdef PLAY_RNGLOG
+/* tools/equivcheck.py (host only): RNGTRACE=1 prints every draw (D lines in playhost's output) with the object
+   whose event runs */
+#include <stdio.h>
+#include <stdlib.h>
+extern int play_cur_obj;
+static int rng_trace = -1;
+#endif
+
 uint32_t rng_next(struct rng *r)
 {
+#ifdef PLAY_RNGLOG
+    if (rng_trace < 0) rng_trace = getenv("RNGTRACE") != NULL;
+    if (rng_trace) printf("D obj=%d\n", play_cur_obj);
+#endif
     uint32_t *S = r->s, i = r->i, a, b, c, d;
     a = S[i];
     c = S[(i + 13) & 15];

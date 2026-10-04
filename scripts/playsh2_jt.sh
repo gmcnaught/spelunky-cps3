@@ -12,6 +12,9 @@ T=tests/playsh2; B=$T/build; J=$B/jt; V=${JTV:-}; O=$J/out$V; N=${PIN:-1000}
 rm -rf "$O" "$B/g" "$J/gA"; mkdir -p "$O/w" "$B/g" "$J/gA"
 git archive "${GAME_REV:-HEAD}" src/game | tar -x -C "$J/gA" --strip-components=2
 cp build/gen/objects.[ch] build/gen/gentables.[ch] build/gen/playtables.[ch] "$J/gA/"
+# EXACT=1: the exact build (PCOL_EXACT); default the shipping build's collision grid. GRID_SHIFT=<n>: 2^n px cells
+if [ "${EXACT:-0}" = 1 ]; then { echo "#define PCOL_EXACT 1"; cat "$J/gA/pcol.c"; } > "$J/pcol.tmp" && mv "$J/pcol.tmp" "$J/gA/pcol.c"; fi
+if [ -n "${GRID_SHIFT:-}" ]; then { echo "#define PCOL_GRID_SHIFT $GRID_SHIFT"; cat "$J/gA/pcol.c"; } > "$J/pcol.tmp" && mv "$J/pcol.tmp" "$J/gA/pcol.c"; fi
 cp "$J/gA"/* "$B/g/"
 sed -i '' "s/^#define PIN_MAX 4096\$/#define PIN_MAX $N/" "$B/g/play.h"
 grep -q "^#define PIN_MAX $N\$" "$B/g/play.h"; touch "$B/g/stamp"

@@ -328,8 +328,8 @@ void play_level_start(int32_t next_id)
                 PE(p)->forSale = (g->flags & IF_FORSALE) != 0;
                 PE(p)->held = (g->flags & IF_HELD) != 0;
                 if (!play_gen_created) {           /* (the P5 Creates zero them: the generator's again) */
-                    PE(p)->xVel = NMUL(NI(g->xvel), N(1.0 / 256));
-                    PE(p)->yVel = NMUL(NI(g->yvel), N(1.0 / 256));
+                    PE(p)->xVel = ND(g->xvel / 256.0);
+                    PE(p)->yVel = ND(g->yvel / 256.0);
                 }
                 if (obj_is(g->obj, OBJ_oItem) || obj_is(g->obj, OBJ_oTreasure)) PE(p)->value = g->value;
             }

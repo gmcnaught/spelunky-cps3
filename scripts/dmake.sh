@@ -5,4 +5,6 @@ set -e
 cd "$(dirname "$0")/.."
 D=${1:-.}; shift || true
 P=$(cd .. && pwd)
-exec docker run --rm -v "$P":/p -w "/p/$(basename "$PWD")/$D" cps3-dev:latest make "$@"
+# ../cps3-testgame may be a symlink out of the mount (a git worktree): its target is mounted at its own path too
+S=$(cd ../cps3-testgame && pwd -P)
+exec docker run --rm -v "$P":/p -v "$S":"$S" -w "/p/$(basename "$PWD")/$D" cps3-dev:latest make "$@"
