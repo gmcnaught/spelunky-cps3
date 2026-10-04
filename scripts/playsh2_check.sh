@@ -3,6 +3,7 @@
 # src/game code; per-record checksums compared with the host build of the same code (tests/playsh2/host.c), SH-2
 # clocks per generation / step summarised (tests/playsh2/report.py).
 #   [PIN=1000] [OPT=-O2] [PROF=<ticks>] scripts/playsh2_check.sh
+# SOFTFP=1: link src/sh2/softfp.c in place of libgcc's fp-bit (scripts/softfp_check.sh tests it).
 # VARIANT=<name>: build and output in tests/playsh2/build/<name> (default run, run_prof).
 # PROF=<ticks> [PROF_SKIP=k] [PROF_KIND=1|3] [PROF_WRAP=1]: PC / PR sampled every <ticks> x 8 x k clocks during route steps (3) or generation (1) (timing then includes the sampler);
 # report.py then sums the samples per function (and per caller for libgcc's soft-float helpers).
@@ -16,7 +17,7 @@ git archive "${GAME_REV:-HEAD}" src/game | tar -x -C "$G" --strip-components=2
 cp build/gen/objects.[ch] build/gen/gentables.[ch] build/gen/playtables.[ch] "$G/"
 sed -i '' "s/^#define PIN_MAX 4096\$/#define PIN_MAX ${PIN:-1000}/" "$G/play.h"
 grep -q "^#define PIN_MAX ${PIN:-1000}\$" "$G/play.h"; touch "$G/stamp"
-scripts/dmake.sh $T OUT=build/$V OPT="${OPT:--O2}" PROF=${PROF:-0} PROF_KIND=${PROF_KIND:-3} PROF_SKIP=${PROF_SKIP:-1} PROF_WRAP=${PROF_WRAP:-0} >/dev/null
+scripts/dmake.sh $T OUT=build/$V OPT="${OPT:--O2}" PROF=${PROF:-0} PROF_KIND=${PROF_KIND:-3} PROF_SKIP=${PROF_SKIP:-1} PROF_WRAP=${PROF_WRAP:-0} SOFTFP=${SOFTFP:-0} >/dev/null
 # host reference (the same core.c and jobs.h; one process per job)
 cc -std=c99 -O2 -w -I$T -I$B -I$G -o $B/host $T/host.c $T/core.c $G/rng.c $G/inst.c $G/gen.c $G/genroom.c \
   $G/genobj.c $G/genent.c $G/pworld.c $G/pscript.c $G/pobj.c $G/pplayer.c $G/prun.c $G/pcol.c $G/ptrans.c \

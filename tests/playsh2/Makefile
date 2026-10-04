@@ -15,6 +15,10 @@ GSRC   := rng.c inst.c gen.c genroom.c genobj.c genent.c pworld.c pscript.c pobj
 SRCS   := main.c core.c isr.S $(addprefix build/g/,$(GSRC)) build/g/objects.c build/g/gentables.c build/g/playtables.c
 CFLAGS := $(OPT) -std=gnu99 -fno-bit-tests -Wno-unused-parameter -Wno-sign-compare -Ibuild/g -Ibuild -I. \
           -DPROF_PERIOD=$(PROF) -DPROF_KIND=$(PROF_KIND) -DPROF_SKIP=$(PROF_SKIP) -fdata-sections -Wl,-T,sprbss.ld
+# SOFTFP=1: src/sh2/softfp.c in place of libgcc's fp-bit soft-float
+ifeq ($(SOFTFP),1)
+SRCS   += $(ROOT)/src/sh2/softfp.c
+endif
 # PROF_WRAP=1: soft-float calls through wrap.S, so the samples inside them name their caller
 PROF_WRAP ?= 0
 SFWRAP := adddf3 subdf3 muldf3 divdf3 eqdf2 nedf2 gtdf2 gedf2 ltdf2 ledf2 extendsfdf2 truncdfsf2 fixdfsi floatsidf floatunsidf addsf3 subsf3 mulsf3 divsf3 gtsf2 gesf2 ltsf2 lesf2 fixsfsi floatsisf
@@ -36,4 +40,4 @@ $(addprefix build/g/,$(GSRC)): build/g/stamp
 build/jobs.h: mkjobs.py $(wildcard ../routes/p4_*.txt)
 	@mkdir -p build
 	python3 mkjobs.py $@ ../routes
-$(OUT)/main.elf: build/g/stamp build/jobs.h core.h sprbss.ld wrap.S
+$(OUT)/main.elf: build/g/stamp build/jobs.h core.h sprbss.ld wrap.S $(ROOT)/src/sh2/softfp.c
