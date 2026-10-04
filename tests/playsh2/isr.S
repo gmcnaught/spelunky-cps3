@@ -6,6 +6,12 @@
                 wanted kind, the interrupted PC and PR logged as 16-byte buckets from 0x06000000 (one word each);
                 then OCRA moved on by the period
    the counters and the log live in character RAM (main.c P_*): main.c clears main RAM between jobs. */
+/* PBASE: the header block (main.c P_*): character RAM in the MAME builds, main RAM (.trace) in JT builds */
+#ifdef JT
+#define PBASE 0x02000000
+#else
+#define PBASE 0x04100000
+#endif
     .section .text
     .align 2
     .global _ovf_isr
@@ -127,17 +133,17 @@ _prof_isr:
 k_ftcsr: .long 0xfffffe11
 k_frc:   .long 0xfffffe12
 k_ocra:  .long 0xfffffe14
-k_ovfn:  .long 0x04100010
-k_tag:   .long 0x04100014
-k_pn:    .long 0x04100018
-k_per:   .long 0x0410001c
+k_ovfn:  .long PBASE + 0x10
+k_tag:   .long PBASE + 0x14
+k_pn:    .long PBASE + 0x18
+k_per:   .long PBASE + 0x1c
 k_pmax:  .long 65536
-k_want:  .long 0x04100020
+k_want:  .long PBASE + 0x20
 k_base:  .long 0x06000000
-k_skc:   .long 0x04100024
-k_skip:  .long 0x04100028
-k_lastc: .long 0x0410002c
-k_wrapf: .long 0x04100030
-k_exth:  .long 0x04100034
-k_lastf: .long 0x04100038
+k_skc:   .long PBASE + 0x24
+k_skip:  .long PBASE + 0x28
+k_lastc: .long PBASE + 0x2c
+k_wrapf: .long PBASE + 0x30
+k_exth:  .long PBASE + 0x34
+k_lastf: .long PBASE + 0x38
 k_plog:  .long 0x04140000

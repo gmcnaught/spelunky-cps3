@@ -17,18 +17,26 @@
 #include "jobs.h"
 
 #define R32(a) (*(volatile uint32_t *)(a))
-#define P_MAGIC R32(0x04100000)
-#define P_STATE R32(0x04100004)
-#define P_NREC R32(0x04100008)
-#define P_NJOB R32(0x0410000c)
-#define P_OVF R32(0x04100010)
-#define P_TAG R32(0x04100014)
-#define P_PN R32(0x04100018)
-#define P_PER R32(0x0410001c)
-#define P_WANT R32(0x04100020)
-#define P_SKC R32(0x04100024)
-#define P_SKIP R32(0x04100028)
-#define P_WRAPF R32(0x04100030)
+/* the header block (isr.S uses it too): character RAM in the MAME builds; JT builds (jtcps3: no MAME-only memory)
+   keep it at the start of main RAM, the .trace section (not cleared between jobs) */
+#ifdef JT
+#define PBASE 0x02000000
+static uint32_t p_block[64] __attribute__((section(".trace"), used));
+#else
+#define PBASE 0x04100000
+#endif
+#define P_MAGIC R32(PBASE + 0x00)
+#define P_STATE R32(PBASE + 0x04)
+#define P_NREC R32(PBASE + 0x08)
+#define P_NJOB R32(PBASE + 0x0c)
+#define P_OVF R32(PBASE + 0x10)
+#define P_TAG R32(PBASE + 0x14)
+#define P_PN R32(PBASE + 0x18)
+#define P_PER R32(PBASE + 0x1c)
+#define P_WANT R32(PBASE + 0x20)
+#define P_SKC R32(PBASE + 0x24)
+#define P_SKIP R32(PBASE + 0x28)
+#define P_WRAPF R32(PBASE + 0x30)
 #ifndef PROF_WRAP
 #define PROF_WRAP 0
 #endif
@@ -70,8 +78,8 @@ static uint32_t frc(void)
 }
 /* FRC ticks since start-up, 32 bits: the wrap count kept by the output-compare interrupt (isr.S, every period <
    65,536 ticks) and the FRC at that interrupt; an FRC below that value has wrapped once since */
-#define P_EXTH R32(0x04100034)
-#define P_LASTF R32(0x04100038)
+#define P_EXTH R32(PBASE + 0x34)
+#define P_LASTF R32(PBASE + 0x38)
 static uint32_t now(void)
 {
     uint32_t h, lf, f;
@@ -107,8 +115,34 @@ void plat_end(void)
 #endif
     P_TAG = 0;
 }
+#ifdef JT
+/* JT builds: per job in the header block, words 16 + 8 * job: total clocks, steps, the steps' clocks, the largest
+   step, the records' hash (sum and instances of each, FNV-1a), the level start's clocks */
+#define JTR(j, k) R32(PBASE + 4 * (16 + 8 * (j) + (k)))
+static uint32_t fnv(uint32_t h, uint32_t v)
+{
+    int k;
+    for (k = 0; k < 4; k++) { h ^= (v >> (8 * k)) & 0xff; h *= 16777619u; }
+    return h;
+}
+#endif
 void plat_rec(int job, int kind, int idx, uint32_t sum, uint32_t n, uint32_t extra)
 {
+#ifdef JT
+    uint32_t c = (t1 - t0) * 32;
+    (void)extra;
+    (void)idx;
+    JTR(job, 0) += c;
+    if (kind == KIND_STEP || kind == KIND_EARLY) {
+        JTR(job, 1) += 1;
+        JTR(job, 2) += c;
+        if (c > JTR(job, 3)) JTR(job, 3) = c;
+    } else
+        JTR(job, 5) = c;
+    JTR(job, 4) = fnv(fnv(JTR(job, 4), sum), n);
+    cur_tag = kind == KIND_START ? KIND_STEP : kind;
+    return;
+#else
     uint32_t r = P_NREC;
     volatile uint32_t *p = P_REC + 5 * r;
     if (r >= REC_MAX) return;
@@ -122,6 +156,7 @@ void plat_rec(int job, int kind, int idx, uint32_t sum, uint32_t n, uint32_t ext
     p[4] = (t1 - t0) * 32;
     P_NREC = r + 1;
     cur_tag = kind == KIND_START ? KIND_STEP : kind;  /* the steps after a level start are tagged as steps */
+#endif
 }
 
 /* the C library calls GCC may emit (-fno-builtin, no libc) */
@@ -139,19 +174,100 @@ void *memset(void *d, int c, unsigned long n)
     return d;
 }
 
+#ifndef JT
 extern char __sprbss_start[] __asm__("__sprbss_start"), __sprbss_end[] __asm__("__sprbss_end");
+#endif
 static void __attribute__((noinline)) ram_init(void)
 {
     uint32_t *d = (uint32_t *)__data_start, *s = (uint32_t *)__data_load;
     while (d < (uint32_t *)__data_end) *d++ = *s++;
     for (d = (uint32_t *)__bss_start; d < (uint32_t *)__bss_end; d++) *d = 0;
+#ifndef JT
     for (d = (uint32_t *)__sprbss_start; d < (uint32_t *)__sprbss_end; d++) *d = 0;
+#endif
 }
+
+#ifdef JT
+#include "cps3.h"
+#include "jt_expect.h"
+void big_init(void);
+void big_text(int row, const char *s);       /* bigtext.c: 24 characters a row, rows 0-8 */
+static char *put_u(char *p, uint32_t v)
+{
+    char t[12];
+    int n = 0;
+    do { t[n++] = (char)('0' + v % 10); v /= 10; } while (v);
+    while (n) *p++ = t[--n];
+    *p = 0;
+    return p;
+}
+static char *put_s(char *p, const char *s)
+{
+    while (*s) *p++ = *s++;
+    *p = 0;
+    return p;
+}
+/* sprite RAM as plain memory: 128 KB at 0x04060000 written through the cached address, read back through the
+   uncached mirror (0x24060000) and the cached one; the words that differ */
+static uint32_t spr_test(void)
+{
+    volatile uint32_t *w = (volatile uint32_t *)0x04060000u, *u = (volatile uint32_t *)0x24060000u;
+    uint32_t k, bad = 0, x;
+    for (k = 0, x = 0x12345678u; k < 0x8000; k++) { x = x * 1664525u + 1013904223u; w[k] = x; }
+    for (k = 0, x = 0x12345678u; k < 0x8000; k++) { x = x * 1664525u + 1013904223u; if (u[k] != x) bad++; if (w[k] != x) bad++; }
+    for (k = 0; k < 0x8000; k++) w[k] = ~u[k];
+    for (k = 0, x = 0x12345678u; k < 0x8000; k++) { x = x * 1664525u + 1013904223u; if (u[k] != ~x) bad++; }
+    for (k = 0; k < 0x8000; k++) w[k] = 0;
+    return bad;
+}
+static void jt_show(uint32_t spr_bad)
+{
+    char line[64], *p;
+    int j, row = 0, pass = 0;
+    big_init();
+    p = put_s(line, "SPRITE RAM ");
+    if (spr_bad) put_u(put_s(p, "BAD "), spr_bad); else put_s(p, "OK");
+    big_text(row++, line);
+    for (j = 0; j < NJOBS; j++) {
+        int ok = JTR(j, 4) == jt_expect[j], r = jobs[j].route >= 0;
+        static int ng, nr;
+        pass += ok;
+        p = line;
+        *p++ = r ? 'R' : 'G';
+        p = put_u(p, (uint32_t)(r ? ++nr : ++ng));
+        p = put_s(p, " T ");
+        p = put_u(p, JTR(j, 0));
+        p = put_s(p, ok ? " OK" : " BAD");
+        big_text(row++, line);
+        if (r) {
+            p = put_s(line, "  AV ");
+            p = put_u(p, JTR(j, 1) ? JTR(j, 2) / JTR(j, 1) : 0);
+            p = put_s(p, " X ");
+            put_u(p, JTR(j, 3));
+            big_text(row++, line);
+        }
+    }
+    p = put_s(line, pass == NJOBS ? "PASS " : "FAIL ");
+    p = put_u(p, (uint32_t)pass);
+    p = put_s(p, "/");
+    put_u(p, NJOBS);
+    big_text(row++, line);
+    cps3v_text(0, 27, JT_LABEL);
+}
+#endif
 
 int main(void)
 {
     int j;
     uint32_t sr;
+#ifdef JT
+    uint32_t spr_bad;
+    cps3_init();                                          /* video, the text layer (VBlank masked again below) */
+    cps3v_text(2, 2, "SPELUNKY CPS3 PLAYSH2 JTCPS3 TIMING: RUNNING");
+    spr_bad = spr_test();
+    for (j = 0; j < 64; j++) R32(PBASE + 4 * j) = 0;
+    R32(PBASE + 4 * 60) = spr_bad;
+#endif
     P_STATE = 0;
     P_NREC = 0;
     P_NJOB = NJOBS;
@@ -198,6 +314,9 @@ int main(void)
         if (jobs[j].route < 0) run_gen(j, jobs[j].seed, jobs[j].level);
         else run_route(j, jobs[j].seed, &routes[jobs[j].route], 30);
     }
+#ifdef JT
+    jt_show(spr_bad);
+#endif
     P_STATE = 1;
     for (;;) ;
 }

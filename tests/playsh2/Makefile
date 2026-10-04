@@ -32,6 +32,12 @@ ifeq ($(ATTR),1)
 SRCS   += attr.c
 CFLAGS += -DATTR=1 $(addprefix -Wl$(comma)--wrap=,$(AWRAP))
 endif
+# FPCHECK=1 (with SOFTFP=1): every assembly soft-float call checked against softfp.c's C (fpcheck.c, fpref.c)
+FPCHECK ?= 0
+ifeq ($(FPCHECK),1)
+SRCS   += fpcheck.c fpref.c
+CFLAGS += $(addprefix -Wl$(comma)--wrap=__,adddf3 subdf3 addsf3 subsf3 eqdf2 nedf2 ltdf2 ledf2 gtdf2 gedf2)
+endif
 # PROF_WRAP=1: soft-float calls through wrap.S, so the samples inside them name their caller
 PROF_WRAP ?= 0
 SFWRAP := adddf3 subdf3 muldf3 divdf3 eqdf2 nedf2 gtdf2 gedf2 ltdf2 ledf2 extendsfdf2 truncdfsf2 fixdfsi floatsidf floatunsidf addsf3 subsf3 mulsf3 divsf3 gtsf2 gesf2 ltsf2 lesf2 fixsfsi floatsisf
@@ -43,6 +49,11 @@ endif
 ifeq ($(BENCH),1)
 SRCS   += bench.c
 CFLAGS += -DBENCH=1
+endif
+# JT=1: the jtcps3 variant (scripts/playsh2_jt.sh): main RAM only (no sprbss.ld), results on screen (bigtext.c)
+ifeq ($(JT),1)
+SRCS   += bigtext.c
+CFLAGS := -Ibuild/jt $(filter-out -Wl$(comma)-T$(comma)sprbss.ld,$(CFLAGS)) -DJT=1   # build/jt: jobs.h, jt_expect.h
 endif
 include ../../../cps3-testgame/sdk/sdk.mk
 

@@ -42,6 +42,19 @@ emu.register_periodic(function()
     end
     g:close()
   end
+  -- FPCHECK builds (tests/playsh2/fpcheck.c): the assembly / C soft-float disagreements
+  local nf = mem:read_u32(0x041a0000)
+  if nf > 0 then
+    local g = io.open(out .. ".fpcheck", "w")
+    g:write(string.format("N %d\n", nf))
+    for k = 0, math.min(nf, 64) - 1 do
+      local e = 0x041a0004 + 36 * k
+      local w = {}
+      for j = 0, 8 do w[j] = mem:read_u32(e + 4 * j) end
+      g:write(string.format("F %d %08x%08x %08x%08x asm %08x%08x c %08x%08x\n", w[0], w[1], w[2], w[3], w[4], w[5], w[6], w[7], w[8]))
+    end
+    g:close()
+  end
   local ns = mem:read_u32(0x04100018)
   if ns > 0 then
     local g = io.open(out .. ".prof", "w")

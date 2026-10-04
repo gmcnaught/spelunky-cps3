@@ -11,14 +11,15 @@
 set -e
 cd "$(dirname "$0")/.."
 T=tests/playsh2; B=$T/build; V=${VARIANT:-run${PROF:+_prof}}; E=$B/$V; O=$E/out; rm -rf "$O"; mkdir -p "$O/w"
-# the code under test: src/game at GAME_REV (default HEAD: other work in the tree stays out) and build/gen, PIN_MAX
+# the code under test: src/game at GAME_REV (default HEAD: other work in the tree stays out; WORKTREE: as it is) and build/gen, PIN_MAX
 # set to PIN (main RAM)
 G=$B/g; rm -rf "$G"; mkdir -p "$G"
-git archive "${GAME_REV:-HEAD}" src/game | tar -x -C "$G" --strip-components=2
+if [ "${GAME_REV:-HEAD}" = WORKTREE ]; then cp src/game/*.c src/game/*.h "$G/"      # the working tree's src/game
+else git archive "${GAME_REV:-HEAD}" src/game | tar -x -C "$G" --strip-components=2; fi
 cp build/gen/objects.[ch] build/gen/gentables.[ch] build/gen/playtables.[ch] "$G/"
 sed -i '' "s/^#define PIN_MAX 4096\$/#define PIN_MAX ${PIN:-1000}/" "$G/play.h"
 grep -q "^#define PIN_MAX ${PIN:-1000}\$" "$G/play.h"; touch "$G/stamp"
-scripts/dmake.sh $T OUT=build/$V OPT="${OPT:--O2}" PROF=${PROF:-0} PROF_KIND=${PROF_KIND:-3} PROF_SKIP=${PROF_SKIP:-1} PROF_WRAP=${PROF_WRAP:-0} SOFTFP=${SOFTFP:-0} ATTR=${ATTR:-0} >/dev/null
+scripts/dmake.sh $T OUT=build/$V OPT="${OPT:--O2}" PROF=${PROF:-0} PROF_KIND=${PROF_KIND:-3} PROF_SKIP=${PROF_SKIP:-1} PROF_WRAP=${PROF_WRAP:-0} SOFTFP=${SOFTFP:-0} ATTR=${ATTR:-0} FPCHECK=${FPCHECK:-0} >/dev/null
 # host reference (the same core.c and jobs.h; one process per job)
 cc -std=c99 -O2 -ffp-contract=off -w -I$T -I$B -I$G -o $B/host $T/host.c $T/core.c $G/*.c -lm   # no contraction: as the SH-2 (pcol.c's fused operations are explicit fmaf)
 N=$($B/host --count); j=0; : > "$O/host.txt"
