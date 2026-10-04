@@ -682,7 +682,7 @@ static void bbox_dbl(const struct pin *p, const struct gsprcol *c, double *l, do
 {
     double xs = p->xscale, ys = p->yscale, x = PTOD(p->x), y = PTOD(p->y);
     PWST(bbox, 1);
-    if (!dzero(p->angle)) {                       /* rotated: the box of the rotated sprite (pcol.c ebbox) */
+    if (!fzero(p->angle)) {                       /* rotated: the box of the rotated sprite (pcol.c ebbox) */
         float o[4];
         pcol_box((int)(p - PW.in), o);
         *l = o[0]; *t = o[1]; *r = o[2]; *b = o[3];
@@ -696,13 +696,13 @@ static void bbox_dbl(const struct pin *p, const struct gsprcol *c, double *l, do
     *b = *t + (ys < 0 ? -ys : ys) * (c->b - c->t + 1);
 }
 
-/* 1 / -1 when d is exactly 1.0 / -1.0, else 0 (bits) */
-static int dunit(double d)
+/* 1 / -1 when f is exactly 1.0f / -1.0f, else 0 (bits: the same answer as for (double)f) */
+static int funit(float f)
 {
-    union { double d; uint64_t u; } v;
-    v.d = d;
-    if (v.u == 0x3ff0000000000000ull) return 1;
-    if (v.u == 0xbff0000000000000ull) return -1;
+    union { float f; uint32_t u; } v;
+    v.f = f;
+    if (v.u == 0x3f800000u) return 1;
+    if (v.u == 0xbf800000u) return -1;
     return 0;
 }
 
@@ -718,8 +718,8 @@ static __attribute__((noinline)) int bbkind_set(int i)
             p->bbk = BB_NOSPR;
         else {
             const struct gsprcol *c = &gsprcol[s];
-            int xs = dunit(p->xscale), ys = dunit(p->yscale);
-            if (xs && ys && dzero(p->angle) && pos_int(p->x, &x) && pos_int(p->y, &y)) {
+            int xs = funit(p->xscale), ys = funit(p->yscale);
+            if (xs && ys && fzero(p->angle) && pos_int(p->x, &x) && pos_int(p->y, &y)) {
                 int32_t l = xs > 0 ? x + (c->l - c->xo) : x - (c->r + 1 - c->xo);
                 int32_t t = ys > 0 ? y + (c->t - c->yo) : y - (c->b + 1 - c->yo);
                 PWST(bbox_int, 1);

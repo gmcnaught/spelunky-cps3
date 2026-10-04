@@ -34,8 +34,12 @@ static double dabs(double a) { return a < 0 ? -a : a; }
 /* the enemies' view test: x > xview - l and x < xview + 320 + r (same for y) */
 static int eview(int i, int l, int r)
 {
-    double x = X(i), y = Y(i);
+    double x, y;
+    int32_t ix, iy;
     view_read();
+    if (pin_xy_int(i, &ix, &iy))          /* whole x, y: GML's compare of two ints is their order (as inview) */
+        return ix > PW.xview - l && ix < PW.xview + 320 + r && iy > PW.yview - l && iy < PW.yview + 240 + r;
+    x = X(i); y = Y(i);
     return DGT(x, PW.xview - l) && DLT(x, PW.xview + 320 + r) && DGT(y, PW.yview - l) && DLT(y, PW.yview + 240 + r);
 }
 
