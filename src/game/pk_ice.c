@@ -1456,6 +1456,10 @@ static int ev_collision_ice(int i, int o)
         else if (NGT(NABS(PE(&PX(o))->xVel), N(2)) || NGT(NABS(PE(&PX(o))->yVel), N(2))) pin_destroy(i);
         return 1;
     case OBJ_oBarrier: barrier_collision(i, o); return 1;
+    case OBJ_oExplosion:                                               /* oExplosion/Collision_oBarrierEmitter.gml */
+        if (oo != OBJ_oBarrierEmitter) return 0;
+        pin_destroy(o);
+        return 1;
     }
     return 0;
 }
