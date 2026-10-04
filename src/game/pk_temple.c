@@ -64,7 +64,7 @@ static void hawkman_create(int i)
     PE(p)->xVel = N(2.5);
     p->ispd = (img_t)0.5;
     PE(p)->myGrav = N(0.6);
-    p->type = T_CAVEMAN;                       /* "Yeti": the type tests treat it as the caveman's (see penemy.c) */
+    p->type = T_YETI;                                                      /* "Yeti" */
     PE(p)->hp = 4;
     p->invincible = 0;
     PE(p)->status = E_IDLE;
@@ -189,7 +189,10 @@ static void hawkman_step(int i)
         }
     } else if (PE(p)->status == E_DEAD) {                                  /* :175 */
         if (!PEN(p)->edead) {
-            if (PEN(p)->countsAsKill) PG.kills += 1;   /* global.hawkmen: no PG field yet (transition-room tally) */
+            if (PEN(p)->countsAsKill) {
+                PG.hawkmen += 1;
+                PG.kills += 1;
+            }
             snd_play(SND_xcavemandie);                                         /* :185 */
             PEN(p)->edead = 1;
         }
@@ -345,18 +348,15 @@ static void lava_destroy(int i)
     }
 }
 
-/* oEnemy Step :63-74 (penemy.c pen_parent_step calls site 5012 for :63 and for :65): the first call of a step is
-   :63 when lava is above, else :65 */
-static struct mark mk_enemy;
-static void lava_enemy(int i)
+/* oEnemy Step :63-74 (penemy.c pen_parent_step, site 5012): arg 1 lava above (:63), 2 lava below (:65) */
+static void lava_enemy(int i, int arg)
 {
     struct pin *p = &PX(i);
-    if (!marked(&mk_enemy, i) && CP(X(i) + dfloor(sprw(i) / 2.0), Y(i) - 1, OBJ_oLava)) {
-        mark_set(&mk_enemy, i);
-        pin_destroy(i);                                                    /* :63 */
+    if (arg == 1) {
+        pin_destroy(i);
         return;
     }
-    PE(p)->hp = 0;                                                         /* :65 */
+    PE(p)->hp = 0;
     PEN(p)->countsAsKill = 0;
     PEN(p)->burning = 1;
     PE(p)->myGrav = 0;
@@ -422,13 +422,13 @@ static void magma_hit_player(int i, int c)
 static void magma_hit_enemy(int i, int e, int man)
 {
     struct pin *o = &PX(e);
-    if (o->obj == OBJ_oMagmaMan) return;                               /* type "Magma Man" */
+    if (o->type == T_MAGMAMAN) return;
     PE(o)->yVel = N(-4);
     PE(o)->xVel = DLT(X(i), PTOD(o->x)) ? N(-3) : N(3);
     if (PE(o)->status != 98) snd_play(SND_xflame);                             /* :8 */
     PEN(o)->burning = 100;
     PE(o)->hp -= 2;
-    if (!man || (o->obj != OBJ_oTombLord && o->obj != OBJ_oYetiKing)) {
+    if (!man || (o->type != T_TOMBLORD && o->type != T_YETIKING)) {
         PE(o)->status = 98;
         PE(o)->counter = 50;
     }
@@ -463,7 +463,7 @@ static void magmaman_create(int i)
     setCollisionBounds(i, 2, 0, sprw(i) - 2, sprh(i));
     PE(p)->xVel = N(2.5);
     p->ispd = (img_t)0.5;
-    p->type = T_OTHER;                                                     /* "Magma Man" */
+    p->type = T_MAGMAMAN;
     PE(p)->hp = 200;
     p->invincible = 0;
     PE(p)->status = E_IDLE;
@@ -580,7 +580,7 @@ static void tomblord_create(int i)
     setCollisionBounds(i, 6, 0, 26, 32);
     PE(p)->xVel = N(2.5);
     p->ispd = (img_t)0.25;
-    p->type = T_OTHER;                                                     /* "Tomb Lord" */
+    p->type = T_TOMBLORD;
     PE(p)->hp = 20;
     p->invincible = 0;
     PE(p)->heavy = 1;
@@ -617,7 +617,10 @@ static void tomblord_step(int i)
             pin_create(PX(i).x + PI(14 + xx), PX(i).y + PI(12 + yy), OBJ_oBone);
         }
         if (G.currLevel == 13) pin_create(PX(i).x + PI(16), PX(i).y + PI(16), OBJ_oSceptre);
-        if (PEN(&PX(i))->countsAsKill) PG.kills += 1;  /* global.tomblords: no PG field yet */
+        if (PEN(&PX(i))->countsAsKill) {
+            PG.tomblords += 1;
+            PG.kills += 1;
+        }
         pin_destroy(i);
     }
     p = &PX(i);
@@ -1837,20 +1840,7 @@ int ptemple_world(int site, int i, int arg)
     case 1039: lava_treasure(i); return 0;
     case 1040: pin_destroy(i); return 0;                               /* oDetritus Step :14 */
     case 1056: lava_rope(i); return 0;
-    case 5012: lava_enemy(i); return 0;
-    case 5030: {                                    /* oEnemySight/Collision_oCharacter.gml :10 with oHawkman */
-        int16_t w[256];
-        int n = pw_with(OBJ_oHawkman, w, 256), k;
-        for (k = 0; k < n; k++) {
-            int c = w[k];
-            if (!PX(c).alive) continue;
-            if (DLT(distance_to_object_p(c, OBJ_oPlayer1), 100) && PE(&PX(c))->status < 98) {
-                PE(&PX(c))->status = 2;
-                snd_play(SND_xalert);                                          /* :15 */
-            }
-        }
-        return 0;
-    }
+    case 5012: lava_enemy(i, arg); return 0;
     }
     PUNTR(site);
     return 0;
