@@ -58,8 +58,11 @@ def route(recs):
     return dict(rooms=rooms, deaths=deaths, dmg=dmg, money=last[8], bombs=last[6], ropes=last[7])
 
 
-# particles with no effect on play (no damage, no RNG draws after their Create): oRubblePiece's family, oBlood, oFlame
-COSMETIC = {'oRubblePiece', 'oRubble', 'oRubbleSmall', 'oRubbleDarkSmall', 'oLeaf', 'oBlood', 'oFlame'}
+# particles with no effect on play (no damage, no RNG draws after their Create; their Step only moves them and destroys
+# them on terrain / water / lava / leaving the view): oRubblePiece's family (oRubble, oRubbleSmall, oRubbleDarkSmall,
+# oLeaf, oDrip, oLavaDrip), oRubbleDark, and oDetritus's oBlood, oFlame, oBone (not oMagma)
+COSMETIC = {'oRubblePiece', 'oRubble', 'oRubbleSmall', 'oRubbleDarkSmall', 'oLeaf', 'oDrip', 'oLavaDrip', 'oRubbleDark',
+            'oBlood', 'oFlame', 'oBone'}
 
 
 def bagof(r, skip=()):

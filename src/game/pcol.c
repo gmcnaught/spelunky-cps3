@@ -1459,7 +1459,7 @@ void pcol_handle(void)
         s_ctx = 0;
         rlock = 1;
         pcol_st.searches++;
-        search_rec(rroot);
+        search_run();                             /* the tree, or pcolgrid.h in play */
         rlock = 0;
         if (keeps_testing(s)) {                   /* pushed on the front of a local list */
             for (k = nkeep; k > 0; k--) keep[k] = keep[k - 1];
