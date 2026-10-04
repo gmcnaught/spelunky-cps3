@@ -5,7 +5,7 @@
 #include "pcol.h"
 #include "../snd/sndgame.h"                     /* the GML sound calls (src/snd) */
 #include "front.h"                                     /* P8: the front end's hooks (src/front/front.h) */
-static void start_music(void);
+static void start_music(int levelType);
 
 struct gamepad GP;
 struct pglobals PG;
@@ -261,6 +261,7 @@ void play_level_start(int32_t next_id)
 {
     int k;
     static const int16_t rooms[4] = { R_rLevel, R_rLevel2, R_rLevel3, R_rOlmec };
+    int levelType = G.levelType;               /* oLevel Create's startMusic runs before oGame Create's scrInitLevel */
     G.gameStart = 1;
     inst_hook = pcol_gen_hook;                                                 /* the collision tree follows */
     if (gen_level(next_id) != 0) PUNTR(9002);
@@ -333,7 +334,7 @@ void play_level_start(int32_t next_id)
     PG.ghostExists = 0;
     PG.drawHUD = 1;
     PLEV.musicFade = 0;
-    if (snd_music_on) start_music();                                           /* :20 */
+    if (snd_music_on) start_music(levelType);                                           /* :20 */
     for (k = 0; k < PW.n; k++)
         if (PX(k).alive && PE(&PX(k))->held && PL.idx != NOONE) {                    /* the item scrHoldItem gave */
             PL.holdItem = k;
@@ -351,8 +352,9 @@ void play_level_start(int32_t next_id)
 }
 
 /* scripts/startMusic for a level (global.music: snd_music_on; global.musicVol 15, scrInit's): the room is a level here,
-   oLoadLevel never exists */
-static void start_music(void)
+   oLoadLevel never exists. levelType: global.levelType when oLevel Create runs it, before oGame Create's scrInitLevel
+   sets this level's (Observed: c_jungle_mantrap_s44, level 5 from the start, plays mCave) */
+static void start_music(int levelType)
 {
     static const int16_t mus[4] = { SND_mCave, SND_mLush, SND_mIce, SND_mTemple };
     int s;
@@ -362,7 +364,7 @@ static void start_music(void)
         if (!(PL.idx != NOONE && PL.active)) return;
         s = SND_mBoss;
     } else
-        s = mus[G.levelType >= 1 && G.levelType <= 3 ? G.levelType : 0];
+        s = mus[levelType >= 1 && levelType <= 3 ? levelType : 0];
     snd_music(s, 1);
     snd_volume(s, 2000 + 8000 * (15 / 18.0));
 }
