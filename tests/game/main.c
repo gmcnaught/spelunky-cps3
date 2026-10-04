@@ -17,6 +17,7 @@
 #include "play.h"
 #include "route.h"
 #include "front.h"
+#include "sndgame.h"
 
 struct marker {
     uint32_t magic, state;
@@ -134,6 +135,11 @@ static int is_snap(int32_t r)
 }
 
 /* after the VBlank that sent the list drawn after record pend_rec: hold a snapshot frame until the script acks */
+#ifdef GAME_HOLD
+#include "hold.h"                                 /* NHOLDS, hold_at[]: frames from the start (scripts/jt_frames.sh) */
+#define HOLD_MIN 300
+static uint32_t hold_k;
+#endif
 void main_frame_done(void)
 {
     if (game_over) M.state = 1;
@@ -142,10 +148,29 @@ void main_frame_done(void)
     M.shown = pend_rec;
     if (!is_snap(pend_rec)) return;
     M.wait = 1;
+#ifdef GAME_HOLD
+    /* jtcps3 frame check (scripts/jt_frames.sh): hold k lasts until frame hold_at[k] + GAME_HOLD counted from the
+       program's start (build/hold.h: from a MAME pass scaled to jtcps3's speed, with margin), so the windows do not
+       drift with the step rate; at least HOLD_MIN frames if the program arrives late. Sound runs; a coin sound when
+       a hold starts, a click when it ends */
+    {
+        uint32_t end = hold_at[hold_k < NHOLDS ? hold_k : NHOLDS - 1] + GAME_HOLD;
+        if (end < vbl_count + HOLD_MIN) end = vbl_count + HOLD_MIN;
+        hold_k++;
+        snd_play(SND_xcoin);
+        while (vbl_count < end) {                 /* the SDK's VBlank interrupt count: frames since the start */
+            cps3v_wait_vblank();
+            cps3v_vblank();                       /* the same list again */
+            snd_frame();
+        }
+        snd_play(SND_xclick);
+    }
+#else
     while (M.ack != pend_rec) {
         cps3v_wait_vblank();
         cps3v_vblank();                           /* the same list again */
     }
+#endif
     M.wait = 0;
     M.snap++;
 }

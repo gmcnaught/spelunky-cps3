@@ -29,7 +29,7 @@ emu.register_frame_done(function()
     wait_frames = wait_frames + 1
     if wait_frames == 3 then
       manager.machine.video:snapshot()
-      out:write(string.format("S %d %d %s\n", taken, shown, fields()))
+      out:write(string.format("S %d %d %s %.3f\n", taken, shown, fields(), t))
       out:flush()
       taken = taken + 1
       mem:write_u32(A + 12, shown)
