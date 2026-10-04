@@ -1,0 +1,19 @@
+# P7 reference (docs/CONTENT.md package C, ice): a thrown rock hits a UFO (oItem Step's "UFO" branch, site 5010): explosion, oAlienEject (step 35) floats down and becomes an oAlien (81), the UFO crashes; random-walk search route (playhost)
+# seed 76
+# level 11
+# globals pickupItem=Rock
+30 -
+1 UA
+10 -
+20 J
+1 LJ
+1 A
+20 -
+2 L
+2 -
+12 R
+1 -
+1 UA
+10 -
+8 L
+11 RJ

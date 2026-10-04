@@ -1,0 +1,45 @@
+# P7 reference (docs/CONTENT.md package C, ice): the yeti lair: the yeti king yells (ATTACK) with the player level with him; oIce within 96 px turns into falling oIceBlocks (step 278), thin ice thins; random-walk search route (playhost)
+# seed 558
+# level 9
+# globals madeMoai=1
+30 -
+4 LJ
+8 J
+20 D
+1 B
+20 -
+1 LJ
+2 R
+1 B
+10 -
+12 R
+2 J
+12 RJ
+1 DA
+20 -
+2 J
+12 RJ
+20 R
+1 D
+8 D
+1 DA
+10 -
+8 D
+2 L
+1 DA
+6 -
+1 DA
+20 -
+20 LJ
+12 R
+1 DA
+6 -
+20 LJ
+8 J
+4 J
+1 LJ
+1 B
+6 -
+20 R
+4 -
+1 L

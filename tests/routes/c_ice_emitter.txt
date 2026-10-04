@@ -1,0 +1,56 @@
+# P7 reference (docs/CONTENT.md package C, ice): the alien craft: the barrier from the first step, the barrier emitter destroyed (step 341: Destroy's sparks, shake, the barrier gone); random-walk search route (playhost)
+# seed 111
+# level 9
+# globals madeMoai=1,pickupItem=Rock
+30 -
+1 RJ
+8 J
+1 A
+10 -
+8 L
+1 B
+20 -
+1 L
+20 RJ
+20 RJ
+20 R
+8 R
+12 R
+4 -
+1 A
+20 -
+1 LJ
+1 A
+10 -
+20 R
+2 RJ
+1 B
+6 -
+4 L
+12 L
+4 LJ
+1 L
+12 R
+1 R
+1 UA
+10 -
+20 -
+1 UA
+10 -
+2 R
+1 LJ
+1 R
+1 B
+10 -
+1 B
+6 -
+1 UA
+6 -
+8 L
+4 R
+1 UA
+6 -
+1 UA
+10 -
+8 LJ
+1 L
