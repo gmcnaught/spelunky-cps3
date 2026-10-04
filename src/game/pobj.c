@@ -623,7 +623,7 @@ static void rest_end(int i, uint8_t out)
     uint32_t n = pw_watch_end();
     uint64_t m;
     if (r->id == p->id) r->ok = 0;                    /* another instance's record stays */
-    if (!p->alive || !p->ext) return;
+    if (!p->alive || !p->ext || p->ext == EXT_SCRATCH) return;   /* the shared records: no fixed point */
     rest_get(p, &c);
     if (rest_ne(&c, &rest_s0) || !dbits0(c.xv) || !dbits0(c.yv) || !rest_region(p, b)) return;
     r->ok = 1;
