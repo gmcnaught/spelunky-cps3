@@ -1,0 +1,15 @@
+# P7 reference (docs/CONTENT.md package B (swamp)): the player drops into the piranha pool (water at 208-288,
+# 192-240), leaves a bomb on its floor and swims out; the blast opens the pool and the water drains
+# (oGame checkWater, oWaterSwim Destroy's drips)
+# seed 113
+# level 5
+60 -
+36 R
+10 -
+3 R
+40 -
+1 DB
+10 L
+20 LJ
+10 L
+150 -

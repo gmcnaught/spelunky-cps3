@@ -1,0 +1,15 @@
+# P7 reference (docs/CONTENT.md package B (swamp)): a bomb next to a grave (start 104,88, oGrave at 112,80) destroys
+# it; a second bomb opens the vampire's chamber below
+# seed 30
+# level 5
+60 -
+5 D
+1 DB
+5 D
+20 L
+130 -
+5 D
+1 DB
+5 D
+20 R
+150 -

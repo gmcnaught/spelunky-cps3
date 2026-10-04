@@ -1,0 +1,52 @@
+# P7 reference (docs/CONTENT.md package B (swamp)): the cape's physics (TRACE_GLOBALS=hasCape=1: oPlayer1 Step makes
+# oCape): p4_hang_ladder's duck to hang, ledge jump and ladder, then jumps with the cape opened in the air (jump
+# released, pressed again: oCape.open, yFric 0.5, fallTimer 0) and closed again
+# seed 1
+# level 1
+# globals hasCape=1
+20 -
+9 L
+8 -
+1 -
+10 D
+16 DL
+10 -
+14 J
+1 -
+8 L
+11 -
+1 R
+12 -
+1 R
+12 -
+1 R
+12 -
+1 R
+12 -
+3 R
+12 -
+1 D
+10 D
+6 -
+11 U
+6 -
+1 RJ
+10 R
+10 -
+6 J
+2 -
+1 J
+30 -
+6 RJ
+2 R
+1 RJ
+8 R
+2 -
+1 J
+30 -
+20 L
+6 LJ
+3 L
+1 LJ
+40 L
+30 -
