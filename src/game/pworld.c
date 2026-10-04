@@ -756,7 +756,7 @@ int pin_bbox(int i, double *l, double *t, double *r, double *b)
 }
 
 /* the box as integers when it is cached so (BB_INT); 0 otherwise (no sprite, or not whole: use pin_bbox) */
-int pin_ibox(int i, int32_t *b)
+__attribute__((always_inline)) inline int pin_ibox(int i, int32_t *b)
 {
     const struct pin *p = &PW.in[i];
     if (bbkind(i) != BB_INT) return 0;
