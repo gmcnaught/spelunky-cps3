@@ -192,3 +192,26 @@ Model check (model / MAME clocks on the traced step against the measured route r
 2.89 (p5) against 3.91 and 4.34 measured: 19 % and 33 % low. jtmodel's fit constants 3.84 and 3.44: 2 % and 21 % low.
 **From here jtcost's metric is the fit constant set** (still low on enemy routes: refit with this table pending), and
 the MAME proxy is about 130 K MAME clocks per route mean (0.525 M / ~4.05).
+
+### Batch 3 (merged 934269f, gated on 80d620b)
+
+Commits: c329716 PE(p) by a shift (exto), ca3c4f3 pgrid_search locals, 2d1fa9e pin_ibox inline, 9d5f386 fzero / funit
+and eview's integer path, c65180f gcmp_dd = gcmp_z(a - b), PIN_IDX (unsigned slot index; the 64-byte pin had made
+p - PW.in a libgcc __ashiftrt_r4_6 call), distance_to_instance_p's one-axis integer path; tools: jtcost call counts,
+JTC_PCHIST, libgcc callers, literal-miss classes, fit constants by default; tools/sfsites.py (8,132 soft-float call
+sites in src/game, 2,807 of them through pnum.h).
+
+| | p4_exit559 301 | p5_snakes 956 | p5_caveman 150 |
+|---|---|---|---|
+| jtcost fit, batch 2 (14fb59a) | 639.9 K | 601.4 K | 860.6 K |
+| jtcost fit, batch 3 | 587.0 K | 547.3 K | 821.8 K |
+
+MAME SOFTFP route mean of means 166.5 K -> 154.3 K (batch 1: 186.6 K). Gates: gates.sh all equal, ctall 48/48, EQUIV
+72/72 (identical output), FULLREG 640/640, playsh2 6,851/6,851 (grid, EXACT=1, SOFTFP=1), JT PASS 23/23, game_check 0
+px, stack tests/game 78,892 B / JT 74,620 B, 0 warnings.
+
+Measured and not kept: PTOD / D* through inline fwiden everywhere (code growth: +0.5 to +1 %), a 13-file unity TU,
+-mrelax (does not assemble the unity TU: 2-byte jump-table offsets), an image_speed 0 fast path in anim_one (+0.2 /
++0.9 / -0.4 %: under jtcost's layout noise of about 1 %), a per-step memo of isCollision* (8-11 % repeats).
+Literal-pool line misses by what they hold (p4 / p5): RAM addresses 1,013 / 698, constants 703 / 724, function
+addresses 414 / 301: a GBR block (1.4) can remove at most the first (38 K / 26 K fit, 6.5 % / 4.8 %).
