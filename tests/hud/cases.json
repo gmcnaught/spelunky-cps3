@@ -1,0 +1,21 @@
+[
+  {"name": "start", "life": 4, "bombs": 4, "ropes": 4, "money": 0},
+  {"name": "relics", "life": 1, "bombs": 0, "ropes": 12, "money": 1234567, "sticky_bombs": 1, "held": "PISTOL",
+   "items": ["UDJAT", "ANKH", "CROWN", "KAPALA"], "udjat_blink": 1, "blood_level": 3, "collect": 500, "anim": 7},
+  {"name": "gear", "life": 99, "bombs": 99, "ropes": 99, "money": 50000, "held": "BOW", "arrows": 6,
+   "items": ["SPECTACLES", "GLOVES", "MITT", "SPRINGSHOES", "SPIKESHOES", "CAPE", "JETPACK", "COMPASS", "PARACHUTE"],
+   "exit_x": 600, "exit_y": 500, "view_x": 100, "view_y": 100},
+  {"name": "messages", "life": -3, "bombs": 7, "ropes": 0, "money": 25, "held": "TELEPORTER", "anim": 5,
+   "items": ["COMPASS", "KAPALA"], "blood_level": 8, "exit_x": 40, "exit_y": 200, "view_x": 200, "view_y": 100,
+   "message_timer": 10, "message1": "YOU GOT A SHOTGUN!", "message2": ["PRESS ", "START", " TO BUY"],
+   "message2_yellow": [1]},
+  {"name": "down", "life": 10, "bombs": 10, "ropes": 10, "money": 999999999, "held": "FLARE", "anim": 1,
+   "items": ["UDJAT", "COMPASS"], "exit_x": 300, "exit_y": 520, "view_x": 150, "view_y": 200, "message_timer": 1,
+   "message1": "", "message2": "A DAMSEL IS NEARBY."},
+  {"name": "hidden", "visible": 0, "life": 4, "bombs": 4, "ropes": 4, "message_timer": 3,
+   "message1": "THE ENTRANCE IS SEALED!", "message2": ""},
+  {"name": "right", "life": 2, "bombs": 1, "ropes": 3, "money": 777, "held": "JAR", "items": ["COMPASS", "CROWN", "MITT"],
+   "exit_x": 500, "exit_y": 150, "view_x": 0, "view_y": 0},
+  {"name": "lowleft", "life": 3, "bombs": 2, "ropes": 1, "money": 40, "held": "MATTOCK",
+   "items": ["ANKH", "KAPALA", "COMPASS"], "blood_level": 9, "exit_x": 10, "exit_y": 500, "view_x": 100, "view_y": 100}
+]
