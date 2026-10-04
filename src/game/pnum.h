@@ -91,7 +91,22 @@ typedef float pos;                            /* the runner keeps x, y as floats
 #define PFLOOR(a)     dfloor(a)
 #define PCEIL(a)      dceil(a)
 #define PROUND(a)     dround(a)
+#ifdef NUM_IS_CLASS
 #define NABS(a)       ((a) < 0 ? -(a) : (a))
+#else
+/* (a < 0 ? -a : a) on the bits: the sign cleared for a negative, non-zero, non-NaN a (-0 and NaN unchanged, as the
+   compare leaves them) */
+static inline double dnabs(double a)
+{
+    union { double d; uint64_t u; } v;
+    uint64_t m;
+    v.d = a;
+    m = v.u & 0x7fffffffffffffffull;
+    if ((v.u >> 63) && m != 0 && m <= 0x7ff0000000000000ull) v.u = m;
+    return v.d;
+}
+#define NABS(a)       dnabs((double)(a))
+#endif
 /* GML frac(): x - trunc(x) */
 static inline double dfrac(double a) { return a - (double)(int32_t)a; }
 #define NFRAC(a)      ((num)dfrac((double)(a)))
@@ -183,11 +198,38 @@ static inline int fwhole(float f, int32_t *o)
    yVel -4.2e-15 passes `yVel >= 0`. NLT .. NNE take two num (the fractional GML variables), DLT .. DNE two
    doubles (image_index, image_speed, positions) */
 #define GML_EPS 0.00001
-static inline int gcmp_d(double a, double b)
+#define GML_EPS_BITS 0x3ee4f8b588e368f1ull    /* the bits of GML_EPS */
+static inline int gcmp_dd(double a, double b)
 {
     double d = a - b;
     if ((d < 0 ? -d : d) <= GML_EPS) return 0;
     return d >= 0 ? 1 : -1;
+}
+/* gcmp_dd(a, 0) on the bits: a - 0 is a; |a| <= eps compares as unsigned (the magnitude bits order as the values,
+   NaN above infinity); then NaN gives -1 (d >= 0 is false) and the sign bit decides */
+static inline int gcmp_z(double a)
+{
+    union { double d; uint64_t u; } v;
+    uint64_t m;
+    v.d = a;
+    m = v.u & 0x7fffffffffffffffull;
+    if (m <= GML_EPS_BITS) return 0;
+    if (m > 0x7ff0000000000000ull) return -1;
+    return (v.u >> 63) ? -1 : 1;
+}
+#define gcmp_d(a, b)  ((__builtin_constant_p(b) && (b) == 0) ? gcmp_z(a) : gcmp_dd((a), (b)))
+/* gcmp_dd(a * m, 0) > 0 for an int m. For m = 2^k (k <= 20) the product is exact unless it overflows (then
+   +-inf, on the same side of eps), so for a >= 0 it is a > eps / 2^k: the bits of eps with k taken off the exponent */
+static inline int gpos_muli_gt0(double a, int32_t m)
+{
+    union { double d; uint64_t u; } v;
+    uint32_t k = 0, t = (uint32_t)m;
+    if (m <= 0 || m > (1 << 20) || (t & (t - 1)) != 0) return gcmp_dd(a * (double)m, 0) > 0;
+    while (t > 1) { t >>= 1; k++; }
+    v.d = a;
+    if (v.u >> 63) return 0;                              /* a <= 0 (-0 included), or a NaN with the sign: <= 0 / NaN */
+    if (v.u > 0x7ff0000000000000ull) return 0;            /* NaN */
+    return v.u > GML_EPS_BITS - ((uint64_t)k << 52);
 }
 #define DLT(a, b) (gcmp_d((double)(a), (double)(b)) < 0)
 #define DLE(a, b) (gcmp_d((double)(a), (double)(b)) <= 0)
@@ -197,7 +239,7 @@ static inline int gcmp_d(double a, double b)
 #define DNE(a, b) (gcmp_d((double)(a), (double)(b)) != 0)
 #ifndef PLAY_FIXED
 #ifdef NUM_IS_CLASS
-static inline int gcmp_n(num a, num b) { play_dcount.cmp++; return gcmp_d(a.v, b.v); }
+static inline int gcmp_n(num a, num b) { play_dcount.cmp++; return gcmp_dd(a.v, b.v); }
 #else
 #define gcmp_n(a, b) gcmp_d((a), (b))
 #endif
@@ -215,6 +257,11 @@ static inline int gcmp_n(int32_t a, int32_t b)   /* epsilon 0.00001 = 168 / 2^24
 #define NGE(a, b) (gcmp_n((a), (b)) >= 0)
 #define NEQ(a, b) (gcmp_n((a), (b)) == 0)
 #define NNE(a, b) (gcmp_n((a), (b)) != 0)
+#if !defined(PLAY_FIXED) && !defined(NUM_IS_CLASS)
+#define NMULI_GT0(a, i) gpos_muli_gt0((double)(a), (i))        /* NGT(NMULI(a, i), N(0)) */
+#else
+#define NMULI_GT0(a, i) NGT(NMULI((a), (i)), N(0))
+#endif
 
 extern uint32_t play_dops;                    /* binary64 operations in the current step (double build) */
 

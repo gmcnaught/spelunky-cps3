@@ -682,7 +682,7 @@ static void characterStepEvent(int i)
             slopeChangeInY = PFLOOR(slopeYPrev - p->y);
         } else
             slopeChangeInY = 0;
-        if (NGT(NMULI(NABS(PE(p)->xVel), PL.maxSlope), N(0)) && platformCharacterIs(ON_GROUND)) {   /* :973 */
+        if (NMULI_GT0(NABS(PE(p)->xVel), PL.maxSlope) && platformCharacterIs(ON_GROUND)) {   /* :973: NGT(NMULI(NABS(xVel), maxSlope), 0) */
             pos xPrev2 = p->x, yPrev2 = slopeYPrev, yPrevHigh = p->y;
             double dist;
             PL.xPrev = xPrev2;
