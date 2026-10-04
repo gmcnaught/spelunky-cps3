@@ -1,17 +1,19 @@
 #!/usr/bin/env python3
-"""P3 level viewer data and expected frames (PLAN.md P3): one record of an HD reference trace (tools/tracer.py) as
-a C table for tests/view, and the screens the CPS3 must show for a list of cameras.
+"""P3 level viewer data and expected frames (PLAN.md P3) from HD reference traces (tools/tracer.py, SPT2 records).
 
     tools/viewlevel.py c <trace.bin> <names> <rec> <gen dir> <out.h>
     tools/viewlevel.py expect <trace.bin> <names> <rec> <gen dir> <out dir> <vx,vy> ...   (zoom 0x35, MAME's formula)
+    tools/viewlevel.py shot <trace.bin> <names> <rec> <gen dir> <shot.png> <vx,vy> [--order old|new]
+        compare the composed 320 x 240 view with the runner's own frame (its first 320 columns), in 5-bit colour
 
-Drawing model (interim, until the runner's drawing is traced: depth is the object's GM8 depth, equal depths in
-creation order, image_xscale not in the trace yet):
-  - the room background (bgCave, tiled; 2147483500 deep) on tilemap 0;
-  - instances deeper than the terrain (depth > 100), as sprites;
-  - terrain on tilemap 1: instances of oSolid's family at 16-px cell positions whose frame is one 16x16 piece;
-  - every other visible instance with a sprite, as sprites, deepest first.
-The view is 320x240 at (vx, vy); the screen shows its lines 8-231 (PLAN §1), stretched by X zoom 0x35.
+Drawing model: every drawable has a depth and is drawn deepest first.
+  - The room background (bgCave tiled, layer depth 2147483500).
+  - tile_add tiles (phase-0 record of the room; kept for the record asked): 16 x 16 cells of a background sprite.
+  - Instances with a sprite, visible, at their traced depth, mirrored when image_xscale < 0.
+On the CPS3, each tile depth becomes a tilemap when its cells fit (16-px cells, one tile per cell); terrain (oSolid
+family at 16-px cells, one 16 x 16 piece) joins the tilemap of its depth. Up to 4 tilemaps (background first, then
+the depths with most cells); everything else is a sprite. Equal depths: instances in creation order (--order old,
+the default) or newest first (--order new), as the shot comparison decides.
 """
 import json
 import os
@@ -25,7 +27,8 @@ import tracer  # noqa: E402
 
 ZOOM = 0x35
 CROP = 8
-TERRAIN_DEPTH = 100
+BG_DEPTH = 2147483500
+MAX_MAPS = 4
 
 
 def table(path, name):
@@ -49,9 +52,7 @@ class Gen:
         body = oc[oc.index('objdefs[OBJ_COUNT] = {'):]
         body = body[:body.index('\n};')]
         self.obj = {}
-        names = []
         for m in re.finditer(r'\{ "(\w+)", (OBJ_\w+), [^,]+, [^,]+, (\d), (\d), (\d), (-?\d+) \}', body):
-            names.append(m.group(1))
             self.obj[m.group(1)] = dict(parent=m.group(2)[4:], visible=int(m.group(4)), depth=int(m.group(6)))
         self.meta = json.load(open(os.path.join(gen, 'gfx.json')))
         self.gfx = open(os.path.join(gen, 'gfx.bin'), 'rb').read()
@@ -67,55 +68,119 @@ class Gen:
         s = self.spr[spr]
         return s[9] + int(img) % s[10]
 
+    def cell_tile(self, spr, left, top):
+        """tile number of the 16 x 16 cell at (left, top) of sprite spr's frame 0, None if not a whole piece cell"""
+        s = self.spr[spr]
+        p0, n = self.frm[s[9]]
+        for dx, dy, pw, ph, tile in self.pcs[p0:p0 + n]:
+            px, py = left - (dx + s[2]), top - (dy + s[3])
+            if 0 <= px < 16 * pw and 0 <= py < 16 * ph and px % 16 == 0 and py % 16 == 0:
+                return tile + (px // 16) * ph + py // 16
+        return None
 
-def level(trace, names_path, rec, g):
+
+def load(trace, names_path, rec):
     names = tracer.load_names(names_path)
+    tiles, state = [], None
     for hd, insts in tracer.records(open(trace, 'rb').read()):
+        if hd['phase'] == 0 and hd['rec'] <= rec:
+            tiles = hd['tiles']
         if hd['rec'] == rec:
+            state = (hd, insts)
             break
-    else:
+    if state is None:
         raise SystemExit(f'record {rec} not in {trace}')
-    terrain, sprites = [], []
-    order = list(reversed(insts))                   # the trace lists instances newest first
-    for k, i in enumerate(order):
-        if i['spr'] < 0:
+    return names, tiles, state[1]
+
+
+def drawables(trace, names_path, rec, g, order='old'):
+    """[(depth, seq, kind, ...)] deepest first. kind 'cell': (tile, cx, cy) on the 16-px grid; 'frame': (frame, x,
+    y, flip); the background is not listed (BG_DEPTH, tilemap 0)"""
+    names, tiles, insts = load(trace, names_path, rec)
+    out = []
+    for k, (bg, left, top, w, h, x, y, depth) in enumerate(tiles):
+        sid = g.sprid.get(bg)
+        if sid is None:
             continue
-        on, sn = names['O'][i['obj']], names['S'][i['spr']]
-        o = g.obj[on]
-        if not o['visible'] or sn not in g.sprid:
+        for j in range(int(h) // 16):
+            for i in range(int(w) // 16):
+                t = g.cell_tile(sid, int(left) + 16 * i, int(top) + 16 * j)
+                X, Y = int(x) + 16 * i, int(y) + 16 * j
+                if t is not None and X % 16 == 0 and Y % 16 == 0:
+                    out.append((int(depth), k, 'cell', t, X // 16, Y // 16))
+                else:
+                    raise SystemExit(f'tile {bg} ({left},{top}) at ({x},{y}) is not on the 16-px grid')
+    seq = list(reversed(insts)) if order == 'old' else list(insts)      # the trace lists newest first
+    base = len(tiles)
+    for k, i in enumerate(seq):
+        d = i.get('draw') or {}
+        if i['spr'] < 0 or not d.get('visible', 1):
+            continue
+        sn = names['S'][i['spr']]
+        if sn not in g.sprid:
             continue
         sid = g.sprid[sn]
         f = g.frame(sid, i['img'])
+        x, y, depth = int(i['x']), int(i['y']), int(d.get('depth', g.obj[names['O'][i['obj']]]['depth']))
+        flip = d.get('xscale', 1.0) < 0
         p0, npc = g.frm[f]
-        x, y = int(i['x']), int(i['y'])
         s = g.spr[sid]
-        one = npc == 1 and g.pcs[p0][2:4] == [1, 1] and g.pcs[p0][0] == -s[2] and g.pcs[p0][1] == -s[3]
-        if g.is_a(on, 'oSolid') and one and x % 16 == 0 and y % 16 == 0 and o['depth'] == TERRAIN_DEPTH:
-            terrain.append((x // 16, y // 16, g.pcs[p0][4]))
+        on = names['O'][i['obj']]
+        one = (npc == 1 and g.pcs[p0][2:4] == [1, 1] and g.pcs[p0][0] == -s[2] and g.pcs[p0][1] == -s[3]
+               and not flip)
+        if g.is_a(on, 'oSolid') and one and x % 16 == 0 and y % 16 == 0:
+            out.append((depth, base + k, 'cell', g.pcs[p0][4], x // 16, y // 16))
         else:
-            sprites.append((o['depth'], k, sid, f, x, y))
-    sprites.sort(key=lambda s: (-s[0], s[1]))
-    return terrain, sprites
+            out.append((depth, base + k, 'frame', f, x, y, flip))
+    out.sort(key=lambda d: (-d[0], d[1]))
+    return out
 
 
-def write_c(out, terrain, sprites, g):
+def plan_maps(dr):
+    """the depths drawn on tilemaps 1..3 (tilemap 0: the background): the depths with most cells whose cells do not
+    overlap, at most MAX_MAPS - 1; their other drawables stay sprites"""
+    cells = {}
+    for d in dr:
+        if d[2] == 'cell':
+            cells.setdefault(d[0], []).append(d)
+    ok = {}
+    for depth, cs in cells.items():
+        seen = {(c[4], c[5]) for c in cs}
+        if len(seen) == len(cs):
+            ok[depth] = len(cs)
+    return sorted(sorted(ok, key=lambda k: -ok[k])[:MAX_MAPS - 1], reverse=True)
+
+
+def write_c(out, dr, maps, g):
     bg = g.sprid['bgCave']
-    bgf = g.spr[bg][9]
-    bp0, bn = g.frm[bgf]
+    bp0, bn = g.frm[g.spr[bg][9]]
     L = ['/* generated by tools/viewlevel.py: do not edit */', '#include <stdint.h>',
-         f'#define VIEW_NTERRAIN {len(terrain)}', f'#define VIEW_NSPRITES {len(sprites)}',
-         f'#define VIEW_BG_PIECE {bp0}', f'#define VIEW_BG_NPIECES {bn}',
-         'static const uint16_t view_terrain[][3] = {']
-    L += [f'    {{ {cx}, {cy}, 0x{t:x} }},' for cx, cy, t in terrain]
-    L += ['};', '/* depth, frame, x, y (deepest first) */', 'static const int32_t view_sprites[][4] = {']
-    L += [f'    {{ {d}, {f}, {x}, {y} }},' for d, _, _, f, x, y in sprites]
-    L += ['};', '']
+         f'#define VIEW_BG_PIECE {bp0}', f'#define VIEW_BG_NPIECES {bn}', f'#define VIEW_NMAPS {len(maps)}',
+         '/* map cells: tilemap (1..3), column, row, tile */', 'static const uint16_t view_cells[][4] = {']
+    for d in dr:
+        if d[2] == 'cell' and d[0] in maps:
+            L.append(f'    {{ {1 + maps.index(d[0])}, {d[4]}, {d[5]}, 0x{d[3]:x} }},')
+    L += ['};', '#define VIEW_NCELLS (sizeof view_cells / sizeof view_cells[0])',
+          '/* the drawing order, deepest first: kind 0 = tilemap band (a = tilemap), 1 = frame (a = frame, x, y, flip),',
+          '   2 = single tile as a sprite (a = tile, x, y) */',
+          'static const int32_t view_list[][5] = {']
+    done = set()
+    for d in dr:
+        if d[2] == 'cell' and d[0] in maps:
+            m = 1 + maps.index(d[0])
+            if m not in done:
+                done.add(m)
+                L.append(f'    {{ 0, {m}, 0, 0, 0 }},')
+        elif d[2] == 'cell':
+            L.append(f'    {{ 2, 0x{d[3]:x}, {16 * d[4]}, {16 * d[5]}, 0 }},')
+        else:
+            L.append(f'    {{ 1, {d[3]}, {d[4]}, {d[5]}, {int(d[6])} }},')
+    L += ['};', '#define VIEW_NLIST (sizeof view_list / sizeof view_list[0])', '']
     open(out, 'w').write('\n'.join(L))
 
 
-def compose(terrain, sprites, g, vx, vy):
-    """the 320x240 view as palette indices (0 = backdrop)"""
-    W, H = 320, 240
+def compose(dr, g, vx, vy, W=320, H=240):
+    """the view as palette indices (0 = backdrop)"""
     img = [[0] * W for _ in range(H)]
     first = g.meta['first_tile']
 
@@ -132,26 +197,25 @@ def compose(terrain, sprites, g, vx, vy):
                     if v and 0 <= X < W:
                         row[X] = v
 
-    def blit_frame(f, x, y):
+    def blit_frame(f, x, y, flip):
         p0, n = g.frm[f]
         for dx, dy, pw, ph, tile in g.pcs[p0:p0 + n]:
             for i in range(pw):
                 for j in range(ph):
-                    blit_tile(tile + i * ph + j, x + dx + 16 * i, y + dy + 16 * j)
+                    if flip:
+                        blit_tile(tile + i * ph + j, x - dx - 16 * pw + 16 * (pw - 1 - i), y + dy + 16 * j, True)
+                    else:
+                        blit_tile(tile + i * ph + j, x + dx + 16 * i, y + dy + 16 * j)
 
-    # background: bgCave's 64x64 frame repeated from room (0, 0)
     bg = g.sprid['bgCave']
     for ry in range((vy // 64) * 64, vy + H, 64):
         for rx in range((vx // 64) * 64, vx + W, 64):
-            blit_frame(g.spr[bg][9], rx - vx, ry - vy)
-    for s in sprites:
-        if s[0] > TERRAIN_DEPTH:
-            blit_frame(s[3], s[4] - vx, s[5] - vy)
-    for cx, cy, t in terrain:
-        blit_tile(t, 16 * cx - vx, 16 * cy - vy)
-    for s in sprites:
-        if s[0] <= TERRAIN_DEPTH:
-            blit_frame(s[3], s[4] - vx, s[5] - vy)
+            blit_frame(g.spr[bg][9], rx - vx, ry - vy, False)
+    for d in dr:
+        if d[2] == 'cell':
+            blit_tile(d[3], 16 * d[4] - vx, 16 * d[5] - vy)
+        else:
+            blit_frame(d[3], d[4] - vx, d[5] - vy, d[6])
     return img
 
 
@@ -172,18 +236,46 @@ def screen(view, g):
     return im
 
 
+def shot_diff(view, g, shot, mask=None):
+    """pixels of the 320 x 240 view whose 5-bit colour differs from the runner's frame"""
+    import hdsprites
+    pal = g.meta['palette']
+    s = Image.open(shot).convert('RGB').load()
+    n = 0
+    m = Image.new('L', (320, 240)) if mask else None
+    for y in range(240):
+        for x in range(320):
+            r, gg, b = s[x, y]
+            want = hdsprites.bgr555(r, gg, b)
+            v = view[y][x]
+            if (pal[v] if v else 0) != want:
+                n += 1
+                if m:
+                    m.putpixel((x, y), 255)
+    if m:
+        m.save(mask)
+    return n
+
+
 def main():
     a = sys.argv[1:]
+    order = a[a.index('--order') + 1] if '--order' in a else 'old'
     g = Gen(a[4])
-    terrain, sprites = level(a[1], a[2], int(a[3]), g)
+    dr = drawables(a[1], a[2], int(a[3]), g, order)
     if a[0] == 'c':
-        write_c(a[5], terrain, sprites, g)
-        print(f'{len(terrain)} terrain cells, {len(sprites)} sprites')
+        maps = plan_maps(dr)
+        write_c(a[5], dr, maps, g)
+        print(f'{len(dr)} drawables; tilemaps 1..{len(maps)} at depths {maps}')
     elif a[0] == 'expect':
         os.makedirs(a[5], exist_ok=True)
-        for k, cam in enumerate(a[6:]):
+        for k, cam in enumerate(x for x in a[6:] if ',' in x):
             vx, vy = map(int, cam.split(','))
-            screen(compose(terrain, sprites, g, vx, vy), g).save(os.path.join(a[5], f'expect_{k}.png'))
+            screen(compose(dr, g, vx, vy), g).save(os.path.join(a[5], f'expect_{k}.png'))
+    elif a[0] == 'shot':
+        vx, vy = map(int, a[6].split(','))
+        n = shot_diff(compose(dr, g, vx, vy), g, a[5], a[5].replace('.png', '.diff.png'))
+        print(f'{a[5]}: {n} of {320 * 240} pixels differ (order {order})')
+        sys.exit(1 if n else 0)
     else:
         sys.exit(__doc__)
 

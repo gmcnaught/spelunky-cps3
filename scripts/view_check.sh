@@ -1,9 +1,10 @@
 #!/bin/sh
 # tests/view in MAME: one snapshot in the middle of each camera phase against tools/viewlevel.py's expected screens.
-#   scripts/view_check.sh [trace] [names] [rec]     (default: build/trace/p1_walk_s1 record 0)
+#   scripts/view_check.sh [trace] [names] [rec]     (default: build/trace/p3_shot record 46; TRACE_SHOT=1,46
+#   scripts/hd_trace.sh p1_walk 1 p3_shot makes it)
 set -e
 cd "$(dirname "$0")/.."
-T=${1:-build/trace/p1_walk_s1.bin}; N=${2:-build/trace/p1_walk_s1.names}; R=${3:-0}
+T=${1:-build/trace/p3_shot.bin}; N=${2:-build/trace/p3_shot.names}; R=${3:-46}
 CAMS="0,0 352,0 176,152 352,304 0,304 123,77"        # tests/view/main.c cams[]
 python3 tools/hdobjects.py refs/hd/src build/gen/objects.h
 python3 tools/hdsprites.py refs/hd/src build/gen >/dev/null

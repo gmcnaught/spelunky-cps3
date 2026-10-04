@@ -1,6 +1,7 @@
 /* P3 level viewer (PLAN.md P3): one level from the HD reference runner (tools/viewlevel.py -> level.h) drawn as
-   the port will draw it: bgCave on tilemap 0, terrain on tilemap 1, everything else as sprites in depth order, the
-   320 x 240 view's lines 8-231 stretched to 384 by X zoom 0x35. All tiles by one character DMA at boot (PLAN §2).
+   the port will draw it: bgCave on tilemap 0, the tile_add layers and terrain on tilemaps 1-3 by depth, everything
+   else as sprites (mirrored by image_xscale), all in depth order (view_list), the 320 x 240 view's lines 8-231
+   stretched to 384 by X zoom 0x35. All tiles by one character DMA at boot (PLAN §2).
    Cameras: the phases below (CAM_FRAMES each; scripts/view_check.sh snapshots them), then the stick. */
 #include "cps3.h"
 #include "sprites.h"
@@ -8,8 +9,7 @@
 
 #define PAL        1u                           /* colour code 1: the game palette */
 #define BLANK      (GFX_FIRST_TILE - 1u)        /* assets.py's blank tile */
-#define UNIT_BG    CPS3V_MAP_UNIT(0)
-#define UNIT_TER   CPS3V_MAP_UNIT(1)
+#define UNIT(m)    CPS3V_MAP_UNIT(m)
 #define ZOOM_X     (*(volatile uint16_t *)0x040c006eu)
 #define CROP       8
 #define VIEW_W     320
@@ -50,32 +50,41 @@ static void build_maps(void)
     }
     for (int r = 0; r < 64; r++)
         for (int c = 0; c < 64; c++) {
-            cps3v_cell(UNIT_BG, c, r, bg[c & 3][r & 3], PAL, 0);
-            cps3v_cell(UNIT_TER, c, r, BLANK, PAL, 0);
+            cps3v_cell(UNIT(0), c, r, bg[c & 3][r & 3], PAL, 0);
+            for (int m = 1; m <= VIEW_NMAPS; m++)
+                cps3v_cell(UNIT(m), c, r, BLANK, PAL, 0);
         }
-    for (int k = 0; k < VIEW_NTERRAIN; k++)
-        cps3v_cell(UNIT_TER, view_terrain[k][0], view_terrain[k][1], view_terrain[k][2], PAL, 0);
+    for (unsigned k = 0; k < VIEW_NCELLS; k++)
+        cps3v_cell(UNIT(view_cells[k][0]), view_cells[k][1], view_cells[k][2], view_cells[k][3], PAL, 0);
 }
 
-static void draw_frame(int f, int x, int y)
+static void draw_frame(int f, int x, int y, int flip)
 {
     const struct framedef *fd = &framedefs[f];
     for (int p = fd->piece; p < fd->piece + fd->npieces; p++) {
         const struct piecedef *pc = &piecedefs[p];
-        int px = x + pc->dx, py = y + pc->dy;
-        if (px > VIEW_W || py > 224 || px + 16 * pc->w <= 0 || py + 16 * pc->h <= 0)
+        int w = 16 * pc->w, px = flip ? x - pc->dx - w : x + pc->dx, py = y + pc->dy;
+        if (px > VIEW_W || py > 224 || px + w <= 0 || py + 16 * pc->h <= 0)
             continue;
-        cps3v_sprite(px, py, pc->w, pc->h, pc->tile, PAL, 0);
+        cps3v_sprite(px, py, pc->w, pc->h, pc->tile, PAL, flip ? CPS3V_FLIPX : 0);
     }
 }
 
-static void draw_sprites(int vx, int vy, int deep)
+static void draw_list(int vx, int vy)
 {
-    for (int k = 0; k < VIEW_NSPRITES; k++) {
-        const int32_t *s = view_sprites[k];
-        if ((s[0] > 100) != deep)
-            continue;
-        draw_frame(s[1], s[2] - vx, s[3] - vy);
+    for (unsigned k = 0; k < VIEW_NLIST; k++) {
+        const int32_t *e = view_list[k];
+        if (e[0] == 0) {
+            cps3v_group();
+            cps3v_band(e[1], 0, CPS3V_H);
+            cps3v_group();
+        } else if (e[0] == 1) {
+            draw_frame(e[1], e[2] - vx, e[3] - vy, e[4]);
+        } else {
+            int px = e[2] - vx, py = e[3] - vy;
+            if (px > -16 && px < VIEW_W && py > -16 && py < 224)
+                cps3v_sprite(px, py, 1, 1, e[1], PAL, 0);
+        }
     }
 }
 
@@ -100,15 +109,12 @@ int main(void)
             vx = vx < 0 ? 0 : vx > ROOM_W - VIEW_W ? ROOM_W - VIEW_W : vx;
             vy = vy < 0 ? 0 : vy > ROOM_H - VIEW_H ? ROOM_H - VIEW_H : vy;
         }
-        cps3v_tilemap(0, vx, vy + CROP, UNIT_BG, 1);
-        cps3v_tilemap(1, vx, vy + CROP, UNIT_TER, 1);
+        for (int m = 0; m <= VIEW_NMAPS; m++)
+            cps3v_tilemap(m, vx, vy + CROP, UNIT(m), 1);
         ZOOM_X = 0x35;
         cps3v_begin();
         cps3v_band(0, 0, CPS3V_H);
-        draw_sprites(vx, vy + CROP, 1);
-        cps3v_group();
-        cps3v_band(1, 0, CPS3V_H);
-        draw_sprites(vx, vy + CROP, 0);
+        draw_list(vx, vy + CROP);
         cps3v_end();
         frame++;
     }
