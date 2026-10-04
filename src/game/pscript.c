@@ -2,7 +2,8 @@
 #include "pint.h"
 #include "../snd/sndgame.h"                     /* the GML sound calls (src/snd) */
 #include "pmsg.h"                                /* the HUD messages (trMessages) */
-#include "pcontent.h"                            /* P7 content packages (docs/CONTENT.md) */
+#include "pcontent.h"
+#include "precip.h"                             /* moveTo: round(1 / frac(|v|)) from the bits */                            /* P7 content packages (docs/CONTENT.md) */
 
 double prandom(double n)
 {
@@ -191,25 +192,38 @@ static int is_character(int i)
     return obj_is(PX(i).obj, OBJ_oCharacter);
 }
 
+/* moveTo's whole steps of a velocity v: round(1 / frac(|v|)) (0 when frac(|v|) == 0 within GML_EPS), floor(|v|)
+   and v < 0. The binary64 build takes them from v's bits (precip.h: integer operations and a threshold table, exact);
+   outside its range, and in the other builds, the formula */
+struct vparts { int32_t r, fl; int neg; };
+static void vel_parts(num a, struct vparts *o)
+{
+#if !defined(PLAY_FIXED) && !defined(PLAY_COUNT)
+    if (precip_parts(a, &o->r, &o->fl, &o->neg)) return;
+#endif
+    {
+        num f = NFRAC(NABS(a));                                                /* :20-21 */
+        o->r = NNE(f, N(0)) ? NRECIP_ROUND(f) : 0;                             /* :24 */
+        o->fl = NFLOOR(NABS(a));                                               /* :30 */
+        o->neg = a < 0;
+    }
+}
+
 /* scripts/moveTo */
 void moveTo(int i, num a0, num a1, int32_t *xio, int32_t *yio)
 {
     struct pin *p = &PX(i);
     pos mtXPrev = p->x, mtYPrev = p->y;
-    num xVelFrac = NFRAC(NABS(a0)), yVelFrac = NFRAC(NABS(a1));            /* :20-21 */
+    struct vparts vx, vy;
     int32_t xVelInteger = 0, yVelInteger = 0;
-    if (NNE(xVelFrac, N(0))) {                                                       /* :24 */
-        int32_t r = NRECIP_ROUND(xVelFrac);
-        if (r != 0) xVelInteger = (int32_t)(play_time % (uint32_t)r) == 0;
-    }
-    if (NNE(yVelFrac, N(0))) {
-        int32_t r = NRECIP_ROUND(yVelFrac);
-        if (r != 0) yVelInteger = (int32_t)(play_time % (uint32_t)r) == 0;
-    }
-    xVelInteger += NFLOOR(NABS(a0));                                           /* :30 */
-    yVelInteger += NFLOOR(NABS(a1));
-    if (a0 < 0) xVelInteger = -xVelInteger;
-    if (a1 < 0) yVelInteger = -yVelInteger;
+    vel_parts(a0, &vx);
+    vel_parts(a1, &vy);
+    if (vx.r != 0) xVelInteger = (int32_t)(play_time % (uint32_t)vx.r) == 0;
+    if (vy.r != 0) yVelInteger = (int32_t)(play_time % (uint32_t)vy.r) == 0;
+    xVelInteger += vx.fl;
+    yVelInteger += vy.fl;
+    if (vx.neg) xVelInteger = -xVelInteger;
+    if (vy.neg) yVelInteger = -yVelInteger;
     NOPS(10);
     if (xVelInteger > 0)                                                       /* :39 */
         for (; p->x < mtXPrev + PI(xVelInteger); pin_setx(p, p->x + (PI(1)))) {
