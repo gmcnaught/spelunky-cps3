@@ -17,6 +17,10 @@ GSRC   := $(notdir $(wildcard build/g/*.c))
 SRCS   := main.c core.c isr.S $(addprefix build/g/,$(GSRC)) $(ROOT)/src/sh2/fma.c $(ROOT)/src/snd/snd.c   # fma.c: pcol.c's fmaf (no libm)
 CFLAGS := $(OPT) -std=gnu99 -fno-bit-tests -Wno-unused-parameter -Wno-sign-compare -Ibuild/g -Ibuild -I. -I$(ROOT)/src/snd -I$(ROOT)/src/front \
           -DPROF_PERIOD=$(PROF) -DPROF_KIND=$(PROF_KIND) -DPROF_SKIP=$(PROF_SKIP) -fdata-sections -Wl,-T,sprbss.ld -Wl,-T,../ramcheck.ld
+# JOBSDIR=<dir>: jobs.h from that directory in place of build/jobs.h (scripts/playsh2_check.sh ROUTES=: mkjobs.py --routes)
+ifneq ($(JOBSDIR),)
+CFLAGS := -I$(JOBSDIR) $(CFLAGS)
+endif
 # SOFTFP=1: src/sh2/softfp.c in place of libgcc's fp-bit soft-float
 ifeq ($(SOFTFP),1)
 SRCS   += $(ROOT)/src/sh2/softfp.c $(ROOT)/src/sh2/softfp_sh2.S
