@@ -518,3 +518,58 @@ double patan_deg(double a)
 {
     return patan(a) * 180.0 / 3.14159265358979323846;
 }
+
+/* scripts/scrClearGlobals: a new game. The generator's globals (struct gglobals: gen_new_game, which also sets the
+   values oGlobals / scrInit / oTitle Create give them), then the play loop's in the script's order; the globals the
+   port does not model (titleStart, entityGen, yviewPrev, xview / yview, waterCounter, crapsPoint, probLake,
+   marketEntrance, goldEntrance, hasNinjaSuit, flares) are left out */
+void scrClearGlobals(void)
+{
+    gen_new_game();
+    PG.ghostExists = 0;                                                        /* :20 */
+    PG.drawHUD = 0;
+    PG.collect = 0;
+    PG.collectCounter = 0;
+    PG.shake = 0;
+    PG.shakeToggle = 0;
+    PMSG.bloodLevel = 0;                                                       /* :35 */
+    PG.hasUdjatEye = 0;                                                        /* :68 */
+    PG.hasAnkh = 0;
+    PG.hasCrown = 0;
+    PG.hasKapala = 0;
+    PG.hasStickyBombs = 0;
+    PG.hasCompass = 0;
+    PG.hasParachute = 0;
+    PG.hasSpringShoes = 0;
+    PG.hasSpikeShoes = 0;
+    PG.hasJordans = 0;
+    PG.hasCape = 0;
+    PG.hasJetpack = 0;
+    PG.hasGloves = 0;
+    PG.hasMitt = 0;
+    if (G.isTunnelMan) {                                                       /* :86 */
+        PG.plife = 2;
+        PG.bombs = 0;
+        PG.rope = 0;
+    } else {
+        PG.plife = 4;
+        PG.bombs = 4;
+        PG.rope = 4;
+    }
+    PG.arrows = 0;                                                             /* :99 */
+    PG.money = 0;
+    PG.time = 0;
+    PG.kills = 0;
+    PG.damsels = 0;
+    PG.gold = PG.goldbar = PG.goldbars = PG.nuggets = 0;
+    PG.rubies = PG.bigrubies = PG.sapphires = PG.bigsapphires = PG.emeralds = PG.bigemeralds = PG.diamonds = 0;
+    PG.scarabs = PG.idols = PG.skulls = 0;
+    PG.xdamsels = 0;
+    PG.xmoney = 0;
+    PG.xtime = 0;
+    PG.bats = PG.snakes = PG.spiders = PG.skeletons = PG.frogs = PG.firefrogs = PG.piranhas = PG.mantraps = 0;
+    PG.yetis = PG.aliens = PG.ufos = PG.cavemen = PG.hawkmen = PG.monkeys = PG.zombies = PG.vampires = 0;
+    PG.deadfish = PG.alienbosses = PG.giantspiders = PG.yetikings = PG.megamouths = PG.tomblords = 0;
+    PG.shopkeepers = 0;
+    PG.damselsKilled = 0;
+}

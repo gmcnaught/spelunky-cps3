@@ -33,12 +33,8 @@ void game_attract_step(void)
 void game_begin(void)
 {
     front_stop();
-    gen_new_game();
-    PMSG.bloodLevel = 0;                          /* scrClearGlobals :50 */
+    scrClearGlobals();                            /* plife / bombs / rope 4, every has* flag and count 0 */
     G.currLevel = game_cfg.level;
-    PG.plife = 4;
-    PG.bombs = 4;
-    PG.rope = 4;
     PG.money = game_cfg.money;
     play_noenemy = !game_cfg.enemies;
     rng_seed(&g_rng, game_cfg.seed ? game_cfg.seed : SH.frame * 2654435761u + 1);

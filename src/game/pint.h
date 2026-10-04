@@ -67,6 +67,7 @@ void scrShake(int d);
 void scrHoldItem(int t);
 void scrDropItem(num xv, num yv);
 void scrStealItem(void);
+void scrClearGlobals(void);                   /* a new game: gen_new_game and the play globals (PG, bloodLevel) */
 void scrFireBow(void);
 int isLevel(void);
 int isRealLevel(void);

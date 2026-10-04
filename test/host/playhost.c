@@ -211,7 +211,7 @@ int main(int argc, char **argv)
         while (n-- > 0 && nsteps < 100000) masks[nsteps++] = m;
     }
     fclose(f);
-    gen_new_game();
+    scrClearGlobals();
     G.currLevel = level;
     PG.plife = 4;
     PG.bombs = 4;
