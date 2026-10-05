@@ -1634,8 +1634,17 @@ void ev_collision(int self, int other)
     case OBJ_oExplosion:
         if (obj_is(oo, OBJ_oSolid)) explosion_solid(self, other);
         else if (obj_is(oo, OBJ_oItem)) {
-            if (oo == OBJ_oDamsel) PUNTR(1091);
-            else explosion_item(self, other);
+            if (oo == OBJ_oDamsel) {                                   /* objects/oExplosion/Collision_oDamsel.gml */
+                struct pin *o = &PX(other);
+                if (!o->invincible) {
+                    PE(o)->hp -= 100;
+                    if (PX(self).x < o->x) PE(o)->xVel = NI(RAND(4, 6));
+                    else PE(o)->xVel = NI(-RAND(4, 6));
+                    PE(o)->yVel = N(-6);
+                    PEN(o)->burning = 50;
+                    PE(o)->status = 2;                                     /* pdamsel.c D_THROWN */
+                }
+            } else explosion_item(self, other);
         } else if (obj_is(oo, OBJ_oWeb)) pin_destroy(other);
         else if (obj_is(oo, OBJ_oEnemy) && oo != OBJ_oMagmaMan) {         /* objects/oExplosion/Collision_oEnemy.gml */
             struct pin *o = &PX(other);
@@ -1663,7 +1672,9 @@ void ev_collision(int self, int other)
         } else if (obj_is(oo, OBJ_oTreasure)) {
             PE(&PX(other))->xVel = 0;
             PE(&PX(other))->yVel = 0;
-        } else if (!pcontent_ev(FEV_COLLISION, self, other))                       /* P7 hook (Collision_oSlash) */
+        } else if (obj_is(oo, OBJ_oWater) || obj_is(oo, OBJ_oLaser))            /* Collision_oWater (oLava too), */
+            pin_destroy(self);                                                 /* Collision_oLaser: instance_destroy() */
+        else if (!pcontent_ev(FEV_COLLISION, self, other))                     /* P7 hook (Collision_oSlash) */
             PUNTR(1093);
         break;
     case OBJ_oJar:
@@ -1690,8 +1701,14 @@ void ev_collision(int self, int other)
                 PL.pickupItemType = T_NONE;
             }
             pin_destroy(self);
-        } else
+        } else if (obj_is(oo, OBJ_oBullet))                                    /* objects/oJar/Collision_oBullet.gml: */
+            pin_destroy(self);                                                 /* its Destroy breaks it (destroy_jar_like) */
+        else
             ptemple_world(1094, self, other);
+        break;
+    case OBJ_oSkull:                                                           /* objects/oSkull/Collision_oBullet.gml */
+        if (obj_is(oo, OBJ_oBullet)) pin_destroy(self);
+        else if (!pcontent_ev(FEV_COLLISION, self, other)) PUNTR(1096);
         break;
     case OBJ_oLockedChest: pitems_world(1095, self, other); break;
     default: if (!pcontent_ev(FEV_COLLISION, self, other)) PUNTR(1096); break;    /* P7 hook */

@@ -1,0 +1,21 @@
+# Survey reference (untrsurvey --global pickupItem=Machete, level 10 seed 16): the machete's oMachetePre (step 23)
+# and oSlash (step 27) hit a yeti (oYeti Collision_oWhipPre / Collision_oWhip, pk_ice.c 7001)
+# seed 16
+# level 10
+# nodark 0
+# globals pickupItem=Machete
+4 LB
+1 J
+2 R
+11 -
+2 J
+3 LDA
+2 RDNP
+22 JAP
+22 L
+17 LA
+22 -
+8 L
+2 RDJ
+1 L
+1 J

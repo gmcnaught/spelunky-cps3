@@ -11,15 +11,42 @@ Data behind the numbers:
 - **Generator:** 200 seeds × levels 1-16 through `build/host/genhost` (`noDarkLevel` 0). A percentage is the share of
   that area's levels holding at least one instance; M/L/I/T/O = mines/lush/ice/temple/Olmec. "spawned" means
   created at run time.
-- **Untranslated survey:** each level played 1,500 steps with random walk / jump / whip / bomb inputs, every
-  PUNTR code recorded and cleared (30 seeds per level).
+- **Untranslated survey:** section 0.
 - **GML lines:** non-blank, non-comment lines of the object's event files.
 - **rand:** `rand` / `random` / `random_range` / `irandom` / `choose` calls in its events. Each one is an RNG draw
   whose order must match: GML evaluates function arguments right to left.
 
-Most-reached codes in the untranslated survey (levels of 480 that reach them): oManTrap 100, oFireFrog 73, oYeti 73,
-oHawkman 68, oCrown (Create) 63, oBomb sticky / lava 56, oSpringTrap 47, oFrog 33, oFinalBoss 30, oCeilingTrap 21,
-oUFO 17, oTombLord 10, oDeadFish 7, oDice 6.
+## 0. Untranslated survey (2026-10-05, main cd3bc01 + branch of the survey)
+
+`scripts/untr_survey.sh` (`test/host/untrsurvey.c`): levels 1-16 x 30 seeds (480 levels), each from its start in the
+cabinet's room, 1,500 steps of random cabinet inputs (stick, jump, whip, item, run, bomb, rope, pay; none after
+death), every `PUNTR` site logged (`PLAY_UNTR_LOG`), into `build/untr/table.txt`. Passes: **play** (the cabinet),
+**god** (INVINCIBLE: longer exploration), **item** (one pass per pickupItem / has* item, 28). Random play dies fast
+(play: 471 of 480 die, 2 reach the next level; god: 12), so the transition rooms and everything past the first
+level are under-sampled. `untrsurvey --route` writes a run as a route for the runner (the c_* routes below).
+
+Levels of 480 reaching each code before this branch's translations (item: the item named):
+
+| code | GML | play | god | item | now |
+|---|---|---|---|---|---|
+| 1091 | oExplosion/Collision_oDamsel :1-9 | 5 | 10 | | translated (c_items_damselexpl) |
+| 4008 | oLush / oDark / oTemple Create in rTransition2-4, 1x-3x | 2 | 11 | | translated (c_temple_xroom3x); every game past level 5 |
+| 4005 | oTransition/Create_0 :57-71 (tunnel man) | 2 | 4 | | kept (GAMELOOP section 3) |
+| 1093 | oWeb/Collision_oWater, Collision_oLaser :1 | 4 | 5 | web cannon 1 | translated (c_swamp_webwater, c_temple_weblava, c_ice_weblaser) |
+| 1094 | oJar/Collision_oBullet :1 | | | pistol 16, shotgun 14 | translated (c_items_pistoljar) |
+| 1096 | oSkull/Collision_oBullet :1 | | | pistol 8, shotgun 7 | translated (c_items_pistolskull) |
+| 7001 | oYeti/Collision_oWhip, oWhipPre :3-21 | | | machete 7, mattock 8 | translated (c_ice_yetimachete, c_ice_yetimattock) |
+| 1010 | oSolid/Destroy_0 :1 (shop wall: the shopkeeper's anger) | 0 | 3 | 3 | untranslated |
+| 1013 | oSolid/Destroy_0 :24-27 (oLampRed) | 0 | 1 | 1 | untranslated |
+| 5040 | bomb arrow hits an enemy (penemy.c:1431) | 0 | 0 | bow 1 | untranslated |
+| 6010 / 6011 | oDamsel/Step_0 lava, spikes (pdamsel.c:123, 141) | 0 | 0 | 1 / 1 | untranslated |
+| 9005 | pin_ext pool full (pworld.c:437) | 0 | 0 | ankh 1 | capacity |
+
+Not reached by the survey: the other 63 of the 76 PUNTR call sites (some are per-package defaults), among them the tunnel man
+(4011, 4020), the shops' black market (7011), the Kali altar's sacrifice paths, the city of gold, the ending rooms,
+anything after the first transition room, and every item the player must buy or carry over (the item passes start
+with it instead). Also found: a play-loop hang (pw_release, level 9 seed 5, fixed) and an oPlayer1 crawl difference
+under random input (down at run speed; fixed on another branch, global.downToRun).
 
 ## 1. Before the packages: one hook commit (single owner, after slot reuse)
 

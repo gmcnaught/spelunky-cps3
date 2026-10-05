@@ -4,3 +4,4 @@
 p4_bomb_throw_s3 172 explosion debris visited in another order: gold chunk / nugget resting positions a few px apart, money equal
 c_temple_olmec_s1 768 explosion debris visited in another order: gold chunk resting positions a few px apart, money equal
 c_swamp_lakejaws_s279 186 piranhas hitting the swimming player in one step visited in another order: oBlood / oBloodTrail made at his position 7 px apart, life sequence equal
+c_ice_yetimachete_s16 121 explosion visits the dark blocks and the yeti in another order: debris positions and the yeti's knock-back rand(4, 6) (xVel -6 / -4) differ, the yeti within 1 px after; rooms, life and items equal

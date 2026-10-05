@@ -561,8 +561,19 @@ void pw_release(void)
         for (k = 0; k < PW.nord; k++) pw_seq[pw_ord[k]] = (int16_t)k;
         PW.seq = PW.nord;
     }
+    /* rmq(k) goes to freel[nfree + k]. When nfree + 2 * nrmq > PIN_MAX the two parts meet in that copy and it
+       overwrites queue entries not yet read: a slot twice on the free list, then two alive instances in one slot
+       and a cycle in an object list (scripts/untr_survey.sh, level 9 seed 5: about 900 oEnemySight removed while
+       the batch waited; pen_motion looped at step 769). Then the queue is reversed in place first (rmq(k) at
+       freel[PIN_MAX - nrmq + k]) and read upwards: the same free list, every write below the entries still unread */
+    j = 0;
+    if (nfree + 2 * nrmq > PIN_MAX) {
+        int a, b;
+        for (a = PIN_MAX - nrmq, b = PIN_MAX - 1; a < b; a++, b--) { s = freel[a]; freel[a] = freel[b]; freel[b] = (int16_t)s; }
+        j = 1;
+    }
     for (k = 0; k < nrmq; k++) {
-        s = rmq(k);
+        s = j ? freel[PIN_MAX - nrmq + k] : rmq(k);
         relmark[s] = 0;
         freel[nfree++] = (int16_t)s;
 #ifdef PIN_EXT_CHECK

@@ -78,6 +78,18 @@ $(OUT)/playhost_extchk: playhost.c $(SRC) $(PSRC) $(ROOT)/src/game/*.h $(GEN)/pl
 	mkdir -p $(OUT)
 	$(CC) $(CFLAGS) -DPLAY_STATS -DPIN_EXT_CHECK -ffp-contract=off $(INC) -o $@ playhost.c $(SRC) $(PSRC) $(HSRC)
 
+# the untranslated-code survey (scripts/untr_survey.sh): every PUNTR site reached under random inputs (PLAY_UNTR_LOG);
+# pobj.c's collision and outside dispatchers and ptrans.c's room start renamed, so untrsurvey.c's wrappers name the
+# instances (play_cur_obj is not set there)
+$(OUT)/untrsurvey: untrsurvey.c $(SRC) $(PSRC) $(ROOT)/src/game/*.h $(GEN)/playtables.h $(ROOT)/build/snd/sndnames.h $(ROOT)/src/snd/snd.h
+	mkdir -p $(OUT)
+	$(CC) $(CFLAGS) -DPLAY_UNTR_LOG $(INC) -Dev_collision=ev_collision_real -Dev_outside=ev_outside_real \
+	    -c $(ROOT)/src/game/pobj.c -o $(OUT)/untr_pobj.o
+	$(CC) $(CFLAGS) -DPLAY_UNTR_LOG $(INC) -Dplay_transition_start=play_transition_start_real \
+	    -c $(ROOT)/src/game/ptrans.c -o $(OUT)/untr_ptrans.o
+	$(CC) $(CFLAGS) -DPLAY_UNTR_LOG $(INC) -o $@ untrsurvey.c $(SRC) $(filter-out %/pobj.c %/ptrans.c,$(PSRC)) $(HSRC) \
+	    $(OUT)/untr_pobj.o $(OUT)/untr_ptrans.o
+
 # tools/colprobe.py's C side (the instance collision tests against the runner's)
 $(OUT)/colprobe: colprobe.c $(SRC) $(PSRC) $(ROOT)/src/game/*.h $(GEN)/playtables.h
 	mkdir -p $(OUT)

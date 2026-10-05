@@ -305,16 +305,33 @@ static void yeti_hit_player(int i, int c)
     }
 }
 
-/* objects/oYeti/Collision_oWhip.gml, Collision_oWhipPre.gml (oWhip.puncture false; oWhipPre.type "Whip") */
+/* objects/oYeti/Collision_oWhip.gml (oWhip, oSlash, oMattockHit: other.puncture for the last two) and
+   Collision_oWhipPre.gml (oWhipPre, oMachetePre, oMattockPre: other.type == "Machete" for oMachetePre) */
 static void yeti_whipped(int i, int w)
 {
     struct pin *p = &PX(i);
+    int pre = obj_is(PX(w).obj, OBJ_oWhipPre);
     if (PEN(p)->whipped) return;
-    if (PX(w).obj != OBJ_oWhip && PX(w).obj != OBJ_oWhipPre) { PUNTR(7001); return; }    /* oSlash: package E */
-    PE(p)->yVel = N(-2);
-    if (PX(w).obj == OBJ_oWhip) PE(p)->xVel = DLT(X(pl()) - 8, X(i)) ? N(1) : N(-1);
-    else PE(p)->xVel = DLT(X(w), X(i)) ? N(1) : N(-1);
-    snd_play(SND_xhit);                                                        /* :27 */
+    if (pre ? whip_machete(w) : PX(w).obj != OBJ_oWhip) {                     /* :3 */
+        PE(p)->hp -= (int16_t)whip_damage(w);                                  /* other.damage: 2 */
+        PEN(p)->countsAsKill = 1;
+        if (PEN(p)->bloodLeft > 0) {
+            scrCreateBlood(i, (pos)(X(i) + sprw(i) / 2.0), (pos)(Y(i) + sprh(i) / 2.0), 1);
+            p = &PX(i);
+            if (PE(p)->hp < 0) PEN(p)->bloodLeft -= 1;
+        }
+        PE(p)->status = E_STUNNED;
+        PE(p)->counter = PEN(p)->stunTime;
+        PE(p)->yVel = N(-3);
+        if (pre) PE(p)->xVel = DLT(X(w), X(i) + 8) ? N(2) : N(-2);
+        else PE(p)->xVel = DLT(X(pl()) - 8, X(i)) ? N(2) : N(-2);
+        p->ispd = (img_t)0.5;
+    } else {
+        PE(p)->yVel = N(-2);
+        if (pre) PE(p)->xVel = DLT(X(w), X(i)) ? N(1) : N(-1);
+        else PE(p)->xVel = DLT(X(pl()) - 8, X(i)) ? N(1) : N(-1);
+    }
+    snd_play(SND_xhit);                                                        /* :18, :27 */
     PEN(p)->whipped = 1;
     PE(p)->alarm[0] = 10;
 }

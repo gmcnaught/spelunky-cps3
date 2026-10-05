@@ -1,0 +1,14 @@
+# Survey reference (untrsurvey --global pickupItem=Pistol, level 1 seed 1): a pistol shot breaks a jar at step 47
+# (oJar Collision_oBullet, pobj.c 1094; its Destroy drops a spider)
+# seed 1
+# level 1
+# nodark 0
+# globals pickupItem=Pistol
+8 RB
+20 -
+18 RN
+28 LAN
+17 L
+9 LDI
+22 RI
+18 LJA

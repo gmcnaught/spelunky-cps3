@@ -1,0 +1,22 @@
+# Survey reference (untrsurvey --global pickupItem=Mattock, level 10 seed 131): the mattock's oMattockPre (step 185)
+# and oMattockHit (step 189) hit a yeti (oYeti Collision_oWhipPre / Collision_oWhip, pk_ice.c 7001)
+# seed 131
+# level 10
+# nodark 0
+# globals pickupItem=Mattock
+2 L
+12 JA
+25 LJ
+25 R
+28 RD
+27 -
+24 RJ
+14 RDJN
+25 RD
+2 RN
+4 A
+34 L
+3 LU
+14 R
+5 RJAN
+16 RJ
