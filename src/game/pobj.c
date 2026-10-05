@@ -444,6 +444,23 @@ static void destroy_jar_like(int i, int skull)
     }
 }
 
+/* oSolid's descendants with a Destroy event of their own, or inherited from an ancestor below oSolid (HD 1.2.2's
+   objects/<name>/Destroy_0.gml; the Lit traps and oSacAltarRight inherit one) */
+static int solid_own_destroy(int o)
+{
+    switch (o) {
+    case OBJ_oAlienShip: case OBJ_oAlienShipFloor: case OBJ_oAltarLeft: case OBJ_oAltarRight:
+    case OBJ_oArrowRepeaterL: case OBJ_oArrowRepeaterR: case OBJ_oArrowTrapLeft: case OBJ_oArrowTrapRight:
+    case OBJ_oBlock: case OBJ_oBrick: case OBJ_oBrickSmooth: case OBJ_oCeilingTrap: case OBJ_oDark: case OBJ_oDoor:
+    case OBJ_oGrave: case OBJ_oIce: case OBJ_oIceBlock: case OBJ_oLush: case OBJ_oPushBlock: case OBJ_oSacAltarLeft:
+    case OBJ_oSign: case OBJ_oSmashTrap: case OBJ_oSmashTrapLit: case OBJ_oSpearTrapBottom: case OBJ_oSpearTrapTop:
+    case OBJ_oTemple: case OBJ_oTrapBlock: case OBJ_oTree: case OBJ_oXocBlock: case OBJ_oArrowTrapLeftLit:
+    case OBJ_oArrowTrapRightLit: case OBJ_oSacAltarRight: case OBJ_oSpearTrapLit:
+        return 1;
+    }
+    return 0;
+}
+
 void ev_destroy(int i)
 {
     if (front_on && front_ev(FEV_DESTROY, i, 0)) return;                                 /* P8 hook */
@@ -512,12 +529,10 @@ void ev_destroy(int i)
             if (o != OBJ_oSolid && pcontent_ev(FEV_DESTROY, i, 0)) break;       /* P7 hook (calls destroy_solid
                                                                                   itself when it inherits) */
             if (pobj[o].ev & EV_DESTROY) {
-                /* the chain resolves to oSolid's own Destroy unless the object has one */
-                int a, own = 0;
-                for (a = o; a >= 0 && a != OBJ_oSolid; a = objdefs[a].parent) own = 1;
-                (void)own;
+                /* the chain resolves to oSolid's own Destroy unless the object or an ancestor below oSolid has one
+                   (refs/hd/src/objects/<o>/Destroy_0.gml); oOlmec / oMovingSolid ... run oSolid's */
                 destroy_solid(i);
-                if (o != OBJ_oSolid) PUNTR(1020);
+                if (solid_own_destroy(o)) PUNTR(1020);
             }
         } else if ((pobj[o].ev & EV_DESTROY) && !pcontent_ev(FEV_DESTROY, i, 0))           /* P7 hook */
             PUNTR(1021);
