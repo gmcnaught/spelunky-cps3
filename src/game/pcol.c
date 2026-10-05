@@ -738,6 +738,21 @@ static uint8_t oinfo[OBJ_COUNT];
 static int16_t ocnt[OBJ_COUNT];        /* instances of the object and its descendants (the runner's 0x78) */
 static uint8_t otarget[OBJ_COUNT];     /* the target of a collision event */
 static uint8_t oinit;
+/* the object tree from objdefs' parents (obj_init): an object's first child and next sibling, so a family (obj_is(o,
+   b): b and its descendants) is walked by fam_obj_next in place of a test of every object (obj_anc's rows: a cache
+   line each) */
+static int16_t ochild[OBJ_COUNT], osib[OBJ_COUNT];
+
+/* the object after o in a walk of root's family (preorder; -1 at the end) */
+static int fam_obj_next(int root, int o)
+{
+    if (ochild[o] >= 0) return ochild[o];
+    while (o != root) {
+        if (osib[o] >= 0) return osib[o];
+        o = objdefs[o].parent;
+    }
+    return -1;
+}
 
 static int same_cols(int a, int b)
 {
@@ -766,6 +781,21 @@ static int f08_of(int o)
 static void obj_init(void)
 {
     int o, k;
+    for (o = 0; o < OBJ_COUNT; o++) ochild[o] = osib[o] = -1;
+    for (o = OBJ_COUNT - 1; o >= 0; o--) {
+        int p = objdefs[o].parent;
+        if (p >= 0) { osib[o] = ochild[p]; ochild[p] = (int16_t)o; }
+    }
+#ifdef PLAY_STATS
+    {   /* the host builds check the walk against obj_is for every pair */
+        int b, n, m;
+        for (b = 0; b < OBJ_COUNT; b++) {
+            for (n = 0, o = b; o >= 0; o = fam_obj_next(b, o)) { n++; if (!obj_is(o, b)) abort(); }
+            for (m = 0, o = 0; o < OBJ_COUNT; o++) m += obj_is(o, b);
+            if (n != m) { fprintf(stderr, "obj_init: family %d walks %d objects, obj_is %d\n", b, n, m); abort(); }
+        }
+    }
+#endif
     for (o = 0; o < OBJ_COUNT; o++)
         for (k = 0; k < pobj[o].ncol; k++) otarget[pcol[pobj[o].col0 + k]] = 1;
     for (o = 0; o < OBJ_COUNT; o++) oinfo[o] = (uint8_t)(OI_DONE | (f08_of(o) ? OI_F08 : 0));
@@ -1362,8 +1392,8 @@ void pcol_room_inst(int i)
 static void set_dyn(int obj)
 {
     int o;
-    for (o = 0; o < OBJ_COUNT; o++)
-        if (obj_is(o, obj) && !(oinfo[o] & (OI_MEMBER | OI_DYN))) oinfo[o] |= OI_DYN;
+    for (o = obj; o >= 0; o = fam_obj_next(obj, o))           /* the objects o with obj_is(o, obj) */
+        if (!(oinfo[o] & (OI_MEMBER | OI_DYN))) oinfo[o] |= OI_DYN;
 }
 
 /* the grid build's query_dyn: the instances of obj's family from each member object's instance list (pworld.c
@@ -1381,8 +1411,7 @@ static void query_dyn_grid(int obj)
         if (PW.in[ent].alive && !edead(ent) && obj_is(eobj(ent), obj) && !(ef[ent] & EF_TREE)) want++;
     }
 #endif
-    for (o = 0; o < OBJ_COUNT; o++) {
-        if (!obj_is(o, obj)) continue;
+    for (o = obj; o >= 0; o = fam_obj_next(obj, o)) {        /* the objects o with obj_is(o, obj) */
         for (i = pw_ohead[o]; i >= 0; i = pw_inext[i]) {
             struct rbr b;
             if (!PW.in[i].alive || edead(i) || (ef[i] & EF_TREE)) continue;
