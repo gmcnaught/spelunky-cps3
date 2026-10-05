@@ -139,7 +139,7 @@ uint32_t cps3dma_palette(uint32_t src, uint32_t first, uint32_t n, uint32_t fade
 {
     (void)n; (void)fade;
     if (first == DRAW_PAL * 256 && src >= DARK_FADE_AT) host_a8 = (int)((src - DARK_FADE_AT) / 512);
-    /* DRAW_PAL_HUDDARK follows the same a8 (draw.c writes both) */
+    /* DRAW_PAL_HUDDARK and DRAW_PAL_HUDDARK_YELLOW follow the same a8 (draw.c writes all three) */
     return 0;
 }
 void cps3v_begin(void) { nlist = 0; }

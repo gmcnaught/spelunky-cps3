@@ -25,7 +25,9 @@
 
 #define DRAW_PAL     1u          /* colour code of tools/hdsprites.py's palette (faded on dark levels) */
 #define DRAW_PAL_LIT 4u          /* the same palette, never faded: what is drawn after oLevel's rectangle, the HUD */
-#define DRAW_PAL_HUDDARK 5u      /* the HUD palette faded as DRAW_PAL (the price tag before oLevel's rectangle) */
+#define DRAW_PAL_HUDDARK 5u      /* the HUD palette faded as DRAW_PAL (the price tag before oLevel's rectangle; the
+                                    ending's white text before its black rectangle: hud.h HUD_PAL_FADED) */
+#define DRAW_PAL_HUDDARK_YELLOW 6u   /* the c_yellow text palette faded the same way (hud.h HUD_PAL_FADED_YELLOW) */
 #define DRAW_CROP    8
 #define DRAW_ZOOM_X  0x35
 

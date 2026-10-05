@@ -168,6 +168,7 @@ static uint32_t ent_n;                            /* sublist entries this frame 
    after oLevel (depth below -2, and the HUD) uses DRAW_PAL_LIT, an unfaded copy */
 static uint32_t cur_pal = DRAW_PAL;
 static int frame_a8, shown_a8;
+typedef char hud_faded_codes[HUD_PAL_FADED == DRAW_PAL_HUDDARK && HUD_PAL_FADED_YELLOW == DRAW_PAL_HUDDARK_YELLOW ? 1 : -1];
 int16_t draw_dark_force = -1;
 
 /* tilemaps: one depth each; base: the tile_add cells, want: base + terrain this frame, shown: what the tilemap
@@ -1439,6 +1440,7 @@ void draw_vblank(void)
     if (frame_a8 != shown_a8) {                   /* the faded palette (tools/darkfade.py table) */
         cps3dma_palette(DARK_FADE_AT + 512u * (uint32_t)frame_a8, DRAW_PAL * 256, 256, 0);
         cps3dma_palette(DARK_FADE_HUD_AT + 512u * (uint32_t)frame_a8, DRAW_PAL_HUDDARK * 256, 256, 0);
+        cps3dma_palette(DARK_FADE_HUDY_AT + 512u * (uint32_t)frame_a8, DRAW_PAL_HUDDARK_YELLOW * 256, 256, 0);
         shown_a8 = frame_a8;
     }
     {

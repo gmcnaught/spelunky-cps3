@@ -114,8 +114,14 @@ game, v_a<k>.bin), HOST_GAME2=1, HOST_CABINET=1 (route keys as the cabinet's con
 Open:
 - Ending: no route beats Olmec (the door path is tested with HOST_XEND injecting oXEnd on the player); a
   playthrough on .81 is the check. tools/drawmodel.py does not model the ending's clouds and text (game_check
-  differs at records 1150 and 2300 for that reason). Text under a fade rectangle is hidden from half alpha
-  instead of fading (the text palettes have no fade).
+  differs at records 1150 and 2300 for that reason).
+- **Ending text under the fade rectangles (done 2026-10-05):** the lines showFinalScore (:62) and drawCredits (:64)
+  draw before their black rectangle use the HUD palettes src/draw fades with it: colour code 5 (DRAW_PAL_HUDDARK,
+  white) and the new code 6 (DRAW_PAL_HUDDARK_YELLOW, c_yellow; tools/darkfade.py's third table at
+  DARK_FADE_HUDY_AT, 128 KB of flash; one more 512-byte palette DMA when the alpha changes); src/hud
+  hud_text_faded. The rectangles' alpha byte is draw_set_alpha's: fadeLevel as a single-precision float times 255
+  (g_end_win_s7 record 1250: 0.7999999999999999 is drawn at 204), src/front alpha_byte. rEnd3's fade (records
+  1243-1252) and the credits' fades are 0 px against the runner (game_check end_win below).
 - **Title flare (fixed 2026-10-05):** the intro's flare stopped mid-shaft in rTitle (host boot trace g_p8_boot_s7
   differed from record 1050). The play collision table (gentables.c, from game.unx) kept HD's manual sTitle_HD box
   (columns 14..192) while tools/fronttables.py moves the logo right by titlelogo.DX = 40: the solid logo reached

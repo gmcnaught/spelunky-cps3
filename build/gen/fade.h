@@ -3,4 +3,5 @@
 #define FADE_H
 #define DARK_FADE_AT 0x1160000u   /* 256 palettes of 256 colours: alpha byte a8 at + 512 * a8 */
 #define DARK_FADE_HUD_AT 0x1180000u   /* the HUD palette (code HUD_PAL) the same way */
+#define DARK_FADE_HUDY_AT 0x11a0000u   /* its c_yellow text palette (HUD_PAL_YELLOW) */
 #endif
