@@ -1,0 +1,13 @@
+# The ending (docs/GAMELOOP.md item 6): rEnd entered from the title flow (TRACE_ROOM=rEnd, as rOlmec's oXEnd
+# leaves it: global.gameStart false), then rEnd2, rEnd3 and rCredits2 without skips; attack at oEnd3's drawStatus
+# 7 (the fade) and 8 (to the credits); the credits run out, scrUpdateHighscores(1), rHighscores.
+# TRACE_MONEY=12345 TRACE_GLOBALS=kaliPunish=2,kills=7,damsels=2,time=754321 (the ball and chain, the caravan
+# with the damsels, the final score's lines); host: scripts/end_host.sh (tests/game/host.c HOST_ROOM=23 HOST_GLOBALS)
+# seed 7
+# room rEnd
+# globals kaliPunish=2,kills=7,damsels=2,time=754321
+1240 -
+1 A
+30 -
+1 A
+1950 -

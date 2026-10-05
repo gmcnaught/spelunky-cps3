@@ -22,7 +22,8 @@ struct game_cfg {
        TRACE_ROOM): */
     int32_t nodark;              /* >= 0: global.noDarkLevel (-1: scrClearGlobals' value) */
     int32_t room;                /* the first room: -1 the level's own (the cabinet); routes 0 rLevel (default), 1 rLevel2,
-                                    2 rLevel3 (a lake), 3 rOlmec (gen_room_for_level) */
+                                    2 rLevel3 (a lake), 3 rOlmec (gen_room_for_level), 23 rEnd (the ending: the level
+                                    generated, then rEnd at the first step) */
     const char *globals;         /* "name=value,..." ("~" a space), or NULL */
     int32_t scores;              /* a route: 1 stores scores in the EEPROM as the cabinet does (tests); 0 leaves it */
 };

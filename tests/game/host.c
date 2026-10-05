@@ -60,6 +60,54 @@ static void snd_print(int k, int s, double arg)
     fprintf(sndf, "SND %s %s %.17g\n", kinds[k], s >= 0 && s < SND_COUNT ? sndnames[s] : "-", arg);
 }
 static void rec_print(int32_t rec) { fprintf(sndf, "R %ld -\n", (long)rec); }
+
+/* HOST_DUMP=<file>: the play state at each record point in test/host/playhost.c's format (its record(): the header
+   and every instance's common fields, the oItem / oTreasure variables), for tools/playcmp.py against a trace */
+static FILE *dumpf;
+static void dump_pd(double v) { fprintf(dumpf, " %.17g", v); }
+static void dump_rec(int32_t rec)
+{
+    int k, phase = game_rec1 == rec;
+    if (sndf) rec_print(rec);
+    /* t: the route steps done (the runner's oGamepad Step ran in a frame whose Step event changed the room) */
+    fprintf(dumpf, "R %ld %d %d %d %d %d %d %d %d %d %d %ld %d %u %s\n", (long)rec, phase, (int)game_steps + phase,
+            PW.room,
+            G.currLevel, PG.plife, PG.bombs, PG.rope, PG.money, PW.xview, PW.yview,
+            instance_exists_p(OBJ_oGame) ? (long)play_time : -1000000000L, play_untranslated, 0u,
+            play_untr_obj >= 0 ? objdefs[play_untr_obj].name : "-");
+    for (k = PW.nord - 1; k >= 0; k--) {                /* newest first */
+        const struct pin *p = &PW.in[pw_ord[k]];
+        int a, any = 0;
+        if (!p->alive || p->obj == OBJ_oGamepad) continue;
+        fprintf(dumpf, "I %ld %s", (long)p->id, objdefs[p->obj].name);
+        dump_pd(PTOD(p->x));
+        dump_pd(PTOD(p->y));
+        fprintf(dumpf, " %s", p->spr >= 0 && p->obj != OBJ_oYellHelp ? gsprname[p->spr] : "-");
+        dump_pd((double)p->img);
+        dump_pd(p->xscale);
+        dump_pd(p->yscale);
+        dump_pd(p->angle);
+        dump_pd(PE(p)->alpha);
+        dump_pd((double)p->depth);
+        fprintf(dumpf, " %d ", p->visible);
+        for (a = 0; a < 12; a++)
+            if (PE(p)->alarm[a] != -1) {
+                fprintf(dumpf, "%s%d=%d", any ? "," : "", a, PE(p)->alarm[a]);
+                any = 1;
+            }
+        if (!any) fprintf(dumpf, "-");
+        dump_pd(NTOD(PE(p)->xVel));
+        dump_pd(NTOD(PE(p)->yVel));
+        dump_pd((double)p->ispd);
+        if (obj_is(p->obj, OBJ_oItem))
+            fprintf(dumpf, " held=%d armed=%d safe=%d cost=%ld trigger=%d myGrav=%.17g", PE(p)->held, PE(p)->armed,
+                    PE(p)->safe, (long)PE(p)->cost, PE(p)->trigger, NTOD(PE(p)->myGrav));
+        else if (obj_is(p->obj, OBJ_oTreasure))
+            fprintf(dumpf, " held=%d state=%d value=%ld trigger=%d myGrav=%.17g", PE(p)->held, PE(p)->state,
+                    (long)PE(p)->value, PE(p)->trigger, NTOD(PE(p)->myGrav));
+        fprintf(dumpf, "\n");
+    }
+}
 static void snd_log_open(void)
 {
     const char *f = getenv("HOST_SND");
@@ -293,10 +341,19 @@ int main(int argc, char **argv)
     hs_boot(&SH.hs, &SH.st, &SH.g);               /* a blank EEPROM: HD's first start */
     draw_boot();
     snd_init(15, 15);
+    snd_log_open();
+    if (getenv("HOST_DUMP") && (dumpf = fopen(getenv("HOST_DUMP"), "w"))) game_rec_hook = dump_rec;
+    game_cfg.globals = getenv("HOST_GLOBALS");    /* "name=value,..." (src/main game.c set_global's names) */
+    if (getenv("HOST_ROOM")) game_cfg.room = atoi(getenv("HOST_ROOM"));   /* a route's "# room" (mkroute.py: 3 rOlmec,
+                                                     23 rEnd) */
     game_begin();
     for (;;) {
         struct shell_input in = { 0, 0, 0 };
-        int over = game_step(&in);
+        int over;
+        if (getenv("HOST_XEND") && game_steps == atoi(getenv("HOST_XEND")) && PL.idx != NOONE)
+            pin_create(PX(PL.idx).x - PI(8), PX(PL.idx).y - PI(8), OBJ_oXEnd);   /* HOST_XEND=<step>: rOlmec's door
+                                                     (oFinalBoss makes it once Olmec is in the lava) on the player */
+        over = game_step(&in);
         cps3v_begin();
         game_draw();
         cps3v_end();
@@ -317,10 +374,13 @@ int main(int argc, char **argv)
                 fwrite(view, 2, 320 * 240, o);
                 fclose(o);
             }
-            fprintf(stderr, "D %d %u %u\n", game_rec1, draw_st.entries, draw_st.sprites);
+            fprintf(stderr, "D %d %u %u room %d list %d\n", game_rec1, draw_st.entries, draw_st.sprites, PW.room,
+                    nlist);                       /* list: every entry of the frame (draw.c's runs, the bands, the
+                                                     SDK's: the HUD and the front end's text) */
         }
         if (over) break;
     }
+    if (play_untranslated) fprintf(stderr, "untranslated %d (object %d)\n", play_untranslated, play_untr_obj);
     if (getenv("HOST_AFTER") && strcmp(argv[8], "-")) {   /* HOST_AFTER=<steps>: the shell's attract after the game
                                                            (rHighscores after a game over); v_a<step>.bin each 30 */
         int k, steps = atoi(getenv("HOST_AFTER"));

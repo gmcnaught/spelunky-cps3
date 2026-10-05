@@ -71,7 +71,7 @@ static int set_global(const char *s, int n)
         GV(PG, money), GV(PG, hasJetpack), GV(PG, hasCape), GV(PG, hasParachute), GV(PG, hasMitt),
         GV(PG, hasGloves), GV(PG, hasSpringShoes), GV(PG, hasSpikeShoes), GV(PG, hasKapala), GV(PG, hasAnkh),
         GV(PG, hasCompass), GV(PG, hasStickyBombs), GV(PG, hasUdjatEye), GV(PG, hasCrown), GV(PG, hasJordans),
-        GV(G, lake), GV(G, cityOfGold),
+        GV(G, lake), GV(G, cityOfGold), GV(PG, kills), GV(PG, damsels), GV(PG, time),
     };
 #undef GV
     char v[32];
@@ -122,9 +122,17 @@ void game_begin(void)
         }
     }
     rng_seed(&g_rng, game_cfg.seed ? game_cfg.seed : SH.frame * 2654435761u + 1);
-    gen_room_force = game_cfg.room;
+    gen_room_force = game_cfg.room <= 3 ? game_cfg.room : -1;
     play_level_start(110325);                     /* the runner's instance id counter at rLevel (playhost) */
     gen_room_force = -1;
+    if (game_cfg.room == R_rEnd) {                /* a route from the ending's first room (tools/tracer.py
+                                                     TRACE_ROOM=rEnd): the play loop goes there at its first step,
+                                                     as rOlmec's oXEnd does; the RNG and the instance id counter as
+                                                     the title flow leaves them (random_set_seed(SEED)) */
+        rng_seed(&g_rng, game_cfg.seed);
+        PW.next_id = 110325;
+        play_goto_room = R_rEnd;
+    }
     game_rec = 0;
     game_rec1 = -1;
     game_steps = 0;

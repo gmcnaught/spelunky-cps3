@@ -55,6 +55,10 @@ Also on the path, not blocking the loop:
    - Translate oXEnd (2061), the rEnd* rooms and objects, rCredits1 / 2, `showFinalScore`, `scrUpdateHighscores(1)`.
    - These are front-end style rooms (scripted, no controls but the skip), so src/front's room machinery (`front_room`) is the likely home.
    - Check the 510-entry display budget on the credits.
+   - Done on branch `ending`: rOlmec's oXEnd -> rEnd -> rEnd2 -> rEnd3 -> rCredits2 -> scores stored ->
+     rHighscores (src/front, src/game pplayer.c / pk_temple.c / prun.c). `scripts/end_host.sh`: 3183 / 3183 records
+     equal to the runner's `g_end_win_s7` (tests/routes/end_win.txt, `# room rEnd`). At most 343 display entries
+     (the credits' testers page). rCredits1 (the title's credits door) is not reached on the cabinet.
 
 ## 3. Decisions (the user, 2026-10-05)
 
