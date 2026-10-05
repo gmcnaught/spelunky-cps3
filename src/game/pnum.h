@@ -268,6 +268,19 @@ static inline int gpos_muli_gt0(double a, int32_t m)
 #define DGE(a, b) (gcmp_d((double)(a), (double)(b)) >= 0)
 #define DEQ(a, b) (gcmp_d((double)(a), (double)(b)) == 0)
 #define DNE(a, b) (gcmp_d((double)(a), (double)(b)) != 0)
+/* gcmp_d(PTOD(x), v) for a position x and an int v (the view tests). Float x: d = x - v is exact as a double when |d|
+   is near eps (x a float, v an int), and the rounding of a larger d keeps it beyond eps, so the exact d decides. For
+   2^-9 <= |x| < 2^23 the float is +-(h + l / 2^32) on its bits (fwhole's multiply; l a 2^-32 fraction) and eps is
+   42949.67 / 2^32: d > eps is h - v >= 1 or (h == v and l >= 42950); d < -eps is h - v <= -2 or (h - v == -1 and
+   1 - l / 2^32 >= 42950 / 2^32). A negative x is -gcmp(|x|, -v). Other x (and |v| >= 2^30) take the double form */
+#ifndef PLAY_FIXED
+int gcmp_fi(float x, int32_t v);                    /* pworld.c (out of line: four tests a view check) */
+#define PLTI(x, v) (gcmp_fi((x), (v)) < 0)
+#define PGTI(x, v) (gcmp_fi((x), (v)) > 0)
+#else
+#define PLTI(x, v) DLT(PTOD(x), (v))
+#define PGTI(x, v) DGT(PTOD(x), (v))
+#endif
 #ifndef PLAY_FIXED
 #ifdef NUM_IS_CLASS
 static inline int gcmp_n(num a, num b) { play_dcount.cmp++; return gcmp_dd(a.v, b.v); }

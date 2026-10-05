@@ -45,9 +45,9 @@ static void solid_create(struct pin *p)                            /* objects/oS
 /* x > xview - l and x < xview + wview + rx and y > yview - l and y < yview + hview + ry */
 static int vin(int i, int l, int rx, int ry)
 {
-    double x = X(i), y = Y(i);
     view_read();
-    return DGT(x, PW.xview - l) && DLT(x, PW.xview + 320 + rx) && DGT(y, PW.yview - l) && DLT(y, PW.yview + 240 + ry);
+    return PGTI(PX(i).x, PW.xview - l) && PLTI(PX(i).x, PW.xview + 320 + rx) && PGTI(PX(i).y, PW.yview - l) &&
+           PLTI(PX(i).y, PW.yview + 240 + ry);
 }
 
 static int16_t with_buf[PIN_MAX];
@@ -1056,16 +1056,19 @@ static void rubblepiece_step(int i)
 {
     struct pin *p = &PX(i);
     double x, y;
+    pos px, py;
     pin_setx(p, PADDV(p->x, PE(p)->xVel));
     pin_sety(p, PADDV(p->y, PE(p)->yVel));
     PE(p)->yVel += PE(p)->yAcc;
+    px = p->x;
+    py = p->y;
     x = PTOD(p->x);
     y = PTOD(p->y);
     if (collision_point_p(x, y, OBJ_oWaterSwim, 0, NOONE) != NOONE) pswamp_world(1041, i, 0);
     else if (collision_point_p(x, y, OBJ_oLava, 0, NOONE) != NOONE) pin_destroy(i);
     if (collision_point_p(x, y, OBJ_oSolid, 0, NOONE) != NOONE) pin_destroy(i);
     view_read();
-    if (DLT(x, PW.xview - 32) || DGT(x, PW.xview + 320 + 32) || DLT(y, PW.yview - 32) || DGT(y, PW.yview + 240 + 32))
+    if (PLTI(px, PW.xview - 32) || PGTI(px, PW.xview + 320 + 32) || PLTI(py, PW.yview - 32) || PGTI(py, PW.yview + 240 + 32))
         pin_destroy(i);
 }
 

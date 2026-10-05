@@ -897,9 +897,9 @@ terrain_done:
 void detritus_step(int i)
 {
     struct pin *p = &PX(i);
-    double x = PTOD(p->x), y = PTOD(p->y);
+    pos x = p->x, y = p->y;
     view_read();
-    if (DLT(x, PW.xview - 4) || DGT(x, PW.xview + 320 + 4) || DLT(y, PW.yview - 4) || DGT(y, PW.yview + 240 + 4))
+    if (PLTI(x, PW.xview - 4) || PGTI(x, PW.xview + 320 + 4) || PLTI(y, PW.yview - 4) || PGTI(y, PW.yview + 240 + 4))
         pin_destroy(i);
     if (NGT(PE(p)->life, N(0))) PE(p)->life -= N(1);
     else pin_destroy(i);
@@ -922,17 +922,20 @@ static void rubble_step(int i)
 {
     struct pin *p = &PX(i);
     double x, y;
+    pos px, py;
     pin_setx(p, PADDV(p->x, PE(p)->xVel));
     pin_sety(p, PADDV(p->y, PE(p)->yVel));
     PE(p)->yVel += PE(p)->yAcc;
     NOPS(3);
+    px = p->x;
+    py = p->y;
     x = PTOD(p->x);
     y = PTOD(p->y);
     if (collision_point_p(x, y, OBJ_oWaterSwim, 0, NOONE) != NOONE) pswamp_world(1041, i, 0);
     else if (collision_point_p(x, y, OBJ_oLava, 0, NOONE) != NOONE) pin_destroy(i);
     if (collision_point_p(x, y, OBJ_oSolid, 0, NOONE) != NOONE) pin_destroy(i);
     view_read();
-    if (DLT(x, PW.xview - 32) || DGT(x, PW.xview + 320 + 32) || DLT(y, PW.yview - 32) || DGT(y, PW.yview + 240 + 32))
+    if (PLTI(px, PW.xview - 32) || PGTI(px, PW.xview + 320 + 32) || PLTI(py, PW.yview - 32) || PGTI(py, PW.yview + 240 + 32))
         pin_destroy(i);
 }
 
@@ -1458,9 +1461,9 @@ static void trap_fire(int self, int other)
 static void explosion_solid(int self, int other)
 {
     struct pin *p = &PX(self);
-    double x = PTOD(p->x), y = PTOD(p->y);
+    pos x = p->x, y = p->y;
     view_read();
-    if (isRoomIs(R_rTutorial) || (DGT(x, PW.xview - 16) && DLT(x, PW.xview + 320 + 16) && DGT(y, PW.yview - 16) && DLT(y, PW.yview + 240 + 16))) {
+    if (isRoomIs(R_rTutorial) || (PGTI(x, PW.xview - 16) && PLTI(x, PW.xview + 320 + 16) && PGTI(y, PW.yview - 16) && PLTI(y, PW.yview + 240 + 16))) {
         int16_t w[512];
         int n, k;
         /* tile_layer_find / tile_delete: the background tiles (drawing only) */

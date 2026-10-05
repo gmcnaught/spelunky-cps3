@@ -34,13 +34,12 @@ static double dabs(double a) { return a < 0 ? -a : a; }
 /* the enemies' view test: x > xview - l and x < xview + 320 + r (same for y) */
 static int eview(int i, int l, int r)
 {
-    double x, y;
     int32_t ix, iy;
     view_read();
     if (pin_xy_int(i, &ix, &iy))          /* whole x, y: GML's compare of two ints is their order (as inview) */
         return ix > PW.xview - l && ix < PW.xview + 320 + r && iy > PW.yview - l && iy < PW.yview + 240 + r;
-    x = X(i); y = Y(i);
-    return DGT(x, PW.xview - l) && DLT(x, PW.xview + 320 + r) && DGT(y, PW.yview - l) && DLT(y, PW.yview + 240 + r);
+    return PGTI(PX(i).x, PW.xview - l) && PLTI(PX(i).x, PW.xview + 320 + r) && PGTI(PX(i).y, PW.yview - l) &&
+           PLTI(PX(i).y, PW.yview + 240 + r);
 }
 
 /* distance_to_point(px, py) from i's bounding box */
@@ -822,16 +821,19 @@ static void rubblepiece_step(int i)
 {
     struct pin *p = &PX(i);
     double x, y;
+    pos px, py;
     pin_setx(p, PADDV(p->x, PE(p)->xVel));
     pin_sety(p, PADDV(p->y, PE(p)->yVel));
     PE(p)->yVel += PE(p)->yAcc;
+    px = p->x;
+    py = p->y;
     x = X(i);
     y = Y(i);
     if (collision_point_p(x, y, OBJ_oWaterSwim, 0, NOONE) != NOONE) pswamp_world(1041, i, 0);
     else if (collision_point_p(x, y, OBJ_oLava, 0, NOONE) != NOONE) pin_destroy(i);
     if (collision_point_p(x, y, OBJ_oSolid, 0, NOONE) != NOONE) pin_destroy(i);
     view_read();
-    if (DLT(x, PW.xview - 32) || DGT(x, PW.xview + 320 + 32) || DLT(y, PW.yview - 32) || DGT(y, PW.yview + 240 + 32))
+    if (PLTI(px, PW.xview - 32) || PGTI(px, PW.xview + 320 + 32) || PLTI(py, PW.yview - 32) || PGTI(py, PW.yview + 240 + 32))
         pin_destroy(i);
 }
 

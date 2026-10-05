@@ -238,10 +238,10 @@ static void shopkeeper_step(int i)
     pen_parent_step(i);
     p = &PX(i);
     {
-        double x = X(i), y = Y(i);
+        pos x = p->x, y = p->y;
         view_read();
-        if (!(DGT(x, PW.xview - 20) && DLT(x, PW.xview + 320 + 4) && DGT(y, PW.yview - 20) &&
-              DLT(y, PW.yview + 240 + 4)))
+        if (!(PGTI(x, PW.xview - 20) && PLTI(x, PW.xview + 320 + 4) && PGTI(y, PW.yview - 20) &&
+              PLTI(y, PW.yview + 240 + 4)))
             return;
     }
     q = &PX(c);

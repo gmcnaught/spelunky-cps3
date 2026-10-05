@@ -321,14 +321,12 @@ void move_snap(int i, int hs, int vs)
 /* x > xview - m and x < xview + 320 + m and y > yview - m and y < yview + 240 + m */
 int inview(int i, int m)
 {
-    double x, y;
     int32_t ix, iy;
     view_read();
     if (pin_xy_int(i, &ix, &iy))                  /* whole numbers: the epsilon compares are the integer ones */
         return ix > PW.xview - m && ix < PW.xview + 320 + m && iy > PW.yview - m && iy < PW.yview + 240 + m;
-    x = PTOD(PX(i).x);
-    y = PTOD(PX(i).y);
-    return DGT(x, PW.xview - m) && DLT(x, PW.xview + 320 + m) && DGT(y, PW.yview - m) && DLT(y, PW.yview + 240 + m);
+    return PGTI(PX(i).x, PW.xview - m) && PLTI(PX(i).x, PW.xview + 320 + m) && PGTI(PX(i).y, PW.yview - m) &&
+           PLTI(PX(i).y, PW.yview + 240 + m);
 }
 
 static const int16_t pick2t[PICK_COUNT] = { T_NONE, T_ROCK, T_JAR, T_SKULL, T_FISHBONE, T_ARROW, T_MACHETE,

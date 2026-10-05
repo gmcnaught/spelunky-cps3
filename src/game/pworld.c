@@ -715,6 +715,32 @@ static void bbox_dbl(const struct pin *p, const struct gsprcol *c, double *l, do
     *b = *t + (ys < 0 ? -ys : ys) * (c->b - c->t + 1);
 }
 
+#ifndef PLAY_FIXED
+/* pnum.h's PLTI / PGTI (its comment) */
+static const uint32_t ffix32_mul[32] = {
+    1u << 0,  1u << 1,  1u << 2,  1u << 3,  1u << 4,  1u << 5,  1u << 6,  1u << 7,  1u << 8,  1u << 9,  1u << 10,
+    1u << 11, 1u << 12, 1u << 13, 1u << 14, 1u << 15, 1u << 16, 1u << 17, 1u << 18, 1u << 19, 1u << 20, 1u << 21,
+    1u << 22, 1u << 23, 1u << 24, 1u << 25, 1u << 26, 1u << 27, 1u << 28, 1u << 29, 1u << 30, 1u << 31 };
+int gcmp_fi(float x, int32_t v)
+{
+    union { float f; uint32_t u; } b;
+    uint32_t e, l;
+    uint64_t p;
+    int32_t k;
+    int r;
+    b.f = x;
+    e = ((b.u >> 23) & 0xffu) - 118u;
+    if (e > 31u || (uint32_t)v + (1u << 30) >= (1u << 31)) return gcmp_dd((double)x, (double)v);
+    p = (uint64_t)((b.u & 0x7fffffu) | 0x800000u) * ffix32_mul[e];
+    l = (uint32_t)p;
+    if (b.u >> 31) v = -v;
+    k = (int32_t)(p >> 32) - v;
+    if (k >= 0) r = k > 0 || l >= 42950u;
+    else r = k < -1 || l <= 0u - 42950u ? -1 : 0;
+    return (b.u >> 31) ? -r : r;
+}
+#endif
+
 /* 1 / -1 when f is exactly 1.0f / -1.0f, else 0 (bits: the same answer as for (double)f) */
 static int funit(float f)
 {

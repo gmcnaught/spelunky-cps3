@@ -59,8 +59,8 @@ int pitem_step(int i)
     case OBJ_oSacAltarLeft: case OBJ_oSacAltarRight: {                 /* objects/oSacAltarLeft/Step_0.gml */
         double x = PTOD(PX(i).x), y = PTOD(PX(i).y);
         view_read();
-        if (DGT(x, PW.xview - 20) && DLT(x, PW.xview + 320 + 4) && DGT(y, PW.yview - 20) && DLT(y, PW.yview + 240 + 4) &&
-            collision_point_p(x, y + 16, OBJ_oSolid, 0, NOONE) == NOONE)
+        if (PGTI(PX(i).x, PW.xview - 20) && PLTI(PX(i).x, PW.xview + 320 + 4) && PGTI(PX(i).y, PW.yview - 20) &&
+            PLTI(PX(i).y, PW.yview + 240 + 4) && collision_point_p(x, y + 16, OBJ_oSolid, 0, NOONE) == NOONE)
             pitems_world(8002, i, 0);                                               /* its Destroy (Kali's punishment): P7 */
         return 1;
     }
