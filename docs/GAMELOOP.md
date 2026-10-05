@@ -108,7 +108,8 @@ game, v_a<k>.bin), HOST_GAME2=1, HOST_CABINET=1 (route keys as the cabinet's con
 - **6 ending** (merged with main in 20c1ab3, then ci-ending a309f12). Gates on that tree: gates.sh 19/19 + 19/19,
   ctall 50/50, EQUIV 74/74, playsh2 6851/6851 (mean route step 140.0 K), end_host 3183/3183.
 - **Release** (a309f12, scripts/release.sh): spelunky.zip + "Spelunky Classic Arcade.mra" on .81
-  (_CPS3Test); boots to the intro and title on the real core (screenshots 2026-10-05 12:19).
+  (/media/fat/_Arcade/, moved from _CPS3Test 2026-10-05; the core is _Arcade/cores/jtcps3.rbf); boots to the intro
+  and title on the real core (screenshots 2026-10-05 12:19, 12:59).
 
 Open:
 - Ending: no route beats Olmec (the door path is tested with HOST_XEND injecting oXEnd on the player); a
