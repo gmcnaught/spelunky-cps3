@@ -171,6 +171,28 @@ int getIdCollisionLeft(int i, int d)
     return collision_line_p(dround(lb - d), dround(tb + 5), dround(lb - d), dround(bb - 1), OBJ_oSolid, 1, i);
 }
 
+/* getIdCollisionRight / Left(i, d) != noone: the line test alone (solid_vline_any, as isCollisionRight / Left take
+   collision_line(...) != noone) */
+static int anyCollisionRight(int i, int d)
+{
+    double lb, tb, rb, bb;
+    int32_t il, it, ir, ib;
+    if (ibounds(i, &il, &it, &ir, &ib))
+        return solid_vline_any(ir + d - 1, it + 5, ib - 1, i);
+    calcBounds(i, &lb, &tb, &rb, &bb);
+    return collision_line_p(dround(rb + d - 1), dround(tb + 5), dround(rb + d - 1), dround(bb - 1), OBJ_oSolid, 1, i) != NOONE;
+}
+
+static int anyCollisionLeft(int i, int d)
+{
+    double lb, tb, rb, bb;
+    int32_t il, it, ir, ib;
+    if (ibounds(i, &il, &it, &ir, &ib))
+        return solid_vline_any(il - d, it + 5, ib - 1, i);
+    calcBounds(i, &lb, &tb, &rb, &bb);
+    return collision_line_p(dround(lb - d), dround(tb + 5), dround(lb - d), dround(bb - 1), OBJ_oSolid, 1, i) != NOONE;
+}
+
 /* scripts/platformCharacterIs (the player's state) */
 int platformCharacterIs(int what)
 {
@@ -216,6 +238,7 @@ void moveTo(int i, num a0, num a1, int32_t *xio, int32_t *yio)
     pos mtXPrev = p->x, mtYPrev = p->y;
     struct vparts vx, vy;
     int32_t xVelInteger = 0, yVelInteger = 0;
+    int ch = 0;
     vel_parts(a0, &vx);
     vel_parts(a1, &vy);
     if (vx.r != 0) xVelInteger = (int32_t)(play_time % (uint32_t)vx.r) == 0;
@@ -225,9 +248,17 @@ void moveTo(int i, num a0, num a1, int32_t *xio, int32_t *yio)
     if (vx.neg) xVelInteger = -xVelInteger;
     if (vy.neg) yVelInteger = -yVelInteger;
     NOPS(10);
+    /* the solid's id matters only to a character (pushing an oMoveableSolid); for the others any solid stops the walk:
+       the line test alone (is_character is the object's, constant here) */
+    if (xVelInteger != 0) ch = is_character(i);
     if (xVelInteger > 0)                                                       /* :39 */
         for (; p->x < mtXPrev + PI(xVelInteger); pin_setx(p, p->x + (PI(1)))) {
-            int solidId = getIdCollisionRight(i, 1);
+            int solidId;
+            if (!ch) {
+                if (anyCollisionRight(i, 1)) break;
+                continue;
+            }
+            solidId = getIdCollisionRight(i, 1);
             if (solidId != NOONE) {
                 if (objdefs[PX(solidId).obj].parent == OBJ_oMoveableSolid && is_character(i)) {
                     /* with solidId: `break` leaves the with, not the for */
@@ -241,7 +272,12 @@ void moveTo(int i, num a0, num a1, int32_t *xio, int32_t *yio)
         }
     if (xVelInteger < 0)                                                       /* :64 */
         for (; p->x > mtXPrev + PI(xVelInteger); pin_setx(p, p->x - (PI(1)))) {
-            int solidId = getIdCollisionLeft(i, 1);
+            int solidId;
+            if (!ch) {
+                if (anyCollisionLeft(i, 1)) break;
+                continue;
+            }
+            solidId = getIdCollisionLeft(i, 1);
             if (solidId != NOONE) {
                 if (objdefs[PX(solidId).obj].parent == OBJ_oMoveableSolid && is_character(i)) {
                     if (!place_meeting_p(solidId, PTOD(PX(solidId).x) - 1, PTOD(PX(solidId).y), OBJ_oSolid)) {
