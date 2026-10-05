@@ -734,7 +734,7 @@ void item_step(int i)
     } else if (p->type != T_BOMB && p->type != T_ARROW && rest_skip(i, &br)) {
         /* the terrain part as its last full run (rest_skip); the lava tests below still run */
     } else if (rest = p->type != T_BOMB && p->type != T_ARROW, rest ? rest_begin(i) : (void)0,
-               collision_point_p(PTOD(p->x), PTOD(p->y), OBJ_oSolid, 0, NOONE) == NOONE) {   /* :69 */
+               !collision_point_any(PTOD(p->x), PTOD(p->y), OBJ_oSolid, 0, NOONE)) {   /* :69 */
         br = 1;
         moveTo(i, PE(p)->xVel, PE(p)->yVel, 0, 0);
         PE(p)->colLeft = PE(p)->colRight = PE(p)->colBot = PE(p)->colTop = 0;
@@ -872,7 +872,7 @@ static void jar_step(int i, int skull)
             if (NABS(PE(p)->xVel) > (skull ? N(2) : N(3))) destroy = 1;
             PE(p)->xVel = NMUL(-PE(p)->xVel, N(0.5));
         }
-        if (!skull && collision_point_p(PTOD(p->x), PTOD(p->y), OBJ_oSolid, 0, NOONE) != NOONE) destroy = 1;
+        if (!skull && collision_point_any(PTOD(p->x), PTOD(p->y), OBJ_oSolid, 0, NOONE)) destroy = 1;
         if (PE(p)->colBot) {
             if (CGT(PE(p)->yVel, 3, CMPC_H_3)) destroy = 1;
             if (CGT(PE(p)->yVel, 1, CMPC_H_1)) PE(p)->yVel = NMUL(-PE(p)->yVel, N(0.5));
@@ -1000,7 +1000,7 @@ static void rubble_step(int i)
     y = PTOD(p->y);
     if (collision_point_p(x, y, OBJ_oWaterSwim, 0, NOONE) != NOONE) pswamp_world(1041, i, 0);
     else if (collision_point_p(x, y, OBJ_oLava, 0, NOONE) != NOONE) pin_destroy(i);
-    if (collision_point_p(x, y, OBJ_oSolid, 0, NOONE) != NOONE) pin_destroy(i);
+    if (collision_point_any(x, y, OBJ_oSolid, 0, NOONE)) pin_destroy(i);
     view_read();
     if (PLTI(px, PW.xview - 32) || PGTI(px, PW.xview + 320 + 32) || PLTI(py, PW.yview - 32) || PGTI(py, PW.yview + 240 + 32))
         pin_destroy(i);
@@ -1025,10 +1025,10 @@ static void ropethrow_step(int i)
     if (PE(p)->armed && NGE(PE(p)->yVel, N(0))) {
         move_snap(i, 16, 1);
         if (PE(p)->px < NP(p->x)) {
-            if (collision_point_p(PTOD(p->x) - 8, PTOD(p->y), OBJ_oSolid, 0, NOONE) == NOONE) pin_setx(p, p->x - (PI(8)));
+            if (!collision_point_any(PTOD(p->x) - 8, PTOD(p->y), OBJ_oSolid, 0, NOONE)) pin_setx(p, p->x - (PI(8)));
             else pin_setx(p, p->x + (PI(8)));
         } else {
-            if (collision_point_p(PTOD(p->x) + 8, PTOD(p->y), OBJ_oSolid, 0, NOONE) == NOONE) pin_setx(p, p->x + (PI(8)));
+            if (!collision_point_any(PTOD(p->x) + 8, PTOD(p->y), OBJ_oSolid, 0, NOONE)) pin_setx(p, p->x + (PI(8)));
             else pin_setx(p, p->x - (PI(8)));
         }
         pin_create(p->x, p->y, OBJ_oRopeTop);
@@ -1296,7 +1296,7 @@ void ev_step(int i)
     case OBJ_oSmokePuff: pin_sety(p, PSUBV(p->y, PE(p)->yVel)); break;
     case OBJ_oBurn:
         pin_sety(p, PADDV(p->y, PE(p)->yVel));
-        if (collision_point_p(PTOD(p->x), PTOD(p->y), OBJ_oSolid, 0, NOONE) != NOONE) pin_destroy(i);
+        if (collision_point_any(PTOD(p->x), PTOD(p->y), OBJ_oSolid, 0, NOONE)) pin_destroy(i);
         break;
     case OBJ_oItemsGet:
         pin_sety(p, PSUBV(p->y, PE(p)->yVel));
@@ -1307,7 +1307,7 @@ void ev_step(int i)
     case OBJ_oRubble: case OBJ_oRubbleSmall: rubble_step(i); break;
     case OBJ_oPushBlock:                                                       /* inherited: no parent Step */
         if (collision_point_p(PTOD(p->x) + 8, PTOD(p->y) + 14, OBJ_oLava, 0, NOONE) != NOONE &&
-            collision_point_p(PTOD(p->x) + 8, PTOD(p->y) + 17, OBJ_oSolid, 0, NOONE) == NOONE)
+            !collision_point_any(PTOD(p->x) + 8, PTOD(p->y) + 17, OBJ_oSolid, 0, NOONE))
             PUNTR(1055);
         break;
     case OBJ_oWeb:                                                             /* objects/oWeb/Step_0.gml */
@@ -1323,11 +1323,11 @@ void ev_step(int i)
     case OBJ_oArrowTrapLeft: case OBJ_oArrowTrapLeftLit: case OBJ_oArrowTrapRight: case OBJ_oArrowTrapRightLit:
         break;                                                                 /* firing = false; the rest commented */
     case OBJ_oBones:                                                           /* objects/oBones/Step_0.gml */
-        if (collision_point_p(PTOD(p->x) + 8, PTOD(p->y) + 16, OBJ_oSolid, 0, NOONE) == NOONE) {
+        if (!collision_point_any(PTOD(p->x) + 8, PTOD(p->y) + 16, OBJ_oSolid, 0, NOONE)) {
             pin_sety(p, PADDV(p->y, PE(p)->yVel));
             PE(p)->yVel += PE(p)->yAcc;
         }
-        if (collision_point_p(PTOD(p->x) + 8, PTOD(p->y) + 15, OBJ_oSolid, 0, NOONE) != NOONE) pin_sety(p, p->y - (PI(1)));
+        if (collision_point_any(PTOD(p->x) + 8, PTOD(p->y) + 15, OBJ_oSolid, 0, NOONE)) pin_sety(p, p->y - (PI(1)));
         break;
     case OBJ_oGamepad: break;                                                  /* prun.c */
     default:
@@ -1418,7 +1418,7 @@ void ev_alarm(int i, int a)
             PE(&PX(ar))->xVel = N(5);
         } else if (a == 1 && !isRoomIs(R_rLevelEditor)) {                      /* objects/oArrowTrapLeft/Alarm_1.gml */
             int xAct = PFLOOR(p->x) - 1, obj;
-            while (collision_point_p(xAct, PTOD(p->y) + 8, OBJ_oSolid, 0, NOONE) == NOONE) {
+            while (!collision_point_any(xAct, PTOD(p->y) + 8, OBJ_oSolid, 0, NOONE)) {
                 if (PFLOOR(p->x) - xAct > 96) break;
                 xAct -= 1;
             }
@@ -1433,7 +1433,7 @@ void ev_alarm(int i, int a)
         if (a == 0) pitems_world(1071, i, a);
         else if (a == 1 && !isRoomIs(R_rLevelEditor)) {                        /* objects/oArrowTrapRight/Alarm_1.gml */
             int x = PFLOOR(p->x), xAct = x + 16, n = 100, obj;
-            while (collision_point_p(xAct, PTOD(p->y) + 8, OBJ_oSolid, 0, NOONE) == NOONE && n > 0) {
+            while (!collision_point_any(xAct, PTOD(p->y) + 8, OBJ_oSolid, 0, NOONE) && n > 0) {
                 if (xAct - x > 96) break;
                 xAct += 1;
                 n -= 1;

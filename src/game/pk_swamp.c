@@ -26,7 +26,7 @@ enum { V_IDLE, V_WALK, V_ATTACK, V_THROW, V_RECOVER, V_BOUNCE, V_HANG, V_FLY };
 
 static double X(int i) { return PTOD(PX(i).x); }
 static double Y(int i) { return PTOD(PX(i).y); }
-static int CP(double x, double y, int obj) { return collision_point_p(x, y, obj, 0, NOONE) != NOONE; }
+static int CP(double x, double y, int obj) { return collision_point_any(x, y, obj, 0, NOONE); }
 static int sprw(int i) { int s = PX(i).spr; return s >= 0 ? spr_dim(psprite[s].w, PX(i).xscale) : 0; }
 static int sprh(int i) { int s = PX(i).spr; return s >= 0 ? spr_dim(psprite[s].h, PX(i).yscale) : 0; }
 static double dabs(double a) { return a < 0 ? -a : a; }
@@ -831,7 +831,7 @@ static void rubblepiece_step(int i)
     y = Y(i);
     if (collision_point_p(x, y, OBJ_oWaterSwim, 0, NOONE) != NOONE) pswamp_world(1041, i, 0);
     else if (collision_point_p(x, y, OBJ_oLava, 0, NOONE) != NOONE) pin_destroy(i);
-    if (collision_point_p(x, y, OBJ_oSolid, 0, NOONE) != NOONE) pin_destroy(i);
+    if (collision_point_any(x, y, OBJ_oSolid, 0, NOONE)) pin_destroy(i);
     view_read();
     if (PLTI(px, PW.xview - 32) || PGTI(px, PW.xview + 320 + 32) || PLTI(py, PW.yview - 32) || PGTI(py, PW.yview + 240 + 32))
         pin_destroy(i);

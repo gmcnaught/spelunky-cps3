@@ -1459,6 +1459,41 @@ int (collision_point_p)(double px, double py, int obj, int prec, int notme_self)
     return NOONE;
 }
 
+/* collision_point(px, py, obj, prec, notme) != noone. For oSolid in the grid build (PCOL_EXACT keeps collision_point_p),
+   whole point cells from the solid grid's summary: the point's cell holds a block (a box of exactly that cell) that
+   is not the caller and not precise: a hit; no block there and no other oSolid-family entry reaching the cell
+   (gother): a miss (a block's box is its own cell); otherwise collision_point_p. Skipped: the stale touches of the
+   scan (pcol_touch_stale), which the grid build's searches do not depend on (pobj.c PLAY_REST). The host builds
+   compare every summary answer */
+int collision_point_any(double px, double py, int obj, int prec, int notme_self)
+{
+#ifndef PCOL_EXACT
+    struct pq q;
+    if (obj == OBJ_oSolid && !gfar && !pcol_quiet()) {
+        int cx, cy, n, k, r = -1;
+        if (fam_none(obj)) return 0;
+        pq_init(&q, px, py);
+        if (q.iok && q.ix >= 0 && q.iy >= 0 && (cx = q.ix >> 4) < GRID_W && (cy = q.iy >> 4) < GRID_H) {
+            grid_flush();
+            n = gfull[cy][cx];
+            k = gfblk[cy][cx];
+            if (n > 0 && k != notme_self && (!prec || !precise(k))) r = 1;
+            else if (gother[cy][cx] == 0 && (n == 0 || (n == 1 && k == notme_self))) r = 0;
+        }
+        if (r >= 0) {
+#ifdef PLAY_STATS
+            if (r != (collision_point_p(px, py, obj, prec, notme_self) != NOONE)) {
+                fprintf(stderr, "collision_point_any: summary %d differs (%.17g %.17g)\n", r, px, py);
+                abort();
+            }
+#endif
+            return r;
+        }
+    }
+#endif
+    return collision_point_p(px, py, obj, prec, notme_self) != NOONE;
+}
+
 /* a line query with whole-number ends: their bounding box, and whether the line is axis-aligned */
 struct lq { int iok, axis; int32_t lx, ly, hx, hy; };
 

@@ -60,7 +60,7 @@ int pitem_step(int i)
         double x = PTOD(PX(i).x), y = PTOD(PX(i).y);
         view_read();
         if (PGTI(PX(i).x, PW.xview - 20) && PLTI(PX(i).x, PW.xview + 320 + 4) && PGTI(PX(i).y, PW.yview - 20) &&
-            PLTI(PX(i).y, PW.yview + 240 + 4) && collision_point_p(x, y + 16, OBJ_oSolid, 0, NOONE) == NOONE)
+            PLTI(PX(i).y, PW.yview + 240 + 4) && !collision_point_any(x, y + 16, OBJ_oSolid, 0, NOONE))
             pitems_world(8002, i, 0);                                               /* its Destroy (Kali's punishment): P7 */
         return 1;
     }

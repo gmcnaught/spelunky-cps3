@@ -335,6 +335,7 @@ void pw_grid_extent(int *w, int *h);
 extern int16_t pw_nthead, pw_ntnext[PIN_MAX];
 void pw_draw_dirty_clear(void);
 int collision_point_p(double px, double py, int obj, int prec, int notme_self);
+int collision_point_any(double px, double py, int obj, int prec, int notme_self);   /* collision_point_p(..) != NOONE */
 int collision_line_p(double x1, double y1, double x2, double y2, int obj, int prec, int notme_self);
 int collision_rect_p(double x1, double y1, double x2, double y2, int obj, int prec, int notme_self);
 /* no instance of obj at all, so these return NOONE with no side effect, without evaluating the coordinates (often

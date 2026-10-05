@@ -24,11 +24,11 @@ enum { E_STUNNED = 98, E_DEAD = 99, E_LEFT = 0, E_RIGHT = 1 };
 
 static double X(int i) { return PTOD(PX(i).x); }
 static double Y(int i) { return PTOD(PX(i).y); }
-static int CP(double x, double y, int obj) { return collision_point_p(x, y, obj, 0, NOONE) != NOONE; }
+static int CP(double x, double y, int obj) { return collision_point_any(x, y, obj, 0, NOONE); }
 /* collision_point(x, y, obj, -1, -1): -1 is false for prec and notme (a GML bool is value > 0.5; Observed:
    c_ice_alienboss record 213, oYeti's ledge test at (528, 48) hits an oDarkFall at 528, 48 whose precise mask has
    pixel (0, 0) clear) */
-static int CPn(double x, double y, int obj, int self) { (void)self; return collision_point_p(x, y, obj, 0, NOONE) != NOONE; }
+static int CPn(double x, double y, int obj, int self) { (void)self; return collision_point_any(x, y, obj, 0, NOONE); }
 static int sprw(int i) { int s = PX(i).spr; return s >= 0 ? spr_dim(psprite[s].w, PX(i).xscale) : 0; }
 static int sprh(int i) { int s = PX(i).spr; return s >= 0 ? spr_dim(psprite[s].h, PX(i).yscale) : 0; }
 static int pl(void) { return PL.idx; }
@@ -1068,7 +1068,7 @@ static void rubblepiece_step(int i)
     y = PTOD(p->y);
     if (collision_point_p(x, y, OBJ_oWaterSwim, 0, NOONE) != NOONE) pswamp_world(1041, i, 0);
     else if (collision_point_p(x, y, OBJ_oLava, 0, NOONE) != NOONE) pin_destroy(i);
-    if (collision_point_p(x, y, OBJ_oSolid, 0, NOONE) != NOONE) pin_destroy(i);
+    if (collision_point_any(x, y, OBJ_oSolid, 0, NOONE)) pin_destroy(i);
     view_read();
     if (PLTI(px, PW.xview - 32) || PGTI(px, PW.xview + 320 + 32) || PLTI(py, PW.yview - 32) || PGTI(py, PW.yview + 240 + 32))
         pin_destroy(i);

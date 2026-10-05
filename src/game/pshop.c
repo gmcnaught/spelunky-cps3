@@ -14,9 +14,9 @@ enum { E_LEFT = 0, E_RIGHT = 1 };
 
 static double X(int i) { return PTOD(PX(i).x); }
 static double Y(int i) { return PTOD(PX(i).y); }
-static int CP(double x, double y, int obj) { return collision_point_p(x, y, obj, 0, NOONE) != NOONE; }
+static int CP(double x, double y, int obj) { return collision_point_any(x, y, obj, 0, NOONE); }
 /* collision_point(..., -1, -1): -1 is false for prec and notme (GML bool: value > 0.5; penemy.c CPn) */
-static int CPn(double x, double y, int obj, int self) { (void)self; return collision_point_p(x, y, obj, 0, NOONE) != NOONE; }
+static int CPn(double x, double y, int obj, int self) { (void)self; return collision_point_any(x, y, obj, 0, NOONE); }
 static double dabs(double a) { return a < 0 ? -a : a; }
 static int sprw(int i) { int s = PX(i).spr; return s >= 0 ? spr_dim(psprite[s].w, PX(i).xscale) : 0; }
 static int sprh(int i) { int s = PX(i).spr; return s >= 0 ? spr_dim(psprite[s].h, PX(i).yscale) : 0; }

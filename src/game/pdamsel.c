@@ -11,7 +11,7 @@ enum { D_IDLE = 0, D_RUN = 1, D_THROWN = 2, D_YELL = 3, D_EXIT = 4, D_SLAVE = 5,
 
 static double X(int i) { return PTOD(PX(i).x); }
 static double Y(int i) { return PTOD(PX(i).y); }
-static int CP(double x, double y, int obj) { return collision_point_p(x, y, obj, 0, NOONE) != NOONE; }
+static int CP(double x, double y, int obj) { return collision_point_any(x, y, obj, 0, NOONE); }
 
 /* objects/oDamsel/Create_0.gml (after oItem's) */
 int pdam_create(int i, int fromgen)

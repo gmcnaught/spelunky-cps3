@@ -127,7 +127,7 @@ static void characterSprite(int i)
     }
     if (!PL.stunned && !PL.whipping) {
         if (PL.state == STANDING) {
-            if (collision_point_p(PTOD(p->x) - 2, PTOD(p->y) + 9, OBJ_oSolid, 0, NOONE) == NOONE) {
+            if (!collision_point_any(PTOD(p->x) - 2, PTOD(p->y) + 9, OBJ_oSolid, 0, NOONE)) {
                 p->ispd = (img_t)0.6;
                 pin_set_sprite(i, GSPR_sWhoaLeft);
             } else
@@ -414,12 +414,12 @@ static void characterStepEvent(int i)
     if (!PL.colTop) {
         if (PG.hasGloves && NGT(PE(p)->yVel, N(0))) {
             if (PL.hangCount == 0 && y > 16 && !platformCharacterIs(ON_GROUND) && PL.kRight && PL.colRight &&
-                (collision_point_p(x + 9, y - 5, OBJ_oSolid, 0, NOONE) != NOONE ||
-                 collision_point_p(x + 9, y - 6, OBJ_oSolid, 0, NOONE) != NOONE))
+                (collision_point_any(x + 9, y - 5, OBJ_oSolid, 0, NOONE) ||
+                 collision_point_any(x + 9, y - 6, OBJ_oSolid, 0, NOONE)))
                 set_hang(p, i);
             else if (PL.hangCount == 0 && y > 16 && !platformCharacterIs(ON_GROUND) && PL.kLeft && PL.colLeft &&
-                (collision_point_p(x - 9, y - 5, OBJ_oSolid, 0, NOONE) != NOONE ||
-                 collision_point_p(x - 9, y - 6, OBJ_oSolid, 0, NOONE) != NOONE))
+                (collision_point_any(x - 9, y - 5, OBJ_oSolid, 0, NOONE) ||
+                 collision_point_any(x - 9, y - 6, OBJ_oSolid, 0, NOONE)))
                 set_hang(p, i);
         } else if (PL.hangCount == 0 && y > 16 && !platformCharacterIs(ON_GROUND) && PL.kRight && PL.colRight &&
                    (collision_point_p(x + 9, y - 5, OBJ_oTree, 0, NOONE) != NOONE ||
@@ -430,16 +430,16 @@ static void characterStepEvent(int i)
                   collision_point_p(x - 9, y - 6, OBJ_oTree, 0, NOONE) != NOONE))
             set_hang(p, i);
         else if (PL.hangCount == 0 && y > 16 && !platformCharacterIs(ON_GROUND) && PL.kRight && PL.colRight &&
-                 (collision_point_p(x + 9, y - 5, OBJ_oSolid, 0, NOONE) != NOONE ||
-                  collision_point_p(x + 9, y - 6, OBJ_oSolid, 0, NOONE) != NOONE) &&
-                 collision_point_p(x + 9, y - 9, OBJ_oSolid, 0, NOONE) == NOONE &&
-                 collision_point_p(x, y + 9, OBJ_oSolid, 0, NOONE) == NOONE)
+                 (collision_point_any(x + 9, y - 5, OBJ_oSolid, 0, NOONE) ||
+                  collision_point_any(x + 9, y - 6, OBJ_oSolid, 0, NOONE)) &&
+                 !collision_point_any(x + 9, y - 9, OBJ_oSolid, 0, NOONE) &&
+                 !collision_point_any(x, y + 9, OBJ_oSolid, 0, NOONE))
             set_hang(p, i);
         else if (PL.hangCount == 0 && y > 16 && !platformCharacterIs(ON_GROUND) && PL.kLeft && PL.colLeft &&
-                 (collision_point_p(x - 9, y - 5, OBJ_oSolid, 0, NOONE) != NOONE ||
-                  collision_point_p(x - 9, y - 6, OBJ_oSolid, 0, NOONE) != NOONE) &&
-                 collision_point_p(x - 9, y - 9, OBJ_oSolid, 0, NOONE) == NOONE &&
-                 collision_point_p(x, y + 9, OBJ_oSolid, 0, NOONE) == NOONE)
+                 (collision_point_any(x - 9, y - 5, OBJ_oSolid, 0, NOONE) ||
+                  collision_point_any(x - 9, y - 6, OBJ_oSolid, 0, NOONE)) &&
+                 !collision_point_any(x - 9, y - 9, OBJ_oSolid, 0, NOONE) &&
+                 !collision_point_any(x, y + 9, OBJ_oSolid, 0, NOONE))
             set_hang(p, i);
         x = PTOD(p->x);
         y = PTOD(p->y);
@@ -614,8 +614,8 @@ static void characterStepEvent(int i)
         x = PTOD(p->x);
         y = PTOD(p->y);
         if (PL.state == DUCKING && NLT(NABS(PE(p)->xVel), N(3)) && PL.facing == LEFT &&                   /* :818 */
-            collision_point_p(x, y + 9, OBJ_oSolid, 0, NOONE) != NOONE &&
-            collision_point_p(x - 1, y + 9, OBJ_oSolid, 0, NOONE) == NOONE && PL.kLeft) {
+            collision_point_any(x, y + 9, OBJ_oSolid, 0, NOONE) &&
+            !collision_point_any(x - 1, y + 9, OBJ_oSolid, 0, NOONE) && PL.kLeft) {
             PL.state = DUCKTOHANG;
             if (PL.holdItem != NOONE) {
                 PE(&PX(PL.holdItem))->held = 0;
@@ -624,8 +624,8 @@ static void characterStepEvent(int i)
             }
             if (instance_exists_p(OBJ_oMonkey)) pjungle_player(2010, i, 0);
         } else if (PL.state == DUCKING && NLT(NABS(PE(p)->xVel), N(3)) && PL.facing == RIGHT &&
-                   collision_point_p(x, y + 9, OBJ_oSolid, 0, NOONE) != NOONE &&
-                   collision_point_p(x + 1, y + 9, OBJ_oSolid, 0, NOONE) == NOONE && PL.kRight) {
+                   collision_point_any(x, y + 9, OBJ_oSolid, 0, NOONE) &&
+                   !collision_point_any(x + 1, y + 9, OBJ_oSolid, 0, NOONE) && PL.kRight) {
             PL.state = DUCKTOHANG;
             if (PL.holdItem != NOONE) {
                 if (PX(PL.holdItem).type == T_GOLDIDOL) pin_sety(&PX(PL.holdItem), PX(PL.holdItem).y - (PI(8)));
@@ -945,7 +945,7 @@ static void hurt_logic(int i)
     }
     if (!(PG.plife >= -99 && p->visible && !spr_is_exit(p->spr)))
         return;
-    if (collision_point_p(x, y, OBJ_oSolid, 0, NOONE) != NOONE) {              /* :1463 crushed */
+    if (collision_point_any(x, y, OBJ_oSolid, 0, NOONE)) {              /* :1463 crushed */
         PG.plife -= 99;
         PL.active = 0;
         PE(p)->yVel = N(-3);
@@ -1006,7 +1006,7 @@ static void hurt_logic(int i)
     PL.colSpikes = 0;                                                          /* :1652 */
     if (collision_rect_p(x - 4, y - 4, x + 4, y + 8, OBJ_oSpikes, 0, NOONE) != NOONE) PL.colSpikes = 1;
     if (PL.colSpikes && PL.dead) {
-        if (collision_point_p(x, y + 9, OBJ_oSolid, 0, NOONE) == NOONE) pin_sety(p, PADDV(p->y, N(0.05)));
+        if (!collision_point_any(x, y + 9, OBJ_oSolid, 0, NOONE)) pin_sety(p, PADDV(p->y, N(0.05)));
         else PE(p)->myGrav = N(0.6);
     } else
         PE(p)->myGrav = N(0.6);
@@ -1314,13 +1314,13 @@ void pl_step(int i)
                 double px1 = PTOD(p->x), py1 = PTOD(p->y);
                 move_snap(obj, 16, 1);
                 if (p->x < o->x) {
-                    if (collision_point_p(px1 + 8, py1, OBJ_oSolid, 0, NOONE) == NOONE) {
+                    if (!collision_point_any(px1 + 8, py1, OBJ_oSolid, 0, NOONE)) {
                         double ox = PTOD(o->x), oy = PTOD(o->y);
                         if (collision_rect_p(ox - 8, oy, ox - 7, oy + 16, OBJ_oSolid, 0, NOONE) == NOONE) pin_setx(o, o->x - (PI(8)));
                         else if (collision_rect_p(ox + 7, oy, ox + 8, oy + 16, OBJ_oSolid, 0, NOONE) == NOONE) pin_setx(o, o->x + (PI(8)));
                         else t = 0;
                     } else t = 0;
-                } else if (collision_point_p(px1 - 8, py1, OBJ_oSolid, 0, NOONE) == NOONE) {
+                } else if (!collision_point_any(px1 - 8, py1, OBJ_oSolid, 0, NOONE)) {
                     double ox = PTOD(o->x), oy = PTOD(o->y);
                     if (collision_rect_p(ox + 7, oy, ox + 8, oy + 16, OBJ_oSolid, 0, NOONE) == NOONE) pin_setx(o, o->x + (PI(8)));
                     else if (collision_rect_p(ox - 8, oy, ox - 7, oy + 16, OBJ_oSolid, 0, NOONE) == NOONE) pin_setx(o, o->x - (PI(8)));
@@ -1811,11 +1811,11 @@ void scrUseItem(void)
                     move_snap(obj, 16, 1);
                     ox = PTOD(r->x);
                     oy = PTOD(r->y);
-                    if (p->x < r->x && collision_point_p(PTOD(p->x) + 2, PTOD(p->y), OBJ_oSolid, 0, NOONE) == NOONE) {
+                    if (p->x < r->x && !collision_point_any(PTOD(p->x) + 2, PTOD(p->y), OBJ_oSolid, 0, NOONE)) {
                         if (collision_rect_p(ox - 8, oy, ox - 7, oy + 16, OBJ_oSolid, 0, NOONE) == NOONE) pin_setx(r, r->x - (PI(8)));
                         else if (collision_rect_p(ox + 7, oy, ox + 8, oy + 16, OBJ_oSolid, 0, NOONE) == NOONE) pin_setx(r, r->x + (PI(8)));
                         else t = 0;
-                    } else if (collision_point_p(PTOD(p->x) - 2, PTOD(p->y), OBJ_oSolid, 0, NOONE) == NOONE) {
+                    } else if (!collision_point_any(PTOD(p->x) - 2, PTOD(p->y), OBJ_oSolid, 0, NOONE)) {
                         if (collision_rect_p(ox + 7, oy, ox + 8, oy + 16, OBJ_oSolid, 0, NOONE) == NOONE) pin_setx(r, r->x + (PI(8)));
                         else if (collision_rect_p(ox - 8, oy, ox - 7, oy + 16, OBJ_oSolid, 0, NOONE) == NOONE) pin_setx(r, r->x - (PI(8)));
                         else t = 0;
@@ -1862,11 +1862,11 @@ void scrUseItem(void)
         if (PL.facing == LEFT) {
             if (PE(o)->heavy) PE(o)->xVel = N(-4) + PE(p)->xVel;
             else PE(o)->xVel = N(-8) + PE(p)->xVel;
-            if (collision_point_p(PTOD(p->x) - 8, PTOD(p->y), OBJ_oSolid, 0, NOONE) != NOONE) pin_setx(o, o->x + (PI(8)));
+            if (collision_point_any(PTOD(p->x) - 8, PTOD(p->y), OBJ_oSolid, 0, NOONE)) pin_setx(o, o->x + (PI(8)));
         } else if (PL.facing == RIGHT) {
             if (PE(o)->heavy) PE(o)->xVel = N(4) + PE(p)->xVel;
             else PE(o)->xVel = N(8) + PE(p)->xVel;
-            if (collision_point_p(PTOD(p->x) + 8, PTOD(p->y), OBJ_oSolid, 0, NOONE) != NOONE) pin_setx(o, o->x - (PI(8)));
+            if (collision_point_any(PTOD(p->x) + 8, PTOD(p->y), OBJ_oSolid, 0, NOONE)) pin_setx(o, o->x - (PI(8)));
         }
         if (PE(o)->heavy) PE(o)->yVel = N(-2);
         else PE(o)->yVel = N(-3);
@@ -1883,12 +1883,12 @@ void scrUseItem(void)
                 PE(o)->yVel = N(3);
         } else if (!PG.hasMitt) {
             if (PL.facing == LEFT) {
-                if (collision_point_p(PTOD(p->x) - 8, PTOD(p->y) - 10, OBJ_oSolid, 0, NOONE) != NOONE) {
+                if (collision_point_any(PTOD(p->x) - 8, PTOD(p->y) - 10, OBJ_oSolid, 0, NOONE)) {
                     PE(o)->yVel = 0;
                     PE(o)->xVel -= N(1);
                 }
             } else if (PL.facing == RIGHT) {
-                if (collision_point_p(PTOD(p->x) + 8, PTOD(p->y) - 10, OBJ_oSolid, 0, NOONE) != NOONE) {
+                if (collision_point_any(PTOD(p->x) + 8, PTOD(p->y) - 10, OBJ_oSolid, 0, NOONE)) {
                     PE(o)->yVel = 0;
                     PE(o)->xVel += N(1);
                 }

@@ -21,11 +21,11 @@ enum { E_STUNNED = 98, E_DEAD = 99, E_LEFT = 0, E_RIGHT = 1 };
 
 static double X(int i) { return PTOD(PX(i).x); }
 static double Y(int i) { return PTOD(PX(i).y); }
-static int CP(double x, double y, int obj) { return collision_point_p(x, y, obj, 0, NOONE) != NOONE; }
+static int CP(double x, double y, int obj) { return collision_point_any(x, y, obj, 0, NOONE); }
 /* collision_point(x, y, obj, -1, -1): the runner reads a GML bool as value > 0.5, so -1 is false for both prec
    (bounding box only) and notme (self not excluded). Observed: c_ice_alienboss record 213, oYeti's ledge test at
    (528, 48) hits an oDarkFall at 528, 48 whose precise mask has pixel (0, 0) clear */
-static int CPn(double x, double y, int obj, int self) { (void)self; return collision_point_p(x, y, obj, 0, NOONE) != NOONE; }
+static int CPn(double x, double y, int obj, int self) { (void)self; return collision_point_any(x, y, obj, 0, NOONE); }
 static int sprw(int i) { int s = PX(i).spr; return s >= 0 ? spr_dim(psprite[s].w, PX(i).xscale) : 0; }
 static int sprh(int i) { int s = PX(i).spr; return s >= 0 ? spr_dim(psprite[s].h, PX(i).yscale) : 0; }
 static int bloodless_of(int i)                                     /* Create's bloodless = true */
