@@ -105,17 +105,21 @@ static const struct { uint16_t flag; int16_t spr; } icons[] = {
     { HUD_JETPACK, SPR_sJetpackIcon }, { HUD_COMPASS, SPR_sCompassIcon }, { HUD_PARACHUTE, SPR_sParachuteIcon },
 };
 
+/* the bottom row's arrows (HD: view y 224, lines 224-239) 8 lines higher (not in HD): the screen ends at view line
+   231 (HUD_CROP), which cut off their lower 8 lines (the small arrows', at lines 232-239, all of them) */
+#define COMPASS_BOTTOM_Y (224 - HUD_CROP)
+
 static void compass(const struct hud_state *s)
 {
     int small = s->message_timer > 0;
     int vx = s->view_x, vy = s->view_y;
     if (s->exit_y > vy + 240) {                                       /* :45-60 */
         if (s->exit_x < vx)
-            spr(small ? SPR_sCompassSmallLL : SPR_sCompassLL, s->anim, 0, 224);
+            spr(small ? SPR_sCompassSmallLL : SPR_sCompassLL, s->anim, 0, COMPASS_BOTTOM_Y);
         else if (s->exit_x > vx + 320 - 16)
-            spr(small ? SPR_sCompassSmallLR : SPR_sCompassLR, s->anim, 304, 224);
+            spr(small ? SPR_sCompassSmallLR : SPR_sCompassLR, s->anim, 304, COMPASS_BOTTOM_Y);
         else
-            spr(small ? SPR_sCompassSmallDown : SPR_sCompassDown, s->anim, s->exit_x - vx, 224);
+            spr(small ? SPR_sCompassSmallDown : SPR_sCompassDown, s->anim, s->exit_x - vx, COMPASS_BOTTOM_Y);
     } else if (s->exit_x < vx)                                        /* :61-65 */
         spr(small ? SPR_sCompassSmallLeft : SPR_sCompassLeft, s->anim, 0, s->exit_y - vy);
     else if (s->exit_x > vx + 320 - 16)                               /* :66-70 */

@@ -13,7 +13,8 @@ follow as the runner applies it before drawing. Independent of the C code: it re
         --hud) the model's view with the HUD and oTransition's text against the runner's frame with its GUI
         (tools/tracer.py TRACE_GUI); --dark a8: drawn as a dark level at alpha byte a8 (tests/game DARK=a8).
         The port's own changes (not in HD) are drawn on the MAME screen only, HD's for --gui: the game-over panel's
-        prompt (PRESS ATTACK, docs/GAMELOOP.md section 3; HD: the runner's attack key X)
+        prompt (PRESS ATTACK, docs/GAMELOOP.md section 3; HD: the runner's attack key X), the compass's bottom row
+        8 lines higher (docs/ARCADE.md section 6)
     tools/drawmodel.py hostcmp <trace.bin> <names> <gen dir> <host out dir> [--hud]
         every v_<rec>.bin of tests/game/host.c (the C display list composed on the host) against the model's view,
         view lines 8..231 (the screen), all 320 columns
@@ -637,7 +638,7 @@ def view555(g, names, tiles, hd, insts, kind, art=None, port=True):
                                 art is not None),
                       g, vx, vy, bgname=room_bg(hd, names))
     if art:
-        hudcheck.model(hud_case(hd, insts, names, vx, vy), art, 320, v)
+        hudcheck.model(hud_case(hd, insts, names, vx, vy), art, 320, v, port)
         for text, x, y, yel in trans_text(hd, insts, names) + scores_text(hd, insts, names):
             if x is None:
                 x = -((len(text) * 8 - 320) // 2)

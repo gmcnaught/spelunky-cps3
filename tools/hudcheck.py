@@ -140,7 +140,9 @@ def draw_text(v, art, text, size, x, y, colour=WHITE, colours=None):
             v.blit(im, x + k * w, y, colours[k] if colours else colour, cx=i * w, cy=0, cw=w, ch=w)
 
 
-def model(c, art, display_w=320, v=None):
+def model(c, art, display_w=320, v=None, port=False):
+    """HD's HUD for case c; port: the port's own placement (the MAME screen): the compass's bottom row 8 lines
+    higher (src/hud hud.c COMPASS_BOTTOM_Y, not in HD: the screen ends at view line 231)"""
     v = v or View()
     if c.get('visible', 1):
         lifeX, bombX, ropeX, moneyX = 8, 64, 120, 176
@@ -159,13 +161,14 @@ def model(c, art, display_w=320, v=None):
         if 'COMPASS' in items:
             ex, ey, vx, vy = c.get('exit_x', 0), c.get('exit_y', 0), c.get('view_x', 0), c.get('view_y', 0)
             S = 'Small' if small else ''
+            by = 224 - CROP if port else 224
             if ey > vy + 240:
                 if ex < vx:
-                    draw_sprite(v, art, f'sCompass{S}LL', a, 0, 224)
+                    draw_sprite(v, art, f'sCompass{S}LL', a, 0, by)
                 elif ex > vx + 320 - 16:
-                    draw_sprite(v, art, f'sCompass{S}LR', a, 304, 224)
+                    draw_sprite(v, art, f'sCompass{S}LR', a, 304, by)
                 else:
-                    draw_sprite(v, art, f'sCompass{S}Down', a, ex - vx, 224)
+                    draw_sprite(v, art, f'sCompass{S}Down', a, ex - vx, by)
             elif ex < vx:
                 draw_sprite(v, art, f'sCompass{S}Left', a, 0, ey - vy)
             elif ex > vx + 320 - 16:
@@ -270,7 +273,7 @@ def main():
         art = Art(a[2])
         os.makedirs(a[3], exist_ok=True)
         for k, c in enumerate(cases):
-            v = model(c, art)
+            v = model(c, art, port=True)
             screen(v).save(os.path.join(a[3], f'expect_{k}.png'))
             view_png(v).save(os.path.join(a[3], f'view_{k}.png'))
         print(f'{len(cases)} expected screens in {a[3]}')
