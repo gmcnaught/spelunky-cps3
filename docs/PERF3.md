@@ -304,6 +304,14 @@ Load-use stall (from spelunky-cps3-a6, low priority): jtcps3 stalls 1 cycle on a
 - Batch 12 (merged 2b9c2c1): moveTo's pixel walks without the per-pixel setter in the grid build (b8b010f, PLAY_WALK:
   caveman 200 608.0 -> 559.0 K, p4 301 -2.4 %), pgrid_search with one key per hit (d3707b5: p5_l4 2, the level's first
   step, 4662.4 -> 4421.3 K), the solid grid built at the end of play_level_start (a6, b078556: p5_l4 2 -15 %).
+  On jtcps3 (.62): JT PASS 23/23, route mean of means **435.5 K** (-3.8 %), **1 of 18 over 0.525 M: caveman 579.9 K**
+  (giant 515.5 K, idol 522.6 K, bomb_drop 489.9 K under); frame budget game 2 (p5_snakes) 0 of 241 over, pair max
+  801.6 K at pair 0 (the first after the level start), step mean / max 457.6 / 705.2 K.
+- Batch 13 (perf3-b2): moveTo's other walks step the fields alone (46f37fa: characters and fractional movers, one
+  setter per axis at the end; p4_exit559 301 487.4 -> 421.4 K, p5_snakes 203 571.1 -> 547.4 K), set_dyn /
+  query_dyn_grid by family lists (a6, 7f268eb: p5_l4 2 -4.5 %).
+- Measured and dropped: moveTo's fractional walks on explicit double lines (detritus moveTo 64.1 -> 67.2 K: the
+  setter calls, not the lines, were the cost; 46f37fa keeps the original calls).
 - Measured and dropped: pq_init's (double)(float)v and floor on the bits (dfl_floor, exact over 16.6 G doubles):
   pq_init 12.6 -> 6.9 K on caveman 200 but the step 556.7 -> 565.2 K, instructions flat (layout).
 - Measured and dropped: pgrid_search with a float search rectangle comparing whole entries by the rectangle's integer
