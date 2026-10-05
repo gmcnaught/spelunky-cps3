@@ -49,9 +49,10 @@ Method from ../maldita.castilla-cps3/tools/tracer.py. Changes, all GML compiled 
     (rHighscores: the attract cycle's scores room, entered directly as src/front does), global.gameStart false
     (as the title's SCORES door leaves it: oGame's Create then generates no level).
   - TRACE_GUI=r1,r2,...: oGamepad Draw GUI End (new) saves gui_<r>.png at record r: application_surface with the
-    GUI drawn over it as the runner draws it (oGame's scrDrawHUD and showMessages run by oGame, whose instance
+    GUI drawn over it as the runner draws it (oGame's scrDrawHUD, showMessages and showEndMessage run by oGame, whose instance
     variables they set as in its own Draw GUI; global.messageTimer put back after; oTransition's Draw GUI by event_perform, whose only side effect, global.noDarkLevel, it sets to the
-    value it already has this frame) - the frame TRACE_SHOT saves, plus the GUI.
+    value it already has this frame; oTitle's, oHighscores' and oCredits2's (drawCredits) Draw GUI likewise, without
+    side effects) - the frame TRACE_SHOT saves, plus the GUI.
   - TRACE_HUD=1: every record also carries the HUD globals the trace otherwise lacks (global.collect,
     messageTimer, message1 / message2 with their highlights, bloodLevel, drawHUD) in an SPT4 extension block.
   - TRACE_SND=1: every record also carries the sound calls made since the previous record, in call order (SPT4
@@ -123,6 +124,9 @@ Trace format (little-endian; the chunks concatenated in order, scripts/hd_trace.
     level block (flags bit 3, with TRACE_HUD): f64 global.darkLevel, oLevel.darkness,
       oPlayer1.distToNearestLightSource
     front block (flags bit 4, with TRACE_HUD): f64 oIntro.fadeLevel, oIntro.drawStatus, string str1, str2, str3
+    end block (flags bit 5, with TRACE_HUD): f64 per END_KEYS: oGame.drawStatus, moneyCount (the game-over panel),
+      oEnd3.drawStatus, moneyCount, fadeOut, fadeLevel, oCredits2.drawStatus, fadeIn, fadeOut, fadeLevel,
+      global.kills, global.damsels (-1e9 where absent)
     sound block (flags bit 1): u32 count; per call u8 kind (SND_KINDS index), string asset (audio_get_name; "" none), f64 arg
       (playMusic: loop; setSoundVol: the volume argument; audio_play_sound: priority * 2 + loop; else 0)
   Magic "SPT3" (0x33545053, P4). "SPT2": no view, time, image_speed, vars or event log. "SPT1" (before
@@ -136,7 +140,9 @@ import subprocess
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-UTMT = os.path.normpath(os.path.join(HERE, '..', '..', '_tools', 'UndertaleModTool', 'out-cli', 'UndertaleModCli.dll'))
+# UTMT=<path to UndertaleModCli.dll> overrides it (a worktree: the default is resolved from this file's place)
+UTMT = os.environ.get('UTMT') or os.path.normpath(os.path.join(HERE, '..', '..', '_tools', 'UndertaleModTool', 'out-cli',
+                                                                'UndertaleModCli.dll'))
 DOTNET = 'mcr.microsoft.com/dotnet/sdk:10.0'
 # route letter -> (bit, oGamepad field)
 KEYS = {'R': (1, 'right'), 'L': (2, 'left'), 'U': (4, 'up'), 'D': (8, 'down'), 'J': (16, 'jump'),
@@ -199,12 +205,28 @@ def gvar(name):
             f'real(global.{name}) : {BAD}) : {BAD})')
 
 
+def ivar(obj, name):
+    """obj.name of the object's first instance as a number (BAD when none or not a number; booleans as 0 / 1)"""
+    e = f'{obj}.{name}'
+    return (f'(instance_exists({obj}) ? (variable_instance_exists({obj}, "{name}") ? (is_numeric({e}) || is_bool({e}) ? '
+            f'real({e}) : {BAD}) : {BAD}) : {BAD})')
+
+
+# the end block (SPT4 flags bit 5, with TRACE_HUD): the game-over panel's (scripts/showEndMessage: oGame's) and the
+# ending's (scripts/showFinalScore: oEnd3's; scripts/drawCredits: oCredits2's) state, then globals they draw
+END_VARS = [('oGame', 'drawStatus'), ('oGame', 'moneyCount'), ('oEnd3', 'drawStatus'), ('oEnd3', 'moneyCount'),
+            ('oEnd3', 'fadeOut'), ('oEnd3', 'fadeLevel'), ('oCredits2', 'drawStatus'), ('oCredits2', 'fadeIn'),
+            ('oCredits2', 'fadeOut'), ('oCredits2', 'fadeLevel')]
+END_GLOBALS = ['kills', 'damsels']
+END_KEYS = [f'{o}.{v}' for o, v in END_VARS] + END_GLOBALS
+
+
 def ext_gml():
     """GML appending the SPT4 extension block (TRACE_HUD / TRACE_SND) to buffer b"""
     if not (TRACE_HUD or TRACE_SND):
         return ''
     out = f'''
-    buffer_write(b, buffer_u32, {(29 if TRACE_HUD else 0) | (2 if TRACE_SND else 0)});'''
+    buffer_write(b, buffer_u32, {(61 if TRACE_HUD else 0) | (2 if TRACE_SND else 0)});'''
     if TRACE_HUD:
         out += f'''
     buffer_write(b, buffer_f64, {gvar('collect')});
@@ -252,6 +274,12 @@ def ext_gml():
     buffer_write(b, buffer_string, instance_exists(oIntro) ? string(oIntro.str1) : "");
     buffer_write(b, buffer_string, instance_exists(oIntro) ? string(oIntro.str2) : "");
     buffer_write(b, buffer_string, instance_exists(oIntro) ? string(oIntro.str3) : "");'''
+        for o, v in END_VARS:
+            out += f'''
+    buffer_write(b, buffer_f64, {ivar(o, v)});'''
+        for v in END_GLOBALS:
+            out += f'''
+    buffer_write(b, buffer_f64, {gvar(v)});'''
     if TRACE_SND:
         out += '''
     buffer_write(b, buffer_u32, global.trc_sndn);
@@ -585,10 +613,11 @@ if ({cond})
     gpu_set_blendenable(false);
     draw_surface(application_surface, 0, 0);
     gpu_set_blendenable(true);
-    with (oGame) {{ scrDrawHUD(); showMessages(); }}
+    with (oGame) {{ scrDrawHUD(); showMessages(); showEndMessage(); }}
     with (oTransition) event_perform(ev_draw, ev_gui);
     with (oTitle) event_perform(ev_draw, ev_gui);
     with (oHighscores) event_perform(ev_draw, ev_gui);
+    with (oCredits2) event_perform(ev_draw, ev_gui);
     surface_reset_target();
     surface_save(s, "gui_" + string(r) + ".png");
     surface_free(s);
@@ -917,6 +946,10 @@ def records(data):
                     hud['fadeLevel'], hud['drawStatus'] = struct.unpack_from('<2d', data, o)
                     o += 16
                     hud['str'] = [sz() for _ in range(3)]
+                if fl & 32:
+                    n = len(END_KEYS)
+                    hud.update(zip(END_KEYS, struct.unpack_from(f'<{n}d', data, o)))
+                    o += 8 * n
                 hd['hud'] = hud
             if fl & 2:
                 (n,) = struct.unpack_from('<I', data, o)
