@@ -199,6 +199,9 @@ static uint8_t *slurp(const char *dir, const char *name)
     return b;
 }
 
+static int game2_on;                             /* HOST_GAME2: 1 the first game, 2 the second */
+static int32_t hlast = -1;
+
 int main(int argc, char **argv)
 {
     static uint16_t masks[100000];
@@ -290,10 +293,12 @@ int main(int argc, char **argv)
     game_cfg.enemies = atoi(argv[5]);
     game_cfg.tail = atoi(argv[6]);
     game_cfg.scores = getenv("HOST_SCORES") != 0;   /* the route stores its scores (scrUpdateHighscores) */
+    game2_on = getenv("HOST_GAME2") != 0;
     hs_boot(&SH.hs, &SH.st, &SH.g);               /* a blank EEPROM: HD's first start */
     draw_boot();
     snd_init(15, 15);
     game_begin();
+again:
     for (;;) {
         struct shell_input in = { 0, 0, 0 };
         int over = game_step(&in);
@@ -311,13 +316,21 @@ int main(int argc, char **argv)
                 fwrite(&a, 4, 1, stdout);         /* the fade of colour code DRAW_PAL this frame (dark levels) */
                 fwrite(view, 2, 320 * 240, stdout);
             } else {
-                snprintf(path, sizeof path, "%s/v_%d.bin", argv[8], game_rec1);
+                snprintf(path, sizeof path, game2_on == 2 ? "%s/v2_%d.bin" : "%s/v_%d.bin", argv[8], game_rec1);
                 o = fopen(path, "wb");
                 if (!o) { perror(path); return 2; }
                 fwrite(view, 2, 320 * 240, o);
                 fclose(o);
             }
             fprintf(stderr, "D %d %u %u\n", game_rec1, draw_st.entries, draw_st.sprites);
+        }
+        if (game2_on && game_rec1 >= 0 && game_rec1 != hlast) {   /* HOST_GAME2: each record's frame hash */
+            uint32_t hsh = 2166136261u;
+            int q;
+            hlast = game_rec1;
+            compose();
+            for (q = 0; q < 320 * 240; q++) hsh = (hsh ^ view[q / 320][q % 320]) * 16777619u;
+            fprintf(stderr, "H%d %d %08x\n", game2_on, game_rec1, hsh);
         }
         if (over) break;
     }
@@ -339,6 +352,21 @@ int main(int argc, char **argv)
                 fprintf(stderr, "A %d room %d entries %u\n", k, PW.room, draw_st.entries);
             }
         }
+    }
+    if (game2_on == 1) {                          /* HOST_GAME2=1: the same route again on this boot (the shell's
+                                                     game_begin after the attract), its hashes as H2 */
+        int k;
+        for (k = 0; k < 1000; k++) {              /* some attract first (the cycle from rHighscores or the intro) */
+            game_attract_step();
+            cps3v_begin();
+            game_draw();
+            cps3v_end();
+            draw_vblank();
+        }
+        game2_on = 2;
+        hlast = -1;
+        game_begin();
+        goto again;
     }
     return 0;
 }

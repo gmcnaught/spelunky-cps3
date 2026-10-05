@@ -1068,7 +1068,12 @@ static int scan_candidates(void)
     return n;
 }
 
-void draw_new_game(void) { built_rooms = -1; }
+void draw_new_game(void)
+{
+    int k;
+    built_rooms = -1;
+    for (k = 0; k < PIN_MAX; k++) icid[k] = 0;   /* the price-tag counters as at boot: a new game reuses ids */
+}
 
 void draw_boot(void)
 {
