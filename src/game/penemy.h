@@ -18,6 +18,7 @@ void pen_moving_solids(void);                 /* gameStepEvent's oMovingSolid pa
 void pen_item_hit_enemy(int item);
 void pen_item_hit_damsel(int item);
 int pen_jar_hit(int jar, int skull);          /* 1: destroy the jar */
+void pen_sight_speed(double dir, double *h, double *v);   /* oEnemySight's speed 10 at dir 0 / 180 (kept) */
 void pen_player_pickup_enemy(int pl);         /* oPlayer1 Step :1306 */
 
 int pdam_create(int i, int fromgen);

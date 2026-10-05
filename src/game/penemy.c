@@ -742,6 +742,27 @@ void scrCheckCollisions(int i)
     }
 }
 
+/* an oEnemySight's speed 10 in direction dir (0 or 180: the facing): hspeed = 10 * pcos_cr(degtorad(dir)), vspeed =
+   -10 * psin_cr(degtorad(dir)), each pair computed once by those calls and kept (the functions read only their
+   argument, so the kept doubles are the ones a call gives; the double-double series cost about 95 K jtcps3 clocks a
+   sight). The host builds check that dir is 0 or 180 */
+void pen_sight_speed(double dir, double *h, double *v)
+{
+    static double sh[2], sv[2];
+    static uint8_t ok[2];
+    int k = dir == 180;
+#ifdef PLAY_STATS
+    if (!(dir == 0 || dir == 180)) { fprintf(stderr, "pen_sight_speed: dir %.17g\n", dir); abort(); }
+#endif
+    if (!ok[k]) {
+        sh[k] = 10 * pcos_cr(degtorad_d(dir));
+        sv[k] = -10 * psin_cr(degtorad_d(dir));
+        ok[k] = 1;
+    }
+    *h = sh[k];
+    *v = sv[k];
+}
+
 static void caveman_sight(int i)
 {
     struct pin *p = &PX(i);
@@ -749,9 +770,11 @@ static void caveman_sight(int i)
     else {
         int s = pin_create(p->x, p->y, OBJ_oEnemySight);
         double dir = PE(&PX(i))->facing == E_LEFT ? 180 : 0;
+        double h, v;
         PE(&PX(s))->direction = dir;
-        PEN(&PX(s))->hspeed = 10 * pcos_cr(degtorad_d(dir));                  /* speed = 10 */
-        PEN(&PX(s))->vspeed = -10 * psin_cr(degtorad_d(dir));
+        pen_sight_speed(dir, &h, &v);                                          /* speed = 10 */
+        PEN(&PX(s))->hspeed = h;
+        PEN(&PX(s))->vspeed = v;
         PEN(&PX(s))->owner = (int16_t)instance_place_p(i, X(i), Y(i), OBJ_oCaveman);
         PEN(&PX(i))->sightCounter = 5;
     }
