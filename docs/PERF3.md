@@ -288,6 +288,12 @@ Load-use stall (from spelunky-cps3-a6, low priority): jtcps3 stalls 1 cycle on a
   -> 643.9 K, p5_snakes 956 -1.7 %), pw_release on a step that removed nothing (0e479f1: the 24 K batch release
   moves off p5_snakes record 203, 651.7 -> 635.8 K; record 208 with it 519.8 K), gametime's PR AT (f535e23: MAME
   puts p5_snakes' largest pairs at 200, 203, 202 - steps 201-204, the explosion - not the settling record 3).
+  On jtcps3 (.62, batch-9 builds, main 630e420): frame budget game 2 (p5_snakes) step mean / max 474.8 K / 730.2 K,
+  pair mean 581.1 K, max 831.3 K at pair 203 (the explosion), **0 of 241 pairs over** (7.7 K under the budget);
+  game 1: 1 of 375 over, pair 1 (the level start).
+- Batch 10 (perf3-b2): pcol_handle's searcher rectangle from its tree entry when not stale (83d07c9: caveman 200
+  650.3 -> 635.6 K, p4 301 / p5 956 -0.9 %; PLAY_STATS checks it against ebbox_rect), jar3 (a6, 918e69e: jar_step's
+  constant compares on the bits, src/game/pcmpc.h; p5_snakes record 3 711.8 -> 700.9 K).
 - Measured and not kept (a6, jar-fp f8916d8): the jars' speed test on the bits and the hit rectangle on whole
   corners: 80 soft-float calls gone on p5_snakes 203 but jar_step's fetch misses up, 666.9 -> 667.3 K.
 - Measured and dropped: anim_one's image compares as integer bit tests (img_ge / img_lt0, equal to the float
