@@ -6,6 +6,7 @@
 #   [HOLD=n: the SNAPS frames held n frames each on their own, sound running (jtcps3 frame check, scripts/jt_frames.sh)]
 #   [ATTRACT=1: no coin / start, the attract mode (src/front) from the intro; ATTRACT=5: from rHighscores]
 #   [PLAY=1: playable: the cabinet's coin / Start and controls, a random seed, enemies on, level 1 (route unused)]
+#   [SMOOTH=1: smooth motion on the route (scripts/smooth_check.sh: each held record's midpoint and own frames)]
 #   [DPROF=1: src/draw's parts timed (draw_st.prof)] [DARK=a8: drawn as a dark level at alpha byte a8] [HUD=0: no HUD, as the runner's application_surface frames]
 PROG   := game
 TITLE  := Spelunky CPS3
@@ -29,7 +30,7 @@ CFLAGS := $(OPT) -std=gnu99 -fno-bit-tests -Wno-unused-parameter -Wno-sign-compa
           -Ibuild/g -Ibuild -I. -I$(GEN) -I$(ROOT)/src/draw -I$(ROOT)/src/main -I$(ROOT)/src/hud -I$(ROOT)/src/shell \
           -I$(ROOT)/src/snd -I$(ROOT)/src/front -DSOFTFP_ASM -fdata-sections -Wl,-T,sprbss.ld -Wl,-T,../ramcheck.ld \
           '-DDRAW_MAPS_SECTION=__attribute__((section(".bss.drawmaps")))' \
-          '-DDRAW_CACHE_SECTION=__attribute__((section(".bss.drawcache")))' $(if $(filter 1,$(DPROF)),-DDRAW_PROFILE) $(if $(filter 0,$(HUD)),-DGAME_NOHUD) $(if $(DARK),-DGAME_DARK=$(DARK)) $(if $(ATTRACT),-DGAME_ATTRACT=$(ATTRACT)) $(if $(HOLD),-DGAME_HOLD=$(HOLD)) $(if $(filter 1,$(PLAY)),-DGAME_PLAY)
+          '-DDRAW_CACHE_SECTION=__attribute__((section(".bss.drawcache")))' $(if $(filter 1,$(DPROF)),-DDRAW_PROFILE) $(if $(filter 0,$(HUD)),-DGAME_NOHUD) $(if $(DARK),-DGAME_DARK=$(DARK)) $(if $(ATTRACT),-DGAME_ATTRACT=$(ATTRACT)) $(if $(HOLD),-DGAME_HOLD=$(HOLD)) $(if $(filter 1,$(PLAY)),-DGAME_PLAY) $(if $(filter 1,$(SMOOTH)),-DGAME_SMOOTH)
 FLASH  := build/flash.bin
 include ../../../cps3-testgame/sdk/sdk.mk
 

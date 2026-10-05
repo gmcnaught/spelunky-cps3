@@ -51,6 +51,7 @@ static uint32_t prof_t;
 #define PROF0() ((void)0)
 #endif
 uint8_t draw_hud_on = 1;
+uint8_t draw_smooth;
 
 /* ---- the play state's instance fields: every read of struct pin goes through these (src/game splits the struct:
    the GML variables of struct pin_ext, through pin's ext; only this block follows such changes) ---------------- */
@@ -147,6 +148,20 @@ static int32_t fpix(float f)
 /* ---- the frame's state ------------------------------------------------------------------------------------ */
 static int vx, vy;                                /* the view's top-left (room pixels) */
 static int ox, oy;                                /* screen offset: sprite at room (x, y) is at (x - ox, y - oy) */
+/* smooth motion (draw.h): mid_on while this frame's midpoint list is built; each entry goes to it at (mdx, mdy) from
+   its own place; a piece is drawn when it is on screen in either list (clip bounds cxl..cxh, cyl..cyh); ocx, ocy:
+   the midpoint camera less this frame's; vmx, vmy: the view test's margin (16 px, plus the camera's half step) */
+static uint8_t mid_on;
+static int mdx, mdy, cxl, cxh = VIEW_W, cyl, cyh = SCREEN_H, ocx, ocy, vmx = 16, vmy = 16;
+static void set_mid(int dx, int dy)
+{
+    mdx = dx;
+    mdy = dy;
+    cxh = VIEW_W - (dx < 0 ? dx : 0);
+    cxl = -(dx > 0 ? dx : 0);
+    cyh = SCREEN_H - (dy < 0 ? dy : 0);
+    cyl = -(dy > 0 ? dy : 0);
+}
 static uint32_t ent_n;                            /* sublist entries this frame */
 /* dark levels: oLevel's black rectangle at alpha oLevel.darkness (objects/oLevel/Draw_0.gml) as a fade of colour
    code DRAW_PAL (tools/darkfade.py: the palette faded at alpha byte a8, by palette DMA at VBlank); what is drawn
@@ -197,7 +212,7 @@ static int cols, rows, ncells;                    /* the room in 16-px cells */
 static int wc0, wc1, wr0, wr1;                    /* the cells the screen shows (view lines 8..231): the tilemap
                                                      cells kept up to date (others are written when they come in) */
 static int bg_spr = -1, bg_shown = -1;            /* the background sprite (SPR_*), and the one tilemap 0 holds */
-static uint8_t bg_dirty, maps_cleared, frame_pending;
+static uint8_t bg_dirty, maps_cleared, frame_pending, frame_mid;
 static int32_t built_rooms = -1;                  /* play_rooms_entered at the last tilemap build */
 static int built_room = -1;
 
@@ -222,6 +237,9 @@ static uint16_t ord[ENT_MAX];                     /* ents in drawing order */
    tile / flip / colour, word1 position, word2 size). */
 #define RUN_AREA     (CPS3V_PRE_A_END - 0x8000u)  /* .. CPS3V_PRE_A_END */
 #define RUN_SIZE     0x4000u
+/* smooth motion: the midpoint list's entries at the same place MID_OFF bytes lower (0x30000-0x37fff), in the same
+   records */
+#define MID_OFF      0x8000u
 #ifdef DRAW_HOST
 extern uint32_t host_sprram[];                    /* tests/game/host.c: sprite RAM, decoded by its cps3v_object */
 #define SPR_AT(a)    (&host_sprram[(a) >> 2])
@@ -265,6 +283,13 @@ static inline __attribute__((always_inline)) void ent_put(int px, int py, unsign
     e[1] = ((uint32_t)(px + 8 * (int)w - 1) & 0x3ff) << 16 | ((uint32_t)(1006 - py - 8 * (int)h) & 0x3ff);
     e[2] = w2tab[w][h];
     e[3] = 0;
+    if (mid_on) {
+        spr_word *m = e - MID_OFF / 4;
+        m[0] = e[0];
+        m[1] = ((uint32_t)(px + mdx + 8 * (int)w - 1) & 0x3ff) << 16 | ((uint32_t)(1006 - py - mdy - 8 * (int)h) & 0x3ff);
+        m[2] = w2tab[w][h];
+        m[3] = 0;
+    }
     run_p = e + 4;
     run_n++;
     ent_n++;
@@ -280,9 +305,10 @@ static void frame_out(int f, int x, int y, int flip)
 {
     const struct framedef *fd = &framedefs[f];
     const struct piecedef *pc = &piecedefs[fd->piece], *end = pc + fd->npieces;
+    int xl = cxl, xh = cxh, yl = cyl, yh = cyh;
     for (; pc < end; pc++) {
         int w = 16 * pc->w, px = flip ? x - pc->dx - w : x + pc->dx, py = y + pc->dy;
-        if (px >= VIEW_W || py >= SCREEN_H || px + w <= 0 || py + 16 * pc->h <= 0)
+        if (px >= xh || py >= yh || px + w <= xl || py + 16 * pc->h <= yl)
             continue;
         piece_out(px, py, pc, flip);
     }
@@ -306,7 +332,7 @@ static void spr_out(int s, int32_t img, int x, int y, int flip)
 static void collect_out(int k, int x, int y)
 {
     int px = x - HUD_COLLECT_XORIG - ox, py = y - HUD_COLLECT_YORIG - oy;
-    if (px >= VIEW_W || py >= SCREEN_H || px <= -16 || py <= -16) return;
+    if (px >= cxh || py >= cyh || px + 16 <= cxl || py + 16 <= cyl) return;
     ent_put(px, py, 1, 1, HUD_TILE_COLLECT(k), cur_pal == DRAW_PAL ? DRAW_PAL_HUDDARK : HUD_PAL, 0);
 }
 
@@ -418,6 +444,30 @@ static inline __attribute__((always_inline)) int plain_transform(int pi, int *fl
 struct tcache { uint32_t xb, yb, ib, db; int16_t spr, cx, cy, c; uint16_t tile; int8_t m; };
 static struct tcache tcache[PIN_MAX] DRAW_CACHE_SECTION;
 static uint8_t tcache_ok[PIN_MAX];                /* the kind cached (0 none) */
+
+/* smooth motion: per slot, the instance drawn there at the last draw (id, whole-pixel x / y, draw count) */
+struct hist { int32_t id; int16_t x, y; uint16_t stamp; };
+static struct hist hist[PIN_MAX] DRAW_CACHE_SECTION;
+static uint16_t dstamp;                           /* draw_frame calls (smooth motion) */
+static int pvx = -1000, pvy = -1000;              /* the last draw's camera */
+/* instance i is drawn now: its midpoint offset (halfway back to its last draw's place: dx / 2, as the camera's ocx)
+   when mid_on, and its place kept for the next draw */
+static void inst_mid(int i)
+{
+    struct hist *h = &hist[i];
+    int32_t id = I_ID(i);
+    int x = fpix(I_X(i)), y = fpix(I_Y(i)), dx = 0, dy = 0;
+    if (h->id == id && h->stamp == (uint16_t)(dstamp - 1)) {
+        dx = h->x - x;
+        dy = h->y - y;
+        if (dx < -DRAW_MID_JUMP || dx > DRAW_MID_JUMP || dy < -DRAW_MID_JUMP || dy > DRAW_MID_JUMP) dx = dy = 0;
+    }
+    h->id = id;
+    h->x = (int16_t)x;
+    h->y = (int16_t)y;
+    h->stamp = dstamp;
+    if (mid_on) set_mid(dx / 2 - ocx, dy / 2 - ocy);
+}
 
 /* the tile_add layers into mbase / tspr (gtiles less the deleted ones). A layer draws its tiles in element order,
    newest first (layer_get_all_elements; checked against the runner's frame: build/trace/g_p4_exit559_s559 record
@@ -962,8 +1012,8 @@ static int scan_candidates(void)
 {
     const int16_t *dl;
     int nd = pw_draw_dirty(&dl), k, w, n = 0, bx, by;
-    int bx0 = (vx - 16) >> 6, bx1 = (vx + VIEW_W + 16) >> 6, by0 = (vy + DRAW_CROP - 16) >> 6;
-    int by1 = (vy + DRAW_CROP + SCREEN_H + 16) >> 6;
+    int bx0 = (vx - vmx) >> 6, bx1 = (vx + VIEW_W + vmx) >> 6, by0 = (vy + DRAW_CROP - vmy) >> 6;
+    int by1 = (vy + DRAW_CROP + SCREEN_H + vmy) >> 6;
     for (k = 0; k < nd; k++) claim_update(dl[k]);
     pw_draw_dirty_clear();
 #ifdef DRAW_HOST
@@ -1035,7 +1085,12 @@ void draw_frame(void)
     draw_st.todo = draw_st.unsup = draw_st.noart = 0;
     ent_n = 0;
     run_begin();
-    if (built_rooms != play_rooms_entered || built_room != PW.room) build_room();
+    mid_on = 0;
+    ocx = ocy = 0;
+    if (built_rooms != play_rooms_entered || built_room != PW.room) {
+        build_room();
+        pvx = -1000;                              /* no midpoint across a room change */
+    }
     if (tiles_dirty) {
         build_tiles();
         claims_refix();
@@ -1044,6 +1099,20 @@ void draw_frame(void)
     vy = PW.yview;
     ox = vx;
     oy = vy + DRAW_CROP;
+    if (draw_smooth) {                            /* the midpoint camera; none after a jump */
+        int dx = pvx - vx, dy = pvy - vy;
+        dstamp++;
+        if (dx >= -DRAW_MID_CAM && dx <= DRAW_MID_CAM && dy >= -DRAW_MID_CAM && dy <= DRAW_MID_CAM) {
+            mid_on = 1;
+            ocx = dx / 2;
+            ocy = dy / 2;
+        }
+        pvx = vx;
+        pvy = vy;
+    }
+    vmx = 16 + (ocx < 0 ? -ocx : ocx);
+    vmy = 16 + (ocy < 0 ? -ocy : ocy);
+    set_mid(-ocx, -ocy);
     ZOOM_X = DRAW_ZOOM_X;
     /* tilemaps: base + terrain in the screen's cells; first claimant of a cell by creation order keeps it, the
        others are sprites */
@@ -1062,12 +1131,13 @@ void draw_frame(void)
     yhi = fkey((float)(vy + 480));
     {
     /* sprites of at most 16 x 16 with the origin inside them draw within x - 16 .. x + 16: in view only for x in
-       (vx - 16, vx + 336), y in (vy + 8 - 16, vy + 248) */
-    uint32_t sxlo = fkey((float)(vx - 16)), sxhi = fkey((float)(vx + VIEW_W + 16));
-    uint32_t sylo = fkey((float)(vy + DRAW_CROP - 16)), syhi = fkey((float)(vy + DRAW_CROP + SCREEN_H + 16));
+       (vx - 16, vx + 336), y in (vy + 8 - 16, vy + 248) (smooth motion: wider by the camera's half step) */
+    uint32_t sxlo = fkey((float)(vx - vmx)), sxhi = fkey((float)(vx + VIEW_W + vmx));
+    uint32_t sylo = fkey((float)(vy + DRAW_CROP - vmy)), syhi = fkey((float)(vy + DRAW_CROP + SCREEN_H + vmy));
     for (k = 0; k < ntspr; k++) {                 /* tile sprites in view (first: their ids are the largest) */
         const struct tspr *t = &tspr[k];
-        if (t->x <= vx - 16 || t->x >= vx + VIEW_W || t->y <= vy - 16 || t->y >= vy + VIEW_H) continue;
+        if (t->x <= vx - vmx || t->x >= vx + VIEW_W + vmx - 16 || t->y <= vy - vmy || t->y >= vy + VIEW_H + vmy - 16)
+            continue;
         if (n < ENT_MAX) {
             ents[n].dkey = t->dkey;
             ents[n].id = 0x70000000 - (int32_t)t->seq;   /* before every instance of the depth */
@@ -1196,17 +1266,22 @@ void draw_frame(void)
         if (dark && cur_pal == DRAW_PAL && (e->dkey < lkey || (e->dkey == lkey && e->id < lid)))
             cur_pal = DRAW_PAL_LIT;               /* after oLevel's rectangle */
         while (band < nmaps && mdepth_key[band] >= e->dkey) band_out(1 + band++);
-        if (e->i >= 0) inst_out(e->i);
-        else {
+        if (e->i >= 0) {
+            if (draw_smooth) inst_mid(e->i);
+            inst_out(e->i);
+        } else {
             const struct tspr *t = &tspr[-1 - e->i];
             int px = t->x - ox, py = t->y - oy;
             struct piecedef pc = { 0, 0, 1, 1, t->tile };
-            if (px > -16 && px < VIEW_W && py > -16 && py < SCREEN_H) piece_out(px, py, &pc, 0);
+            if (mid_on) set_mid(-ocx, -ocy);
+            if (px + 16 > cxl && px < cxh && py + 16 > cyl && py < cyh) piece_out(px, py, &pc, 0);
         }
     }
     while (band < nmaps) band_out(1 + band++);
     run_close();
     }
+    set_mid(0, 0);
+    frame_mid = mid_on;
     PROF(3);
     if (draw_hud_on && !front_on) {
         hud_out();
@@ -1218,6 +1293,35 @@ void draw_frame(void)
     draw_st.entries = ent_n;
     frame_pending = 1;
     if (ent_n > draw_st.entries_max) draw_st.entries_max = ent_n;
+}
+
+/* smooth motion, at the frame's first VBlank: its main list (sprite RAM 0, as built) is kept for draw_vbl_irq and
+   becomes the midpoint list (the records of draw.c's runs pointed MID_OFF lower); 0 when it has more than MREC_MAX
+   records (the frame's own list is shown) */
+#define MREC_MAX 32
+#define PPU_STATUS (*(volatile uint16_t *)0x240c000cu)   /* the uncached PPU status (cps3v.c R16) */
+static uint32_t frec[MREC_MAX + 1][4];
+static int frec_n, irq_vx, irq_vy, irq_nmaps;
+static uint8_t pres_mid;
+static volatile uint8_t irq_due;
+static int mid_present(void)
+{
+    spr_word *s = SPR_AT(0);
+    int r, k, j;
+    for (r = 0; r < MREC_MAX && !(s[4 * r] & 0x80000000u); r++) ;
+    if (r == MREC_MAX) return 0;
+    for (k = 0; k <= r; k++)
+        for (j = 0; j < 4; j++) frec[k][j] = s[4 * k + j];
+    for (k = 0; k < r; k++) {
+        uint32_t w0 = frec[k][0], a = (w0 & 0x7fffu) << 4;
+        if (a >= RUN_AREA && a < RUN_AREA + 2 * RUN_SIZE) s[4 * k] = (w0 & ~0x7fffu) | ((a - MID_OFF) >> 4);
+    }
+    frec_n = r;
+    irq_vx = vx;
+    irq_vy = vy;
+    irq_nmaps = nmaps;
+    pres_mid = 1;
+    return 1;
 }
 
 void draw_vblank(void)
@@ -1296,6 +1400,50 @@ void draw_vblank(void)
         cps3dma_palette(DARK_FADE_HUD_AT + 512u * (uint32_t)frame_a8, DRAW_PAL_HUDDARK * 256, 256, 0);
         shown_a8 = frame_a8;
     }
-    cps3v_tilemap(0, vx, vy + DRAW_CROP, UNIT(0), 1);
-    for (m = 0; m < NMAPS; m++) cps3v_tilemap(1 + m, vx, vy + DRAW_CROP, UNIT(1 + m), m < nmaps);
+    {
+        int sx = vx, sy = vy;
+        if (frame_mid && mid_present()) {
+            sx = vx + ocx;
+            sy = vy + ocy;
+        }
+        cps3v_tilemap(0, sx, sy + DRAW_CROP, UNIT(0), 1);
+        for (m = 0; m < NMAPS; m++) cps3v_tilemap(1 + m, sx, sy + DRAW_CROP, UNIT(1 + m), m < nmaps);
+    }
+}
+
+void draw_vblank_end(void)
+{
+    if (!pres_mid) return;
+    pres_mid = 0;
+    irq_due = 1;
+}
+
+void draw_irq_off(void) { irq_due = 0; }
+
+/* the frame's own list at the VBlank after its midpoint list. The main list (sprite RAM 0) may be half built by the
+   next draw (this runs from the VBlank interrupt): the records it overwrites are put back once the list DMA has
+   copied them (MAME: at the 8 / 9 writes; jtcps3: its busy bit may come up after cps3v_vblank's wait has looked, as
+   the character DMA's does (cps3-testgame docs/CPS3.md), so it is waited for, then for its end) */
+void draw_vbl_irq(void)
+{
+#ifndef DRAW_HOST
+    uint32_t save[MREC_MAX + 1][4];
+    spr_word *s = SPR_AT(0);
+    int k, j, n, t;
+    if (!irq_due) return;
+    irq_due = 0;
+    n = frec_n + 1;
+    for (k = 0; k < n; k++)
+        for (j = 0; j < 4; j++) {
+            save[k][j] = s[4 * k + j];
+            s[4 * k + j] = frec[k][j];
+        }
+    cps3v_tilemap(0, irq_vx, irq_vy + DRAW_CROP, UNIT(0), 1);
+    for (k = 0; k < NMAPS; k++) cps3v_tilemap(1 + k, irq_vx, irq_vy + DRAW_CROP, UNIT(1 + k), k < irq_nmaps);
+    cps3v_vblank();
+    for (t = 0; t < 128 && !(PPU_STATUS & 1); t++) ;
+    for (t = 0; t < 10000 && (PPU_STATUS & 1); t++) ;
+    for (k = 0; k < n; k++)
+        for (j = 0; j < 4; j++) s[4 * k + j] = save[k][j];
+#endif
 }

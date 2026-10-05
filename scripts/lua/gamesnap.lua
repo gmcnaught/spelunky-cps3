@@ -27,6 +27,9 @@ emu.register_frame_done(function()
     local shown = s32(r(8))
     if shown ~= seen then seen = shown; wait_frames = 0 end
     wait_frames = wait_frames + 1
+    if wait_frames == 1 and os.getenv("GAME_MIDSNAP") then   -- smooth motion: the midpoint list, before the
+      manager.machine.screens[":screen"]:snapshot(string.format("mid_%04d.png", taken))   -- frame's own one
+    end
     if wait_frames == 3 then
       manager.machine.video:snapshot()
       out:write(string.format("S %d %d %s %.3f\n", taken, shown, fields(), t))

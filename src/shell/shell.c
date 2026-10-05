@@ -10,6 +10,7 @@ __attribute__((weak)) void game_attract_step(void) {}
 __attribute__((weak)) void game_begin(void) {}
 __attribute__((weak)) int game_step(const struct shell_input *in) { (void)in; return 1; }
 __attribute__((weak)) void game_draw(void) {}
+__attribute__((weak)) void shell_video_stop(void) {}
 
 uint32_t shell_ee_read(int word) { return cps3_ee_read(word); }
 void shell_ee_write(int word, uint32_t v) { cps3_ee_write(word, v); }
@@ -61,6 +62,7 @@ static void line(int row, int sel, const char *label)
 static void settings_run(void)
 {
     cps3s_init();                                /* sound off */
+    shell_video_stop();                          /* the game's VBlank interrupt work */
     cps3v_begin();                               /* no sprites */
     cps3v_end();
     for (int t = 0; t < 4; t++)
@@ -71,6 +73,7 @@ static void settings_run(void)
     st.free_play = SH.st.free_play;
     st.coins_per_credit = SH.st.coins_per_credit;
     st.toggle_run = SH.st.toggle_run;
+    st.smooth = SH.st.smooth;
     int sel = 0, clear = 0;
     uint32_t prev = 0xffffffffu, prev_sys = 0xffffffffu;
     cps3v_text(16, 3, "SPELUNKY SETTINGS");
@@ -84,9 +87,11 @@ static void settings_run(void)
         put_num(32, 9, st.coins_per_credit, 1);
         line(11, sel == 2, "RUN BUTTON");
         cps3v_text(32, 11, st.toggle_run ? "TOGGLE" : "HOLD  ");
-        line(13, sel == 3, "CLEAR HIGH SCORES");
-        cps3v_text(32, 13, clear ? "YES" : "NO ");
-        line(16, sel == 4, "SAVE AND EXIT");
+        line(13, sel == 3, "SMOOTH MOTION");
+        cps3v_text(32, 13, st.smooth ? "ON " : "OFF");
+        line(15, sel == 4, "CLEAR HIGH SCORES");
+        cps3v_text(32, 15, clear ? "YES" : "NO ");
+        line(18, sel == 5, "SAVE AND EXIT");
         cps3v_wait_vblank();
         cps3v_vblank();
         uint32_t p = cps3_pad(0) | cps3_pad(1), sys = cps3_system();
@@ -95,7 +100,7 @@ static void settings_run(void)
         prev_sys = sys;
         if ((press & CPS3_UP) && sel > 0)
             sel--;
-        if ((press & CPS3_DOWN) && sel < 4)
+        if ((press & CPS3_DOWN) && sel < 5)
             sel++;
         int leave = (spress & CPS3_TEST) != 0;
         int step = (press & (CPS3_B1 | CPS3_RIGHT)) ? 1 : (press & CPS3_LEFT) ? -1 : 0;
@@ -107,6 +112,8 @@ static void settings_run(void)
             else if (sel == 2)
                 st.toggle_run = !st.toggle_run;
             else if (sel == 3)
+                st.smooth = !st.smooth;
+            else if (sel == 4)
                 clear = !clear;
             else if (press & CPS3_B1)
                 leave = 1;
@@ -117,7 +124,7 @@ static void settings_run(void)
     if (clear) {                                 /* the next boot finds no block: HD's first start (hs_boot) */
         for (int k = 0; k < HS_EE_WORDS; k++)
             shell_ee_write(HS_EE_AT + k, 0);
-        if (st.free_play || st.coins_per_credit != 1 || st.toggle_run) {   /* keep the settings: a reset block */
+        if (st.free_play || st.coins_per_credit != 1 || st.toggle_run || !st.smooth) {   /* keep the settings: a reset block */
             struct hiscores hs;
             hs.value[0] = 0;
             for (int k = 1; k <= 10; k++)
@@ -128,7 +135,10 @@ static void settings_run(void)
         }
     } else
         hs_write(&SH.hs, &st);
-    __asm__ volatile("ldc %0, sr\n\tmov.l 1f, r0\n\tjmp @r0\n\tnop\n\t.align 2\n1:\t.long start" : : "r"(0xf0) : "r0");
+    /* restart as a reset does: interrupts masked, VBR 0 (the ROM's vector table: the game may have moved it to RAM,
+       which start-up clears) */
+    __asm__ volatile("ldc %0, sr\n\tmov #0, r0\n\tldc r0, vbr\n\tmov.l 1f, r0\n\tjmp @r0\n\tnop\n\t.align 2\n1:\t.long start"
+                     : : "r"(0xf0) : "r0");
 }
 
 /* ---- the loop ---- */

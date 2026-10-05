@@ -74,6 +74,9 @@ void main_boot(void)
     frt_start();
     for (d = (uint32_t *)&M, k = 0; k < (int)(sizeof M / 4); k++) d[k] = 0;
     M.magic = 0x47544d32;                         /* 'GTM2' */
+#ifdef GAME_SMOOTH
+    draw_smooth = 1;                              /* smooth motion (SMOOTH=1): its draw and interrupt costs */
+#endif
     front_seed = ROUTE_SEED;                      /* the intro's randomize() */
     game_cfg.route = route_keys;
     game_cfg.nroute = ROUTE_N;

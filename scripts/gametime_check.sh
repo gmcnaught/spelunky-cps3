@@ -5,11 +5,12 @@
 #   [ATTRACT_FRAMES=3600] scripts/gametime_check.sh [route seed level money enemies  route2 seed2 level2 money2 enemies2]
 #   default p4_push_rope 365 1 0 0  p5_snakes 101 1 0 1
 # -> tests/gametime/build/run/{gt.txt, snap/.., elf/mame (the set: the same program runs on jtcps3), elf/mister}
+# SMOOTH=1: smooth motion on (src/draw draw_smooth) -> tests/gametime/build/run_smooth/
 set -e
 cd "$(dirname "$0")/.."
 R=${1:-p4_push_rope}; S=${2:-365}; L=${3:-1}; M=${4:-0}; E=${5:-0}
 R2=${6:-p5_snakes}; S2=${7:-101}; L2=${8:-1}; M2=${9:-0}; E2=${10:-1}
-T=tests/gametime; B=$T/build; O=$B/run; rm -rf "$O"; mkdir -p "$O/w"
+T=tests/gametime; B=$T/build; RUN=run${SMOOTH:+_smooth}; O=$B/$RUN; rm -rf "$O"; mkdir -p "$O/w"
 G=$B/g; rm -rf "$G"; mkdir -p "$G"
 git archive "${GAME_REV:-HEAD}" src/game | tar -x -C "$G" --strip-components=2
 cp build/gen/objects.[ch] build/gen/gentables.[ch] build/gen/playtables.[ch] "$G/"
@@ -22,7 +23,7 @@ if [ -n "${GRID_SHIFT:-}" ]; then { echo "#define PCOL_GRID_SHIFT $GRID_SHIFT"; 
 scripts/unity.sh "$G"                                  # the hot play files as one TU (UNITY=0: separate)
 touch "$G/stamp"
 python3 tools/drawtables.py refs/hd/src build/gen >/dev/null
-MK="OUT=build/run/elf ROUTE=$R SEED=$S LEVEL=$L MONEY=$M ENEMIES=$E ROUTE2=$R2 SEED2=$S2 LEVEL2=$L2 MONEY2=$M2 ENEMIES2=$E2 ATTRACT_FRAMES=${ATTRACT_FRAMES:-3600}"
+MK="OUT=build/$RUN/elf ${SMOOTH:+SMOOTH=$SMOOTH} ROUTE=$R SEED=$S LEVEL=$L MONEY=$M ENEMIES=$E ROUTE2=$R2 SEED2=$S2 LEVEL2=$L2 MONEY2=$M2 ENEMIES2=$E2 ATTRACT_FRAMES=${ATTRACT_FRAMES:-3600}"
 scripts/dmake.sh $T $MK >"$O/make.log" 2>&1 || { tail -20 "$O/make.log"; exit 1; }
 scripts/dmake.sh $T $MK mister >>"$O/make.log" 2>&1
 GT_OUT="$O/gt.txt" scripts/mame.sh sfiii3na -rompath "$O/elf/mame" -skip_gameinfo -nothrottle -sound none -video none \

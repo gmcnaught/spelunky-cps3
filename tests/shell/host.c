@@ -76,7 +76,7 @@ static void test_steps(void)
 static void test_credits(void)
 {
     struct credit_state c;
-    struct settings st = { 0, 1, 0 };
+    struct settings st = { 0, 1, 0, 1 };
     credit_reset(&c);
     credit_frame(&c, &st, CR_COIN1);                 /* held at power-on: not a coin */
     CHECK(c.credits == 0);
@@ -102,7 +102,7 @@ static void test_credits(void)
     CHECK(c.credits == CREDITS_MAX);
     struct credit_state z;
     credit_reset(&z);
-    struct settings fp = { 1, 1, 0 };
+    struct settings fp = { 1, 1, 0, 1 };
     CHECK(credit_can_start(&z, &fp));
     credit_take(&z, &fp);
     CHECK(z.credits == 0);
@@ -165,10 +165,14 @@ static void test_hiscores(void)
     hs_boot(&h2, &s2, &g);
     CHECK(s2.free_play == 1 && s2.coins_per_credit == 3 && s2.toggle_run == 1 && h2.value[HS_MINI] == 120445 &&
           g.tunnel1 == 5);
-    CHECK(ee[HS_EE_AT + 11] == (0x1u | 0x2u | 3u << 8));
+    CHECK(s2.smooth == 1 && ee[HS_EE_AT + 11] == (0x1u | 0x2u | 3u << 8));   /* smooth on: bit 2 clear */
+    st.smooth = 0;
+    hs_write(&hs, &st);
+    hs_boot(&h2, &s2, &g);
+    CHECK(s2.smooth == 0 && s2.toggle_run == 1 && ee[HS_EE_AT + 11] == (0x1u | 0x2u | 0x4u | 3u << 8));
     ee[HS_EE_AT + 3] ^= 1;
     hs_boot(&h2, &s2, &g);
-    CHECK(s2.free_play == 0 && s2.toggle_run == 0 && g.tunnel1 == 10001 && g.first_time == 1 && h2.value[HS_MONEY] == 0);
+    CHECK(s2.free_play == 0 && s2.toggle_run == 0 && s2.smooth == 1 && g.tunnel1 == 10001 && g.first_time == 1 && h2.value[HS_MONEY] == 0);
     /* an unchanged block is not rewritten */
     ee_writes = 0;
     hs_write(&h2, &s2);

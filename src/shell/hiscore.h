@@ -44,6 +44,7 @@ struct settings {
     uint8_t free_play;          /* bit 0 */
     uint8_t coins_per_credit;   /* bits 8-11: 1..9 (0 read as 1) */
     uint8_t toggle_run;         /* bit 1: the run button toggles running (HD's global.toggleRunEnabled, X10) */
+    uint8_t smooth;             /* bit 2 clear: smooth motion (src/draw draw_smooth; on in a new or older block) */
 };
 
 /* the globals oGlobals Create sets from the ini */

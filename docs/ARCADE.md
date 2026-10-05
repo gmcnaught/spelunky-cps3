@@ -52,7 +52,18 @@ credit line `CREDIT n` / `FREE PLAY` on the text layer) -> a Start with a credit
 and calls `game_begin` -> PLAY (`game_step` every second frame until it returns nonzero) -> ATTRACT. Coins 1 and 2
 count toward credits (coins per credit 1-9, at most 9 credits); the service button gives one credit. On a step
 frame the game builds the display list (`game_draw`); on the frame between, the PPU sends the unchanged list again.
-A step that overruns its two frames delays the next one: no step is skipped.
+A step frame starts at a VBlank; the frame between starts at the next VBlank, or at once (with no VBlank work) when
+that VBlank went by during the step, so a step and its draw have two frames (`src/main/main.c`; before 2026-10-05 a
+step over one frame made the pair three frames). A step that overruns its two frames delays the next one: no step is
+skipped.
+
+**Smooth motion** (settings SMOOTH MOTION, on by default): each draw also builds a midpoint list, every instance and
+the camera halfway between the previous step's positions and this step's (new instances, moves over 32 px and camera
+moves over 64 px are not blended; nothing is across a room change). The step frame's VBlank shows the midpoint list,
+the VBlank between shows the step's own list from the VBlank interrupt (`draw_vbl_irq`), so the screen has 60
+positions a second from 30 steps, one frame (16.7 ms) later. Game logic and the routes are unchanged (routes run
+with it off; `tests/game SMOOTH=1`, `scripts/smooth_check.sh` check it). MAME cost per step pair: +7 to +9 K
+(p5_snakes mean 131.6 -> 138.9 K, max 170.0 -> 180.3 K; docs/DRAW.md section 7).
 
 Game hooks (weak no-ops in `shell.c`, for the play runtime to define): `game_boot`, `game_attract_step`,
 `game_begin`, `game_step(const struct shell_input *)`, `game_draw`.
@@ -89,7 +100,7 @@ Checks:
 
 The test switch (MAME: Service Mode; jtcps3: F2), or Coin + B2 on either panel held together for 60 frames (the
 stock jtcps3 has no OSD test switch), opens the settings screen: FREE PLAY, COINS PER CREDIT, RUN BUTTON (HOLD /
-TOGGLE: HD's `global.toggleRunEnabled`, X10), CLEAR HIGH SCORES, SAVE AND EXIT (up / down choose, B1 or right change,
+TOGGLE: HD's `global.toggleRunEnabled`, X10), SMOOTH MOTION (ON / OFF, section 2), CLEAR HIGH SCORES, SAVE AND EXIT (up / down choose, B1 or right change,
 left back, test or B1 on SAVE AND EXIT leave). Leaving stores the settings and restarts the program (the combo's coin
 credit is cleared with the rest). RUN BUTTON TOGGLE applies to cabinet games only (routes keep HD's default) and each
 game starts walking (HD resets `toggleRun` once, in `scrInit`).
@@ -107,7 +118,7 @@ minigame rooms) and kept. Not kept: `settings.json`, `keys.json`, `gamepad.json`
 | 0-15 | not used (left to the stand-in set, as Maldita) |
 | 16 | magic 0x53504b01 |
 | 17-26 | value1 .. value10 |
-| 27 | settings: bit 0 free play, bit 1 run button toggle, bits 8-11 coins per credit |
+| 27 | settings: bit 0 free play, bit 1 run button toggle, bit 2 smooth motion off, bits 8-11 coins per credit |
 | 28 | check: words 16-27 summed, xor 0x5a5a5a5a |
 
 A wrong magic or check reads as HD without `spelunky.ini`: every value 0, then as HD: `global.tunnel1 / 2` take the

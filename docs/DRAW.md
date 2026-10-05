@@ -281,6 +281,38 @@ Routes the grid takes off the trace (c_swamp_drain from rec 139, docs/EQUIV.md) 
 MAME with no draw error: c_swamp_drain rec 180 / 240 / 300 differ 268 / 976 / 56 K px on the grid build, 0 / 0 / 0
 with EXACT=1.
 
+## 7. Smooth motion (2026-10-05)
+
+`draw_smooth` (settings SMOOTH MOTION; routes off): the Spelunky Classic Interpolated method (logic at 30 steps a
+second, drawn positions blended between steps) on the CPS3's two frames a step.
+
+- **Midpoint list.** `ent_put` writes each entry twice: at its place in the run area (0x38000-0x3ffff) and, moved by
+  (mdx, mdy), at the same place 0x8000 lower (0x30000-0x37fff, the same records). Per instance, `inst_mid`: the
+  offset is half the way back to the slot's last drawn place (`hist[]`: id, whole-pixel x / y, draw count; only the
+  same id drawn at the previous draw, moved at most 32 px), less half the camera's step (`ocx`, `ocy`; no midpoint
+  when the camera moved over 64 px or the room was built). Tile sprites move with the camera only; SDK entries (the
+  bands, the HUD, the front end's text) are shared by both lists, the tilemaps take the midpoint camera through their
+  scroll registers. A piece is kept when it is on screen in either list; the view tests are wider by the camera's
+  half step.
+- **Showing it.** At the step frame's VBlank, `draw_vblank` copies the main list (sprite RAM 0, at most 32 records)
+  for later and points its run records 0x8000 lower: the midpoint list is sent. `draw_vblank_end` arms the VBlank
+  interrupt (`src/main/main.c` vbl_irq, installed through a RAM copy of the vector table): at the next VBlank,
+  `draw_vbl_irq` writes the kept records and the frame's scrolls and sends the list. The next draw may be building its
+  main list at that moment, so the records written are saved and put back after the list DMA (the busy bit is waited
+  for to come up, then down: on jtcps3 the character DMA's comes up 120-576 clocks late). Both lists' sublists stay
+  untouched until the draw after next (run areas and the SDK's sublist areas alternate per draw).
+- **Checked (MAME):** `scripts/smooth_check.sh` snapshots each held record twice: the record's own frame (sent by the
+  interrupt) equals the model at 0 px on p4_exit559 30 / 150 / 300, p5_shop 162 / 242, p8_boot attract 300 / 1040;
+  the midpoint frames are the scene half a step back (p4_exit559 rec 300: 52,111 px differ from the own frame, terrain
+  tilemaps and sprites shifted together). Off (routes): game_check p4_exit559, p5_shop, p8_boot 0 px, the host check
+  801 / 801 frames equal.
+- **Cost (tests/gametime, MAME clocks, off -> on):** draw mean attract 77.7 -> 92.4 K, game 1 40.8 -> 49.9 K, game 2
+  35.4 -> 42.5 K; pair mean game 1 133.3 -> 142.6 K, game 2 131.6 -> 138.9 K, game 2 max 170.0 -> 180.3 K; steps
+  unchanged. The interrupt's own time is not in these (it came while the program waited for VBlank).
+- **Inferred:** about 20-30 K jtcps3 clocks a pair (draw ~2.8x MAME); p5_snakes' jtcps3 pair max 710.4 K would be
+  about 740 K, under 838.9 K. **Unknown:** the jtcps3 run (gametime SMOOTH=1 on the MiSTer), and whether jtcps3's
+  list DMA reads sublists at the DMA or while it draws (either is safe here).
+
 ## Observed / Inferred / Unknown
 
 - **Observed:** entries max 214, records max 9 over 27,544 frames; 97.8 % of frame draws one-piece; no

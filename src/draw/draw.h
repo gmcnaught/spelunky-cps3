@@ -11,6 +11,13 @@
  * The camera is the play state's view (PW.xview / yview, after the step's follow); the screen shows view lines
  * 8..231 (DRAW_CROP) stretched to 384 by X zoom 0x35.
  *
+ * Smooth motion (draw_smooth, the settings screen's SMOOTH MOTION): each draw also builds a midpoint list, every
+ * instance and the camera halfway between their previous draw's positions and this one's (instances new since then,
+ * or moved more than DRAW_MID_JUMP px, at their new place; none after a room change or a camera jump). The step's
+ * first VBlank shows the midpoint list (draw_vblank), the next one the step's own list (draw_vbl_irq, from the
+ * VBlank interrupt while the next step runs): 60 positions a second from 30 steps, one frame later. The play state
+ * is not touched.
+ *
  * Reads src/game's state (play.h, pint.h, gen.h); writes nothing there. */
 #ifndef DRAW_H
 #define DRAW_H
@@ -41,6 +48,9 @@ extern struct draw_stats draw_st;
 extern int16_t draw_dark_force;  /* tests: >= 0 draws as a dark level at that alpha byte (a8) */
 extern uint8_t draw_hud_on;      /* 1: the HUD is drawn (tests clear it to compare with the runner's
                                     application_surface, which has no GUI) */
+extern uint8_t draw_smooth;      /* 1: smooth motion (set before the first draw_frame; the routes keep 0) */
+#define DRAW_MID_JUMP 32         /* px an instance may move in a step and still be drawn halfway */
+#define DRAW_MID_CAM  64         /* px the camera may move in a step and still be drawn halfway */
 
 /* once at boot, after the art is in character RAM and the colours are loaded */
 void draw_boot(void);
@@ -49,8 +59,16 @@ void draw_new_game(void);
 /* the display list for the play state (between cps3v_begin / cps3v_end); tilemap cells and scrolls are prepared
    for draw_vblank */
 void draw_frame(void);
-/* at the next VBlank, before cps3v_vblank sends the list: tilemap scrolls and the changed cells */
+/* at the next VBlank, before cps3v_vblank sends the list: tilemap scrolls and the changed cells; with smooth motion
+   the midpoint list is put in place of the frame's (sprite RAM's main list) and its scrolls */
 void draw_vblank(void);
+/* after that cps3v_vblank: with smooth motion, the frame's own list is due at the next VBlank (draw_vbl_irq) */
+void draw_vblank_end(void);
+/* from the VBlank interrupt: the frame's own list and scrolls when due (the main list being built is put back after
+   the list DMA); nothing otherwise */
+void draw_vbl_irq(void);
+/* nothing more from draw_vbl_irq (the settings screen takes the display) */
+void draw_irq_off(void);
 /* GML tile_layer_find(depth, x, y) + tile_delete (oExplosion / oBoulder / oMattockHit / oLaser / oOlmecSlam /
    oXocBlock): removes the tile_add tile at that point. src/game does not call it yet (its sites are marked
    "drawing only") */

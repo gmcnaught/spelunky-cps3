@@ -1,7 +1,7 @@
 /* tests/game: large arrays in sprite RAM areas the display does not use (MAME only: on jtcps3 CPU access to
    sprite RAM is not checked for this). Display use (sdk cps3v.h): main list 0x00000-0x01fff, the frame's sublists
-   0x02000-0x09fff, src/draw's own sublists 0x38000-0x3ffff, tilemaps 0..3 in units 0x40-0x4f (0x40000-0x4ffff).
-   Free: 0x0a000-0x37fff (184 KB) and
+   0x02000-0x09fff, src/draw's own sublists 0x38000-0x3ffff and its midpoint sublists 0x30000-0x37fff (smooth
+   motion), tilemaps 0..3 in units 0x40-0x4f (0x40000-0x4ffff). Free: 0x0a000-0x2ffff (152 KB) and
    0x50000-0x7ffff (192 KB). main.c (main_boot) clears both before use. */
 SECTIONS
 {
@@ -23,5 +23,5 @@ SECTIONS
     }
 }
 INSERT BEFORE .bss;
-ASSERT(__sprbss_a_end <= 0x04038000, "sprbss_a overlaps src/draw's sublists (0x38000-0x3ffff)")
+ASSERT(__sprbss_a_end <= 0x04030000, "sprbss_a overlaps src/draw's sublists (0x30000-0x3ffff)")
 ASSERT(__sprbss_b_end <= 0x04080000, "sprbss_b past sprite RAM")

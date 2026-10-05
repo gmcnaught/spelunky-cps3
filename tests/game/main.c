@@ -55,6 +55,9 @@ void main_boot(void)
 #ifdef GAME_NOHUD
     draw_hud_on = 0;
 #endif
+#ifdef GAME_SMOOTH
+    draw_smooth = 1;                              /* smooth motion on the route (SMOOTH=1) */
+#endif
 #ifdef GAME_DARK
     draw_dark_force = GAME_DARK;                  /* the fade path on any level (scripts/game_check.sh DARK=a8) */
 #endif
@@ -151,6 +154,7 @@ void main_frame_done(void)
 {
     if (game_over) M.state = 1;
     if (!pend_draw) return;
+    if (draw_smooth && (SH.frame & 1)) return;    /* smooth motion: the list is shown at the step frame's VBlank */
     pend_draw = 0;
     M.shown = pend_rec;
     if (!is_snap(pend_rec)) return;
@@ -167,15 +171,16 @@ void main_frame_done(void)
         snd_play(SND_xcoin);
         while (vbl_count < end) {                 /* the SDK's VBlank interrupt count: frames since the start */
             cps3v_wait_vblank();
-            cps3v_vblank();                       /* the same list again */
+            if (!draw_smooth) cps3v_vblank();     /* the same list again (smooth motion: the frame's own one, */
+                                                  /* sent by the interrupt, stays) */
             snd_frame();
         }
         snd_play(SND_xclick);
     }
 #else
-    while (M.ack != pend_rec) {
-        cps3v_wait_vblank();
-        cps3v_vblank();                           /* the same list again */
+    while (M.ack != pend_rec) {                   /* the same list again (smooth motion: the midpoint list, */
+        cps3v_wait_vblank();                      /* then the frame's own one from the interrupt, which stays) */
+        if (!draw_smooth) cps3v_vblank();
     }
 #endif
     M.wait = 0;

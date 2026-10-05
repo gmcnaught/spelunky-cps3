@@ -1,12 +1,14 @@
 -- MAME: tests/shell settings screen (src/shell/shell.c settings_run): Coin + B2 held for 60 frames opens it, B1
--- turns free play on, down + right sets 2 coins a credit, down + right sets the run button to toggle, the test switch
+-- turns free play on, down + right sets 2 coins a credit, down + right sets the run button to toggle, down + right
+-- turns smooth motion off, the test switch
 -- saves and restarts; then Start without a coin must begin a game (free play). Prints BEGIN <frame> <credits> per game begun, snapshots the menu and the attract screen.
 local SHLOG = tonumber(os.getenv("SHLOG") or "0x02000000")
 local screen = manager.machine.screens[":screen"]
 local P = manager.machine.ioport.ports
 local ev = { {30, ":INPUTS", "Coin 1", 75}, {30, ":INPUTS", "P1 Strong Punch", 75}, {110, ":INPUTS", "P1 Jab Punch", 2},
              {140, ":INPUTS", "P1 Down", 2}, {150, ":INPUTS", "P1 Right", 2}, {170, ":INPUTS", "P1 Down", 2},
-             {180, ":INPUTS", "P1 Right", 2}, {200, ":INPUTS", "Service Mode", 2}, {300, ":INPUTS", "1 Player Start", 4} }
+             {180, ":INPUTS", "P1 Right", 2}, {184, ":INPUTS", "P1 Down", 2}, {192, ":INPUTS", "P1 Right", 2},
+             {200, ":INPUTS", "Service Mode", 2}, {300, ":INPUTS", "1 Player Start", 4} }
 emu.register_frame_done(function()
   local f = screen:frame_number()
   for _, e in ipairs(ev) do

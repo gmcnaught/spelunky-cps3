@@ -14,8 +14,8 @@ for run in 1 2; do
     -state_directory "$O/w/sta" -inipath "$O/w" -autoboot_script scripts/lua/shellin.lua >"$O/mame$run.log" 2>&1 || true
 done
 python3 tools/shellcheck.py "$O/mame1.log" "$O/mame2.log"
-# the settings screen (opened by Coin + B2): free play on, 2 coins a credit and the run toggle stored (EEPROM word
-# 27), a game begun without a coin
+# the settings screen (opened by Coin + B2): free play on, 2 coins a credit, the run toggle and smooth motion off
+# stored (EEPROM word 27), a game begun without a coin
 O2=$O/menu; mkdir -p "$O2/w"
 SHLOG=$A scripts/mame.sh sfiii3na -rompath "$B/mame" -skip_gameinfo -nothrottle -sound none -video none -seconds_to_run 60 \
   -cfg_directory "$O2/w/cfg" -nvram_directory "$O2/w/nvram" -snapshot_directory "$O2/snap" -inipath "$O2/w" \
@@ -24,7 +24,7 @@ python3 - "$O2/mame.log" "$O2/w/nvram/sfiii3na/eeprom" <<'PY'
 import struct, sys
 b = [l.split() for l in open(sys.argv[1]) if l.startswith('BEGIN')]
 w = struct.unpack('<I', open(sys.argv[2], 'rb').read()[27 * 4:28 * 4])[0]
-ok = len(b) == 1 and b[0][2] == '0' and w == 0x203
-print(('ok   ' if ok else 'FAIL ') + f'settings screen: free play + 2 coins + run toggle stored (word 27 = {w:#x}), game begun without a coin {b}')
+ok = len(b) == 1 and b[0][2] == '0' and w == 0x207
+print(('ok   ' if ok else 'FAIL ') + f'settings screen: free play + 2 coins + run toggle + smooth off stored (word 27 = {w:#x}), game begun without a coin {b}')
 sys.exit(0 if ok else 1)
 PY

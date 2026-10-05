@@ -24,7 +24,7 @@
 #include "gametime.h"
 
 /* the frame loop's calls, timed */
-static uint32_t fr_vbl, fr_snd, pair_acc;
+static uint32_t fr_vbl, fr_v, fr_snd, pair_acc;
 static int pair_open;
 static void max_to(volatile uint32_t *m, uint32_t v) { if (v > *m) *m = v; }
 static void t_draw_vblank(void)
@@ -53,6 +53,8 @@ static int t_shell_frame(uint32_t p0, uint32_t p1, uint32_t lines)
         return 0;
     }
     tdraw = 0;
+    fr_v = fr_vbl;                                /* this frame's VBlank work (0 on a late frame: src/main/main.c) */
+    fr_vbl = 0;
     t = now();
     r = shell_frame(p0, p1, lines);
     c = (now() - t) * 32;
@@ -69,7 +71,7 @@ static int t_shell_frame(uint32_t p0, uint32_t p1, uint32_t lines)
         return r;
     }
     s->frames++;
-    s->vbl_sum += fr_vbl; max_to(&s->vbl_max, fr_vbl);
+    s->vbl_sum += fr_v; max_to(&s->vbl_max, fr_v);
     s->snd_sum += fr_snd; max_to(&s->snd_max, fr_snd);
     if (r && (sec == 0 || (uint32_t)game_steps != steps0)) {   /* a step (attract step or game step) ran */
         if (pair_open) {                          /* the previous pair is complete */
@@ -89,7 +91,7 @@ static int t_shell_frame(uint32_t p0, uint32_t p1, uint32_t lines)
     } else {
         s->shl_sum += c; max_to(&s->shl_max, c);
     }
-    pair_acc += fr_vbl + fr_snd + c;
+    pair_acc += fr_v + fr_snd + c;
     if (sec > 0 && game_over) {                   /* the game ended: next section */
         pair_open = 0;
         gt_section_end();

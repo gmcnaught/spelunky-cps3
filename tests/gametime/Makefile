@@ -30,7 +30,7 @@ CFLAGS := $(OPT) -std=gnu99 -fno-bit-tests -Wno-unused-parameter -Wno-sign-compa
           -Ibuild/g -Ibuild -I. -I$(GEN) -I$(ROOT)/src/draw -I$(ROOT)/src/main -I$(ROOT)/src/hud -I$(ROOT)/src/shell \
           -I$(ROOT)/src/snd -I$(ROOT)/src/front -DSOFTFP_ASM -fdata-sections -Wl,-T,../game/sprbss.ld -Wl,-T,../ramcheck.ld \
           '-DDRAW_MAPS_SECTION=__attribute__((section(".bss.drawmaps")))' \
-          '-DDRAW_CACHE_SECTION=__attribute__((section(".bss.drawcache")))' '-DROUTE_NAME="$(shell echo $(ROUTE) | tr a-z A-Z)"' '-DROUTE2_NAME="$(shell echo $(ROUTE2) | tr a-z A-Z)"' -DATTRACT_FRAMES=$(ATTRACT_FRAMES)
+          '-DDRAW_CACHE_SECTION=__attribute__((section(".bss.drawcache")))' '-DROUTE_NAME="$(shell echo $(ROUTE) | tr a-z A-Z)"' '-DROUTE2_NAME="$(shell echo $(ROUTE2) | tr a-z A-Z)"' -DATTRACT_FRAMES=$(ATTRACT_FRAMES) $(if $(filter 1,$(SMOOTH)),-DGAME_SMOOTH)
 FLASH  := build/flash.bin
 include ../../../cps3-testgame/sdk/sdk.mk
 
