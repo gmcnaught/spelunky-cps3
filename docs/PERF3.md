@@ -264,5 +264,19 @@ Load-use stall (from spelunky-cps3-a6, low priority): jtcps3 stalls 1 cycle on a
   collision_rectangle in the grid build; caveman 150 -5.6 %, cavestun 150 -8.6 % fit), attr-caller (a6: ATTR's
   collision searches by calling object). MAME SOFTFP mean of means 145.8 -> 140.1 K (snakes -9.1 %, cavestun
   -7.5 %, caveman -6.2 %); gametime (MAME) p5_snakes pair max 226.5 -> 204.2 K. Gates as before, all equal.
+  Frame budget on jtcps3 (.62), game 2 (p5_snakes): step mean / max 489.4 K / 754.2 K, draw 98.0 K / 132.8 K, pair
+  mean 593.8 K (was 674.7 K), max 847.9 K, **2 of 241 pairs over** (was 14; the worst 9 K over). Game 1
+  (p4_push_rope): step mean 444.7 K, pairs over 1 of 375 (the level start, as before).
+  Route timing on jtcps3 (.62, JT build of 0cb7be6, PASS 23/23): route mean of means **517.1 K** (-6.5 %), 8 of 18
+  over 0.525 M: caveman 739.3 K, giant 665.1 K, bomb_drop 623.4 K, idol 579.3 K, l4 569.4 K, shop 569.3 K, walk
+  553.4 K, cavestun 547.5 K; snakes 497.7 K, spider 450.5 K.
+- Batch 7 (perf3-b2 0a73215): view tests on the float bits (42906e2, 0a73215: PLTI / PGTI, gcmp_fi out of line; all
+  2^32 floats x 20 v and 2^21 ulps around each v in [-4096, 8192) equal the double compare), game-search (a6,
+  8b65712: a resting oMoveableSolid skips its place_meeting; giant 100 -7.4 %, l4 150 -9.7 % fit). jtcost (fit) at
+  0a73215: p5_snakes 203 666.9 -> 648.7 K, p5_caveman 150 735.7 -> 662.5 K. gametime (MAME) p5_snakes pair max
+  204.2 -> 199.8 K. Gates: gates.sh (p5_regress 19/19 both builds, colprobe, snd), ctall 48/48, EQUIV 72/72,
+  FULLREG 640/640, playsh2 grid / EXACT / SOFTFP 6,851 equal, game_check, gametime, JT: all pass.
+- Measured and dropped: anim_one's image compares as integer bit tests (img_ge / img_lt0, equal to the float
+  compares over all 2^32 / 300 M pairs): p4 301 554.0 -> 552.4 K, p5 956 445.9 -> 448.0 K fit, stack stores +70.
 - Measured and dropped: a call-free pg_collect for pgrid_search (-1.4 / -1.0 / +0.6 / +0.2 %: noise, +3.5 KB).
 - jtcost hangs when asked for two consecutive steps of one route: trace one step per run.
