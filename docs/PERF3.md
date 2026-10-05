@@ -368,6 +368,12 @@ Load-use stall (from spelunky-cps3-a6, low priority): jtcps3 stalls 1 cycle on a
   ends for fractional positions in fixed point: the path almost never runs (debris is whole after moveTo's pixel
   steps). isCollisionTop's cost on detritus is the pcol flush in solid_hline_any (the movers' dirty entries), not the
   double path. Not kept (a6): treasure_step's colBot settle as raw writes (the path does not run on bomb_drop 202).
+- Measured and not kept (a6): anim_one's step through a direct-mapped cache keyed by img / ispd / sp / fr bits (16 or 64
+  entries; image_speed on p5_reg_l14s16 is 0.4 / 0.5 / 0.8 / 0.3 / 0.25, sp always 1, so a k / 2^n fixed-point path
+  covers under 40 %): MAME SOFTFP l14s16 -1.5 %, jtcost fit record 22 +0.5 / +0.7 % (the table's D-misses). A
+  hardware A / B would settle whether jtcost over-penalizes small hot tables.
+- Measured: line_hit's double path (pin_bbox, the float casts) runs 11 times over p5_reg_l14s16 (one BB_DBL object);
+  not worth a path.
 - Measured and not kept (a6): PERF3 3.2's hot / cold split of characterStepEvent (4 cold helpers): caveman 178
   +0.01 %, snakes 203 +0.04 %, exit559 301 -0.6 % (its misses are code that runs every step).
 - Measured and not kept (a6): a pw_onz bitmap of non-empty object lists for snapshot / the alarm pass: +0.3 / +0.8 %
