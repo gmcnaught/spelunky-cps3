@@ -317,6 +317,7 @@ int pin_ibox(int i, int32_t *b);                  /* the box l, t, r, b when who
 int pin_box_outside(int i, int w, int h);          /* its box is outside [0, w] x [0, h] (Outside Room) */
 /* the alive instances of each object in creation order: pw_ohead[obj], then pw_inext[i] (NOONE ends) */
 extern int16_t pw_ohead[OBJ_COUNT], pw_inext[PIN_MAX];
+extern uint32_t pw_onz_gen;                    /* pworld.c: an object list went empty <-> non-empty */
 extern int16_t pw_ahead, pw_anext[PIN_MAX];        /* every alive instance in creation order */
 int pw_count(int obj);                            /* alive instances of obj with its descendants */
 /* the drawing's dirty list: the instances whose x, y, sprite, mask, scales, angle, image_index, visible or depth

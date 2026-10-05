@@ -42,6 +42,12 @@ static uint16_t objev(int obj)
 #define EVK_DRAW 15
 static int16_t evobj[1024];
 static int16_t evobj0[17];
+/* per key, the objects of evobj[evobj0[key] ..] whose list was non-empty when it was built: evnz[evobj0[key] ..
+   + evnzn[key]], valid while pw_onz_gen is evnzg[key] - 1 (no list went empty or non-empty since: the same objects
+   have instances). A walk over it visits the same instances as one over evobj's: an object it leaves out had an
+   empty list then and still has */
+static int16_t evnz[1024], evnzn[16];
+static uint32_t evnzg[16];
 
 static void evobj_init(void)
 {
@@ -62,6 +68,18 @@ static void evobj_init(void)
     evobj0[16] = (int16_t)n;
 }
 
+static void evnz_sync(int k0, int k1)
+{
+    int key, j, n;
+    for (key = k0; key < k1; key++) {
+        if (evnzg[key] == pw_onz_gen + 1) continue;
+        for (j = evobj0[key], n = 0; j < evobj0[key + 1]; j++)
+            if (pw_ohead[evobj[j]] >= 0) evnz[evobj0[key] + n++] = evobj[j];
+        evnzn[key] = (int16_t)n;
+        evnzg[key] = pw_onz_gen + 1;
+    }
+}
+
 /* the alive instances whose object has the event `key`, in dispatch order: the objects in runtime order, each
    object's instances in creation order (pworld.c's lists) */
 static int snapshot(int key)
@@ -69,9 +87,10 @@ static int snapshot(int key)
     int j, n = 0;
     if (evobj0[16] == 0) evobj_init();
     PWST(snap, 1);
-    for (j = evobj0[key]; j < evobj0[key + 1]; j++) {
+    evnz_sync(key, key + 1);
+    for (j = evobj0[key]; j < evobj0[key] + evnzn[key]; j++) {
         int i;
-        for (i = pw_ohead[evobj[j]]; i >= 0; i = pw_inext[i]) {
+        for (i = pw_ohead[evnz[j]]; i >= 0; i = pw_inext[i]) {
             PWST(snapv, 1);
             order[n++] = (int16_t)i;
         }
@@ -451,11 +470,14 @@ int play_step(uint16_t keys, void (*record_cb)(int phase))
        them out */
     seq0 = PW.seq;
     if (evobj0[16] == 0) evobj_init();
+    /* the objects with instances when the alarm passes start: one empty then gets only instances created during
+       the passes (pw_seq >= seq0, skipped below), so leaving it out changes nothing */
+    evnz_sync(0, 12);
     for (a = 0; a < 12; a++) {                                                 /* alarms */
         int j;
-        for (j = evobj0[a]; j < evobj0[a + 1]; j++) {
+        for (j = evobj0[a]; j < evobj0[a] + evnzn[a]; j++) {
             int i;
-            for (i = pw_ohead[evobj[j]]; i >= 0; i = pw_inext[i]) {
+            for (i = pw_ohead[evnz[j]]; i >= 0; i = pw_inext[i]) {
                 struct pin *p = &PX(i);
                 if (!p->alive || pw_seq[i] >= seq0) continue;
                 if (PE(p)->alarm[a] >= 0) {
