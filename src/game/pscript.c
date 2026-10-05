@@ -251,10 +251,13 @@ void moveTo(int i, num a0, num a1, int32_t *xio, int32_t *yio)
     pos mtXPrev = p->x, mtYPrev = p->y;
     struct vparts vx, vy;
     int32_t xVelInteger = 0, yVelInteger = 0;
-    int ch, xdone = 0, ydone = 0;
+    int ch, xdone = 0, ydone = 0, raw = 0;
 #if PLAY_WALK
     int32_t il, it, ir, ib;
 #endif
+/* a pixel step: the setter, or (raw) the field alone, the setter called once with the position reached (below) */
+#define MT_SETX(v) (raw ? (void)(PIN_WR(pos, p->x) = (v)) : pin_setx(p, (v)))
+#define MT_SETY(v) (raw ? (void)(PIN_WR(pos, p->y) = (v)) : pin_sety(p, (v)))
     vel_parts(a0, &vx);
     vel_parts(a1, &vy);
     if (vx.r != 0) xVelInteger = (int32_t)(play_time % (uint32_t)vx.r) == 0;
@@ -268,16 +271,19 @@ void moveTo(int i, num a0, num a1, int32_t *xio, int32_t *yio)
        the line test alone (is_character is the object's, constant here) */
     ch = is_character(i);
 #if PLAY_WALK
+    /* the other walks (a character, a fractional position) step the fields alone: their tests are oSolid / oPlatform
+       searches that exclude the mover (the same calls in the same order), a mover outside both families */
+    raw = !obj_is(p->obj, OBJ_oSolid) && !obj_is(p->obj, OBJ_oPlatform);
     if (xVelInteger != 0 && !ch && !obj_is(p->obj, OBJ_oSolid) && ibounds(i, &il, &it, &ir, &ib)) {
         int32_t n = xVelInteger > 0 ? xVelInteger : -xVelInteger, k;
         for (k = 0; k < n; k++)
             if (solid_vline_any(xVelInteger > 0 ? ir + k : il - 1 - k, it + 5, ib - 1, i)) break;
-        if (k) pin_setx(p, mtXPrev + PI(xVelInteger > 0 ? k : -k));
+        if (k) MT_SETX(mtXPrev + PI(xVelInteger > 0 ? k : -k));
         xdone = 1;
     }
 #endif
     if (xVelInteger > 0 && !xdone)                                             /* :39 */
-        for (; p->x < mtXPrev + PI(xVelInteger); pin_setx(p, p->x + (PI(1)))) {
+        for (; p->x < mtXPrev + PI(xVelInteger); MT_SETX(p->x + (PI(1)))) {
             int solidId;
             if (!ch) {
                 if (anyCollisionRight(i, 1)) break;
@@ -296,7 +302,7 @@ void moveTo(int i, num a0, num a1, int32_t *xio, int32_t *yio)
             }
         }
     if (xVelInteger < 0 && !xdone)                                             /* :64 */
-        for (; p->x > mtXPrev + PI(xVelInteger); pin_setx(p, p->x - (PI(1)))) {
+        for (; p->x > mtXPrev + PI(xVelInteger); MT_SETX(p->x - (PI(1)))) {
             int solidId;
             if (!ch) {
                 if (anyCollisionLeft(i, 1)) break;
@@ -318,12 +324,12 @@ void moveTo(int i, num a0, num a1, int32_t *xio, int32_t *yio)
         int32_t n = yVelInteger > 0 ? yVelInteger : -yVelInteger, k;
         for (k = 0; k < n; k++)
             if (solid_hline_any(yVelInteger > 0 ? ib + k : it - 1 - k, il, ir - 1, i)) break;
-        if (k) pin_sety(p, mtYPrev + PI(yVelInteger > 0 ? k : -k));
+        if (k) MT_SETY(mtYPrev + PI(yVelInteger > 0 ? k : -k));
         ydone = 1;
     }
 #endif
     if (yVelInteger > 0 && !ydone)                                             /* :89 */
-        for (; p->y < mtYPrev + PI(yVelInteger); pin_sety(p, p->y + (PI(1)))) {
+        for (; p->y < mtYPrev + PI(yVelInteger); MT_SETY(p->y + (PI(1)))) {
             if (isCollisionBottom(i, 1))
                 break;
             if (is_character(i))
@@ -331,9 +337,18 @@ void moveTo(int i, num a0, num a1, int32_t *xio, int32_t *yio)
                     break;
         }
     if (yVelInteger < 0 && !ydone)                                             /* :98 */
-        for (; p->y > mtYPrev + PI(yVelInteger); pin_sety(p, p->y - (PI(1))))
+        for (; p->y > mtYPrev + PI(yVelInteger); MT_SETY(p->y - (PI(1))))
             if (isCollisionTop(i, 1))
                 break;
+    if (raw) {                                     /* the setters, once: x then y, as the walks' last calls */
+        pos fx = p->x, fy = p->y;
+        PIN_WR(pos, p->x) = mtXPrev;
+        PIN_WR(pos, p->y) = mtYPrev;
+        pin_setx(p, fx);
+        pin_sety(p, fy);
+    }
+#undef MT_SETX
+#undef MT_SETY
     if (xio) *xio = xVelInteger;
     if (yio) *yio = yVelInteger;
 }
