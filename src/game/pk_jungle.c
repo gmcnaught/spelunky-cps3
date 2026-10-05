@@ -775,13 +775,40 @@ static void spears(int i, int right)
     PE(&PX(i))->fired = 50;                                            /* firedMax */
 }
 
+/* the spear traps' compares (fast: the trap at whole x, y with 0 <= y < 2^14, |x| < 2^14). The y test
+   abs(k.y - y - off) < 4 (off 8 or 0) is k.y - (y + off - 4) > eps and k.y - (y + off + 4) < -eps, and the x tests
+   are gcmp_fi's: a float k.y with |k.y| >= 2^-14 makes every difference here exact in a double (at most 53 bits from
+   2^15 down to its last bit, or a whole number), so both forms compare the same reals with the same eps; for a
+   smaller nonzero |k.y| (the only inexact case) both forms are false, as y >= 0 keeps every bound at least 4 away
+   (the one at y + off - 4 = 0, y = 4 off 0, is within 2^-27 of k.y only when the double difference rounds to
+   within eps of 0: false too). The host builds compare the two forms on every call */
+static int st_y(int fast, int k, double y, int32_t iy, int off)
+{
+    int r = fast ? PGTI(PX(k).y, iy + off - 4) && PLTI(PX(k).y, iy + off + 4) :
+                   off ? DLT(dabs(Y(k) - y - off), 4) : DLT(dabs(Y(k) - y), 4);
+#ifdef PLAY_STATS
+    if (fast && r != (off ? DLT(dabs(Y(k) - y - off), 4) : DLT(dabs(Y(k) - y), 4))) {
+        fprintf(stderr, "st_y: %d %.17g %d\n", k, Y(k), (int)iy);
+        abort();
+    }
+#endif
+    return r;
+}
+/* side 1: k.x > x + off, side 0: k.x < x + off (gcmp_fi with the whole x + off; PGTI / PLTI as DGT / DLT) */
+static int st_x(int fast, int k, double x, int32_t ix, int off, int side)
+{
+    if (fast) return side ? PGTI(PX(k).x, ix + off) : PLTI(PX(k).x, ix + off);
+    return side ? DGT(X(k), x + off) : DLT(X(k), x + off);
+}
+
 static void speartrap_step(int i)                                    /* objects/oSpearTrapBottom|Top/Step_0.gml */
 {
     struct pin *p = &PX(i);
-    double x = X(i), y = Y(i), range = 64, prox = 4;
+    double x = X(i), y = Y(i), range = 64;
     int q = pl(), obj, side, have = 0, ne = NOONE, nm = NOONE, ni = NOONE;
-    int32_t ix, iy;
+    int32_t ix = 0, iy = 0;                                           /* (set when whole) */
     int whole = pin_xy_int(i, &ix, &iy);
+    int fast = whole && iy >= 0 && iy < 16384 && ix > -16384 && ix < 16384;
     if (PE(p)->fired > 0) PE(p)->fired -= 1;
     /* each test reads the nearest instance only after fired == 0 (instance_nearest has no effect), and only spears()
        changes anything here: it sets fired, after which no test passes. So the three nearest instances are found
@@ -789,7 +816,7 @@ static void speartrap_step(int i)                                    /* objects/
        (12 spear traps on a lush level made 72 instance_nearest calls a step) */
     for (side = 0; side < 2; side++) {
         /* oPlayer1 */
-        if (PE(&PX(i))->fired == 0 && DLT(dabs(Y(q) - y - 8), prox) && (side ? DGT(X(q), x + 8) : DLT(X(q), x)) &&
+        if (PE(&PX(i))->fired == 0 && st_y(fast, q, y, iy, 8) && st_x(fast, q, x, ix, side ? 8 : 0, side) &&
             DLT(point_distance_d(x + 8, y + 8, X(q), Y(q)), range))
             spears(i, side);
         if (PE(&PX(i))->fired != 0) continue;
@@ -810,9 +837,9 @@ static void speartrap_step(int i)                                    /* objects/
             {   /* the host builds: a skipped nearest could not have passed */
                 int e = instance_nearest_p(x, y, OBJ_oEnemy), m = instance_nearest_p(x, y, OBJ_oMoveableSolid);
                 int t = instance_nearest_p(x, y, OBJ_oItem);
-                if ((ne == NOONE && e != NOONE && DLT(dabs(Y(e) - y), prox) && DLT(point_distance_d(x, y, X(e), Y(e)), range)) ||
-                    (nm == NOONE && m != NOONE && DLT(dabs(Y(m) - y), prox) && DLT(point_distance_d(x, y, X(m), Y(m)), range)) ||
-                    (ni == NOONE && t != NOONE && DLT(dabs(Y(t) - y - 8), prox) &&
+                if ((ne == NOONE && e != NOONE && DLT(dabs(Y(e) - y), 4) && DLT(point_distance_d(x, y, X(e), Y(e)), range)) ||
+                    (nm == NOONE && m != NOONE && DLT(dabs(Y(m) - y), 4) && DLT(point_distance_d(x, y, X(m), Y(m)), range)) ||
+                    (ni == NOONE && t != NOONE && DLT(dabs(Y(t) - y - 8), 4) &&
                      DLT(point_distance_d(x + 8, y + 8, X(t), Y(t)), range))) {
                     fprintf(stderr, "speartrap_step: a skipped nearest passes (trap %d)\n", i);
                     abort();
@@ -821,16 +848,15 @@ static void speartrap_step(int i)                                    /* objects/
 #endif
         }
         obj = ne;
-        if (obj != NOONE && PE(&PX(i))->fired == 0 && DLT(dabs(Y(obj) - y), prox) &&
-            (side ? DGT(X(obj), x) : DLT(X(obj), x)) && DLT(point_distance_d(x, y, X(obj), Y(obj)), range))
+        if (obj != NOONE && PE(&PX(i))->fired == 0 && st_y(fast, obj, y, iy, 0) && st_x(fast, obj, x, ix, 0, side) &&
+            DLT(point_distance_d(x, y, X(obj), Y(obj)), range))
             spears(i, side);
         obj = nm;
-        if (obj != NOONE && PE(&PX(i))->fired == 0 && DLT(dabs(Y(obj) - y), prox) &&
-            (side ? DGT(X(obj), x) : DLT(X(obj), x)) && DLT(point_distance_d(x, y, X(obj), Y(obj)), range))
+        if (obj != NOONE && PE(&PX(i))->fired == 0 && st_y(fast, obj, y, iy, 0) && st_x(fast, obj, x, ix, 0, side) &&
+            DLT(point_distance_d(x, y, X(obj), Y(obj)), range))
             spears(i, side);
         obj = ni;
-        if (obj != NOONE && PE(&PX(i))->fired == 0 && DLT(dabs(Y(obj) - y - 8), prox) &&
-            (side ? DGT(X(obj), x + 8) : DLT(X(obj), x + 8)) &&
+        if (obj != NOONE && PE(&PX(i))->fired == 0 && st_y(fast, obj, y, iy, 8) && st_x(fast, obj, x, ix, 8, side) &&
             DLT(point_distance_d(x + 8, y + 8, X(obj), Y(obj)), range))
             spears(i, side);
     }
