@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """The title logo, "SPELUNKY CLASSIC ARCADE" (sTitle_HD in place of HD's "SPELUNKY CLASSIC HD"), built from HD's own
-sTitle_HD at build time so the repo carries no HD art: rows 0..31, columns 0..127 (SPELUNKY over CLASSIC) unchanged,
+sTitle_HD at build time (as all art, from refs/): rows 0..31, columns 0..127 (SPELUNKY over CLASSIC) unchanged,
 at the same place (oTitleLogo's sTitle, drawn behind it 1 px left, is its shadow); HD's big "HD" (columns 131..192)
 dropped; a third line, ARCADE (rows 32..47), in CLASSIC's cracked 15 x 16 letters 1 column apart, centred under it
 (columns 16..110): A and C from CLASSIC, E from SPELUNKY, R from P's bowl over K's stem and leg, D from P and U with

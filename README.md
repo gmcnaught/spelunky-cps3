@@ -4,8 +4,8 @@ Spelunky® Copyright (c) 2008, 2009 Derek Yu and Mossmouth, LLC. This is an unof
 port of [Spelunky Classic HD](https://github.com/yancharkin/SpelunkyClassicHD) (yancharkin), itself a modified
 version of Derek Yu's Spelunky Classic. It is not an official or unmodified version of the game, is not affiliated
 with or endorsed by Mossmouth or Capcom, and may not be sold. It is distributed under the Spelunky User License
-v1.1b ([LICENSE](LICENSE)). No game assets or Capcom ROMs are included (`docs/img/title.png` is a screenshot of
-the port running in MAME).
+v1.1b ([LICENSE](LICENSE)), which also covers the game art it includes (such as the title screenshot below), as
+Spelunky Classic HD and SD distribute theirs. No Capcom ROMs are included.
 
 ![Title screen: Spelunky Classic Arcade](docs/img/title.png)
 
@@ -14,8 +14,8 @@ Spelunky Classic HD 1.2.2 re-implemented in C as a homebrew ROM set for the Capc
 measurements are in [PLAN.md](PLAN.md). Its title (title screen and MRA) is **Spelunky Classic Arcade**: the
 logo is built from HD's at build time (`tools/titlelogo.py`), with ARCADE in place of HD. The current state is in [docs/HANDOFF.md](docs/HANDOFF.md).
 
-Game assets are never committed. Everything under `refs/`, `build/` and `rom/` is git-ignored and is rebuilt
-locally (see [Build inputs](#build-inputs-refs-and-buildgen)).
+The build reads HD's art, sound and data from `refs/`. Everything under `refs/`, `build/` and `rom/` is git-ignored
+and is rebuilt locally (see [Build inputs](#build-inputs-refs-and-buildgen)).
 
 ## Where the code is
 
