@@ -1685,6 +1685,12 @@ static int direct_pairs(int s)
     int os = PW.in[s].obj, k, j, n = 0, o, i, t;
     const struct pobj *q = &pobj[os];
     int16_t c[DP_MAX];
+    /* ocnt bounds each list's length (it counts the alive instances and the destroyed entries still in the grid):
+       a sum over DP_MAX goes to the search before any list is read (p5_reg_l9s5: oEnemySight's hundreds) */
+    for (k = n = 0; k < q->ncol; k++) n += ocnt[pcol[q->col0 + k]];
+    for (k = rv_beg[os]; k < rv_beg[os] + rv_n[os]; k++) n += ocnt[rv_obj[k]];
+    if (n > DP_MAX) return 0;
+    n = 0;
     for (k = 0; k < q->ncol; k++) {
         t = pcol[q->col0 + k];
         if (!ocnt[t]) continue;
