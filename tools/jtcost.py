@@ -246,11 +246,11 @@ for (h, cf), v in callers.most_common(30): print('  %-16s <- %-24s %6d' % (h, cf
 
 SIMM1 = os.getenv('JTC_SIMM1')                   # simm1.bin (.text at 0x06000000): what the missed literals hold
 if SIMM1:
-    img = open(SIMM1, 'rb').read(); kinds = collections.Counter()
+    img = open(SIMM1, 'rb').read(); kinds = collections.Counter(); litsym = collections.Counter()
     for a, v in litmiss.items():
         o = (a & 0x1fffffff) - 0x06000000
         w = int.from_bytes(img[o:o + 4], 'big') if 0 <= o and o + 4 <= len(img) else -1
-        if 0x02000000 <= w < 0x02080000: k = 'RAM data address'
+        if 0x02000000 <= w < 0x02080000: k = 'RAM data address'; litsym[dname(w)] += v
         elif 0x04000000 <= w < 0x05000000: k = 'video / sprite RAM address'
         elif 0x06000000 <= w < 0x06100000 and fn(w) != '?' and (w in STARTS): k = 'function address'
         elif 0x06000000 <= w < 0x07000000: k = 'SIMM data address (tables)'
@@ -258,6 +258,7 @@ if SIMM1:
         kinds[k] += v
     print('\nliteral-pool line misses by what the literal holds (JTC_SIMM1)')
     for k, v in kinds.most_common(): print('  %-30s %6d' % (k, v))
+    print('  RAM addresses by symbol: ' + ', '.join('%s %d' % kv for kv in litsym.most_common(25)))
 
 if PCHIST:
     print('\n%s: executions by address (JTC_PCHIST)' % PCHIST)

@@ -150,7 +150,18 @@ struct pworld {
     uint32_t step;          /* steps run in this room */
     uint8_t room_new;       /* a room started since the last step (the tracer's phase-0 record is due) */
 };
-extern struct pworld PW;
+extern struct pworld pw_mem;
+/* PW: the play world. On the SH-2 it is addressed through GBR (pw_gbr_init sets it to &pw_mem at boot, before any
+   play code runs): PW.in and its scalars are one mov @(disp,GBR) each, not a literal-pool load of PW's address and
+   then the access (322 of the missed literal loads of p5_caveman step 150 were PW's address). GBR is used nowhere
+   else (the SDK and the tests' assembly do not touch it); the host builds use pw_mem directly */
+#if defined(__sh__) && !defined(PW_NO_GBR)
+#define PW (*(struct pworld *)__builtin_thread_pointer())
+static inline void pw_gbr_init(void) { __builtin_set_thread_pointer(&pw_mem); }
+#else
+#define PW pw_mem
+static inline void pw_gbr_init(void) {}
+#endif
 /* creation order: pw_seq[i] is slot i's creation number in this room (older < newer); pw_ord[0 .. PW.nord) the
    slots in creation order (alive, or dead and not yet back on the free list) */
 extern int16_t pw_seq[PIN_MAX];

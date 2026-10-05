@@ -8,6 +8,7 @@
 #include "sndgame.h"
 #include "draw.h"
 #include "game.h"
+#include "play.h"                            /* pw_gbr_init */
 
 __attribute__((weak)) void main_inputs(uint32_t *pad0, uint32_t *pad1, uint32_t *lines)
 {
@@ -61,6 +62,7 @@ __attribute__((weak)) void main_boot(void) {}
 
 int main(void)
 {
+    pw_gbr_init();                               /* PW through GBR (src/game/play.h) */
     cps3_init();
     main_boot();
     load_gfx();
