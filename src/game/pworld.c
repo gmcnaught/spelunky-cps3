@@ -985,7 +985,7 @@ struct pcinst {
     const uint8_t *mask;                        /* NULL: the sprite has no mask (its box counts) */
 };
 
-static int pcinst_of(int i, double dx, double dy, struct pcinst *q)
+static int pcinst_of_raw(int i, double dx, double dy, struct pcinst *q)
 {
     const struct pin *p = &PW.in[i];
     int s = spr_of(p);
@@ -1012,6 +1012,57 @@ static int pcinst_of(int i, double dx, double dy, struct pcinst *q)
         q->mask = pmaskdata + ps->maskoff + f * q->bpr * (c->b - c->t + 1);
     }
     return 1;
+}
+
+/* pcinst_of through a 2-entry cache keyed by what it reads: x, y, the scales, the angle, the image index (the mask
+   frame), the sprite or mask, and dx, dy (bits). Its result (the box through pin_bbox, the transform's floats and
+   the mask frame's address) is a function of those and the static sprite tables, so a hit is the struct a call
+   fills. The precise line and point tests rebuild it for every query against the same instance (the idol's
+   rotating boulder: 27 a step, about 3.8 K jtcps3 clocks each in soft-float). PLAY_STATS builds compare every hit
+   with a fresh pcinst_of_raw */
+struct pcc { uint32_t x, y, xs, ys, ang, img; uint64_t dx, dy; int16_t s; uint8_t ok, ret; struct pcinst q; };
+static struct pcc pccache[2];
+static unsigned pcnext;
+
+static uint32_t pcf(float f) { union { float f; uint32_t u; } v; v.f = f; return v.u; }
+static uint64_t pcd(double d) { union { double d; uint64_t u; } v; v.d = d; return v.u; }
+
+static int pcinst_of(int i, double dx, double dy, struct pcinst *q)
+{
+    const struct pin *p = &PW.in[i];
+    uint32_t x = pcf(p->x), y = pcf(p->y), xs = pcf(p->xscale), ys = pcf(p->yscale), ang = pcf(p->angle),
+             img = pcf((float)p->img);
+    uint64_t bx = pcd(dx), by = pcd(dy);
+    int s = spr_of(p), k, r;
+    for (k = 0; k < 2; k++) {
+        const struct pcc *c = &pccache[k];
+        if (c->ok && c->x == x && c->y == y && c->xs == xs && c->ys == ys && c->ang == ang && c->img == img &&
+            c->s == s && c->dx == bx && c->dy == by) {
+#ifdef PLAY_STATS
+            struct pcinst f;
+            int fr = pcinst_of_raw(i, dx, dy, &f);
+            if (fr != c->ret || (fr && (pcf(f.x) != pcf(c->q.x) || pcf(f.y) != pcf(c->q.y) || pcf(f.xs) != pcf(c->q.xs) ||
+                pcf(f.ys) != pcf(c->q.ys) || pcf(f.ang) != pcf(c->q.ang) || pcf(f.bl) != pcf(c->q.bl) ||
+                pcf(f.bt) != pcf(c->q.bt) || pcf(f.br) != pcf(c->q.br) || pcf(f.bb) != pcf(c->q.bb) ||
+                pcf(f.xo) != pcf(c->q.xo) || pcf(f.yo) != pcf(c->q.yo) || pcf(f.ml) != pcf(c->q.ml) ||
+                pcf(f.mt) != pcf(c->q.mt) || pcf(f.mr) != pcf(c->q.mr) || pcf(f.mb) != pcf(c->q.mb) ||
+                f.bpr != c->q.bpr || f.mask != c->q.mask))) {
+                fprintf(stderr, "pcinst_of: cached transform differs (%d)\n", i);
+                abort();
+            }
+#endif
+            if (c->ret) *q = c->q;
+            return c->ret;
+        }
+    }
+    r = pcinst_of_raw(i, dx, dy, q);
+    {
+        struct pcc *c = &pccache[pcnext++ & 1];
+        c->x = x; c->y = y; c->xs = xs; c->ys = ys; c->ang = ang; c->img = img; c->s = (int16_t)s;
+        c->dx = bx; c->dy = by; c->ok = 1; c->ret = (uint8_t)r;
+        if (r) c->q = *q;
+    }
+    return r;
 }
 
 static int pc_bit(const struct pcinst *q, float lx, float ly)
