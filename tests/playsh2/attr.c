@@ -12,7 +12,11 @@
  * While a collision call runs the PC sampler's tag is cleared, so a PROF build samples everything else.
  * Results in character RAM (scripts/lua/playsh2.lua), each a clocks low word, clocks high word, calls: 0x04180000
  * per category (dispatch, collision, pcol, instance searches); 0x04180100 per event type (8) x object
- * (OBJ_COUNT). Each step's collision clocks are the step record's extra word (main.c). */
+ * (OBJ_COUNT); 0x0418c000 the collision searches by caller: rows 0, 2, 3 the categories dispatch, pcol and
+ * instance searches when no event encloses the call, row 4 + obj the innermost enclosing event's object (any
+ * event type; a search inside a search counts once, with the outer call's caller). Each step's collision clocks
+ * are the step record's extra word (main.c). The --wrap hooks see only calls between translation units:
+ * scripts/playsh2_check.sh builds ATTR with UNITY=0. */
 #include "pint.h"
 #include "core.h"
 
@@ -20,6 +24,9 @@ uint32_t plat_now(void);                         /* main.c: FRC ticks (x 32 cloc
 #define R32P(a) ((volatile uint32_t *)(a))
 #define CAT ((volatile uint32_t *)0x04180000)    /* [cat * 3]: clocks low, high, calls */
 #define EVT ((volatile uint32_t *)0x04180100)    /* [(type * OBJ_COUNT + obj) * 3]: clocks low, high, calls */
+#define CLR ((volatile uint32_t *)0x0418c000)    /* [row * 3]: collision searches by caller (row 4 + obj) */
+_Static_assert(0x04180100 + 8 * OBJ_COUNT * 12 <= 0x0418c000, "EVT runs into CLR");
+_Static_assert(0x0418c000 + (4 + OBJ_COUNT) * 12 <= 0x04190000, "CLR past the area main.c clears");
 #define P_TAG (*(volatile uint32_t *)0x04100014)
 
 enum { C_DISPATCH, C_COLL, C_PCOL, C_SEARCH, C_EV };
@@ -27,7 +34,14 @@ enum { E_CREATE, E_DESTROY, E_STEP, E_END, E_ALARM, E_ANIMEND, E_COLLISION, E_DR
 
 static int on, depth;
 static uint32_t last, step_coll;
-static struct ctx { int16_t cat, type, obj; uint32_t tag; } st[64], cur;
+static struct ctx { int16_t cat, type, obj, row; uint32_t tag; } st[64], cur;   /* row: C_COLL's caller */
+
+static void add64(volatile uint32_t *a, uint32_t d)
+{
+    uint32_t lo = a[0] + d;
+    if (lo < d) a[1] += 1;
+    a[0] = lo;
+}
 
 static void charge(void)
 {
@@ -42,17 +56,18 @@ static void charge(void)
 #endif
     last = t;
     volatile uint32_t *a = cur.cat == C_EV ? &EVT[(cur.type * OBJ_COUNT + cur.obj) * 3] : &CAT[cur.cat * 3];
-    uint32_t lo = a[0] + d;
-    if (lo < d) a[1] += 1;
-    a[0] = lo;
-    if (cur.cat == C_COLL) step_coll += d;
+    add64(a, d);
+    if (cur.cat == C_COLL) { step_coll += d; add64(&CLR[cur.row * 3], d); }
 }
 
 static void enter(int cat, int type, int obj)
 {
     if (!on) return;
+    int16_t row = cur.cat == C_EV ? (int16_t)(4 + cur.obj) : cur.cat == C_COLL ? cur.row : cur.cat;
     charge();
+    if (cat == C_COLL && cur.cat != C_COLL) CLR[row * 3 + 2] += 1;
     st[depth++] = cur;
+    cur.row = row;
     cur.cat = (int16_t)cat;
     cur.type = (int16_t)type;
     cur.obj = (int16_t)obj;

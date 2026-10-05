@@ -215,3 +215,40 @@ Measured and not kept: PTOD / D* through inline fwiden everywhere (code growth: 
 +0.9 / -0.4 %: under jtcost's layout noise of about 1 %), a per-step memo of isCollision* (8-11 % repeats).
 Literal-pool line misses by what they hold (p4 / p5): RAM addresses 1,013 / 698, constants 703 / 724, function
 addresses 414 / 301: a GBR block (1.4) can remove at most the first (38 K / 26 K fit, 6.5 % / 4.8 %).
+
+Batch 3 on jtcps3 (.62, JT build of 80d620b, PASS 23/23): route mean of means **577,160** (batch 2: 628,926, -8.2 %);
+over 0.525 M: 11 of 18 (p1_walk 576 K, bomb_drop 652 K, buy 673 K, caveman 829 K, cavestun 631 K, giant 721 K, idol
+650 K, l4 659 K, shop 660 K, snakes 605 K, spider 549 K). Under: exit559 477 K, hang_ladder 491 K, items 491 K, spikes
+302 K, push_rope 459 K, bomb_throw 449 K, l3spider 516 K.
+
+### Batch 4 (merged 1d83951, gated on a64f299)
+
+69cccbd Draw dispatch by a per-object claimant (PLAY_DCHECK: P5 19/19, c_ 48/48), c8cf3ca PW through GBR (1.4 step 1),
+a64f299 the GBR rule (never &PW.field: pcol.c's search state behind GBR with s_r passed by address gave 237 SH-2
+checksums off; its flags behind GBR measured slower; neither kept). jtcost fit p4 / p5 / caveman: 565.3 / 523.2 / 790.5 K
+(batch 3: 587.0 / 547.3 / 821.8). MAME SOFTFP mean of means 154.3 -> 149.1 K. Gates as batch 3 plus gametime_check (the
+game program with GBR set by src/main/main.c): pair mean 155.6 K / 163.0 K MAME (p4_push_rope / p5_snakes), draw mean
+40.2 K / 34.9 K MAME. Stack 78,432 / 74,160 B. Measured and dropped: a has_col cache, pcinst_of's whole-box path with
+an inline int -> float (i2f, exact for |v| < 2^24): +0.6 to +1.2 %.
+
+Budget note (inferred, to measure): the 0.525 M step goal assumes 0.28 M for the draw in the 0.84 M pair (PERF2's
+26daf63-era figure). The current draw is 35-40 K MAME, about 0.11-0.12 M jtcps3 at the 3.0x draw ratio measured then;
+the pair on jtcps3 (tests/gametime on the MiSTer) decides.
+
+Batch 4 on jtcps3 (.62, JT build of a64f299, PASS 23/23): route mean of means **565,532** (-2.0 %; modelled -4 %);
+11 of 18 over 0.525 M (buy 657 K, caveman 819 K, giant 714 K, spider 539 K, snakes 593 K, ...).
+
+**The frame budget measured on jtcps3** (tests/gametime, the game program with GBR, batch 4, .62; clocks per 2-frame
+pair, budget 838,940):
+
+| | attract | game 1 (p4_push_rope) | game 2 (p5_snakes) |
+|---|---|---|---|
+| step mean / max | 165 K / 25.9 M | 452.9 K / 5.26 M | 576.5 K / 827 K |
+| draw mean / max | 181 K / 1.62 M | 111.8 K / 1.88 M | 99.0 K / 135 K |
+| pair mean / max | 354 K / 28.3 M | 573.6 K / 8.17 M | 681.8 K / 942 K |
+| pairs over budget | 5 of 1,799 (room starts) | 1 of 375 (the level start) | **18 of 241** |
+
+So the draw is about 0.1 M, not the 0.28 M the 0.525 M step goal assumed: a step fits a pair up to about 0.72 M. The
+binding constraint is the spike steps of the enemy routes (p5_snakes: 7.5 % of pairs drop a frame), not the mean.
+Load-use stall (from spelunky-cps3-a6, low priority): jtcps3 stalls 1 cycle on a load used by the next instruction
+(jtframe SH_core.sv:191); jtcost does not model it; 11,936 pairs on p4_exit559 301, 16,145 on p5_caveman 150 (~2 %).
