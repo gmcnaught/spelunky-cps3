@@ -14,8 +14,9 @@ Spelunky Classic HD 1.2.2 re-implemented in C as a homebrew ROM set for the Capc
 measurements are in [PLAN.md](PLAN.md). Its title (title screen and MRA) is **Spelunky Classic Arcade**: the
 logo is built from HD's at build time (`tools/titlelogo.py`), with ARCADE in place of HD. The current state is in [docs/HANDOFF.md](docs/HANDOFF.md).
 
-The build reads HD's art, sound and data from `refs/`. Everything under `refs/`, `build/` and `rom/` is git-ignored
-and is rebuilt locally (see [Build inputs](#build-inputs-refs-and-buildgen)).
+The generators read HD's art, sound and data from `refs/`; their outputs, `build/gen` and `build/snd`, are committed,
+so the game builds without `refs/` (CI does). The rest of `refs/`, `build/` and `rom/` is git-ignored (see
+[Build inputs](#build-inputs-refs-and-buildgen)).
 
 ## Where the code is
 
@@ -35,8 +36,8 @@ and is rebuilt locally (see [Build inputs](#build-inputs-refs-and-buildgen)).
 | `docker/` | `mame/` (headless MAME), `hd-runner/` (HD's own GameMaker Linux runner, for reference traces) |
 
 The top-level `Makefile` wraps the steps below (`make` = `build/gen` + host builds; `make check`, `make
-check-mame`, `make game-check`, `make game`/`mister`, `make images`; targets are listed at its top). There is no
-release target yet. The game program (`src/main` + everything above) is built by
+check-mame`, `make game-check`, `make game`/`mister`, `make images`; targets are listed at its top). The release
+is `scripts/release.sh` ([Release](#release)). The game program (`src/main` + everything above) is built by
 `tests/game/Makefile`, which feeds it a recorded route (`build/route.h`) and simulates coin/Start. With
 `ATTRACT=1` it runs the attract mode instead.
 
@@ -77,9 +78,11 @@ MAME headless in Docker (`MAME_NATIVE=1` to run the host one on purpose). Its mo
 | `refs/hd/hd-1.2.2-android.apk` | Release APK (RNG research only) |
 | `refs/src_1_1`, `refs/game_1_1` | Spelunky 1.1 source and game (history; `build/gml`) |
 
-### `build/gen` and `build/snd` (generated, git-ignored)
+### `build/gen` and `build/snd` (generated, committed)
 
-Every SH-2 and host build reads these. `make gen` runs the commands below when an input is newer. By hand, after fetching `refs/` (order follows each tool's inputs;
+Every SH-2 and host build reads these. They are committed (the Makefile's `GEN_OUT` and `SND_OUT`; `.gitignore`
+keeps the generators' scratch files out), so a build needs `refs/` only to regenerate them: after changing a
+generator in `tools/` or `refs/`, run `make gen` and commit `build/gen` and `build/snd` with the change. `make gen` runs the commands below when an input is newer. By hand, after fetching `refs/` (order follows each tool's inputs;
 `drawtables.py` reads the outputs of the others):
 
 ```sh
@@ -127,6 +130,27 @@ To build a set and keep it, call the Makefile directly (needs `tests/game/build/
 scripts/dmake.sh tests/game ROUTE=p4_exit559 SEED=559 SNAPS=100,200   # -> tests/game/build/mame/sfiii3na/
 scripts/dmake.sh tests/game ROUTE=p4_exit559 SEED=559 mister          # -> tests/game/build/mister/ (zip + MRA)
 ```
+
+## Release
+
+```sh
+scripts/release.sh     # -> build/release/spelunky.zip, build/release/Spelunky Classic Arcade.mra
+```
+
+The playable game (`tests/game` with `PLAY=1`: coin / Start and the cabinet's controls, a random seed) as a MiSTer
+jtcps3 set, built from `src/game` at `HEAD` and the committed `build/gen` / `build/snd`; needs only Docker
+(`cps3-dev`) and `../cps3-testgame`. On MiSTer: `spelunky.zip` in `games/mame/`, the MRA in `_Arcade/`, plus the
+user's own `jtbeta.zip`.
+
+`.github/workflows/build.yml` runs it on every push to `main`, every pull request and `workflow_dispatch`, and uploads
+the two files as a workflow artifact. Pushing a `v*` tag also creates a GitHub release with them attached:
+
+```sh
+git tag v0.1 && git push origin v0.1
+```
+
+The workflow checks out `gmcnaught/cps3-testgame` at the commit in `CPS3_TESTGAME_REF` and builds the `cps3-dev`
+image from it (about 20 minutes the first time, then from the Actions cache).
 
 ## Tests and gates
 

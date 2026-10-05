@@ -1,4 +1,16 @@
-build/
+# build/ is scratch, except build/gen and build/snd: the generators' outputs (Makefile GEN_OUT, SND_OUT), committed
+# so that a build (CI, scripts/release.sh) needs no refs/. make gen rewrites them; commit them with the tools change.
+build/*
+*/**/build/
+!build/gen/
+!build/snd/
+build/gen/*
+!build/gen/*.[ch]
+!build/gen/*.bin
+!build/gen/*.json
+build/snd/*
+!build/snd/snd.bin
+!build/snd/snd.h
 refs/
 rom/
 snap/
