@@ -14,7 +14,9 @@
  * --global: as playhost (tools/tracer.py TRACE_GLOBALS), e.g. pickupItem=Shotgun or hasJetpack=1.
  * --god 1: the developer option INVINCIBLE (play_god, as src/main/game.c: no life lost, no outright deaths), so
  *   a run explores longer (not the cabinet's play: its codes are reported apart).
- * --route FILE (one level, one seed): the run's inputs as a route with its "# seed / level / nodark / globals"
+ * The first level starts in the room the cabinet uses (gen_room_for_level), except with --route or --rlevel 1
+ * (rLevel: the runs a route can reproduce in the runner).
+ * --route FILE (one level, one seed): the run's inputs as a route (and the first level in rLevel, as the tracer) with its "# seed / level / nodark / globals"
  *   lines, for playhost and the HD runner (scripts/hd_trace.sh; content_traces.sh for tests/routes/c_*.txt).
  */
 #include <stdio.h>
@@ -147,7 +149,7 @@ static void rt_key(uint16_t m)
 /* the record point: the tracer (and playhost) read the view there */
 static void rec_cb(int phase) { (void)phase; view_read(); }
 
-static int god;                                  /* --god 1: the developer option INVINCIBLE (src/main/game.c) */
+static int god, rlevel;                         /* --rlevel 1: the first level in rLevel (as --route) */                                  /* --god 1: the developer option INVINCIBLE (src/main/game.c) */
 
 static void run(int level, int seed, int steps, const char *globals)
 {
@@ -172,20 +174,25 @@ static void run(int level, int seed, int steps, const char *globals)
     ks = (uint32_t)(level * 7919 + seed * 104729);
     snd_init(15, 15);
     cur_step = -1;
+    /* a route: the first level in rLevel, as the tracer's room_goto(TRACE_ROOM) and playhost (an ice level is
+       rLevel2 and a lake level rLevel3 on the cabinet, src/main/game.c) */
+    gen_room_force = route || rlevel ? 0 : -1;
     play_level_start(110325);
+    gen_room_force = -1;
     for (k = 0; k < steps; k++) {
         if (hold-- <= 0) { m = next_keys(); hold = (int)krand(30); }
         cur_step = k;
         /* a dead player: no input, so the level runs on (the cabinet's game-over panel waits 900 steps) */
         {
             uint16_t km = PL.idx != NOONE && PL.dead ? 0 : m;
-            r = play_step(km, rec_cb);
-            if (r != PLAY_ROOM_EARLY) rt_key(km);
-            if (play_god) play_god_hold();
+            do {                                   /* PLAY_ROOM_EARLY: the same input again (playhost, game.c) */
+                r = play_step(km, rec_cb);
+                if (play_god) play_god_hold();
+                play_untranslated = 0;
+                snd_frame();
+            } while (r == PLAY_ROOM_EARLY);
+            rt_key(km);
         }
-        play_untranslated = 0;
-        snd_frame();
-        if (r == PLAY_ROOM_EARLY) { k--; continue; }
         if (r != 0) break;
     }
     done = k;
@@ -242,6 +249,7 @@ int main(int argc, char **argv)
         else if (!strcmp(argv[k], "--jobs")) jobs = atoi(argv[k + 1]);
         else if (!strcmp(argv[k], "--route")) route_path = argv[k + 1];
         else if (!strcmp(argv[k], "--god")) god = atoi(argv[k + 1]);
+        else if (!strcmp(argv[k], "--rlevel")) rlevel = atoi(argv[k + 1]);
         else { fprintf(stderr, "untrsurvey: %s: not known\n", argv[k]); return 2; }
     }
     if (route_path && god) { fprintf(stderr, "untrsurvey: --route with --god: the runner has no INVINCIBLE\n"); return 2; }
@@ -252,6 +260,7 @@ int main(int argc, char **argv)
         fprintf(route, "# untrsurvey run: level %d seed %d, %d steps of random inputs (none after the player's death)\n"
                 "# seed %d\n# level %d\n# nodark 0\n", l0, s0, steps, s0, l0);
         if (globals) fprintf(route, "# globals %s\n", globals);
+        fflush(route);                           /* not again from the parent's buffer at its exit */
     }
     fflush(stdout);
     for (l = l0; l <= l1; l++)
