@@ -7,7 +7,7 @@ enum { KIND_GEN = 1, KIND_START = 2, KIND_STEP = 3, KIND_EARLY = 4, KIND_BENCH =
 
 /* the jobs (build/jobs.h, mkjobs.py): a generation case (level > 0, route < 0) or a route replay */
 struct job { uint32_t seed; int16_t level; int16_t route; };
-struct route { const char *name; const uint16_t *masks; int n; int level, money, enemies; };
+struct route { const char *name; const uint16_t *masks; int n; int level, money, enemies, nodark; };
 
 void plat_begin(void);
 void plat_end(void);
