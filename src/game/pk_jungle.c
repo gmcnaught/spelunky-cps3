@@ -49,6 +49,14 @@ static int eview(int i, int l, int r)
 static int isCollisionSolid(int i)
 {
     double lb, tb, rb, bb;
+    int32_t x, y;
+    /* whole x, y: the corners are whole, and collision_rect_p takes rq_init's integer path, which is
+       collision_rect_i's (iok, fok 0, the same bounds; no instance of oSolid: NOONE without a side effect in both);
+       solid_rect_any (pworld.c) answers that query's != NOONE from the solid grid's cell summary, else searches */
+    if (pin_xy_int(i, &x, &y) && x > -29000 && x < 29000 && y > -29000 && y < 29000) {
+        const struct pin_ext *e = PE(&PX(i));
+        return solid_rect_any(x + e->lbo, y + e->tbo, x + e->rbo - 1, y + e->bbo - 1, i);
+    }
     calcBounds(i, &lb, &tb, &rb, &bb);
     return collision_rect_any(lb, tb, rb - 1, bb - 1, OBJ_oSolid, 1, i);
 }
