@@ -1606,13 +1606,49 @@ void ev_collision(int self, int other)
     }
 }
 
+/* The Draw's claimant per object, as the Step's (docs/PERF2.md D): pl_draw for oPlayer1, then pen_draw, pdam_draw,
+ * pshop_draw (each claims by the object alone and has no effect when it does not), pcontent_ev (no content package
+ * has a Draw case: 0, no effect), ptrans_draw (acts on oPDummy only). The first Draw of an object runs the chain
+ * and keeps the claimant; later ones run it directly, or nothing for pen_draw's and pshop_draw's objects (they only
+ * draw) and ptrans_draw's others. -DPLAY_DCHECK: every Draw runs the chain and aborts on a different claimant */
+enum { DK_NONE, DK_PL, DK_PDAM, DK_PCONTENT, DK_PDUMMY, DK_NOTHING };
+static uint8_t drawk[OBJ_COUNT];
+
+static int draw_hooks(int i)
+{
+    if (PX(i).obj == OBJ_oPlayer1) { pl_draw(i); return DK_PL; }
+    if (pen_draw(i)) return DK_NOTHING;                                        /* P5 hook */
+    if (pdam_draw(i)) return DK_PDAM;
+    if (pshop_draw(i)) return DK_NOTHING;
+    if (pcontent_ev(FEV_DRAW, i, 0)) return DK_PCONTENT;                       /* P7 hook */
+    ptrans_draw(i);
+    return PX(i).obj == OBJ_oPDummy ? DK_PDUMMY : DK_NOTHING;
+}
+
 void ev_draw(int i)
 {
+    int o;
     if (front_on && front_ev(FEV_DRAW, i, 0)) return;                                 /* P8 hook */
-    if (PX(i).obj == OBJ_oPlayer1) pl_draw(i);
-    else if (pen_draw(i) || pdam_draw(i) || pshop_draw(i)) return;             /* P5 hook */
-    else if (pcontent_ev(FEV_DRAW, i, 0)) return;                              /* P7 hook */
-    else ptrans_draw(i);
+    o = PX(i).obj;
+#ifdef PLAY_DCHECK
+    {
+        int k = draw_hooks(i);
+        if (drawk[o] != DK_NONE && drawk[o] != k) {
+            fprintf(stderr, "PLAY_DCHECK: object %d Draw claimant %d, kept %d\n", o, k, drawk[o]);
+            abort();
+        }
+        drawk[o] = (uint8_t)k;
+    }
+#else
+    switch (drawk[o]) {
+    case DK_PL: pl_draw(i); return;
+    case DK_PDAM: pdam_draw(i); return;
+    case DK_PCONTENT: pcontent_ev(FEV_DRAW, i, 0); return;
+    case DK_PDUMMY: ptrans_draw(i); return;
+    case DK_NOTHING: return;
+    }
+    drawk[o] = (uint8_t)draw_hooks(i);
+#endif
 }
 
 void ev_outside(int i)

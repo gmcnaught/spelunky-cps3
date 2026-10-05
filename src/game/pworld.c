@@ -22,7 +22,7 @@ typedef char pin_size_le_inst_size[sizeof(struct pin) <= sizeof(struct inst) ? 1
    PIN_DEAD left over */
 typedef char pin_max_covers_inst_max[PIN_MAX > INST_MAX ? 1 : -1];
 struct inst inst_mem[INST_MEM_N];
-struct pworld PW = { .in = (struct pin *)inst_mem };
+struct pworld pw_mem = { .in = (struct pin *)inst_mem };   /* PW (play.h) */
 #ifdef PLAY_STATS
 struct pw_stats pw_st;
 #endif

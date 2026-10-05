@@ -14,6 +14,7 @@
    the work is bracketed by plat_begin / plat_end (core.c). */
 #include <stdint.h>
 #include "core.h"
+#include "play.h"                                 /* pw_gbr_init */
 #include "jobs.h"
 
 #define R32(a) (*(volatile uint32_t *)(a))
@@ -276,6 +277,7 @@ int main(void)
 {
     int j;
     uint32_t sr;
+    pw_gbr_init();                                        /* PW through GBR (src/game/play.h) */
 #ifdef JT
     uint32_t spr_bad;
     cps3_init();                                          /* video, the text layer (VBlank masked again below) */
