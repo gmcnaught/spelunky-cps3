@@ -1190,7 +1190,22 @@ static void game_step(int i)
     if (GP.pressed & K_START) PUNTR(1054);
 }
 
-/* objects/oLevel/Step_0.gml: the screen shake (the rest: water drawing flags and activation, no play state) */
+/* objects/oLevel/Step_0.gml :110-136: darkness (0 lightest, 1 darkest; drawn as the dark level's palette fade,
+   src/draw). global.darknessLerp is never set above 0 (oGlobals / oLevel Create only) */
+static void level_darkness(void)
+{
+    double dist = 160;
+    if (!G.darkLevel || PL.idx == NOONE) return;
+    if (PG.hasCrown) dist = 0;
+    else if (instance_exists_p(OBJ_oFlare))
+        dist = FLARE_DIST(&PX(instance_nearest_p(PTOD(PX(PL.idx).x), PTOD(PX(PL.idx).y), OBJ_oFlare)));
+    if (PL.distToNearestLightSource < 200 && PL.distToNearestLightSource < dist) dist = PL.distToNearestLightSource;
+    PLEV.darkness = dist == 0 ? 0 : dist / 160;
+    if (PLEV.darkness > 0.9) PLEV.darkness = 0.9;
+}
+
+/* objects/oLevel/Step_0.gml: the screen shake, the darkness (the rest: water drawing flags and activation, no play
+   state) */
 static void level_step(int i)
 {
     (void)i;
@@ -1208,6 +1223,7 @@ static void level_step(int i)
         PG.shake -= 1;
     } else
         PW.vborder = 96;
+    level_darkness();                                                          /* :110 */
 }
 
 /* The Step's claimant per object (docs/PERF2.md D). Which of the P5 hooks (pen_step, pdam_step, pshop_step,

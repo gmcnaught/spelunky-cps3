@@ -13,6 +13,7 @@
  *     <alarms k=v,...|-> <xVel> <yVel> <image_speed> [name=value ...]
  *   SND <kind> <asset> <arg>   the sound calls (src/snd's log, test/host/sndhost.c) before the record they belong to
  * Doubles as %.17g. oGamepad (the tracer's instance) is left out.
+ * PLAYHOST_DARK=1: K <rec> <darkLevel> <darkness> <distToNearestLightSource> on stderr per record (tools/darkcmp.py)
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -125,8 +126,12 @@ static void tree_probe(int r)
 
 static void rec_cb(int phase)
 {
+    static int dark = -1;
     record(phase);
     tree_probe(rec - 1);
+    if (dark < 0) dark = getenv("PLAYHOST_DARK") != NULL;
+    if (dark)   /* tools/darkcmp.py: the trace's level block (global.darkLevel, oLevel.darkness, distToNearestLightSource) */
+        fprintf(stderr, "K %d %d %.17g %.17g\n", rec - 1, G.darkLevel, PLEV.darkness, PL.distToNearestLightSource);
 #ifdef NUM_IS_CLASS
     {   /* binary64 operations since the previous record (playhost_count) */
         static struct dcount last;
