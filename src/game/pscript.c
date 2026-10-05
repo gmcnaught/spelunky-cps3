@@ -231,6 +231,19 @@ static void vel_parts(num a, struct vparts *o)
     }
 }
 
+/* moveTo's pixel walks without the per-pixel setter (the grid build; PLAY_NOREST and the exact build keep them): a
+   mover outside the oSolid family with whole x, y tests the same lines (the column or row ahead of its whole bounds,
+   which a whole pixel step moves by one) from its start, then sets the position reached once. The walk's tests are
+   oSolid searches that exclude the mover, so its own entry (flushed or not) does not change them, and the grid
+   build's searches do not depend on when an entry is flushed (pobj.c PLAY_REST); the one setter call leaves the marks
+   the last of the walk's would (the draw mark, the box cache, the dirty / test lists' fronts; rest_end reads only
+   whether a change happened) */
+#if !defined(PCOL_EXACT) && !defined(PLAY_FIXED) && !defined(NUM_IS_CLASS) && !defined(PLAY_NOREST)
+#define PLAY_WALK 1
+#else
+#define PLAY_WALK 0
+#endif
+
 /* scripts/moveTo */
 void moveTo(int i, num a0, num a1, int32_t *xio, int32_t *yio)
 {
@@ -238,7 +251,10 @@ void moveTo(int i, num a0, num a1, int32_t *xio, int32_t *yio)
     pos mtXPrev = p->x, mtYPrev = p->y;
     struct vparts vx, vy;
     int32_t xVelInteger = 0, yVelInteger = 0;
-    int ch = 0;
+    int ch, xdone = 0, ydone = 0;
+#if PLAY_WALK
+    int32_t il, it, ir, ib;
+#endif
     vel_parts(a0, &vx);
     vel_parts(a1, &vy);
     if (vx.r != 0) xVelInteger = (int32_t)(play_time % (uint32_t)vx.r) == 0;
@@ -250,8 +266,17 @@ void moveTo(int i, num a0, num a1, int32_t *xio, int32_t *yio)
     NOPS(10);
     /* the solid's id matters only to a character (pushing an oMoveableSolid); for the others any solid stops the walk:
        the line test alone (is_character is the object's, constant here) */
-    if (xVelInteger != 0) ch = is_character(i);
-    if (xVelInteger > 0)                                                       /* :39 */
+    ch = is_character(i);
+#if PLAY_WALK
+    if (xVelInteger != 0 && !ch && !obj_is(p->obj, OBJ_oSolid) && ibounds(i, &il, &it, &ir, &ib)) {
+        int32_t n = xVelInteger > 0 ? xVelInteger : -xVelInteger, k;
+        for (k = 0; k < n; k++)
+            if (solid_vline_any(xVelInteger > 0 ? ir + k : il - 1 - k, it + 5, ib - 1, i)) break;
+        if (k) pin_setx(p, mtXPrev + PI(xVelInteger > 0 ? k : -k));
+        xdone = 1;
+    }
+#endif
+    if (xVelInteger > 0 && !xdone)                                             /* :39 */
         for (; p->x < mtXPrev + PI(xVelInteger); pin_setx(p, p->x + (PI(1)))) {
             int solidId;
             if (!ch) {
@@ -270,7 +295,7 @@ void moveTo(int i, num a0, num a1, int32_t *xio, int32_t *yio)
                     break;
             }
         }
-    if (xVelInteger < 0)                                                       /* :64 */
+    if (xVelInteger < 0 && !xdone)                                             /* :64 */
         for (; p->x > mtXPrev + PI(xVelInteger); pin_setx(p, p->x - (PI(1)))) {
             int solidId;
             if (!ch) {
@@ -288,7 +313,16 @@ void moveTo(int i, num a0, num a1, int32_t *xio, int32_t *yio)
                     break;
             }
         }
-    if (yVelInteger > 0)                                                       /* :89 */
+#if PLAY_WALK
+    if (yVelInteger != 0 && (yVelInteger < 0 || !ch) && !obj_is(p->obj, OBJ_oSolid) && ibounds(i, &il, &it, &ir, &ib)) {
+        int32_t n = yVelInteger > 0 ? yVelInteger : -yVelInteger, k;
+        for (k = 0; k < n; k++)
+            if (solid_hline_any(yVelInteger > 0 ? ib + k : it - 1 - k, il, ir - 1, i)) break;
+        if (k) pin_sety(p, mtYPrev + PI(yVelInteger > 0 ? k : -k));
+        ydone = 1;
+    }
+#endif
+    if (yVelInteger > 0 && !ydone)                                             /* :89 */
         for (; p->y < mtYPrev + PI(yVelInteger); pin_sety(p, p->y + (PI(1)))) {
             if (isCollisionBottom(i, 1))
                 break;
@@ -296,7 +330,7 @@ void moveTo(int i, num a0, num a1, int32_t *xio, int32_t *yio)
                 if (!isCollisionPlatform(i) && isCollisionPlatformBottom(i, 1) && !PL.kDown)
                     break;
         }
-    if (yVelInteger < 0)                                                       /* :98 */
+    if (yVelInteger < 0 && !ydone)                                             /* :98 */
         for (; p->y > mtYPrev + PI(yVelInteger); pin_sety(p, p->y - (PI(1))))
             if (isCollisionTop(i, 1))
                 break;
