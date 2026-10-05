@@ -24,6 +24,7 @@ struct shell {
     enum input_start_mode start_mode;   /* PLAY: Start as pay (default) or as start; the game may set it */
     uint8_t panel;              /* 0 / 1: the control panel of the player who pressed Start */
     uint32_t frame, steps;      /* frames run, game steps run */
+    uint32_t entropy;           /* every frame's pads and lines mixed in (shell_seed) */
     struct input_state in;
     struct shell_input last;    /* the last step's controls */
     struct credit_state cr;
@@ -32,6 +33,9 @@ struct shell {
     struct hs_globals g;
 };
 extern struct shell SH;
+
+/* an RNG seed for a game or an attract intro (HD's randomize()): the input history's timing (coins, Start) */
+static inline uint32_t shell_seed(void) { return SH.entropy ^ (SH.entropy >> 15); }
 
 /* the game, implemented by the play runtime (weak no-op defaults in shell.c) */
 void game_boot(void);                                   /* once, after hs_boot (SH.g, SH.hs read) */

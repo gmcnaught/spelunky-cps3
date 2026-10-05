@@ -68,7 +68,12 @@ void main_boot(void)
         if (GAME_ATTRACT > 1) front_start_at(GAME_ATTRACT);   /* tests: the cycle from that room */
     }
 #endif
-#ifndef GAME_PLAY                                 /* PLAY=1: game_cfg's defaults, the cabinet's controls */
+#ifdef GAME_PLAY                                  /* PLAY=1: game_cfg's defaults, the cabinet's controls */
+    {
+        extern uint32_t front_seed;
+        front_seed = 0;                           /* each intro from shell_seed(), as HD's randomize() */
+    }
+#else
     game_cfg.route = route_keys;
     game_cfg.nroute = ROUTE_N;
     game_cfg.tail = ROUTE_TAIL;

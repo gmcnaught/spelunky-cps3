@@ -119,6 +119,6 @@ Open:
 - MAME frame check of the panel: scripts/game_check.sh over_giant 253 g_over_giant_s253 200,260,300,330 differs only
   in the panel text, because tools/tracer.py's TRACE_GUI draws scrDrawHUD and showMessages but not showEndMessage,
   and tools/drawmodel.py does not model the panel. Both need the panel added for an exact gate.
-- **Next session (the user, 2026-10-05): release mode must not pin level generation.** Today PLAY builds seed the
-  level RNG from the frame counter at Start (src/main/game.c `rng_seed(... SH.frame * 2654435761u + 1)`); the attract
-  intro always uses `front_seed = 1` (src/front/front.c). Check what else fixes the seed in a PLAY build and make it vary.
+- **Release-mode seeding (done 2026-10-05):** PLAY builds seed a game and each attract intro from `shell_seed()`, the
+  input history mixed every frame (docs/ARCADE.md, seeding rule). Checked in MAME on the release set: Coin at frame
+  200, Start at 400 twice gives the same RNG state and level 1; Start at 401 and 460 give two other levels.

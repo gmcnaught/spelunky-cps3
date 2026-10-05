@@ -169,6 +169,8 @@ static uint8_t combo_n;
 
 int shell_frame(uint32_t pad0, uint32_t pad1, uint32_t lines)
 {
+    /* a bijection of the previous value for each frame's inputs: a coin or Start one frame later gives another seed */
+    SH.entropy = (SH.entropy ^ pad0 ^ (pad1 << 16 | pad1 >> 16) ^ lines) * 2654435761u + 1;
     if (lines & ~test_prev & SHELL_TEST)
         settings_run();
     test_prev = lines & SHELL_TEST;

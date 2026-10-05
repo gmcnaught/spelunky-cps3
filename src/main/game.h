@@ -16,7 +16,7 @@ struct game_cfg {
     const uint16_t *route;       /* key masks per step (tools/tracer.py KEYS bits); NULL: the cabinet's controls */
     int32_t nroute;              /* route steps; then `tail` steps without keys, then the game ends */
     int32_t tail;
-    uint32_t seed;               /* RNG seed (route: the trace's; cabinet: 0 = from the frame counter) */
+    uint32_t seed;               /* RNG seed (route: the trace's; cabinet: 0 = shell_seed()) */
     int32_t level, money, enemies;   /* starting level, money, enemies kept (P4 routes: 0) */
     /* a route's header lines, as test/host/playhost.c's options (tools/tracer.py TRACE_NODARK / TRACE_GLOBALS /
        TRACE_ROOM): */

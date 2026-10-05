@@ -85,10 +85,14 @@ calls `front_stop`, then the normal game start.
 
 Seeding rule:
 - **The intro:** oIntro's Create calls `randomize()`, which in HD seeds from the clock. On the cabinet that call
-  seeds with `front_seed` (`src/front/front.c`; 1 on the cabinet, the route's seed in tests). Every cycle is the
-  same, as each pass through rIntro reseeds.
-- **A game start:** `game_begin` seeds the generator again, with `game_cfg.seed` (tests) or the frame counter
-  (`SH.frame * 2654435761 + 1`). It also runs `gen_new_game`, scrClearGlobals' part.
+  seeds with `front_seed` (`src/front/front.c`; the route's seed in tests, 1 by default). The cabinet (PLAY=1) sets
+  it to 0: each pass through rIntro seeds from `shell_seed()`, so cycles differ (the first after power-on is the same
+  each boot: no input has been mixed in yet).
+- **A game start:** `game_begin` seeds the generator again, with `game_cfg.seed` (tests) or `shell_seed()`.
+  `shell_seed()` (`src/shell/shell.h`) is `SH.entropy`, which `shell_frame` updates every frame from the pads and
+  system lines (`(e ^ pad0 ^ rot16(pad1) ^ lines) * 2654435761 + 1`): the frame of the Coin and the Start, and any
+  input before, select the seed. As GameMaker's `random_set_seed`, `rng_seed` keeps 16 bits of it (65,536 generator
+  states). It also runs `gen_new_game`, scrClearGlobals' part.
 - **Result:** no RNG draw and no global from the attract rooms reaches a level, as HD's clock seed makes the level
   seed arbitrary there too. The front end never changes a level's seed.
 

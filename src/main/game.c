@@ -123,7 +123,7 @@ void game_begin(void)
             s += n + (s[n] == ',');
         }
     }
-    rng_seed(&g_rng, game_cfg.seed ? game_cfg.seed : SH.frame * 2654435761u + 1);
+    rng_seed(&g_rng, game_cfg.seed ? game_cfg.seed : shell_seed());
     gen_room_force = game_cfg.room <= 3 ? game_cfg.room : -1;
     play_level_start(110325);                     /* the runner's instance id counter at rLevel (playhost) */
     gen_room_force = -1;

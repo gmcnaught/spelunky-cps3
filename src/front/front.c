@@ -7,9 +7,9 @@
  *     every draw in the intro and title rooms follows from it (oDark Create's rand(1,100) x 203 come before it;
  *     oIntro's 3 random_range, scrSetupWalls' tiles, oBatIntro's random() and the title's draws after). A level's
  *     generation then continues the same generator. On the cabinet the shell starts a game with game_begin, which
- *     seeds the generator again (game_cfg.seed, or the frame counter: src/main/game.c), as HD's randomize() leaves
+ *     seeds the generator again (game_cfg.seed, or shell_seed(): src/main/game.c), as HD's randomize() leaves
  *     the seed arbitrary: the front end's draws never reach a level. front_seed is the intro's randomize() seed (the
- *     traces' random_set_seed(SEED): tools/tracer.py).
+ *     traces' random_set_seed(SEED): tools/tracer.py; 0 on the cabinet, PLAY=1: shell_seed() at each intro).
  *   - globals: oGlobals' Create (scrClearGlobals and the HD globals) runs in rIntro; a game start runs
  *     gen_new_game (src/game: scrClearGlobals' part) itself, so nothing the intro sets reaches a level either.
  *
@@ -37,7 +37,7 @@
 
 uint8_t front_on;
 int16_t front_view_obj = -1, front_hborder = 160;
-uint32_t front_seed = 1;                          /* oIntro's randomize() */
+uint32_t front_seed = 1;                          /* oIntro's randomize(); 0: shell_seed() (the cabinet) */
 uint8_t front_new;
 static int room_steps;
 static int16_t lpos[PIN_MAX];                     /* the room instance's place in its layer, by slot */
@@ -285,7 +285,7 @@ int front_room(int room)
             scores_create_w();
             break;
         case OBJ_oIntro:                                                       /* objects/oIntro/Create_0.gml */
-            rng_seed(&g_rng, front_seed);                                      /* :6 randomize() */
+            rng_seed(&g_rng, front_seed ? front_seed : shell_seed());          /* :6 randomize() */
             INTRO.str1 = intro_pick();                                         /* :10 */
             INTRO.str2 = intro_pick();                                         /* :23 */
             INTRO.str3 = intro_pick();                                         /* :36 */
