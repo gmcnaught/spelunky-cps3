@@ -635,11 +635,60 @@ static void rest_end(int i, uint8_t out)
     r->out = out;
     r->clk = pw_rest_clock();
 }
+
+/* gameStepEvent's oMoveableSolid fall (objects/oGame, scripts/gameStepEvent :248-262) for a solid at rest: with
+   yVel +0 it adds myGrav (capped at 8), and the first place_meeting(x, y + 1, oSolid) hits, so yVel goes back to
+   +0, y stays and no sound plays (yVel > myGrav is false). That run is a fixed point; the next one gives the same
+   answer while the solid's x, y, sprite, image_index and myGrav keep their bits and no oSolid-family entry (the
+   solid itself included: oMoveableSolid is one) went in or out of the cells around it (pw_rest_still, as
+   rest_skip). The skip leaves yVel +0 and counts the run's NOPS */
+struct mrest { int32_t id; uint32_t clk, mgh, mgl, x, y, img; int16_t spr; uint8_t ok; };
+static struct mrest mrst[REST_MAX];
+
+static int msolid_region(const struct pin *p, int32_t *b)
+{
+    if (!rest_region(p, b)) return 0;
+    b[3] += 1;                                        /* the query's box is 1 px lower */
+    return 1;
+}
+
+static int msolid_skip(int j)
+{
+    const struct pin *p = &PX(j);
+    const struct mrest *r = &mrst[p->ext & (REST_MAX - 1)];
+    uint64_t m = db(PE(p)->myGrav);
+    int32_t b[4];
+    return r->ok && r->id == p->id && !pcol_quiet() && dbits0(PE(p)->yVel) && fb(p->x) == r->x &&
+           fb(p->y) == r->y && fb((float)p->img) == r->img && p->spr == r->spr && (uint32_t)(m >> 32) == r->mgh &&
+           (uint32_t)m == r->mgl && msolid_region(p, b) && pw_rest_still(b[0], b[1], b[2], b[3], r->clk);
+}
+
+static int msolid_start(int j) { return dbits0(PE(&PX(j))->yVel); }
+
+/* after a full run: rest 1 when it started at yVel +0, hit on the first query and left y and yVel +0 */
+static void msolid_end(int j, int rest)
+{
+    const struct pin *p = &PX(j);
+    struct mrest *r = &mrst[p->ext & (REST_MAX - 1)];
+    uint64_t m;
+    int32_t b[4];
+    if (r->id == p->id) r->ok = 0;
+    if (!rest || !p->alive || !p->ext || p->ext == EXT_SCRATCH || !msolid_region(p, b)) return;
+    m = db(PE(p)->myGrav);
+    r->ok = 1;
+    r->id = p->id;
+    r->x = fb(p->x); r->y = fb(p->y); r->img = fb((float)p->img); r->spr = p->spr;
+    r->mgh = (uint32_t)(m >> 32); r->mgl = (uint32_t)m;
+    r->clk = pw_rest_clock();
+}
 #else
 #define PLAY_REST 0
 static int rest_skip(int i, uint8_t *out) { (void)i; (void)out; return 0; }
 static void rest_begin(int i) { (void)i; }
 static void rest_end(int i, uint8_t out) { (void)i; (void)out; }
+static int msolid_skip(int j) { (void)j; return 0; }
+static int msolid_start(int j) { (void)j; return 0; }
+static void msolid_end(int j, int rest) { (void)j; (void)rest; }
 #endif
 
 /* objects/oItem/Step_0.gml */
@@ -1054,6 +1103,9 @@ static void gameStepEvent(void)
             view_read();
             if (DGT(x, PW.xview - 16) && DLT(x, PW.xview + 320) && DGT(y, PW.yview - 16) && DLT(y, PW.yview + 240)) {
                 pos yMPrev = p->y;
+                int rest0, first = 1, rest = 0;
+                if (msolid_skip(j)) { NOPS(2); continue; }
+                rest0 = msolid_start(j);
                 PE(p)->yVel += PE(p)->myGrav;
                 if (NGT(PE(p)->yVel, N(8))) PE(p)->yVel = N(8);
                 NOPS(2);
@@ -1061,9 +1113,12 @@ static void gameStepEvent(void)
                     if (place_meeting_p(j, PTOD(p->x), PTOD(p->y) + 1, OBJ_oSolid)) {
                         if (NGT(PE(p)->yVel, PE(p)->myGrav)) snd_play(SND_xthud);     /* :258 */
                         PE(p)->yVel = 0;
+                        rest = rest0 && first;
                         break;
                     }
+                    first = 0;
                 }
+                msolid_end(j, rest);
             }
         }
     }
