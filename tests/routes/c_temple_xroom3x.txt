@@ -1,0 +1,34 @@
+# Survey reference (scripts/untr_survey.sh; untrsurvey --rlevel 1, level 12 seed 13, step 300's LDO made L): the
+# exit into rTransition3x at step 441 with its 246 oDark and 156 oTemple Creates (gold veins, rand draws; ptrans.c 4008)
+# seed 13
+# level 12
+# nodark 0
+19 RJN
+18 DJP
+30 LA
+14 LUJA
+14 LJ
+24 L
+6 RJN
+21 LAP
+22 L
+16 RJN
+60 L
+30 RIN
+26 LJA
+6 L
+29 L
+25 JA
+13 RJP
+2 LN
+18 R
+24 LUJ
+2 J
+4 RJN
+17 RJI
+24 RUJA
+3 -
+28 LA
+20 L
+12 R
+13 L

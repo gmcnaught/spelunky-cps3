@@ -3,8 +3,8 @@
  *
  * The room's instances are built with the generator's instance code (as gen_level does): every room instance
  * exists before the first Create runs; oBricks' Create (scrSetupWalls(224), RNG for the cave-top tiles) and each
- * oBrick's Create (two rand() draws for its sprite; isLevel() is false here, so no gems: gen_not_level) draw the
- * RNG in room order; then the instances move to the play world.
+ * oBrick's, oLush's, oDark's and oTemple's Create (rand() draws for its sprite, the gold veins; isLevel() is false
+ * here, so no gems: gen_not_level) draw the RNG in room order; then the instances move to the play world.
  */
 #include "pint.h"
 #include "../snd/sndgame.h"                     /* the GML sound calls (src/snd) */
@@ -63,8 +63,8 @@ void play_transition_start(int room)
         W.in[inst_add(rm->in[k].obj, rm->in[k].x, rm->in[k].y, rm->in[k].id)].depth = rm->in[k].depth;
     for (k = 0; k < rm->n; k++) {
         int o = rm->in[k].obj;
-        if (o == OBJ_oBrick || o == OBJ_oHardBlock)
-            gen_create_event(k);
+        if (o == OBJ_oBrick || o == OBJ_oHardBlock || o == OBJ_oLush || o == OBJ_oDark || o == OBJ_oTemple)
+            gen_create_event(k);                   /* oLush / oDark / oTemple: rTransition2 .. 4, 1x .. 3x */
         else if (o == OBJ_oBricks) {                                           /* objects/oBricks/Create_0.gml */
             scrSetupWalls(224);
             inst_destroyed(k);
@@ -112,7 +112,7 @@ void play_transition_start(int room)
             break;
         default:
             if ((pobj[p->obj].ev & EV_CREATE) && p->obj != OBJ_oBrick && p->obj != OBJ_oHardBlock &&
-                p->obj != OBJ_oGamepad)
+                p->obj != OBJ_oLush && p->obj != OBJ_oDark && p->obj != OBJ_oTemple && p->obj != OBJ_oGamepad)
                 PUNTR(4008);
             break;
         }
