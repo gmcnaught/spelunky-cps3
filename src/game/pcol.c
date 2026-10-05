@@ -161,15 +161,21 @@ static rk rkey(const struct rbr *a, int k) { return a->w ? ikey(a->r[k]) : a->r[
 static float rflt(const struct rbr *a, int k) { return a->w ? (float)a->r[k] : kf(a->r[k]); }
 
 /* a rectangle from whole-number sides: the whole form when they are below 2^14, else keys */
-static void rset_i(struct rbr *o, int32_t l, int32_t t, int32_t r, int32_t b)
+static __attribute__((noinline)) void rset_keys(struct rbr *o, int32_t l, int32_t t, int32_t r, int32_t b)
 {
-    if (l > -WLIM && l < WLIM && t > -WLIM && t < WLIM && r > -WLIM && r < WLIM && b > -WLIM && b < WLIM) {
+    o->r[0] = ikey(l); o->r[1] = ikey(t); o->r[2] = ikey(r); o->r[3] = ikey(b);
+    o->w = 0;
+}
+
+/* inline: the whole form (the common case) is four compares and the stores; the keys out of line */
+static inline void rset_i(struct rbr *o, int32_t l, int32_t t, int32_t r, int32_t b)
+{
+    if ((uint32_t)l + (WLIM - 1) < 2 * WLIM - 1 && (uint32_t)t + (WLIM - 1) < 2 * WLIM - 1 &&
+        (uint32_t)r + (WLIM - 1) < 2 * WLIM - 1 && (uint32_t)b + (WLIM - 1) < 2 * WLIM - 1) {
         o->r[0] = l; o->r[1] = t; o->r[2] = r; o->r[3] = b;
         o->w = 1;
-    } else {
-        o->r[0] = ikey(l); o->r[1] = ikey(t); o->r[2] = ikey(r); o->r[3] = ikey(b);
-        o->w = 0;
-    }
+    } else
+        rset_keys(o, l, t, r, b);
 }
 
 static int kint(rk k, int32_t *o);
