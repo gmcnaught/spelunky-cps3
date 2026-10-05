@@ -2653,6 +2653,39 @@ int instance_place_p(int self, double px, double py, int obj)
     return NOONE;
 }
 
+#ifndef PLAY_FIXED
+/* floor(v) as an int when |v| < 2^14, from the double's bits (dwhole's product: the integer part in the high word,
+   the fraction in the low word and in lo) */
+static int dfloor14(double v, int32_t *o)
+{
+    union { double d; uint64_t u; } c;
+    uint32_t hi, lo, e, ip, fr;
+    uint64_t pr;
+    c.d = v;
+    hi = (uint32_t)(c.u >> 32);
+    lo = (uint32_t)c.u;
+    e = (hi >> 20) & 0x7ffu;
+    if (e < 1023) {                                   /* |v| < 1 */
+        *o = ((hi & 0x80000000u) && ((hi & 0x7fffffffu) | lo)) ? -1 : 0;
+        return 1;
+    }
+    if (e > 1023 + 13) return 0;                      /* |v| >= 2^14, Inf, NaN */
+    pr = (uint64_t)((hi & 0xfffffu) | 0x100000u) * dw_mul[e - 1023];
+    ip = (uint32_t)(pr >> 32);
+    fr = (uint32_t)pr | lo;
+    *o = (hi & 0x80000000u) ? -(int32_t)ip - (fr != 0) : (int32_t)ip;
+    return 1;
+}
+#endif
+
+/* instance_nearest: the instance of least d = dx * dx + dy * dy (doubles), the first of them in the family's order.
+   The integer pass (not PLAY_FIXED): with X = floor(px), Xk = floor(x_k) (all |.| < 2^14, else the double loop) and
+   D = X - Xk, dx = px - x_k lies in (D - 1, D + 1), so |dx| is in [lo, hi] = [max(|D| - 1, 0), |D| + 1], and the same
+   in y; L = lox^2 + loy^2 and U = hix^2 + hiy^2 are whole numbers below 2^31 (doubles exactly) and rounding is
+   monotonic, so the double d of instance k is in [L_k, U_k]. The first instance of least d has L <= its d <= every
+   U; the double loop over the instances with L <= min U, in the same order, picks it. NaN cannot occur (every
+   operand finite). Up to NEAR_MAX instances (the light sources of a level), else the double loop over all */
+#define NEAR_MAX 48
 int instance_nearest_p(double px, double py, int obj)
 {
     int k, best = NOONE;
@@ -2660,6 +2693,59 @@ int instance_nearest_p(double px, double py, int obj)
     struct fam it;
     PWST(nearest, 1);
     if (fam_none(obj)) return NOONE;
+#ifndef PLAY_FIXED
+    {
+        int16_t ck[NEAR_MAX];
+        uint32_t cl[NEAR_MAX], mu = 0xffffffffu;
+        int32_t X, Y;
+        int n = 0, j, ok = dfloor14(px, &X) && dfloor14(py, &Y);
+        fam_begin(&it, obj);
+        while (ok && (k = fam_get(&it)) != NOONE) {
+            int32_t xk, yk;
+            uint32_t ax, ay, u;
+            if (n == NEAR_MAX || !pl_floor(PW.in[k].x, &xk) || !pl_floor(PW.in[k].y, &yk) ||
+                xk < -16384 || xk >= 16384 || yk < -16384 || yk >= 16384) {
+                ok = 0;
+                break;
+            }
+            ax = (uint32_t)(X >= xk ? X - xk : xk - X);
+            ay = (uint32_t)(Y >= yk ? Y - yk : yk - Y);
+            u = (ax + 1) * (ax + 1) + (ay + 1) * (ay + 1);
+            if (u < mu) mu = u;
+            ax = ax ? ax - 1 : 0;
+            ay = ay ? ay - 1 : 0;
+            ck[n] = (int16_t)k;
+            cl[n++] = ax * ax + ay * ay;
+        }
+        if (ok) {
+            for (j = 0; j < n; j++) {
+                double dx, dy, d;
+                if (cl[j] > mu) continue;
+                k = ck[j];
+                dx = px - PTOD(PW.in[k].x);
+                dy = py - PTOD(PW.in[k].y);
+                d = dx * dx + dy * dy;
+                if (best == NOONE || d < bd) {
+                    best = k;
+                    bd = d;
+                }
+            }
+#ifdef PLAY_STATS
+            {   /* the host builds compare with the double loop */
+                int b2 = NOONE;
+                double bd2 = 0;
+                fam_begin(&it, obj);
+                while ((k = fam_get(&it)) != NOONE) {
+                    double dx = px - PTOD(PW.in[k].x), dy = py - PTOD(PW.in[k].y), d = dx * dx + dy * dy;
+                    if (b2 == NOONE || d < bd2) { b2 = k; bd2 = d; }
+                }
+                if (b2 != best) { fprintf(stderr, "instance_nearest_p: %d, the double loop %d\n", best, b2); abort(); }
+            }
+#endif
+            return best;
+        }
+    }
+#endif
     fam_begin(&it, obj);
     while ((k = fam_get(&it)) != NOONE) {
         double dx, dy, d;
