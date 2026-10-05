@@ -270,6 +270,9 @@ void play_level_start(int32_t next_id)
     int k;
     static const int16_t rooms[4] = { R_rLevel, R_rLevel2, R_rLevel3, R_rOlmec };
     int levelType = G.levelType;               /* oLevel Create's startMusic runs before oGame Create's scrInitLevel */
+    /* the event-object table (a function of the object tables only) is built here, out of the first play_step
+       (393 K jtcps3 clocks there on p5_l4); the step's own check stays for callers that start without a level */
+    if (evobj0[16] == 0) evobj_init();
     G.gameStart = 1;
     inst_hook = pcol_gen_hook;                                                 /* the collision tree follows */
     if (gen_level(next_id) != 0) PUNTR(9002);
