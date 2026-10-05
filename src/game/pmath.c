@@ -263,6 +263,10 @@ double patan2(double y, double x)
    build/trace/p5_spider_s121, the bat's velocities): reduction by a three-part pi / 2 and the Taylor series in
    double-double (about 106 bits), then rounded once ---------------------------------------------------------- */
 typedef struct { double hi, lo; } ddbl;
+#ifndef SC_EPS_S
+#define SC_EPS_S 0x1p-58                     /* sincos_r's error bounds (relative for sin, absolute for cos) */
+#define SC_EPS_C 0x1.8p-57
+#endif
 
 static ddbl two_sum(double a, double b)
 {
@@ -350,6 +354,75 @@ static double cr_trig(double a, int want_sin)
 
 double psin_cr(double x) { return cr_trig(x, 1); }
 double pcos_cr(double x) { return cr_trig(x, 0); }
+
+/* sin (odd 1) or cos (odd 0) of the reduced r, as cr_trig rounds it: the Taylor series with x^2, x^3 and the x^3 / 6
+   term in double-double (two_prod) and the rest (to x^21 / x^22) in double, as hi + lo with an error of about 2^-60;
+   kept when hi + (lo + e) and hi + (lo - e) round alike (Ziv's test), else the double-double series, cr_trig's own
+   result. Checked equal to psin_cr / pcos_cr for every float argument in [0, 360] degrees (bat_fly's directions) */
+static double sincos_r(ddbl r, int odd)
+{
+    static const double I6H = 0.16666666666666666, I6L = 9.25185853854297e-18,
+        s5 = 0.008333333333333333, s7 = -0.0001984126984126984, s9 = 2.7557319223985893e-06,
+        s11 = -2.505210838544172e-08, s13 = 1.6059043836821613e-10, s15 = -7.647163731819816e-13,
+        s17 = 2.8114572543455206e-15, s19 = -8.22063524662433e-18, s21 = 1.9572941063391263e-20,
+        c4 = 0.041666666666666664, c6 = -0.001388888888888889, c8 = 2.48015873015873e-05,
+        c10 = -2.755731922398589e-07, c12 = 2.08767569878681e-09, c14 = -1.1470745597729725e-11,
+        c16 = 4.779477332387385e-14, c18 = -1.5619206968586225e-16, c20 = 4.110317623312165e-19,
+        c22 = -8.896791392450574e-22;
+    double x = r.hi, y = r.lo, zh, zl, hi, lo, e, a, b;
+    ddbl t;
+    two_prod(x, x, &zh, &zl);                                  /* x^2 */
+    if (odd) {
+        double vh, vl, th, tl, rest;
+        ddbl u;
+        two_prod(x, zh, &vh, &vl);                             /* x^3 */
+        vl += x * zl;
+        two_prod(vh, I6H, &th, &tl);                           /* x^3 / 6 */
+        tl += vh * I6L + vl * I6H;
+        rest = vh * zh * (s5 + zh * (s7 + zh * (s9 + zh * (s11 + zh * (s13 + zh * (s15 + zh * (s17 +
+               zh * (s19 + zh * s21)))))))) + (vl * zh + vh * zl) * s5;     /* x^5 (s5 + ...) */
+        u = two_sum(x, -th);
+        hi = u.hi;
+        lo = u.lo + (((rest - tl) + y * (1.0 - zh * (0.5 - zh * c4))));      /* y cos x */
+        e = (x < 0 ? -x : x) * SC_EPS_S;
+    } else {
+        double hz = 0.5 * zh, w = 1.0 - hz, rest;
+        rest = zh * (zh * (c4 + zh * (c6 + zh * (c8 + zh * (c10 + zh * (c12 + zh * (c14 + zh * (c16 + zh * (c18 +
+               zh * (c20 + zh * c22))))))))) + 2.0 * zl * c4);     /* z^2 (c4 + ...), z = zh + zl */
+        hi = w;
+        lo = ((((1.0 - w) - hz) - 0.5 * zl) + rest) - x * y * (1.0 - zh * I6H);   /* - y sin x */
+        e = SC_EPS_C;
+    }
+    a = hi + (lo + e);
+    b = hi + (lo - e);
+    if (a == b) return hi + lo;
+    t = dd_sincos(r, odd);
+    return t.hi + t.lo;
+}
+
+/* sin and cos of a with cr_trig's reduction once (bat_fly): the same bits as psin_cr(a), pcos_cr(a) */
+void psincos_cr(double a, double *s, double *c)
+{
+    static const double P1 = 1.57079632673412561417e+00, P2 = 6.07710050630396597660e-11,
+                        P3 = 2.02226624871116645580e-21, P4 = 8.47842766036889956997e-32;
+    double k = (double)(int32_t)(a * invpio2 + (a < 0 ? -0.5 : 0.5)), sr, cr;
+    ddbl r, t;
+    r = two_sum(a, -k * P1);
+    r = dd_add(r, two_sum(-k * P2, 0));
+    two_prod(-k, P3, &t.hi, &t.lo);
+    r = dd_add(r, t);
+    t.hi = -k * P4;
+    t.lo = 0;
+    r = dd_add(r, t);
+    sr = sincos_r(r, 1);
+    cr = sincos_r(r, 0);
+    switch (((int)k) & 3) {
+    case 0: *s = sr; *c = cr; break;
+    case 1: *s = cr; *c = -sr; break;
+    case 2: *s = -sr; *c = -cr; break;
+    default: *s = -cr; *c = sr; break;
+    }
+}
 
 /* ---- fdlibm's float atan2f (e_atan2f.c, s_atanf.c: glibc's flt-32 versions, in float arithmetic): the runner's
    point_direction (Observed: all 33 bat directions of build/trace/p5_spider_s121 records 176-208) -------------- */

@@ -12,7 +12,7 @@ ldre = re.compile(r'mov\.l\s+[0-9a-f]+ <[^>]*>,(r\d+)\s+!.*<(_[A-Za-z0-9_.]+)>')
 mvre = re.compile(r'\smov\s+(r\d+),(r\d+)\s*$')
 jsrre = re.compile(r'\sjsr\s+@(r\d+)')
 regs = {}; cur = ('?', 0); func = '?'
-by_help = collections.Counter(); by_file = collections.Counter(); by_line = collections.Counter(); by_func = collections.Counter()
+fnl = {}; by_help = collections.Counter(); by_file = collections.Counter(); by_line = collections.Counter(); by_func = collections.Counter()
 for l in open(dis):
     m = fnre.match(l)
     if m: func = m.group(1); regs = {}; continue
@@ -35,8 +35,14 @@ for l in open(dis):
         if only not in f: continue
         f = f[f.index(only):]
         h = regs[m.group(1)]
-        by_help[h] += 1; by_file[f] += 1; by_line[(f, cur[1], h)] += 1; by_func[(func, h)] += 1
+        by_help[h] += 1; by_file[f] += 1; by_line[(f, cur[1], h)] += 1; by_func[(func, h)] += 1; fnl.setdefault(func, set()).add((f, cur[1], h))
 print('soft-float call sites in %s: %d' % (only, sum(by_help.values())))
 print('\nby helper'); [print('  %-18s %5d' % kv) for kv in by_help.most_common()]
 print('\nby file'); [print('  %-26s %5d' % kv) for kv in by_file.most_common()]
+import os
+FN = os.getenv('SF_FUNC')
+if FN:
+    print('\n%s: sites by line' % FN)
+    for (f, ln, h), v in sorted(by_line.items(), key=lambda x: (x[0][0], x[0][1])):
+        if (f, ln, h) in fnl.get(FN, set()): print('  %s:%d %-16s %d' % (f, ln, h, v))
 print('\nby function and helper (top 40)'); [print('  %-28s %-16s %4d' % (f, h, v)) for (f, h), v in by_func.most_common(40)]
