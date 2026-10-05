@@ -112,8 +112,19 @@ game, v_a<k>.bin), HOST_GAME2=1, HOST_CABINET=1 (route keys as the cabinet's con
   and title on the real core (screenshots 2026-10-05 12:19, 12:59).
 
 Open:
-- Ending: no route beats Olmec (the door path is tested with HOST_XEND injecting oXEnd on the player); a
-  playthrough on .81 is the check.
+- **A route that beats Olmec (2026-10-05):** tests/routes/end_olmec.txt (seed 1, level 16, rOlmec, enemies kept;
+  3029 steps), written by tools/olmecbot.c (scripts/olmecbot.sh, about 3 minutes; the same keys again from the
+  committed tool): 20 Olmec cycles chosen by fork() lookahead dig him down to the lava (he drowns from step 2690),
+  then a best-first search over key macros takes the player up a rope out of the pit to oXEnd. The runner's trace
+  (`TRACE_HUD=1 TRACE_SND=1 TRACE_LEVEL=16 TRACE_ROOM=rOlmec TRACE_TAIL=400 XVFB_SCREEN=1280x960x24
+  scripts/hd_trace.sh end_olmec 1 end_olmec_s1`, 420 MB) goes to rEnd at record 3028 as the C does.
+  `scripts/olmec_host.sh` (the game program on the host, exact build): ROUTE equal over 3431 records, rooms
+  rOlmec@0, rEnd@3028, 3429 / 3431 records equal: records 2064 and 2720 differ in one oBat's yVel by 1 ulp
+  (0.2579919185662628 / 0.25799191856626275), and nothing after. playhost (build/host): 3027 / 3029, the same two.
+  `EXACT=0` (the shipping collision grid): ROUTE equal (rEnd at 3028, same money and life), records from 385 differ
+  as on c_temple_olmec. Both builds report untranslated 1020 when Olmec is destroyed: src/game pobj.c flags every
+  oSolid child's Destroy, but oOlmec (oMovingSolid, oSolid) has none of its own, so oSolid's (destroy_solid) is the
+  translation; the flag is spurious there. The player ends with life 1 of 4.
 - **Ending frames (done 2026-10-05):** tools/drawmodel.py models rEnd3 / rCredits2: the two bgClouds layers (no
   room background), showFinalScore in oEnd3's Draw, drawCredits in oCredits2's Draw GUI, their rectangles, from the
   trace's end block; the front rooms' layer order needs build/gen/fronttables_rt.txt from a current `make gen`.
