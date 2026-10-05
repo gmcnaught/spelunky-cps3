@@ -595,6 +595,9 @@ void draw_tile_delete(int depth, int x, int y)
 /* spr_local[GSPR_*]: the sprite has art and draws within 16 px of its origin (any frame, mirrored or not);
    dk_local[kind]: the Draw event draws only the sprite about its origin (and the price tag at y - 16 .. y - 7) */
 static uint8_t spr_local[GSPR_COUNT];
+/* spr_wide[GSPR_*]: larger than the coarse view test's margins (320 x 240): reaches the view from outside its window
+   (the ending's backgrounds: sBGEnd3, 480 px, rEnd3's oBGEnd3 at x -368 covers x -368 .. 111) */
+static uint8_t spr_wide[GSPR_COUNT];
 static const uint8_t dk_local[DK_FRONT + 1] = { [DK_SELF] = 1, [DK_DAMSEL] = 1, [DK_ITEM] = 1, [DK_PLAIN] = 1,
                                                [DK_TODO] = 1 };
 
@@ -1084,6 +1087,7 @@ void draw_boot(void)
         const struct sprdef *sd = sp >= 0 ? &sprdefs[sp] : 0;
         spr_local[k] = sd && sd->w <= 16 && sd->h <= 16 && sd->xorig >= 0 && sd->xorig <= 16 && sd->yorig >= 0 &&
                        sd->yorig <= 16;
+        spr_wide[k] = sd && (sd->w > 320 || sd->h > 240);
     }
     for (k = 1; k < 256; k++) hb8[k] = (uint8_t)(hb8[k >> 1] + (k > 1));
     for (m = 0; m <= NMAPS; m++) cps3v_tilemap(m, 0, 0, UNIT(m), 0);
@@ -1186,7 +1190,14 @@ void draw_frame(void)
         ky = fkey(I_Y(pi));
         if (kx <= sxlo || kx >= sxhi || ky <= sylo || ky >= syhi) {   /* not within 16 px of the screen: */
             if (I_SPR(pi) < 0 || (spr_local[I_SPR(pi)] && dk_local[dk & ~DK_SOLID])) continue;   /* draws nothing */
-            if (kx < xlo || kx >= xhi || ky < ylo || ky >= yhi) continue;
+            if (kx < xlo || kx >= xhi || ky < ylo || ky >= yhi) {   /* outside the window: only a sprite larger */
+                const struct sprdef *sd;                               /* than its margins reaches the view */
+                float x = I_X(pi), y = I_Y(pi);
+                if (I_SPR(pi) < 0 || !spr_wide[I_SPR(pi)]) continue;
+                sd = &sprdefs[draw_spr[I_SPR(pi)]];
+                if (x <= (float)(vx - sd->w) || x >= (float)(vx + VIEW_W + sd->w) || y <= (float)(vy - sd->h) ||
+                    y >= (float)(vy + VIEW_H + sd->h)) continue;
+            }
         }
         if (n < ENT_MAX) {
             ents[n].dkey = fkey(I_DEPTH(pi));
