@@ -58,18 +58,22 @@ static uint8_t gkind[PIN_MAX], gox0[PIN_MAX], goy0[PIN_MAX], gox1[PIN_MAX], goy1
    (an oSolid-family entry put in or taken out of the cells it may reach), both 16-bit within an epoch: when gclock
    would wrap, gepoch advances and every gver restarts at 0, and a record of an earlier epoch is never still */
 static uint16_t gclock = 1, gepoch, gver[GRID_H][GRID_W];
-/* the liquid index (collision_point_any): for each family of xf_obj, how many of its entries' integer boxes reach
-   each cell ([l, r - 1] x [t, b - 1] in cells, clamped), kept like the solid grid (an entry whose box may have changed
+/* the static-family index (collision_point_p, collision_rect_p / _i): for each family of xf_obj (objects that do not
+   move by moveTo's raw writes: liquids, ladders, spikes, webs), how many of its entries' integer boxes reach each
+   cell ([l, r - 1] x [t, b - 1] in cells, clamped), kept like the solid grid (an entry whose box may have changed
    waits on xdhead until the next query); a cell with no count holds no point of the family. xfar counts the entries
-   with a box that is not BB_INT (any query of their family takes the scan). Destroyed entries keep their counts
-   until the slot is used again: a superset */
+   with a box that is not BB_INT, xsat a cell count past 255 (then every query of the family takes the search).
+   Destroyed entries keep their counts until the slot is used again: a superset */
 #ifndef PCOL_EXACT
-#define XF_N 3
-static const int16_t xf_obj[XF_N] = { OBJ_oLava, OBJ_oWater, OBJ_oWaterSwim };
+#define XF_N 7
+static const int16_t xf_obj[XF_N] = { OBJ_oLava, OBJ_oWater, OBJ_oWaterSwim, OBJ_oLadder, OBJ_oLadderTop, OBJ_oSpikes,
+                                      OBJ_oWeb };
 static uint8_t xbits[OBJ_COUNT];                 /* bit f: the object is in family xf_obj[f] */
+static int8_t xf_of[OBJ_COUNT];                  /* the family index of a query's obj, -1 none */
 static int xbits_ok;
-static uint16_t xcnt[XF_N][GRID_H][GRID_W];
+static uint8_t xcnt[XF_N][GRID_H][GRID_W];
 static uint16_t xfar[XF_N];
+static uint8_t xsat[XF_N];
 static uint8_t xmask[PIN_MAX], xisfar[PIN_MAX], xond[PIN_MAX], xx0[PIN_MAX], xy0[PIN_MAX], xx1[PIN_MAX], xy1[PIN_MAX];
 static int16_t xdnext[PIN_MAX], xdhead = NOONE;
 static void xdirty(int i)
@@ -1342,7 +1346,11 @@ static void grid_reset(void)
     if (!xbits_ok) {                             /* (the object tree is fixed: once) */
         for (x = 0; x < OBJ_COUNT; x++) {
             int f, b = 0;
-            for (f = 0; f < XF_N; f++) if (obj_is(x, xf_obj[f])) b |= 1 << f;
+            xf_of[x] = -1;
+            for (f = 0; f < XF_N; f++) {
+                if (obj_is(x, xf_obj[f])) b |= 1 << f;
+                if (x == xf_obj[f]) xf_of[x] = (int8_t)f;
+            }
             xbits[x] = (uint8_t)b;
         }
         xbits_ok = 1;
@@ -1350,6 +1358,7 @@ static void grid_reset(void)
     for (x = 0; x < PIN_MAX; x++) xmask[x] = xisfar[x] = xond[x] = 0;
     for (x = 0; x < XF_N; x++) {
         xfar[x] = 0;
+        xsat[x] = 0;
         for (y = 0; y < GRID_H; y++) { int c; for (c = 0; c < GRID_W; c++) xcnt[x][y][c] = 0; }
     }
     xdhead = NOONE;
@@ -1528,38 +1537,6 @@ static int grid_point(int obj, int notme, const struct pq *q, int prec)
     return best;
 }
 
-/* Command_CollisionPoint tests the object's instances in creation order (Collision_Point computes each stale box:
-   pcol_touch) */
-int (collision_point_p)(double px, double py, int obj, int prec, int notme_self)
-{
-    int k;
-    struct pq q;
-    struct fam it;
-    PWST(point, 1);
-    if (fam_none(obj)) return NOONE;
-    pq_init(&q, px, py);
-    if (q.iok && obj >= 0 && obj_is(obj, OBJ_oSolid) && !pcol_quiet()) {
-        k = grid_point(obj, notme_self, &q, prec);
-        pcol_touch_stale(obj, notme_self, k);
-        return k;
-    }
-    fam_begin(&it, obj);
-    while ((k = fam_get(&it)) != NOONE) {
-        if (k == notme_self) continue;
-        pcol_touch(k);
-        if (point_hit(k, &q, prec))
-            return k;
-    }
-    return NOONE;
-}
-
-/* collision_point(px, py, obj, prec, notme) != noone. For oSolid in the grid build (PCOL_EXACT keeps collision_point_p),
-   whole point cells from the solid grid's summary: the point's cell holds a block (a box of exactly that cell) that
-   is not the caller and not precise: a hit; no block there and no other oSolid-family entry reaching the cell
-   (gother): a miss (a block's box is its own cell); otherwise collision_point_p. For oLava, oWater and oWaterSwim, a
-   whole point in a cell that no entry of the family reaches in the liquid index is a miss. Skipped: the stale touches of the
-   scan (pcol_touch_stale), which the grid build's searches do not depend on (pobj.c PLAY_REST). The host builds
-   compare every summary answer */
 #ifndef PCOL_EXACT
 static void xplace(int i, int d)
 {
@@ -1568,7 +1545,10 @@ static void xplace(int i, int d)
         if (!(xmask[i] >> f & 1)) continue;
         if (xisfar[i]) { xfar[f] += d; continue; }
         for (y = xy0[i]; y <= xy1[i]; y++)
-            for (x = xx0[i]; x <= xx1[i]; x++) xcnt[f][y][x] += d;
+            for (x = xx0[i]; x <= xx1[i]; x++) {
+                if (d > 0 && xcnt[f][y][x] == 255) xsat[f] = 1;   /* (then the counts are not read until the reset) */
+                xcnt[f][y][x] += d;
+            }
     }
 }
 
@@ -1592,13 +1572,66 @@ static __attribute__((noinline)) void xflush_run(void)
         xplace(i, 1);
     }
 }
+
+/* no entry of family f has a box holding the whole point q (a point is in a box's cell) */
+static int xpoint_none(int f, const struct pq *q)
+{
+    int cx, cy;
+    if (!q->iok || q->ix < 0 || q->iy < 0 || (cx = q->ix >> 4) >= GRID_W || (cy = q->iy >> 4) >= GRID_H) return 0;
+    if (xdhead >= 0) xflush_run();
+    return xfar[f] == 0 && !xsat[f] && xcnt[f][cy][cx] == 0;
+}
 #endif
+
+/* Command_CollisionPoint tests the object's instances in creation order (Collision_Point computes each stale box:
+   pcol_touch) */
+int (collision_point_p)(double px, double py, int obj, int prec, int notme_self)
+{
+    int k;
+    struct pq q;
+    struct fam it;
+    PWST(point, 1);
+    if (fam_none(obj)) return NOONE;
+    pq_init(&q, px, py);
+#ifndef PCOL_EXACT
+    if (obj >= 0 && xf_of[obj] >= 0 && !pcol_quiet() && xpoint_none(xf_of[obj], &q)) {
+#ifdef PLAY_STATS
+        fam_begin(&it, obj);
+        while ((k = fam_get(&it)) != NOONE)
+            if (k != notme_self && point_hit(k, &q, prec)) {
+                fprintf(stderr, "collision_point_p: static-family index miss differs (%d %.17g %.17g)\n", obj, px, py);
+                abort();
+            }
+#endif
+        return NOONE;
+    }
+#endif
+    if (q.iok && obj >= 0 && obj_is(obj, OBJ_oSolid) && !pcol_quiet()) {
+        k = grid_point(obj, notme_self, &q, prec);
+        pcol_touch_stale(obj, notme_self, k);
+        return k;
+    }
+    fam_begin(&it, obj);
+    while ((k = fam_get(&it)) != NOONE) {
+        if (k == notme_self) continue;
+        pcol_touch(k);
+        if (point_hit(k, &q, prec))
+            return k;
+    }
+    return NOONE;
+}
+
+/* collision_point(px, py, obj, prec, notme) != noone. For oSolid in the grid build (PCOL_EXACT keeps collision_point_p),
+   whole point cells from the solid grid's summary: the point's cell holds a block (a box of exactly that cell) that
+   is not the caller and not precise: a hit; no block there and no other oSolid-family entry reaching the cell
+   (gother): a miss (a block's box is its own cell); otherwise collision_point_p. Skipped: the stale touches of the
+   scan (pcol_touch_stale), which the grid build's searches do not depend on (pobj.c PLAY_REST). The host builds
+   compare every summary answer */
 
 int (collision_point_any)(double px, double py, int obj, int prec, int notme_self)
 {
 #ifndef PCOL_EXACT
     struct pq q;
-    int f;
     if (obj == OBJ_oSolid && !gfar && !pcol_quiet()) {
         int cx, cy, n, k, r = -1;
         if (fam_none(obj)) return 0;
@@ -1619,25 +1652,6 @@ int (collision_point_any)(double px, double py, int obj, int prec, int notme_sel
 #endif
             return r;
         }
-    }
-    f = obj == OBJ_oLava ? 0 : obj == OBJ_oWater ? 1 : obj == OBJ_oWaterSwim ? 2 : -1;
-    if (f >= 0 && !pcol_quiet()) {
-        int cx, cy;
-        if (fam_none(obj)) return 0;
-        pq_init(&q, px, py);
-        if (q.iok && q.ix >= 0 && q.iy >= 0 && (cx = q.ix >> 4) < GRID_W && (cy = q.iy >> 4) < GRID_H) {
-            if (xdhead >= 0) xflush_run();
-            if (xfar[f] == 0 && xcnt[f][cy][cx] == 0) {
-#ifdef PLAY_STATS
-                if (collision_point_p(px, py, obj, prec, notme_self) != NOONE) {
-                    fprintf(stderr, "collision_point_any: liquid index miss differs (%d %.17g %.17g)\n", obj, px, py);
-                    abort();
-                }
-#endif
-                return 0;
-            }
-        }
-        return collision_point_p(px, py, obj, prec, notme_self) != NOONE;
     }
 #endif
     return collision_point_p(px, py, obj, prec, notme_self) != NOONE;
@@ -2161,7 +2175,7 @@ static int xrect_none(int f, int32_t l, int32_t t, int32_t r, int32_t b)
     int x, y, x0 = clampi(l >> 4, 0, GRID_W - 1), xe = clampi(r >> 4, 0, GRID_W - 1);
     int y0 = clampi(t >> 4, 0, GRID_H - 1), ye = clampi(b >> 4, 0, GRID_H - 1);
     if (xdhead >= 0) xflush_run();
-    if (xfar[f]) return 0;
+    if (xfar[f] || xsat[f]) return 0;
     for (y = y0; y <= ye; y++)
         for (x = x0; x <= xe; x++)
             if (xcnt[f][y][x]) return 0;
@@ -2170,34 +2184,12 @@ static int xrect_none(int f, int32_t l, int32_t t, int32_t r, int32_t b)
 #endif
 
 /* collision_rectangle(x1, y1, x2, y2, obj, prec, notme) != noone: whole corners of an oSolid query by rect_any_i (the
-   corners rq_init would take as ints: dwhole); whole corners of a prec 0 liquid query (oLava, oWater, oWaterSwim)
-   with no entry of the family in the cells they cover (the liquid index) a miss: rect_hit on an integer box is
-   max(l, bl) < min(r, br) and in y, a pixel of the box inside the corners (an empty box never hits); else
-   collision_rect_p */
+   corners rq_init would take as ints: dwhole), else collision_rect_p */
 int (collision_rect_any)(double x1, double y1, double x2, double y2, int obj, int prec, int notme_self)
 {
     int32_t a, b, c, d;
     if (obj == OBJ_oSolid && dwhole(x1, &a) && dwhole(y1, &b) && dwhole(x2, &c) && dwhole(y2, &d))
         return rect_any_i(a < c ? a : c, b < d ? b : d, a < c ? c : a, b < d ? d : b, prec, notme_self);
-#ifndef PCOL_EXACT
-    {
-        int f = obj == OBJ_oLava ? 0 : obj == OBJ_oWater ? 1 : obj == OBJ_oWaterSwim ? 2 : -1;
-        if (f >= 0 && !prec && dwhole(x1, &a) && dwhole(y1, &b) && dwhole(x2, &c) && dwhole(y2, &d)) {
-            int q = pcol_query(obj);                     /* (as collision_rect_p: the tree's updates first) */
-            if (q < 0) return 0;
-            if (!pcol_quiet() && xrect_none(f, a < c ? a : c, b < d ? b : d, a < c ? c : a, b < d ? d : b)) {
-#ifdef PLAY_STATS
-                if (collision_rect_p(x1, y1, x2, y2, obj, prec, notme_self) != NOONE) {
-                    fprintf(stderr, "collision_rect_any: liquid index miss differs (%d %.17g %.17g %.17g %.17g)\n",
-                            obj, x1, y1, x2, y2);
-                    abort();
-                }
-#endif
-                return 0;
-            }
-        }
-    }
-#endif
     return collision_rect_p(x1, y1, x2, y2, obj, prec, notme_self) != NOONE;
 }
 
@@ -2355,6 +2347,39 @@ static int rect_cb(int k, void *v)
 
 static int rect_run(struct rq *rq, int q, const float *r, int obj, int prec, int notme_self);
 
+/* a prec 0 query of a static family (the index) with integer corners (iok: rect_hit's integer test on BB_INT boxes,
+   max(l, bl) < min(r, br) and in y, so a hit has a pixel of the box inside the corners; an empty box never hits; a
+   box of another kind is in xfar) and no entry of the family in the cells they cover: NOONE. The host builds test
+   every entry of the family beside every answer */
+static int rq_static_none(struct rq *rq, int obj, int prec, int notme_self)
+{
+#ifndef PCOL_EXACT
+    if (prec || obj < 0 || xf_of[obj] < 0 || !rq->iok || pcol_quiet() ||
+        !xrect_none(xf_of[obj], rq->ilx, rq->ily, rq->ihx, rq->ihy))
+        return 0;
+#ifdef PLAY_STATS
+    {   /* every entry of the family, by rect_hit */
+        struct rq c = *rq;
+        struct fam it;
+        int k;
+        fam_begin(&it, obj);
+        while ((k = fam_get(&it)) != NOONE)
+            if (!match(k, obj, notme_self) || !rect_hit(k, &c, prec)) continue;
+            else break;
+        if (k != NOONE) {
+            fprintf(stderr, "collision_rect: static-family index miss differs (%d %d %d %d %d)\n", obj, rq->ilx,
+                    rq->ily, rq->ihx, rq->ihy);
+            abort();
+        }
+    }
+#endif
+    return 1;
+#else
+    (void)rq; (void)obj; (void)prec; (void)notme_self;
+    return 0;
+#endif
+}
+
 int (collision_rect_p)(double x1, double y1, double x2, double y2, int obj, int prec, int notme_self)
 {
     int q = pcol_query(obj);
@@ -2363,6 +2388,7 @@ int (collision_rect_p)(double x1, double y1, double x2, double y2, int obj, int 
     PWST(rect, 1);
     if (q < 0) return NOONE;
     rq_init(&rq, x1, y1, x2, y2);
+    if (rq_static_none(&rq, obj, prec, notme_self)) return NOONE;
     if (!rq.fok) return rect_run(&rq, q, 0, obj, prec, notme_self);   /* whole corners: qrect's are the ints +-1 */
     if (q == 1) qrect(x1, y1, x2, y2, r);
     return rect_run(&rq, q, r, obj, prec, notme_self);
@@ -2381,6 +2407,7 @@ int collision_rect_i(int32_t x1, int32_t y1, int32_t x2, int32_t y2, int obj, in
     rq.ily = y1 < y2 ? y1 : y2; rq.ihy = y1 < y2 ? y2 : y1;
     rq.fok = 0;                                 /* (the float corners were left unset before 2026-10-04) */
     (void)r;
+    if (rq_static_none(&rq, obj, prec, notme_self)) return NOONE;
     return rect_run(&rq, q, 0, obj, prec, notme_self);
 }
 
