@@ -276,6 +276,20 @@ Load-use stall (from spelunky-cps3-a6, low priority): jtcps3 stalls 1 cycle on a
   0a73215: p5_snakes 203 666.9 -> 648.7 K, p5_caveman 150 735.7 -> 662.5 K. gametime (MAME) p5_snakes pair max
   204.2 -> 199.8 K. Gates: gates.sh (p5_regress 19/19 both builds, colprobe, snd), ctall 48/48, EQUIV 72/72,
   FULLREG 640/640, playsh2 grid / EXACT / SOFTFP 6,851 equal, game_check, gametime, JT: all pass.
+  On jtcps3 (.62, the gated batch-7 builds): frame budget game 2 (p5_snakes) step mean / max 483.8 K / 750.0 K, pair
+  mean 588.2 K, max 844.8 K, **1 of 241 pairs over** (5.8 K over); game 1 pairs over 1 of 375 (the level start).
+  JT PASS 23/23, route mean of means **486.9 K** (-5.8 %), 4 of 18 over 0.525 M: caveman 695.6 K, giant 613.7 K,
+  bomb_drop 595.6 K, idol 550.6 K (walk 524.0 K, cavestun 524.8 K just under).
+- Batch 8 (merged 54d3a26): BB_INTS, box-only instances at whole scales on overlap_at's integer path (oArrowTrapTest:
+  443-598 float PreciseCollision runs a route on caveman / cavestun / giant). p5_caveman 150 662.5 -> 621.3 K fit;
+  p4_exit559 301 +1.3 % (layout). Gates all pass (as batch 7).
+- Batch 9 (perf3-b2): dist_newton_i (dcf6b02: the whole-box distance's Newton from isqrt + 0.5, every n <= 2^24
+  checked; caveman 200 684.8 -> 665.3 K), spr_dim (2fa6c8f: sprite_width / height at whole scales, caveman 200 665.3
+  -> 643.9 K, p5_snakes 956 -1.7 %), pw_release on a step that removed nothing (0e479f1: the 24 K batch release
+  moves off p5_snakes record 203, 651.7 -> 635.8 K; record 208 with it 519.8 K), gametime's PR AT (f535e23: MAME
+  puts p5_snakes' largest pairs at 200, 203, 202 - steps 201-204, the explosion - not the settling record 3).
+- Measured and not kept (a6, jar-fp f8916d8): the jars' speed test on the bits and the hit rectangle on whole
+  corners: 80 soft-float calls gone on p5_snakes 203 but jar_step's fetch misses up, 666.9 -> 667.3 K.
 - Measured and dropped: anim_one's image compares as integer bit tests (img_ge / img_lt0, equal to the float
   compares over all 2^32 / 300 M pairs): p4 301 554.0 -> 552.4 K, p5 956 445.9 -> 448.0 K fit, stack stores +70.
 - Measured and dropped: a call-free pg_collect for pgrid_search (-1.4 / -1.0 / +0.6 / +0.2 %: noise, +3.5 KB).
