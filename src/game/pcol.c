@@ -822,29 +822,33 @@ static int f08_of(int o)
     return 0;
 }
 
-/* pcol_handle's searcher test (can_pair): for each object d, the objects whose collision events (pobj's lists, with
-   the inherited ones) have a target that d is or descends from (has_col(o, d) for an instance of o and one of d), as
-   lists rv_obj[rv_off[d] .. rv_off[d + 1]); built by obj_init. RV_MAX: the HD tables need 1,939 (rv_ok 2: too few,
-   no test) */
-#define RV_MAX 2304
-static int16_t rv_off[OBJ_COUNT + 1], rv_obj[RV_MAX];
-static uint8_t rv_ok;
+/* pcol_handle's searcher test (can_pair, direct_pairs): for each object d, the objects whose collision events (pobj's
+   lists, with the inherited ones) have a target that d is or descends from (has_col(o, d) for an instance of o and
+   one of d), as lists rv_obj[rv_beg[d] .. + rv_n[d]); built by obj_init. Kept only when d's targets and list hold at
+   most RV_SHORT objects (the HD tables: 311 objects, 55 entries); rv_n 255: longer (the search, as before) */
+#define RV_SHORT 8
+#define RV_MAX 128
+#define RV_LONG 255
+static uint8_t rv_beg[OBJ_COUNT], rv_n[OBJ_COUNT];
+static int16_t rv_obj[RV_MAX];
 
 static void rv_build(void)
 {
     int d, o, k, n = 0;
     for (d = 0; d < OBJ_COUNT; d++) {
-        rv_off[d] = (int16_t)n;
+        int m = 0;
+        rv_beg[d] = (uint8_t)n;
         for (o = 0; o < OBJ_COUNT; o++)
             for (k = 0; k < pobj[o].ncol; k++)
                 if (obj_is(d, pcol[pobj[o].col0 + k])) {
-                    if (n == RV_MAX) { rv_ok = 2; return; }
-                    rv_obj[n++] = (int16_t)o;
+                    if (m == RV_LONG || pobj[d].ncol + m + 1 > RV_SHORT || n + m == RV_MAX) m = RV_LONG;
+                    else rv_obj[n + m++] = (int16_t)o;
                     break;
                 }
+        /* (m is RV_LONG once the list is too long: the loop above stops adding) */
+        rv_n[d] = (uint8_t)(m == RV_LONG || pobj[d].ncol > RV_SHORT ? RV_LONG : m);
+        if (rv_n[d] != RV_LONG) n += m;
     }
-    rv_off[OBJ_COUNT] = (int16_t)n;
-    rv_ok = 1;
 }
 
 static void obj_init(void)
@@ -1658,9 +1662,9 @@ static int can_pair(int s)
 {
     int os = PW.in[s].obj, k, n;
     const struct pobj *q = &pobj[os];
-    if (rv_ok != 1 || q->ncol + rv_off[os + 1] - rv_off[os] > 8) return 1;   /* long lists (oPlayer1's 42): search */
+    if (rv_n[os] == RV_LONG) return 1;            /* long lists (oPlayer1's 42): search */
     for (k = 0; k < q->ncol; k++) if (ocnt[pcol[q->col0 + k]]) return 1;
-    for (k = rv_off[os], n = rv_off[os + 1]; k < n; k++) if (ocnt[rv_obj[k]]) return 1;
+    for (k = rv_beg[os], n = k + rv_n[os]; k < n; k++) if (ocnt[rv_obj[k]]) return 1;
     return 0;
 }
 
@@ -1688,7 +1692,7 @@ static int direct_pairs(int s)
                 c[n++] = (int16_t)i;
             }
     }
-    for (k = rv_off[os]; k < rv_off[os + 1]; k++) {
+    for (k = rv_beg[os]; k < rv_beg[os] + rv_n[os]; k++) {
         o = rv_obj[k];
         if (!ocnt[o]) continue;
         for (i = pw_ohead[o]; i >= 0; i = pw_inext[i]) {
@@ -1763,8 +1767,7 @@ void pcol_handle(void)
         rlock = 1;
         PCST(pcol_st.searches++);
 #ifndef PCOL_EXACT
-        if (PCOL_GRID_ON && pobj[PW.in[s].obj].ncol + rv_off[PW.in[s].obj + 1] - rv_off[PW.in[s].obj] <= 8 &&
-            rv_ok == 1) {
+        if (PCOL_GRID_ON && rv_n[PW.in[s].obj] != RV_LONG) {
             int np1 = npairs;
             if (!direct_pairs(s)) search_run();
 #ifdef PLAY_STATS

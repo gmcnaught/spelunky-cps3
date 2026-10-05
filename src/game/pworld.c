@@ -156,7 +156,7 @@ static uint8_t fpre_ok;
 
 static void fpre_init(void)
 {
-    static int16_t child[OBJ_COUNT], sib[OBJ_COUNT];
+    int16_t child[OBJ_COUNT], sib[OBJ_COUNT];        /* (once, at a level start: on the stack) */
     int o, r, n = 0;
     for (o = 0; o < OBJ_COUNT; o++) child[o] = sib[o] = -1;
     for (o = OBJ_COUNT - 1; o >= 0; o--) {
