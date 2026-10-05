@@ -1699,7 +1699,9 @@ void ev_collision(int self, int other)
                 PL.pickupItemType = T_NONE;
             }
             pin_destroy(self);
-        } else
+        } else if (obj_is(oo, OBJ_oBullet))                                    /* objects/oJar/Collision_oBullet.gml: */
+            pin_destroy(self);                                                 /* its Destroy breaks it (destroy_jar_like) */
+        else
             ptemple_world(1094, self, other);
         break;
     case OBJ_oLockedChest: pitems_world(1095, self, other); break;
