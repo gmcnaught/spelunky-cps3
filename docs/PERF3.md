@@ -215,3 +215,8 @@ Measured and not kept: PTOD / D* through inline fwiden everywhere (code growth: 
 +0.9 / -0.4 %: under jtcost's layout noise of about 1 %), a per-step memo of isCollision* (8-11 % repeats).
 Literal-pool line misses by what they hold (p4 / p5): RAM addresses 1,013 / 698, constants 703 / 724, function
 addresses 414 / 301: a GBR block (1.4) can remove at most the first (38 K / 26 K fit, 6.5 % / 4.8 %).
+
+Batch 3 on jtcps3 (.62, JT build of 80d620b, PASS 23/23): route mean of means **577,160** (batch 2: 628,926, -8.2 %);
+over 0.525 M: 11 of 18 (p1_walk 576 K, bomb_drop 652 K, buy 673 K, caveman 829 K, cavestun 631 K, giant 721 K, idol
+650 K, l4 659 K, shop 660 K, snakes 605 K, spider 549 K). Under: exit559 477 K, hang_ladder 491 K, items 491 K, spikes
+302 K, push_rope 459 K, bomb_throw 449 K, l3spider 516 K.
