@@ -52,6 +52,10 @@
 #include "pint.h"
 #include "pcol.h"
 #include "inst.h"
+#ifdef PLAY_STATS
+#include <stdio.h>
+#include <stdlib.h>
+#endif
 #if defined(__has_include)
 #if __has_include(<math.h>)
 #include <math.h>                       /* the host: libm's fmaf (arm64 / x86-64 FMA: one rounding) */
@@ -1473,8 +1477,24 @@ void pcol_handle(void)
         int s = tchead;
         tlist_remove(s);
         if (edead(s) || !PW.in[s].alive) continue;
-        /* the search rectangle of its box: as pcol_search with ebbox's floats (rset_f takes whole ones as ints) */
-        ebbox_rect(s, 0, 0, &s_r);
+        /* the search rectangle of its box: as pcol_search with ebbox's floats (rset_f takes whole ones as ints). A
+           tree member that is not stale has it as its tree rectangle (cupdate_at put ebbox_rect(s, 0, 0) there, and
+           every change of its box since would have marked it stale; flush ran above, and nothing moves in this loop) */
+        if ((ef[s] & (EF_TREE | EF_STALE)) == EF_TREE) {
+            s_r.r[0] = er[s][0]; s_r.r[1] = er[s][1]; s_r.r[2] = er[s][2]; s_r.r[3] = er[s][3];
+            s_r.w = erw[s];
+#ifdef PLAY_STATS
+            {   /* the host builds check the premise */
+                struct rbr c;
+                ebbox_rect(s, 0, 0, &c);
+                if (c.w != s_r.w || c.r[0] != s_r.r[0] || c.r[1] != s_r.r[1] || c.r[2] != s_r.r[2] || c.r[3] != s_r.r[3]) {
+                    fprintf(stderr, "pcol_handle: entry %d's tree rectangle is not its box\n", s);
+                    abort();
+                }
+            }
+#endif
+        } else
+            ebbox_rect(s, 0, 0, &s_r);
         s_kv = 0;
         hc_self = s;
         s_cb = collision_result;
