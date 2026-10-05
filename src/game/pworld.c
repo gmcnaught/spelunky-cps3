@@ -59,22 +59,24 @@ static uint8_t gkind[PIN_MAX], gox0[PIN_MAX], goy0[PIN_MAX], gox1[PIN_MAX], goy1
    would wrap, gepoch advances and every gver restarts at 0, and a record of an earlier epoch is never still */
 static uint16_t gclock = 1, gepoch, gver[GRID_H][GRID_W];
 /* the static-family index (collision_point_p, collision_rect_p / _i): for each family of xf_obj (objects that do not
-   move by moveTo's raw writes: liquids, ladders, spikes, webs), how many of its entries' integer boxes reach each
+   move by moveTo's raw writes: liquids, ladders, spikes, webs, the jungle's trees and leaves), how many of its entries' integer boxes reach each
    cell ([l, r - 1] x [t, b - 1] in cells, clamped), kept like the solid grid (an entry whose box may have changed
    waits on xdhead until the next query); a cell with no count holds no point of the family. xfar counts the entries
    with a box that is not BB_INT, xsat a cell count past 255 (then every query of the family takes the search).
    Destroyed entries keep their counts until the slot is used again: a superset */
 #ifndef PCOL_EXACT
-#define XF_N 7
+#define XF_N 9
 static const int16_t xf_obj[XF_N] = { OBJ_oLava, OBJ_oWater, OBJ_oWaterSwim, OBJ_oLadder, OBJ_oLadderTop, OBJ_oSpikes,
-                                      OBJ_oWeb };
-static uint8_t xbits[OBJ_COUNT];                 /* bit f: the object is in family xf_obj[f] */
+                                      OBJ_oWeb, OBJ_oTree, OBJ_oLeaves };
+static const uint16_t xf_bit[XF_N] = { 1, 2, 4, 8, 16, 32, 64, 128, 256 };
+static uint16_t xbits[OBJ_COUNT];                /* bit f: the object is in family xf_obj[f] */
 static int8_t xf_of[OBJ_COUNT];                  /* the family index of a query's obj, -1 none */
 static int xbits_ok;
 static uint8_t xcnt[XF_N][GRID_H][GRID_W];
 static uint16_t xfar[XF_N];
 static uint8_t xsat[XF_N];
-static uint8_t xmask[PIN_MAX], xisfar[PIN_MAX], xond[PIN_MAX], xx0[PIN_MAX], xy0[PIN_MAX], xx1[PIN_MAX], xy1[PIN_MAX];
+static uint16_t xmask[PIN_MAX];
+static uint8_t xisfar[PIN_MAX], xond[PIN_MAX], xx0[PIN_MAX], xy0[PIN_MAX], xx1[PIN_MAX], xy1[PIN_MAX];
 static int16_t xdnext[PIN_MAX], xdhead = NOONE;
 static void xdirty(int i)
 {
@@ -1424,7 +1426,7 @@ static void grid_reset(void)
                 if (obj_is(x, xf_obj[f])) b |= 1 << f;
                 if (x == xf_obj[f]) xf_of[x] = (int8_t)f;
             }
-            xbits[x] = (uint8_t)b;
+            xbits[x] = (uint16_t)b;
         }
         xbits_ok = 1;
     }
@@ -1635,7 +1637,7 @@ static __attribute__((noinline)) void xflush_run(void)
         xplace(i, -1);
         xmask[i] = xisfar[i] = 0;
         if (!PW.in[i].alive || !(b = xbits[PW.in[i].obj]) || bbkind(i) == BB_NOSPR) continue;
-        xmask[i] = (uint8_t)b;
+        xmask[i] = (uint16_t)b;
         if (pin_ibox(i, ib)) {
             if (ib[2] <= ib[0] || ib[3] <= ib[1]) { xmask[i] = 0; continue; }     /* empty: never hit */
             xx0[i] = (uint8_t)clampi(ib[0] >> 4, 0, GRID_W - 1); xx1[i] = (uint8_t)clampi((ib[2] - 1) >> 4, 0, GRID_W - 1);
@@ -1721,7 +1723,7 @@ static int xpoint_any(int obj, int notme, const struct pq *q, int prec)
         j++;
         for (k = pw_ohead[o]; k >= 0; k = pw_inext[k]) {
             if (k == notme) continue;
-            if (cx >= 0 && !xisfar[k] && (!(xmask[k] >> f & 1) || cx < xx0[k] || cx > xx1[k] || cy < xy0[k] ||
+            if (cx >= 0 && !xisfar[k] && (!(xmask[k] & xf_bit[f]) || cx < xx0[k] || cx > xx1[k] || cy < xy0[k] ||
                                           cy > xy1[k]))
                 continue;
             if (point_hit(k, q, prec)) return 1;
