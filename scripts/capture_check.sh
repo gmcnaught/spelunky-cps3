@@ -7,6 +7,7 @@
 # with MAME's. Exit 0 when every step is equal and the replay's end state and checkpoints equal the capture's.
 #   scripts/capture_check.sh       [CAP_MONKEY=n (the controls) CAP_START=frame (the Start: the seed) CAP_PLAY=frames]
 #                                  [DEV=1: a dev build; CAP_GOD=1: a dev build, INVINCIBLE on, the capture taken mid-game]
+#                                  [CAP_TOGGLE=1: RUN BUTTON TOGGLE on]
 # Output: build/capture/ (cabinet.log, capture.txt, capture2.txt, host steps.log, snap/, the result lines)
 set -e
 cd "$(dirname "$0")/.."

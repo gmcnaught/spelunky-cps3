@@ -6,6 +6,7 @@
 --   again and CAP_SHOTS more snapshots (the capture kept over the restart); exit.
 -- CAP_GOD=1 (a DEV=1 build): the settings screen's INVINCIBLE first (save and restart), then the game; after
 --   CAP_PLAY frames its capture is taken mid-game (the settings screen's restart ends the game).
+-- CAP_TOGGLE=1: the settings screen's RUN BUTTON TOGGLE first (with CAP_GOD in the same visit).
 -- CAP_LOG: per step "T <steps> <game_probe>" (tests/game/main.c marker block +80 steps, +124 probe, after each
 -- draw), and "SHOTS <set> <count>" lines.
 local screen = manager.machine.screens[":screen"]
@@ -17,6 +18,7 @@ local PLAY = tonumber(os.getenv("CAP_PLAY") or "6000")
 local SHOTS = tonumber(os.getenv("CAP_SHOTS") or "24")
 local GOD = os.getenv("CAP_GOD") == "1"             -- a DEV=1 build: INVINCIBLE set first; the capture mid-game
 local CAPROW = GOD and 6 or 5                       -- GAME CAPTURE's row in the settings menu
+local TOGGLE = os.getenv("CAP_TOGGLE") == "1"       -- RUN BUTTON TOGGLE set first
 local rs = tonumber(os.getenv("CAP_MONKEY") or "1") * 2654435761 % 4294967296
 if rs == 0 then rs = 1 end
 local function rnd(n)                                -- xorshift32, 0 .. n - 1
@@ -63,10 +65,16 @@ emu.register_frame_done(function()
     return
   end
   if phase == "boot" then
-    if f == 60 and GOD then                          -- settings: INVINCIBLE on, save and restart
-      local s = { { 75, { coin = true, b2 = true } }, { 30, {} } }
-      for _ = 1, 5 do s[#s + 1] = { 2, { down = true } }; s[#s + 1] = { 6, {} } end
-      s[#s + 1] = { 2, { b1 = true } }; s[#s + 1] = { 20, {} }; s[#s + 1] = { 2, { test = true } }
+    if f == 60 and (GOD or TOGGLE) then              -- settings: RUN BUTTON TOGGLE / INVINCIBLE on, save, restart
+      local s, row = { { 75, { coin = true, b2 = true } }, { 30, {} } }, 0
+      local function to(k)
+        for _ = row + 1, k do s[#s + 1] = { 2, { down = true } }; s[#s + 1] = { 6, {} } end
+        row = k
+        s[#s + 1] = { 2, { b1 = true } }; s[#s + 1] = { 10, {} }
+      end
+      if TOGGLE then to(2) end
+      if GOD then to(5) end
+      s[#s + 1] = { 20, {} }; s[#s + 1] = { 2, { test = true } }
       s[#s + 1] = { 300, {} }
       run_script(s, f)
       phase = "boot2"

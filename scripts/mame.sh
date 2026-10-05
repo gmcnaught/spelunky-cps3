@@ -9,5 +9,5 @@ P=/Users/gmcnaught/MisterFPGA-Projects
 D=$(cd "$(dirname "$0")/.." && pwd)
 docker image inspect spelunky-mame:latest >/dev/null 2>&1 || docker build -q -t spelunky-mame:latest "$D/docker/mame" >/dev/null
 exec docker run --rm -v "$P":"$P" -w "$PWD" \
-  -e CAP_ADDR -e CAP_GOD -e CAP_LOG -e CAP_MONKEY -e CAP_PLAY -e CAP_SHOTS -e CAP_START -e GAME_MIDSNAP -e GAME_NSNAPS -e GAME_OUT -e GT_OUT -e JTC_STEP -e JTC_WIN -e PSH2_ATTR -e PSH2_NJOBS -e PSH2_OUT -e SHLOG -e SNAP_FRAMES -e SNDLOG -e SOFTFP_OUT \
+  -e CAP_ADDR -e CAP_GOD -e CAP_LOG -e CAP_MONKEY -e CAP_PLAY -e CAP_SHOTS -e CAP_START -e CAP_TOGGLE -e GAME_MIDSNAP -e GAME_NSNAPS -e GAME_OUT -e GT_OUT -e JTC_STEP -e JTC_WIN -e PSH2_ATTR -e PSH2_NJOBS -e PSH2_OUT -e SHLOG -e SNAP_FRAMES -e SNDLOG -e SOFTFP_OUT \
   spelunky-mame:latest /usr/games/mame "$@"
