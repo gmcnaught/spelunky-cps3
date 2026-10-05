@@ -1,10 +1,11 @@
 # PERF3: fitting the play step on jtcps3
 
-Status 2026-10-05: the mean-step goal holds on jtcps3 for the 18 hardware routes at batch 17 (caveman 517.4 K the
-largest; p5_snakes 0 of 241 pairs over 0.84 M). **Not met:** p99 (bomb_drop, bomb_throw, buy, spider, idol, p1_walk have
-more than 1 % of their steps over the pair in MAME SOFTFP x4.2), and the four p5_reg_* routes, which the jtcps3 build
-does not run (mkjobs.py JT_ROUTES): p5_reg_l14s16's MAME SOFTFP step mean is 269.6 K, about 1.1-1.2 M on jtcps3. See
-section 5. Builds on docs/REVIEW-SH2.md (the cost model and findings P1-P7) and docs/HANDOFF.md (branch
+Status 2026-10-05: **paused after batch 22** (main d780b83). On jtcps3 the mean-step goal holds for the 18 hardware
+routes (route mean of means 391.4 K, caveman 503.5 K the largest; p5_snakes 0 of 241 pairs over 0.84 M, max 710.4 K).
+**Open:** p99 (MAME SOFTFP steps over 838,940 at x4.2: p5_reg_l14s16 25, l2s10 / l3s10 23, bomb_drop 17, bomb_throw
+15, spider 13, buy 12, idol / p1_walk 8: explosions, the boulder, temple traps); the four p5_reg_* routes, not in the
+jtcps3 set (mkjobs.py JT_ROUTES; l14s16 about 0.53 M a step by MAME x3.7); Phase 5 (level start, draw). Section 5
+lists what was measured and not kept. Builds on docs/REVIEW-SH2.md (the cost model and findings P1-P7) and docs/HANDOFF.md (branch
 state). It runs alongside, not instead of, PERF2's remaining items.
 
 ## 1. Goal and how it is measured
