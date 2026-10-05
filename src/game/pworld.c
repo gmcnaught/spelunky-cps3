@@ -391,6 +391,20 @@ static void ext_reset(void)
     en_used = 0;
 }
 
+typedef uint32_t __attribute__((may_alias)) u32a;
+typedef char pin_ext_words[sizeof(struct pin_ext) % 4 == 0 ? 1 : -1];
+typedef char pin_words[sizeof(struct pin) % 4 == 0 ? 1 : -1];
+static void ext_defaults_fast(struct pin_ext *x)
+{
+    static struct pin_ext t;
+    static uint8_t made;
+    const u32a *a = (const u32a *)&t;
+    u32a *b = (u32a *)x;
+    unsigned k;
+    if (!made) { ext_defaults(&t); made = 1; }
+    for (k = 0; k < sizeof t / 4; k++) b[k] = a[k];
+}
+
 static int ext_alloc(void)
 {
     int e;
@@ -400,7 +414,7 @@ static int ext_alloc(void)
         return EXT_SCRATCH;
     }
     e = extfree[--nextfree];
-    ext_defaults(&pin_ext[e]);
+    ext_defaults_fast(&pin_ext[e]);
     if (++ext_used > ext_used_max) ext_used_max = ext_used;
     return e;
 }
@@ -619,9 +633,9 @@ int pin_add(int obj, pos x, pos y, int32_t id)
     pw_ord[PW.nord++] = (int16_t)i;
     p = &PW.in[i];
     {   /* zero every field */
-        unsigned char *b = (unsigned char *)p;
+        u32a *b = (u32a *)p;
         unsigned k2;
-        for (k2 = 0; k2 < sizeof *p; k2++) b[k2] = 0;
+        for (k2 = 0; k2 < sizeof *p / 4; k2++) b[k2] = 0;
     }
     p->id = id;
     p->obj = (int16_t)obj;
