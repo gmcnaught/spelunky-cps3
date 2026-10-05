@@ -947,6 +947,8 @@ static int ebbox_int(int e, int32_t *ib)
     }
 }
 
+static int fbits_pm1(float f) { union { float f; uint32_t u; } v; v.f = f; return (v.u & 0x7fffffffu) == 0x3f800000u; }
+
 /* CInstance::Compute_BoundingBox (non-compatibility mode), normalized (CollisionUpdate): o = l, t, r, b */
 static void ebbox(int e, float dx, float dy, float *o);
 
@@ -1025,10 +1027,24 @@ static void ebbox(int e, float dx, float dy, float *o)
         /* fmadd in the runner (s registers): one rounding each */
         w = (float)(c->r - c->l) + 1.0f;
         h = (float)(c->b - c->t) + 1.0f;
-        l = fmaf((float)(c->l - c->xo), xs, x);
-        r = fmaf(w, xs, l);
-        t = fmaf((float)(c->t - c->yo), ys, y);
-        b = fmaf(h, ys, t);
+        /* a scale of +-1 (its bits): fmaf(a, +-1, c) is one rounding of the exact +-a + c, the float sum c + (+-a)
+           (the software fmaf is about 700 jtcps3 clocks; debris and most sprites have scale 1) */
+        if (fbits_pm1(xs)) {
+            float a0 = (float)(c->l - c->xo);
+            l = x + (xs > 0 ? a0 : -a0);
+            r = l + (xs > 0 ? w : -w);
+        } else {
+            l = fmaf((float)(c->l - c->xo), xs, x);
+            r = fmaf(w, xs, l);
+        }
+        if (fbits_pm1(ys)) {
+            float a1 = (float)(c->t - c->yo);
+            t = y + (ys > 0 ? a1 : -a1);
+            b = t + (ys > 0 ? h : -h);
+        } else {
+            t = fmaf((float)(c->t - c->yo), ys, y);
+            b = fmaf(h, ys, t);
+        }
         (void)t0; (void)t1;
         if (l > r) { float q = l; l = r; r = q; }
         if (t > b) { float q = t; t = b; b = q; }
