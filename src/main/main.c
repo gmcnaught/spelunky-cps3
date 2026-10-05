@@ -29,7 +29,7 @@ static void load_gfx(void)
     cps3dma_palette(GFX_PAL_AT, DRAW_PAL * 256, 256, 0);
     cps3dma_palette(GFX_PAL_AT, DRAW_PAL_LIT * 256, 256, 0);   /* the unfaded copy (dark levels: draw.c) */
     cps3dma_palette(HUD_PAL_AT, HUD_PAL * 256, 512, 0);
-    cps3dma_palette(HUD_PAL_AT, DRAW_PAL_HUDDARK * 256, 256, 0);   /* faded by draw.c on dark levels */
+    cps3dma_palette(HUD_PAL_AT, DRAW_PAL_HUDDARK * 256, 512, 0);   /* and DRAW_PAL_HUDDARK_YELLOW: faded by draw.c */
     uint32_t src = GFX_TILES_AT - 256, first = GFX_FIRST_TILE - 1u, n = GFX_NTILES + 1;
     while (n) {                                   /* records of at most 1 MB */
         uint32_t k = n > 4096 ? 4096 : n;

@@ -1413,8 +1413,8 @@ static void scores_text(void)
 }
 
 /* scripts/drawCredits (oCredits2's Draw GUI: color1 c_yellow, color2 c_white; English, X1 16, X2 32, X3 144). Its
-   black rectangle (fadeIn / fadeOut, alpha fadeLevel) is front_fade's; the font's palettes are not faded, so the
-   text is left out while the rectangle's alpha is one half or more */
+   black rectangle (fadeIn / fadeOut, alpha fadeLevel) is front_fade's, drawn after the text: the text then uses the
+   faded HUD palettes (hud_text_faded) */
 static void credits_text(void)
 {
     static const char *const testers[] = {
@@ -1427,7 +1427,7 @@ static void credits_text(void)
         "LERETARDATN", "MASTERPHW", "BRNBOT3K", "V9TN"
     };
     int k;
-    if ((CRED.fadeIn || CRED.fadeOut) && CRED.fadeLevel >= 0.5) return;
+    hud_text_faded(CRED.fadeIn || CRED.fadeOut);
     switch (CRED.drawStatus) {
     case 1: hud_text("SPELUNKY", HUD_FONT_LARGE, 1, 16, 16); break;
     case 2:
@@ -1464,6 +1464,7 @@ static void credits_text(void)
         hud_text("SEE YOU NEXT ADVENTURE!", HUD_FONT_SMALL, 0, 32, 32);
         break;
     }
+    hud_text_faded(0);
 }
 
 void front_draw_gui(void)
@@ -1479,34 +1480,36 @@ int32_t front_drawkey(int i)
 }
 
 /* ---- drawing ------------------------------------------------------------------------------------------------- */
+/* draw_set_alpha(f)'s alpha byte for the rooms' black rectangles: f as a single-precision float times 255, truncated
+   (build/trace/g_end_win_s7 record 1250: oEnd3.fadeLevel 0.7999999999999999 is drawn at 204; tools/drawmodel.py
+   alpha_byte) */
+static int alpha_byte(double f) { return f <= 0 ? 0 : f >= 1 ? 255 : (int)((double)(float)f * 255.0); }
+
 int front_fade(int *a8)
 {
     if (PW.room == R_rIntro && INTRO.i >= 0 && PX(INTRO.i).alive) {           /* objects/oIntro/Draw_0.gml :1-4 */
-        double f = INTRO.fadeLevel;
-        *a8 = f <= 0 ? 0 : f >= 1 ? 255 : (int)(f * 255.0);
+        *a8 = alpha_byte(INTRO.fadeLevel);
         return INTRO.i;
     }
     if (PW.room == R_rEnd3 && END3.i >= 0 && END3.fadeOut) {                  /* showFinalScore :62 */
-        double f = END3.fadeLevel;
-        *a8 = f <= 0 ? 0 : f >= 1 ? 255 : (int)(f * 255.0);
+        *a8 = alpha_byte(END3.fadeLevel);
         return END3.i;
     }
     if (PW.room == R_rCredits2 && CRED.i >= 0 && (CRED.fadeIn || CRED.fadeOut)) {   /* drawCredits :64 (Draw GUI: */
-        double f = CRED.fadeLevel;                                             /* over all; oCredits2 is the */
-        *a8 = f <= 0 ? 0 : f >= 1 ? 255 : (int)(f * 255.0);                   /* shallowest instance) */
-        return CRED.i;
+        *a8 = alpha_byte(CRED.fadeLevel);                                      /* over all; oCredits2 is the */
+        return CRED.i;                                                         /* shallowest instance) */
     }
     return -1;
 }
 
 /* scripts/showFinalScore(drawStatus, fadeOut) (oEnd3's Draw: room coordinates, the view at 0, 0; English; lblX 64,
-   valX 224 at room_offset 0). The text under the black rectangle is left out once its alpha is one half or more (the
-   font's palettes are not faded) */
+   valX 224 at room_offset 0). The lines before the black rectangle (fadeOut) use the faded HUD palettes
+   (hud_text_faded): they fade with it */
 static void final_score(int dx, int dy)
 {
     char b[24], *e;
-    int under = END3.fadeOut && END3.fadeLevel >= 0.5;
-    if (!under) {
+    hud_text_faded(END3.fadeOut);
+    {
         if (END3.drawStatus > 0) hud_text_centered("YOU MADE IT!", HUD_FONT_LARGE, 1, dx, 32 + dy);
         if (END3.drawStatus > 1) hud_text_centered("FINAL SCORE:", HUD_FONT_SMALL, 1, dx, 56 + dy);
         if (END3.drawStatus > 2) {
@@ -1535,6 +1538,7 @@ static void final_score(int dx, int dy)
             hud_text(hud_itoa(PG.damsels, b), HUD_FONT_SMALL, 0, 224 + dx, 96 + 16 + dy);
         }
     }
+    hud_text_faded(0);
     if (END3.drawStatus == 8)                                                  /* :70 */
         hud_text_centered("YOU SHALL BE REMEMBERED AS A HERO.", HUD_FONT_SMALL, 0, dx, 116 + dy);
 }

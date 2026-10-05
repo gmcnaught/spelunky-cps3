@@ -73,6 +73,12 @@ void hud_draw(const struct hud_state *s, uint32_t pal_game);
 enum hud_font { HUD_FONT_SMALL, HUD_FONT_LARGE };
 void hud_text(const char *text, enum hud_font f, int yellow, int x, int y);
 void hud_text_centered(const char *text, enum hud_font f, int yellow, int offset_x, int y);
+/* text drawn under a black rectangle (the ending's fades: showFinalScore, drawCredits) uses the HUD palettes src/draw
+   fades with the frame's rectangle (draw.h DRAW_PAL_HUDDARK, DRAW_PAL_HUDDARK_YELLOW); on: hud_text and
+   hud_text_centered draw with them until turned off */
+#define HUD_PAL_FADED 5u
+#define HUD_PAL_FADED_YELLOW 6u
+void hud_text_faded(int on);
 /* string(n) of a whole number into buf (at least 12 bytes); returns buf */
 char *hud_itoa(int32_t n, char *buf);
 #endif

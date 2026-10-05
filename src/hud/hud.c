@@ -5,6 +5,7 @@
 #include "hud.h"
 
 static uint32_t pal_spr;
+static uint32_t pal_text = HUD_PAL, pal_text_yellow = HUD_PAL_YELLOW;   /* hud_text_faded */
 
 /* draw_sprite(spr, img, x, y) at GUI (view) coordinates; img < 0: the caller's frame already chosen as 0 */
 static void spr(int s, int32_t img, int x, int y)
@@ -52,7 +53,7 @@ static void glyphs(const char *text, enum hud_font f, const uint32_t *yellow, in
             continue;
         int yl = all_yellow || (yellow && i < 64 && (yellow[i >> 5] >> (i & 31) & 1));
         cps3v_sprite(x, y, 1, 1, f == HUD_FONT_LARGE ? HUD_GLYPH_LARGE(c) : HUD_GLYPH_SMALL(c),
-                     yl ? HUD_PAL_YELLOW : HUD_PAL, 0);
+                     yl ? pal_text_yellow : pal_text, 0);
     }
 }
 
@@ -62,6 +63,12 @@ static int len(const char *s)
     while (s[n])
         n++;
     return n;
+}
+
+void hud_text_faded(int on)
+{
+    pal_text = on ? HUD_PAL_FADED : HUD_PAL;
+    pal_text_yellow = on ? HUD_PAL_FADED_YELLOW : HUD_PAL_YELLOW;
 }
 
 /* drawText: draw_text at (x, y + global.fontOffsetY); fontOffsetY is 0 for the English sprite font (scripts/
@@ -98,17 +105,21 @@ static const struct { uint16_t flag; int16_t spr; } icons[] = {
     { HUD_JETPACK, SPR_sJetpackIcon }, { HUD_COMPASS, SPR_sCompassIcon }, { HUD_PARACHUTE, SPR_sParachuteIcon },
 };
 
+/* the bottom row's arrows (HD: view y 224, lines 224-239) 8 lines higher (not in HD): the screen ends at view line
+   231 (HUD_CROP), which cut off their lower 8 lines (the small arrows', at lines 232-239, all of them) */
+#define COMPASS_BOTTOM_Y (224 - HUD_CROP)
+
 static void compass(const struct hud_state *s)
 {
     int small = s->message_timer > 0;
     int vx = s->view_x, vy = s->view_y;
     if (s->exit_y > vy + 240) {                                       /* :45-60 */
         if (s->exit_x < vx)
-            spr(small ? SPR_sCompassSmallLL : SPR_sCompassLL, s->anim, 0, 224);
+            spr(small ? SPR_sCompassSmallLL : SPR_sCompassLL, s->anim, 0, COMPASS_BOTTOM_Y);
         else if (s->exit_x > vx + 320 - 16)
-            spr(small ? SPR_sCompassSmallLR : SPR_sCompassLR, s->anim, 304, 224);
+            spr(small ? SPR_sCompassSmallLR : SPR_sCompassLR, s->anim, 304, COMPASS_BOTTOM_Y);
         else
-            spr(small ? SPR_sCompassSmallDown : SPR_sCompassDown, s->anim, s->exit_x - vx, 224);
+            spr(small ? SPR_sCompassSmallDown : SPR_sCompassDown, s->anim, s->exit_x - vx, COMPASS_BOTTOM_Y);
     } else if (s->exit_x < vx)                                        /* :61-65 */
         spr(small ? SPR_sCompassSmallLeft : SPR_sCompassLeft, s->anim, 0, s->exit_y - vy);
     else if (s->exit_x > vx + 320 - 16)                               /* :66-70 */

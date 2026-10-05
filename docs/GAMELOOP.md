@@ -112,10 +112,37 @@ game, v_a<k>.bin), HOST_GAME2=1, HOST_CABINET=1 (route keys as the cabinet's con
   and title on the real core (screenshots 2026-10-05 12:19, 12:59).
 
 Open:
-- Ending: no route beats Olmec (the door path is tested with HOST_XEND injecting oXEnd on the player); a
-  playthrough on .81 is the check. tools/drawmodel.py does not model the ending's clouds and text (game_check
-  differs at records 1150 and 2300 for that reason). Text under a fade rectangle is hidden from half alpha
-  instead of fading (the text palettes have no fade).
+- **A route that beats Olmec (2026-10-05):** tests/routes/end_olmec.txt (seed 1, level 16, rOlmec, enemies kept;
+  3029 steps), written by tools/olmecbot.c (scripts/olmecbot.sh, about 3 minutes; the same keys again from the
+  committed tool): 20 Olmec cycles chosen by fork() lookahead dig him down to the lava (he drowns from step 2690),
+  then a best-first search over key macros takes the player up a rope out of the pit to oXEnd. The runner's trace
+  (`TRACE_HUD=1 TRACE_SND=1 TRACE_LEVEL=16 TRACE_ROOM=rOlmec TRACE_TAIL=400 XVFB_SCREEN=1280x960x24
+  scripts/hd_trace.sh end_olmec 1 end_olmec_s1`, 420 MB) goes to rEnd at record 3028 as the C does.
+  `scripts/olmec_host.sh` (the game program on the host, exact build): ROUTE equal over 3431 records, rooms
+  rOlmec@0, rEnd@3028, 3429 / 3431 records equal: records 2064 and 2720 differ in one oBat's yVel by 1 ulp
+  (0.2579919185662628 / 0.25799191856626275), and nothing after. playhost (build/host): 3027 / 3029, the same two.
+  `EXACT=0` (the shipping collision grid): ROUTE equal (rEnd at 3028, same money and life), records from 385 differ
+  as on c_temple_olmec. Both builds report untranslated 1020 when Olmec is destroyed: src/game pobj.c flags every
+  oSolid child's Destroy, but oOlmec (oMovingSolid, oSolid) has none of its own, so oSolid's (destroy_solid) is the
+  translation; the flag is spurious there. The player ends with life 1 of 4.
+- **Ending frames (done 2026-10-05):** tools/drawmodel.py models rEnd3 / rCredits2: the two bgClouds layers (no
+  room background), showFinalScore in oEnd3's Draw, drawCredits in oCredits2's Draw GUI, their rectangles, from the
+  trace's end block; the front rooms' layer order needs build/gen/fronttables_rt.txt from a current `make gen`.
+  Trace remade with the GUI frames (`TRACE_ROOM=rEnd TRACE_MONEY=12345
+  TRACE_GLOBALS=kaliPunish=2,kills=7,damsels=2,time=754321 TRACE_HUD=1 TRACE_SND=1 XVFB_SCREEN=1280x960x24
+  TRACE_SHOT=<recs> TRACE_GUI=<recs> scripts/hd_trace.sh end_win 7 g_end_win_s7`). `scripts/game_check.sh end_win 7
+  g_end_win_s7 300,450,520,560,700,850,1150,1244,1246,1248,1250,1252,1256,1260,1278,1280,1300,1500,1700,2300,2600,3000
+  1 12345`: 0 px at all 22 records against MAME, the runner's frames and its GUI frames; on the host
+  (`HOST_ROOM=23 HOST_GLOBALS=... HUD=1 scripts/game_host.sh end_win 7 g_end_win_s7 1 12345 0`) 3175 / 3175 frames
+  equal. scripts/end_host.sh: 3183 / 3183 records; sndcmp 25 differ (6 with the old trace): every one an xflame
+  replay, whose count follows the runner's audio timing (the host's voices never end).
+- **Ending text under the fade rectangles (done 2026-10-05):** the lines showFinalScore (:62) and drawCredits (:64)
+  draw before their black rectangle use the HUD palettes src/draw fades with it: colour code 5 (DRAW_PAL_HUDDARK,
+  white) and the new code 6 (DRAW_PAL_HUDDARK_YELLOW, c_yellow; tools/darkfade.py's third table at
+  DARK_FADE_HUDY_AT, 128 KB of flash; one more 512-byte palette DMA when the alpha changes); src/hud
+  hud_text_faded. The rectangles' alpha byte is draw_set_alpha's: fadeLevel as a single-precision float times 255
+  (g_end_win_s7 record 1250: 0.7999999999999999 is drawn at 204), src/front alpha_byte. rEnd3's fade (records
+  1243-1252) and the credits' fades are 0 px against the runner (game_check end_win below).
 - **Title flare (fixed 2026-10-05):** the intro's flare stopped mid-shaft in rTitle (host boot trace g_p8_boot_s7
   differed from record 1050). The play collision table (gentables.c, from game.unx) kept HD's manual sTitle_HD box
   (columns 14..192) while tools/fronttables.py moves the logo right by titlelogo.DX = 40: the solid logo reached
@@ -126,9 +153,15 @@ Open:
   a sliver of its top and HD's (x +- 9, y - 9) test grabs it. pplayer.c pushblock_covered refuses the non-glove
   solid grab when a solid covers the push block's top (columns 1..14); ledge flips are unchanged. No death was
   reproduced from these hangs (hermetic harness, about 200 K runs); the user's death on .81 is unexplained.
-- MAME frame check of the panel: scripts/game_check.sh over_giant 253 g_over_giant_s253 200,260,300,330 differs only
-  in the panel text, because tools/tracer.py's TRACE_GUI draws scrDrawHUD and showMessages but not showEndMessage,
-  and tools/drawmodel.py does not model the panel. Both need the panel added for an exact gate.
+- **MAME frame check of the panel (done 2026-10-05):** tools/tracer.py's TRACE_GUI runs showEndMessage after
+  scrDrawHUD / showMessages, and TRACE_HUD records carry the end block (flags bit 5: oGame.drawStatus / moneyCount,
+  oEnd3's and oCredits2's state, global.kills / damsels); tools/drawmodel.py draws the panel (`end_text`; the port's
+  prompt PRESS ATTACK on the MAME screen, HD's PRESS X against the runner's GUI frames). The route needs its enemies
+  (p5_giant's spider): `scripts/game_check.sh over_giant 253 g_over_giant_s253 200,260,300,330 1 0 1` is 0 px at
+  all four records against MAME, the runner's frames and its GUI frames (trace remade: `TRACE_HUD=1
+  TRACE_SHOT=200,260,300,330 TRACE_GUI=200,260,300,330 XVFB_SCREEN=1280x960x24 scripts/hd_trace.sh over_giant 253
+  g_over_giant_s253`); `HUD=1 scripts/game_host.sh over_giant 253 g_over_giant_s253 1 0 1`: 334 / 334 frames equal.
+  Without the enemies (the default 0) the player does not die and every record differs.
 - **Release-mode seeding (done 2026-10-05):** PLAY builds seed a game and each attract intro from `shell_seed()`, the
   input history mixed every frame (docs/ARCADE.md, seeding rule). Checked in MAME on the release set: Coin at frame
   200, Start at 400 twice gives the same RNG state and level 1; Start at 401 and 460 give two other levels.

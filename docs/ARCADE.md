@@ -150,6 +150,12 @@ stretched by the 0x35 X zoom with the level. Art: HD's sprites (`tools/hdsprites
 from HD's datafiles (`tools/hudart.py` -> `build/gen/hudart.h`, `hud.bin`, `hud.json`: colour codes 2 (as is) and 3
 (`c_yellow` blend)). `hud_text` / `hud_text_centered` are `drawText` / `drawTextHCentered` for other screens.
 
+Compass (not in HD): the bottom row's arrows (`sCompassLL`, `sCompassLR`, `sCompassDown` and their small forms,
+drawn at view y 224) are drawn 8 lines higher, at view y 216 (`hud.c` `COMPASS_BOTTOM_Y`). HD's place puts their
+lower 8 lines (the small arrows' art, rows 8-15, entirely) below view line 231, where the port's screen ends. The
+small arrows then share lines 224-231 with the second message line, which is drawn over them. `tools/hudcheck.py`
+draws the port's place for the MAME screens (`expect`, `tools/drawmodel.py`'s screens) and HD's against the runner.
+
 HD's in-play HUD draws no time: the level and total times are shown only by the transition screen
 (`oTransition/Draw_64.gml:78-100`) and the pause stats (`drawStats`).
 
@@ -170,7 +176,8 @@ Not checked: jtcps3 (the HUD uses only the sprite path already exact in tests/vi
 
 ## 6. Open
 
-- The compass's bottom arrows (view y 224-239) lose their lower 8 lines to the crop (screen ends at view line 231).
+- ~~The compass's bottom arrows (view y 224-239) lose their lower 8 lines to the crop (screen ends at view line
+  231).~~ Done 2026-10-05: drawn 8 lines higher (section 4, Compass).
 - Attract mode content (HD's intro / title / scores rooms without controls, or a demo) is the play runtime's.
 
 ## 7. Game capture: a cabinet game replayed on the host
