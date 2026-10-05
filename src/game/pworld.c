@@ -2731,8 +2731,10 @@ static int dfloor14(double v, int32_t *o)
    in y; L = lox^2 + loy^2 and U = hix^2 + hiy^2 are whole numbers below 2^31 (doubles exactly) and rounding is
    monotonic, so the double d of instance k is in [L_k, U_k]. The first instance of least d has L <= its d <= every
    U; the double loop over the instances with L <= min U, in the same order, picks it. NaN cannot occur (every
-   operand finite). Up to NEAR_MAX instances (the light sources of a level), else the double loop over all */
-#define NEAR_MAX 48
+   operand finite). The integer pass walks the family's object lists one after another (fpre, as fam_begin), not in
+   creation order; the candidates (L <= min U, a few) are then sorted by creation number (pw_seq: the family's
+   order, fam_next's) before the double pass. Up to NEAR_MAX instances, else the double loop over all */
+#define NEAR_MAX 64
 int instance_nearest_p(double px, double py, int obj)
 {
     int k, best = NOONE;
@@ -2745,29 +2747,39 @@ int instance_nearest_p(double px, double py, int obj)
         int16_t ck[NEAR_MAX];
         uint32_t cl[NEAR_MAX], mu = 0xffffffffu;
         int32_t X, Y;
-        int n = 0, j, ok = dfloor14(px, &X) && dfloor14(py, &Y);
-        fam_begin(&it, obj);
-        while (ok && (k = fam_get(&it)) != NOONE) {
-            int32_t xk, yk;
-            uint32_t ax, ay, u;
-            if (n == NEAR_MAX || !pl_floor(PW.in[k].x, &xk) || !pl_floor(PW.in[k].y, &yk) ||
-                xk < -16384 || xk >= 16384 || yk < -16384 || yk >= 16384) {
-                ok = 0;
-                break;
+        int n = 0, j, m, ok = obj >= 0 && dfloor14(px, &X) && dfloor14(py, &Y);
+        for (j = ok ? fpos[obj] : 0; ok && j < fend[obj];) {
+            int o = fpre[j];
+            if (olive[o] == 0) { j = fend[o]; continue; }
+            j++;
+            for (k = pw_ohead[o]; k >= 0; k = pw_inext[k]) {
+                int32_t xk, yk;
+                uint32_t ax, ay, u;
+                if (n == NEAR_MAX || !pl_floor(PW.in[k].x, &xk) || !pl_floor(PW.in[k].y, &yk) ||
+                    xk < -16384 || xk >= 16384 || yk < -16384 || yk >= 16384) {
+                    ok = 0;
+                    break;
+                }
+                ax = (uint32_t)(X >= xk ? X - xk : xk - X);
+                ay = (uint32_t)(Y >= yk ? Y - yk : yk - Y);
+                u = (ax + 1) * (ax + 1) + (ay + 1) * (ay + 1);
+                if (u < mu) mu = u;
+                ax = ax ? ax - 1 : 0;
+                ay = ay ? ay - 1 : 0;
+                ck[n] = (int16_t)k;
+                cl[n++] = ax * ax + ay * ay;
             }
-            ax = (uint32_t)(X >= xk ? X - xk : xk - X);
-            ay = (uint32_t)(Y >= yk ? Y - yk : yk - Y);
-            u = (ax + 1) * (ax + 1) + (ay + 1) * (ay + 1);
-            if (u < mu) mu = u;
-            ax = ax ? ax - 1 : 0;
-            ay = ay ? ay - 1 : 0;
-            ck[n] = (int16_t)k;
-            cl[n++] = ax * ax + ay * ay;
         }
         if (ok) {
-            for (j = 0; j < n; j++) {
-                double dx, dy, d;
+            for (j = m = 0; j < n; j++) {         /* the candidates, in creation order */
+                int16_t v = ck[j];
                 if (cl[j] > mu) continue;
+                for (k = m; k > 0 && pw_seq[ck[k - 1]] > pw_seq[v]; k--) ck[k] = ck[k - 1];
+                ck[k] = v;
+                m++;
+            }
+            for (j = 0; j < m; j++) {
+                double dx, dy, d;
                 k = ck[j];
                 dx = px - PTOD(PW.in[k].x);
                 dy = py - PTOD(PW.in[k].y);
