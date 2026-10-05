@@ -12,9 +12,14 @@ v0.1.0 is on GitHub (tag build green, spelunky.zip + MRA) and on .81 (/media/fat
    codes normal play reaches. Tunnel man (4005 / 4011 / 4020) stays untranslated (GAMELOOP section 3).
 3. **p99 step spikes on jtcps3** (docs/PERF3.md "Open"): explosions, the boulder, temple traps over 0.84 M; dark
    levels at the top of the mean budget (+30-44 K). These show as slowdown in play.
-4. **Exact gates for the new rooms:** showEndMessage in tools/tracer.py TRACE_GUI and tools/drawmodel.py; the
-   ending's clouds and text in drawmodel; a route that beats Olmec (the door path is only tested via HOST_XEND).
-5. Small: compass arrows cropped (docs/ARCADE.md section 6); ending text under fade rectangles hidden at half alpha.
+4. **Done 2026-10-05 (docs/GAMELOOP.md section 5):** ~~Exact gates for the new rooms: showEndMessage in
+   tools/tracer.py TRACE_GUI and tools/drawmodel.py; the ending's clouds and text in drawmodel; a route that beats
+   Olmec.~~ game_check over_giant (with its enemies: `... 1 0 1`) and end_win (22 records) are 0 px against MAME and
+   the runner; tests/routes/end_olmec.txt beats Olmec (scripts/olmec_host.sh). The traces g_over_giant_s253 and
+   g_end_win_s7 were remade with the tracer's end block (a new SPT4 block: older decoders cannot read them), and
+   build/gen/fronttables_rt.txt must be current (`make gen`) for the ending's layer order in drawmodel.
+5. **Done 2026-10-05:** ~~compass arrows cropped (docs/ARCADE.md section 4, not in HD: 8 lines higher); ending text
+   under fade rectangles hidden at half alpha~~ (faded HUD palettes, colour code 6).
 6. **Done 2026-10-05 (branch devinv; docs/ARCADE.md section 2):** ~~Developer options in the service menu: INVINCIBLE (ON / OFF).~~ The settings screen is src/shell/shell.c
    (docs/ARCADE.md section 2); store the option in EEPROM word 27 next to the other settings bits. HD's
    `oPlayer1.invincible` (pint.h) is the post-hit blink timer, not a god mode: check which damage paths skip it
