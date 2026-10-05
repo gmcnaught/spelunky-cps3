@@ -32,8 +32,7 @@ static int16_t pg_head[PGRID_H * PGRID_W], pg_big = -1;
 static int16_t pg_next[PIN_MAX], pg_prev[PIN_MAX], pg_cell[PIN_MAX];
 static rk pg_bx[PGRID_W], pg_by[PGRID_H];        /* keys of the cell boundaries (index 0: -infinity) */
 static uint8_t pg_init;
-static int16_t pg_buf[PIN_MAX];
-static int16_t pg_seq[PIN_MAX];
+static uint32_t pg_key[PIN_MAX];       /* pgrid_search's hits: creation number (pw_seq, 0 .. 32766) << 16 | entry */
 
 #define PCOL_GRID_ON (!gmode)
 
@@ -123,14 +122,17 @@ static inline int pg_overlap(int e)
     return pg_overlap_f(e);
 }
 
-/* the search: s_r, s_cb, s_ctx set by pcol_search / pcol_search_i. The cell span (pg_cells' values) and an integer
-   s_r's sides are kept in registers; the cells are read in the same order, so pg_buf gets the same entries in the same
-   order. s_r does not change during the collection (pg_overlap_f only computes s_k) */
+/* the search: s_r, s_cb, s_ctx set by pcol_search / pcol_search_i. The cells are read in the same order; the hits go
+   to the callback newest first (pw_seq descending, an insertion sort that moves a hit past the older ones: the order
+   of the hits with equal creation numbers is kept, as when pw_seq was sorted beside the entries). One key per hit
+   (pw_seq << 16 | entry: a hit older than v is a key below v's creation number << 16), the rows by a pointer: fewer
+   values live across the scan than the sides, the cell span and two arrays (stack spills) */
 static void pgrid_search(void)
 {
-    int x0, y0, x1, y1, x, y, n = 0, k, j, e;
+    int x0, y0, x1, y1, y, n = 0, k, j, e;
     const int sw = s_r.w;
     const rk a0 = s_r.r[0], a1 = s_r.r[1], a2 = s_r.r[2], a3 = s_r.r[3];
+    const int16_t *row;
     if (sw) {
         x0 = pg_clampx(a0 >> PCOL_GRID_SHIFT); y0 = pg_clampy(a1 >> PCOL_GRID_SHIFT);
         x1 = pg_clampx(a2 >> PCOL_GRID_SHIFT); y1 = pg_clampy(a3 >> PCOL_GRID_SHIFT);
@@ -141,29 +143,30 @@ static void pgrid_search(void)
     }
     if (x0 > 0) x0--;
     if (y0 > 0) y0--;
-    for (y = y0; y <= y1; y++) {
-        const int16_t *h = &pg_head[y * PGRID_W + x0];
-        for (x = x0; x <= x1; x++, h++)
+    row = &pg_head[y0 * PGRID_W + x0];
+    for (y = y0; y <= y1; y++, row += PGRID_W) {
+        const int16_t *h = row, *he = row + (x1 - x0);
+        for (;; h++) {
             for (e = *h; e >= 0; e = pg_next[e]) {
                 const rk *r = er[e];
                 PCST(pcol_st.visits++);
                 if ((erw[e] & sw) ? !(a0 > r[2] || r[0] > a2 || a1 > r[3] || r[1] > a3) : pg_overlap_f(e))
-                    pg_buf[n++] = (int16_t)e;
+                    pg_key[n++] = (uint32_t)pw_seq[e] << 16 | (uint32_t)e;
             }
+            if (h == he) break;
+        }
     }
     for (e = pg_big; e >= 0; e = pg_next[e]) {
         PCST(pcol_st.visits++);
-        if (pg_overlap(e)) pg_buf[n++] = (int16_t)e;
+        if (pg_overlap(e)) pg_key[n++] = (uint32_t)pw_seq[e] << 16 | (uint32_t)e;
     }
-    for (k = 0; k < n; k++) pg_seq[k] = pw_seq[pg_buf[k]];
     for (k = 1; k < n; k++) {                      /* newest first */
-        int16_t v = pg_buf[k], sv = pg_seq[k];
-        for (j = k; j > 0 && pg_seq[j - 1] < sv; j--) { pg_buf[j] = pg_buf[j - 1]; pg_seq[j] = pg_seq[j - 1]; }
-        pg_buf[j] = v;
-        pg_seq[j] = sv;
+        uint32_t v = pg_key[k], vs = v & 0xffff0000u;
+        for (j = k; j > 0 && pg_key[j - 1] < vs; j--) pg_key[j] = pg_key[j - 1];
+        pg_key[j] = v;
     }
     for (k = 0; k < n; k++)
-        if (s_cb && !s_cb(pg_buf[k], s_ctx)) return;
+        if (s_cb && !s_cb((int)(pg_key[k] & 0xffffu), s_ctx)) return;
 }
 
 /* the generated level was renamed to play entries (gen_load): its tree entries go in the grid */
