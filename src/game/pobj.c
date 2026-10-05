@@ -1099,12 +1099,12 @@ static void gameStepEvent(void)
         for (k = 0; k < n; k++) {
             int j = w[k];
             struct pin *p = &PX(j);
-            double x, y;
+            pos x, y;
             if (!p->alive) continue;
-            x = PTOD(p->x);
-            y = PTOD(p->y);
+            x = p->x;
+            y = p->y;
             view_read();
-            if (DGT(x, PW.xview - 16) && DLT(x, PW.xview + 320) && DGT(y, PW.yview - 16) && DLT(y, PW.yview + 240)) {
+            if (PGTI(x, PW.xview - 16) && PLTI(x, PW.xview + 320) && PGTI(y, PW.yview - 16) && PLTI(y, PW.yview + 240)) {
                 pos yMPrev = p->y;
                 int rest0, first = 1, rest = 0;
                 if (msolid_skip(j)) { NOPS(2); continue; }
