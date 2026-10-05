@@ -141,6 +141,12 @@ static int16_t olive[OBJ_COUNT];
 #define odesc0 obj_desc0
 #define odesc obj_desc
 
+#ifndef PLAY_FIXED
+static uint8_t nc_any;                           /* instance_nearest_p's cache (nc) is in use */
+static void nc_inval(int obj);
+static void nc_reset(void);
+#endif
+
 /* the object forest in preorder (fpre_init, once): obj's family (obj_is(o, obj)) is fpre[fpos[obj] .. fend[obj]),
    so fam_begin skips a whole subtree with no alive instance (olive counts a family) */
 static int16_t fpre[OBJ_COUNT], fpos[OBJ_COUNT], fend[OBJ_COUNT];
@@ -187,6 +193,9 @@ static void olists_reset(void)
     int o;
     obj_desc_init();
     if (!fpre_ok) fpre_init();
+#ifndef PLAY_FIXED
+    nc_reset();
+#endif
     for (o = 0; o < OBJ_COUNT; o++) {
         pw_ohead[o] = otail[o] = NOONE;
         olive[o] = 0;
@@ -201,6 +210,9 @@ static void olists_reset(void)
 static void olive_add(int obj, int d)
 {
     int a;
+#ifndef PLAY_FIXED
+    if (nc_any) nc_inval(obj);
+#endif
     for (a = obj; a >= 0; a = objdefs[a].parent) olive[a] = (int16_t)(olive[a] + d);
 }
 
@@ -357,6 +369,9 @@ void pw_draw_dirty_clear(void)
 void pw_changed(int i)
 {
     if (i == watch_i) watch_n++;
+#ifndef PLAY_FIXED
+    if (nc_any) nc_inval(PW.in[i].obj);
+#endif
     pw_draw_mark(i);
     PW.in[i].bbk = 0;
     grid_dirty(i);
@@ -2761,6 +2776,82 @@ static int dfloor14(double v, int32_t *o)
 }
 #endif
 
+#ifndef PLAY_FIXED
+/* instance_nearest_p's integer pass reads, per family, the alive instances and floor(x), floor(y) (|.| < 2^14). They
+   are kept for up to NC_N families between calls (a lush level's spear traps ask for the nearest oEnemy,
+   oMoveableSolid and oItem one after another): an entry is dropped when an instance of its family is linked or
+   unlinked (olive_add) or changes position, sprite, mask, scale or angle (pw_changed: every x / y setter with a
+   change; moveTo's raw pixel walks and the rest replay end in one), and at a level start (olists_reset).
+   ok 2: the family does not fit (more than NEAR_MAX, or a coordinate out of range): the double loop */
+#define NEAR_MAX 64
+#define NC_N 4
+struct ncache { int16_t obj, n; uint8_t ok; int16_t k[NEAR_MAX], x[NEAR_MAX], y[NEAR_MAX]; };
+static struct ncache nc[NC_N];
+static uint8_t nc_next;
+
+static void nc_inval(int obj)
+{
+    int e;
+    for (e = 0; e < NC_N; e++)
+        if (nc[e].ok && obj_is(obj, nc[e].obj)) nc[e].ok = 0;
+}
+
+static void nc_reset(void)
+{
+    int e;
+    for (e = 0; e < NC_N; e++) nc[e].ok = 0;
+}
+
+static void nc_fill(struct ncache *c, int obj)
+{
+    int j, k, n = 0;
+    c->obj = (int16_t)obj;
+    c->ok = 2;
+    for (j = fpos[obj]; j < fend[obj];) {
+        int o = fpre[j];
+        if (olive[o] == 0) { j = fend[o]; continue; }
+        j++;
+        for (k = pw_ohead[o]; k >= 0; k = pw_inext[k]) {
+            int32_t xk, yk;
+            if (n == NEAR_MAX || !pl_floor(PW.in[k].x, &xk) || !pl_floor(PW.in[k].y, &yk) ||
+                xk < -16384 || xk >= 16384 || yk < -16384 || yk >= 16384)
+                return;
+            c->k[n] = (int16_t)k; c->x[n] = (int16_t)xk; c->y[n] = (int16_t)yk;
+            n++;
+        }
+    }
+    c->n = (int16_t)n;
+    c->ok = 1;
+}
+
+static struct ncache *nc_get(int obj)
+{
+    int e;
+    for (e = 0; e < NC_N; e++)
+        if (nc[e].ok && nc[e].obj == obj) {
+#ifdef PLAY_STATS
+            {   /* the host builds check a kept entry against a fresh one */
+                static struct ncache f;
+                int m;
+                nc_fill(&f, obj);
+                if (f.ok != nc[e].ok || (f.ok == 1 && f.n != nc[e].n)) { fprintf(stderr, "nc_get: family %d changed\n", obj); abort(); }
+                for (m = 0; f.ok == 1 && m < f.n; m++)
+                    if (f.k[m] != nc[e].k[m] || f.x[m] != nc[e].x[m] || f.y[m] != nc[e].y[m]) {
+                        fprintf(stderr, "nc_get: family %d instance %d changed\n", obj, f.k[m]);
+                        abort();
+                    }
+            }
+#endif
+            return &nc[e];
+        }
+    e = nc_next;
+    nc_next = (uint8_t)((nc_next + 1) & (NC_N - 1));
+    nc_any = 1;
+    nc_fill(&nc[e], obj);
+    return &nc[e];
+}
+#endif
+
 /* instance_nearest: the instance of least d = dx * dx + dy * dy (doubles), the first of them in the family's order.
    The integer pass (not PLAY_FIXED): with X = floor(px), Xk = floor(x_k) (all |.| < 2^14, else the double loop) and
    D = X - Xk, dx = px - x_k lies in (D - 1, D + 1), so |dx| is in [lo, hi] = [max(|D| - 1, 0), |D| + 1], and the same
@@ -2769,8 +2860,8 @@ static int dfloor14(double v, int32_t *o)
    U; the double loop over the instances with L <= min U, in the same order, picks it. NaN cannot occur (every
    operand finite). The integer pass walks the family's object lists one after another (fpre, as fam_begin), not in
    creation order; the candidates (L <= min U, a few) are then sorted by creation number (pw_seq: the family's
-   order, fam_next's) before the double pass. Up to NEAR_MAX instances, else the double loop over all */
-#define NEAR_MAX 64
+   order, fam_next's) before the double pass. The family's floors come from nc_get. Up to NEAR_MAX instances, else
+   the double loop over all */
 int instance_nearest_p(double px, double py, int obj)
 {
     int k, best = NOONE;
@@ -2784,28 +2875,23 @@ int instance_nearest_p(double px, double py, int obj)
         uint32_t cl[NEAR_MAX], mu = 0xffffffffu;
         int32_t X, Y;
         int n = 0, j, m, ok = obj >= 0 && dfloor14(px, &X) && dfloor14(py, &Y);
-        for (j = ok ? fpos[obj] : 0; ok && j < fend[obj];) {
-            int o = fpre[j];
-            if (olive[o] == 0) { j = fend[o]; continue; }
-            j++;
-            for (k = pw_ohead[o]; k >= 0; k = pw_inext[k]) {
-                int32_t xk, yk;
+        struct ncache *c = ok ? nc_get(obj) : 0;
+        if (c && c->ok == 1) {
+            n = c->n;
+            for (j = 0; j < n; j++) {
                 uint32_t ax, ay, u;
-                if (n == NEAR_MAX || !pl_floor(PW.in[k].x, &xk) || !pl_floor(PW.in[k].y, &yk) ||
-                    xk < -16384 || xk >= 16384 || yk < -16384 || yk >= 16384) {
-                    ok = 0;
-                    break;
-                }
+                int32_t xk = c->x[j], yk = c->y[j];
                 ax = (uint32_t)(X >= xk ? X - xk : xk - X);
                 ay = (uint32_t)(Y >= yk ? Y - yk : yk - Y);
                 u = (ax + 1) * (ax + 1) + (ay + 1) * (ay + 1);
                 if (u < mu) mu = u;
                 ax = ax ? ax - 1 : 0;
                 ay = ay ? ay - 1 : 0;
-                ck[n] = (int16_t)k;
-                cl[n++] = ax * ax + ay * ay;
+                ck[j] = c->k[j];
+                cl[j] = ax * ax + ay * ay;
             }
-        }
+        } else
+            ok = 0;
         if (ok) {
             for (j = m = 0; j < n; j++) {         /* the candidates, in creation order */
                 int16_t v = ck[j];
