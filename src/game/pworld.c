@@ -1787,6 +1787,55 @@ static inline __attribute__((always_inline)) int line_any(int32_t x1, int32_t y1
     return any_scan(x1, y1, x2, y2, obj, prec, notme_self);
 }
 
+/* collision_rectangle(l, t, r, b, oSolid, 1, notme) != noone for whole l <= r, t <= b (isCollisionSolid): the
+   summary of the cells the rectangle covers (rect_hit on whole boxes: max(l, bl) < min(r, br) and in y) - a block
+   that meets it and is not precise is a hit; no block meeting it and no other oSolid-family entry reaching those
+   cells (gother: a superset of the cells an entry's box meets) is a miss; otherwise collision_rect_i's search. The
+   host builds compare every summary answer with the search */
+int solid_rect_any(int32_t l, int32_t t, int32_t r, int32_t b, int notme_self)
+{
+    int q = pcol_query(OBJ_oSolid), sure = 1, x, y, k;
+    int x0, xe, y0, ye;
+    PWST(rect, 1);
+    if (q < 0) return 0;
+    if (q != 1 || l > r || t > b) return collision_rect_i(l, t, r, b, OBJ_oSolid, 1, notme_self) != NOONE;
+    grid_flush();
+    if (gfar) return collision_rect_i(l, t, r, b, OBJ_oSolid, 1, notme_self) != NOONE;
+    x0 = clampi(l >> 4, 0, GRID_W - 1); xe = clampi(r >> 4, 0, GRID_W - 1);
+    y0 = clampi(t >> 4, 0, GRID_H - 1); ye = clampi(b >> 4, 0, GRID_H - 1);
+    for (y = y0; y <= ye; y++)
+        for (x = x0; x <= xe; x++) {
+            int n = gfull[y][x];
+            int32_t cl = x * 16, ct = y * 16;
+            if (gother[y][x]) sure = 0;
+            if (n == 0) continue;
+            k = gfblk[y][x];
+            if (k == notme_self || !((l > cl ? l : cl) < (r < cl + 16 ? r : cl + 16)) ||
+                !((t > ct ? t : ct) < (b < ct + 16 ? b : ct + 16))) {
+                if (n > 1) sure = 0;                      /* k is a miss; another block may not be */
+                continue;
+            }
+            if (!precise(k)) {
+#ifdef PLAY_STATS
+                if (collision_rect_i(l, t, r, b, OBJ_oSolid, 1, notme_self) == NOONE) {
+                    fprintf(stderr, "solid_rect_any: summary hit, search none (%d %d %d %d)\n", (int)l, (int)t, (int)r, (int)b);
+                    abort();
+                }
+#endif
+                return 1;
+            }
+            sure = 0;
+        }
+#ifdef PLAY_STATS
+    if (sure && collision_rect_i(l, t, r, b, OBJ_oSolid, 1, notme_self) != NOONE) {
+        fprintf(stderr, "solid_rect_any: summary miss, search hit (%d %d %d %d)\n", (int)l, (int)t, (int)r, (int)b);
+        abort();
+    }
+#endif
+    if (sure) return 0;
+    return collision_rect_i(l, t, r, b, OBJ_oSolid, 1, notme_self) != NOONE;
+}
+
 /* collision_line(x, y1, x, y2, oSolid, 1, notme) != noone and collision_line(x1, y, x2, y, ...): isCollisionLeft /
    Right / Top / Bottom with whole-number bounds (pscript.c); obj and prec constant, four arguments in registers */
 int solid_vline_any(int32_t x, int32_t y1, int32_t y2, int notme_self)
