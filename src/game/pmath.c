@@ -355,6 +355,93 @@ static double cr_trig(double a, int want_sin)
 double psin_cr(double x) { return cr_trig(x, 1); }
 double pcos_cr(double x) { return cr_trig(x, 0); }
 
+/* sincos_r's second test (about 1 call in 8 of the first fails): the Taylor series of sin x = x + x^3 P(x^2) (to
+   x^25) or cos x = 1 - x^2 / 2 + x^4 Q(x^2) (to x^26), the leading 6 (sin) or 5 (cos) coefficients of P / Q and
+   Horner's steps on them in double-double (1 / n! as hi + lo), the smaller rest in double; r.lo as y cos x or
+   -y sin x in double. Kept when hi + (lo +- e) round alike, e = 2^-86 |x| (sin) or 2^-86 (cos), else 0 (then
+   dd_sincos). tests/sincos (every float direction in [+0, 360] and -0 through psincos_cr): the first test fails for
+   10,740,273 sins and 46,834,802 cosines; this one keeps all of them, each equal to dd_sincos's (also with e = 2^-104),
+   so bat_fly never reaches dd_sincos (about 150 K instructions a call) */
+#ifndef SC2_EPS_S
+#define SC2_EPS_S 0x1p-86
+#define SC2_EPS_C 0x1p-86
+#endif
+static const double SC2_P[6][2] = {                          /* 1 / 3!, 1 / 5!, ..., 1 / 13! (signs in the steps) */
+    { 0.16666666666666666, 9.25185853854297e-18 }, { 0.008333333333333333, 1.1564823173178714e-19 },
+    { 0.0001984126984126984, 1.7209558293420705e-22 }, { 2.7557319223985893e-06, -1.858393274046472e-22 },
+    { 2.505210838544172e-08, -1.448814070935912e-24 }, { 1.6059043836821613e-10, 1.2585294588752098e-26 } };
+static const double SC2_Q[5][2] = {                          /* 1 / 4!, 1 / 6!, ..., 1 / 12! */
+    { 0.041666666666666664, 2.3129646346357427e-18 }, { 0.001388888888888889, -5.300543954373577e-20 },
+    { 2.48015873015873e-05, 2.1511947866775882e-23 }, { 2.755731922398589e-07, 2.3767714622250297e-23 },
+    { 2.08767569878681e-09, -1.20734505911326e-25 } };
+
+/* c + a z for double-double a, z and c = s (ch + cl), s = +-1, |a z| < |c| (the next coefficient is under 1 / 20 of
+   this one and z < 0.62): one two_prod, Fast2Sum on the leading parts */
+static ddbl dd_hstep(ddbl a, double zh, double zl, double s, const double *c)
+{
+    ddbl r;
+    double p, e, ch = s * c[0], h, t;
+    two_prod(a.hi, zh, &p, &e);
+    e += a.hi * zl + a.lo * zh;
+    h = ch + p;
+    t = p - (h - ch);
+    t += e + s * c[1];
+    r.hi = h + t;
+    r.lo = t - (r.hi - h);
+    return r;
+}
+
+static int sincos_r2(ddbl r, int odd, double *out)
+{
+    double x = r.hi, y = r.lo, zh, zl, h, l, t, e, a, b;
+    ddbl acc, u;
+    int k;
+    two_prod(x, x, &zh, &zl);                                  /* z = x^2 exactly */
+    if (odd) {
+        double x3h, x3l, cd;
+        /* P's tail: -1 / 15! + z / 17! - ... + z^5 / 25! */
+        acc.hi = -7.647163731819816e-13 + zh * (2.8114572543455206e-15 + zh * (-8.22063524662433e-18 +
+                 zh * (1.9572941063391263e-20 + zh * (-3.868170170630684e-23 + zh * 6.446950284384474e-26))));
+        acc.lo = 0;
+        for (k = 5; k >= 0; k--) acc = dd_hstep(acc, zh, zl, (k & 1) ? 1.0 : -1.0, SC2_P[k]);
+        two_prod(x, zh, &x3h, &x3l);                           /* x^3 */
+        x3l += x * zl;
+        u.hi = x3h; u.lo = x3l;
+        u = dd_mul(u, acc);                                    /* x^3 P */
+        cd = 1.0 - zh * (0.5 - zh * (0.041666666666666664 - zh * (0.001388888888888889 - zh * (2.48015873015873e-05 -
+             zh * (2.755731922398589e-07 - zh * 2.08767569878681e-09)))));   /* cos x for y cos x */
+        h = x + u.hi;
+        t = u.hi - (h - x);
+        l = ((t + u.lo) + y * cd);
+        e = (x < 0 ? -x : x) * SC2_EPS_S;
+    } else {
+        double sd, z2h, z2l, wh, we;
+        /* Q's tail: -1 / 14! + z / 16! - ... - z^6 / 26! */
+        acc.hi = -1.1470745597729725e-11 + zh * (4.779477332387385e-14 + zh * (-1.5619206968586225e-16 +
+                 zh * (4.110317623312165e-19 + zh * (-8.896791392450574e-22 + zh * (1.6117375710961184e-24 +
+                 zh * -2.4795962632247976e-27)))));
+        acc.lo = 0;
+        for (k = 4; k >= 0; k--) acc = dd_hstep(acc, zh, zl, (k & 1) ? -1.0 : 1.0, SC2_Q[k]);
+        two_prod(zh, zh, &z2h, &z2l);                          /* z^2 */
+        z2l += 2.0 * zh * zl;
+        u.hi = z2h; u.lo = z2l;
+        u = dd_mul(u, acc);                                    /* z^2 Q */
+        sd = x * (1.0 - zh * (0.16666666666666666 - zh * (0.008333333333333333 - zh * (0.0001984126984126984 -
+             zh * (2.7557319223985893e-06 - zh * 2.505210838544172e-08)))));  /* sin x for -y sin x */
+        wh = 1.0 - 0.5 * zh;                                   /* exact Fast2Sum: 0.5 z <= 0.31 */
+        we = (1.0 - wh) - 0.5 * zh;
+        h = wh + u.hi;
+        t = u.hi - (h - wh);
+        l = (((t + we) - 0.5 * zl) + u.lo) - y * sd;
+        e = SC2_EPS_C;
+    }
+    a = h + (l + e);
+    b = h + (l - e);
+    if (a != b) return 0;
+    *out = h + l;
+    return 1;
+}
+
 /* sin (odd 1) or cos (odd 0) of the reduced r, as cr_trig rounds it: the Taylor series with x^2, x^3 and the x^3 / 6
    term in double-double (two_prod) and the rest (to x^21 / x^22) in double, as hi + lo with an error of about 2^-60;
    kept when hi + (lo + e) and hi + (lo - e) round alike (Ziv's test), else the double-double series, cr_trig's own
@@ -396,6 +483,7 @@ static double sincos_r(ddbl r, int odd)
     a = hi + (lo + e);
     b = hi + (lo - e);
     if (a == b) return hi + lo;
+    if (sincos_r2(r, odd, &a)) return a;
     t = dd_sincos(r, odd);
     return t.hi + t.lo;
 }

@@ -499,8 +499,8 @@ static void snake_step(int i)
 
 /* ---- oBat: objects/oBat/Step_0.gml (no inherited Step) ---------------------------------------------- */
 /* dir is a float's value in [0, 360] (point_direction_d's float, or 90 / 180 / 270 / 0): psincos_cr gives pcos_cr's
-   and psin_cr's bits for every such dir (checked for all 1,135,869,954 of them), with one range reduction and,
-   about 9 times in 10, no double-double series. The host builds check the premise */
+   and psin_cr's bits for every such dir (tests/sincos: all 1,135,869,954 of them), with one range reduction and
+   never the double-double series. The host builds check the premise */
 static void bat_fly(struct pin *p, double dir)
 {
     double s, c;
