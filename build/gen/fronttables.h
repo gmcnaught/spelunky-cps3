@@ -13,5 +13,10 @@ struct froom { int16_t w, h; int16_t n; const struct frinst *in; int16_t bg; int
 extern const struct froom froom_rIntro;  /* 430 instances */
 extern const struct froom froom_rTitle;  /* 561 instances */
 extern const struct froom froom_rHighscores;  /* 573 instances */
+extern const struct froom froom_rEnd;  /* 649 instances */
+extern const struct froom froom_rEnd2;  /* 2 instances */
+extern const struct froom froom_rEnd3;  /* 277 instances */
+extern const struct froom froom_rCredits2;  /* 171 instances */
 #define FRONT_CC_rIntro_0_Create 0
+#define FRONT_CC_rCredits2_0_Create 1
 #endif

@@ -195,7 +195,7 @@ const uint8_t draw_kind[459] = {
     DK_SELF,  /* oEnd */
     DK_SELF,  /* oEnd2 */
     DK_SELF,  /* oEnd2BG */
-    DK_TODO,  /* oEnd3 */
+    DK_FRONT,  /* oEnd3 */
     DK_TODO,  /* oEndCustom */
     DK_SELF | DK_SOLID,  /* oEndPlat */
     DK_SELF,  /* oEndWall */
