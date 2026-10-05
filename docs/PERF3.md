@@ -1,7 +1,10 @@
 # PERF3: fitting the play step on jtcps3
 
-Status 2026-10-05: **the mean-step goal is met on jtcps3 at batch 17** (all 18 playsh2 routes under 0.525 M, caveman
-517.4 K; p5_snakes 0 of 241 pairs over 0.84 M); see section 5. Builds on docs/REVIEW-SH2.md (the cost model and findings P1-P7) and docs/HANDOFF.md (branch
+Status 2026-10-05: the mean-step goal holds on jtcps3 for the 18 hardware routes at batch 17 (caveman 517.4 K the
+largest; p5_snakes 0 of 241 pairs over 0.84 M). **Not met:** p99 (bomb_drop, bomb_throw, buy, spider, idol, p1_walk have
+more than 1 % of their steps over the pair in MAME SOFTFP x4.2), and the four p5_reg_* routes, which the jtcps3 build
+does not run (mkjobs.py JT_ROUTES): p5_reg_l14s16's MAME SOFTFP step mean is 269.6 K, about 1.1-1.2 M on jtcps3. See
+section 5. Builds on docs/REVIEW-SH2.md (the cost model and findings P1-P7) and docs/HANDOFF.md (branch
 state). It runs alongside, not instead of, PERF2's remaining items.
 
 ## 1. Goal and how it is measured
@@ -331,8 +334,8 @@ Load-use stall (from spelunky-cps3-a6, low priority): jtcps3 stalls 1 cycle on a
   collision_point_any (353e2ae, the GML's `collision_point(.., oSolid, ..) != noone` tests: pplayer.c 27, pobj.c 11,
   the CP wrappers); MAME SOFTFP route means (steps 2+): caveman -5.1 %, cavestun -4.7 %, giant -5.4 %, idol -7.0 %,
   l4 -4.1 %, snakes -7.0 %; gametime (MAME) p5_snakes pair mean 141.4 -> 134.1 K.
-  On jtcps3 (.62): JT PASS 23/23, route mean of means **402.4 K** (-3.6 % from batch 15), **0 of 18 over 0.525 M:
-  the goal is met** (caveman 517.4 K, giant 472.6 K, idol 456.9 K, bomb_drop 451.1 K); frame budget game 2
+  On jtcps3 (.62): JT PASS 23/23, route mean of means **402.4 K** (-3.6 % from batch 15), **0 of 18 over 0.525 M**
+  (the mean goal on the hardware routes; caveman 517.4 K, giant 472.6 K, idol 456.9 K, bomb_drop 451.1 K); frame budget game 2
   (p5_snakes) 0 of 241 over, pair max 748.6 K at pair 0 (90.3 K under), step mean / max 426.6 / 651.8 K; game 1
   (p4_push_rope) 1 of 375 over (pair 1, the level's first steps), step mean 376.5 K.
 - Batch 18 (merged a50573a): collision_rect_any (989b93c: the rectangle tests; route means about -1 %).
