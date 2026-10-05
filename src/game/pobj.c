@@ -1634,8 +1634,17 @@ void ev_collision(int self, int other)
     case OBJ_oExplosion:
         if (obj_is(oo, OBJ_oSolid)) explosion_solid(self, other);
         else if (obj_is(oo, OBJ_oItem)) {
-            if (oo == OBJ_oDamsel) PUNTR(1091);
-            else explosion_item(self, other);
+            if (oo == OBJ_oDamsel) {                                   /* objects/oExplosion/Collision_oDamsel.gml */
+                struct pin *o = &PX(other);
+                if (!o->invincible) {
+                    PE(o)->hp -= 100;
+                    if (PX(self).x < o->x) PE(o)->xVel = NI(RAND(4, 6));
+                    else PE(o)->xVel = NI(-RAND(4, 6));
+                    PE(o)->yVel = N(-6);
+                    PEN(o)->burning = 50;
+                    PE(o)->status = 2;                                     /* pdamsel.c D_THROWN */
+                }
+            } else explosion_item(self, other);
         } else if (obj_is(oo, OBJ_oWeb)) pin_destroy(other);
         else if (obj_is(oo, OBJ_oEnemy) && oo != OBJ_oMagmaMan) {         /* objects/oExplosion/Collision_oEnemy.gml */
             struct pin *o = &PX(other);
