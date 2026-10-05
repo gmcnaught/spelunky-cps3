@@ -320,7 +320,7 @@ Load-use stall (from spelunky-cps3-a6, low priority): jtcps3 stalls 1 cycle on a
   0 of 241 over, pair max 787.3 K, step mean 443.5 K; game 1 step mean 377.7 K.
 - Batch 15 (merged 32195fe): pin_add / ext_alloc by words (c67b360: p5_giant 28 714.6 -> 700.2 K), item (a6: prandom
   from u's bits, e1c0966; item_step's colBot settle on the raw field, d4396ee: caveman 178 737.4 -> 718.2 K).
-  On jtcps3 (.62): JT PASS 23/23, route mean of means 417.6 K, 1 of 18 over: caveman 542.3 K; frame budget game 2 0
+  On jtcps3 (.62): JT PASS 23/23, route mean of means 417.5 K, 1 of 18 over: caveman 542.3 K; frame budget game 2 0
   of 241 over, pair max 799.4 K. A whole-route sampled profile of p5_caveman (PROF=64 PROF_WRAP=1 SOFTFP=1): soft-float
   29.5 % of the samples (isCollisionSolid 3.6 %, pl_step 3.2 %, play_step 3.1 %, snake_step 2.1 %, pen_motion 1.8 %);
   self time play_step 12.6 %, pgrid_search 9.1 %, collision_point_p 5.0 %, snapshot 3.0 %.
