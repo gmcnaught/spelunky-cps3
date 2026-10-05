@@ -346,6 +346,8 @@ int pcol_count(int obj);
 #define pw_noinst_tree(obj) ((obj) >= 0 && pcol_count(obj) == 0)
 #define collision_point_p(px, py, obj, prec, notme) \
     (pw_noinst_point(obj) ? NOONE : (collision_point_p)((px), (py), (obj), (prec), (notme)))
+#define collision_point_any(px, py, obj, prec, notme) \
+    (pw_noinst_point(obj) ? 0 : (collision_point_any)((px), (py), (obj), (prec), (notme)))
 #define collision_line_p(x1, y1, x2, y2, obj, prec, notme) \
     (pw_noinst_tree(obj) ? NOONE : (collision_line_p)((x1), (y1), (x2), (y2), (obj), (prec), (notme)))
 #define collision_rect_p(x1, y1, x2, y2, obj, prec, notme) \

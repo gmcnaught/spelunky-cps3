@@ -823,7 +823,7 @@ void item_step(int i)
             ptemple_world(1032, i, 0);
         else
             PE(p)->myGrav = N(0.6);
-        if (collision_point_p(PTOD(p->x), PTOD(p->y) - 5, OBJ_oLava, 0, NOONE) != NOONE && p->type != T_SCEPTRE)
+        if (collision_point_any(PTOD(p->x), PTOD(p->y) - 5, OBJ_oLava, 0, NOONE) && p->type != T_SCEPTRE)
             ptemple_world(1032, i, 0);
     }
     if (p->type == T_BOMB && PE(p)->sticky) {                                      /* :217 */
@@ -895,7 +895,7 @@ static void jar_step(int i, int skull)
         pin_setdepth(p, 100);
     lava:
         if (collision_rect_p(PTOD(p->x) - 3, PTOD(p->y) - 3, PTOD(p->x) + 3, PTOD(p->y) + 3, OBJ_oLava, 0, NOONE) != NOONE ||
-            collision_point_p(PTOD(p->x), PTOD(p->y) - 5, OBJ_oLava, 0, NOONE) != NOONE)
+            collision_point_any(PTOD(p->x), PTOD(p->y) - 5, OBJ_oLava, 0, NOONE))
             ptemple_world(1036, i, skull);
         NOPS(12);
     }
@@ -956,7 +956,7 @@ terrain_done:
     else pin_setdepth(p, 101);
     NOPS(8);
     if (collision_rect_p(PTOD(p->x) - 3, PTOD(p->y) - 3, PTOD(p->x) + 3, PTOD(p->y) + 3, OBJ_oLava, 0, NOONE) != NOONE ||
-        collision_point_p(PTOD(p->x), PTOD(p->y) - 5, OBJ_oLava, 0, NOONE) != NOONE)
+        collision_point_any(PTOD(p->x), PTOD(p->y) - 5, OBJ_oLava, 0, NOONE))
         ptemple_world(1039, i, 0);
 }
 
@@ -971,7 +971,7 @@ void detritus_step(int i)
     if (NGT(PE(p)->life, N(0))) PE(p)->life -= N(1);
     else pin_destroy(i);
     moveTo(i, PE(p)->xVel, PE(p)->yVel, 0, 0);
-    if (collision_point_p(PTOD(p->x), PTOD(p->y) - 4, OBJ_oLava, 0, NOONE) != NOONE) ptemple_world(1040, i, 0);
+    if (collision_point_any(PTOD(p->x), PTOD(p->y) - 4, OBJ_oLava, 0, NOONE)) ptemple_world(1040, i, 0);
     if (PE(p)->bounce) {
         if (NLT(PE(p)->yVel, N(6))) PE(p)->yVel += PE(p)->grav;
         if (isCollisionTop(i, 1) && NLT(PE(p)->yVel, N(0))) PE(p)->yVel = NMUL(-PE(p)->yVel, N(0.8));
@@ -998,8 +998,8 @@ static void rubble_step(int i)
     py = p->y;
     x = PTOD(p->x);
     y = PTOD(p->y);
-    if (collision_point_p(x, y, OBJ_oWaterSwim, 0, NOONE) != NOONE) pswamp_world(1041, i, 0);
-    else if (collision_point_p(x, y, OBJ_oLava, 0, NOONE) != NOONE) pin_destroy(i);
+    if (collision_point_any(x, y, OBJ_oWaterSwim, 0, NOONE)) pswamp_world(1041, i, 0);
+    else if (collision_point_any(x, y, OBJ_oLava, 0, NOONE)) pin_destroy(i);
     if (collision_point_any(x, y, OBJ_oSolid, 0, NOONE)) pin_destroy(i);
     view_read();
     if (PLTI(px, PW.xview - 32) || PGTI(px, PW.xview + 320 + 32) || PLTI(py, PW.yview - 32) || PGTI(py, PW.yview + 240 + 32))
@@ -1306,7 +1306,7 @@ void ev_step(int i)
     case OBJ_oBigCollect: pin_sety(p, p->y - (PI(1))); break;
     case OBJ_oRubble: case OBJ_oRubbleSmall: rubble_step(i); break;
     case OBJ_oPushBlock:                                                       /* inherited: no parent Step */
-        if (collision_point_p(PTOD(p->x) + 8, PTOD(p->y) + 14, OBJ_oLava, 0, NOONE) != NOONE &&
+        if (collision_point_any(PTOD(p->x) + 8, PTOD(p->y) + 14, OBJ_oLava, 0, NOONE) &&
             !collision_point_any(PTOD(p->x) + 8, PTOD(p->y) + 17, OBJ_oSolid, 0, NOONE))
             PUNTR(1055);
         break;
@@ -1316,7 +1316,7 @@ void ev_step(int i)
         if (NLE(PE(p)->life, N(1))) pin_destroy(i);
         break;
     case OBJ_oRope:
-        if (collision_point_p(PTOD(p->x) + 12, PTOD(p->y), OBJ_oLava, 0, NOONE) != NOONE && PE(p)->burnTimer == 0) ptemple_world(1056, i, 0);
+        if (collision_point_any(PTOD(p->x) + 12, PTOD(p->y), OBJ_oLava, 0, NOONE) && PE(p)->burnTimer == 0) ptemple_world(1056, i, 0);
         if (PE(p)->burnTimer > 1) PE(p)->burnTimer -= 1;
         else if (PE(p)->burnTimer == 1) ptemple_world(1056, i, 0);
         break;

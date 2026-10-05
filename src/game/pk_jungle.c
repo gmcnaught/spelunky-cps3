@@ -709,7 +709,7 @@ static void firefrogbomb_step(int i)                                 /* objects/
     item_step(i);
     p = &PX(i);
     if (PE(p)->armed && instance_exists_p(OBJ_oShopkeeper)) pitems_world(1042, i, 0);   /* :2 as oBomb's */
-    if (collision_point_p(X(i), Y(i), OBJ_oWaterSwim, 1, i) != NOONE) {
+    if (collision_point_any(X(i), Y(i), OBJ_oWaterSwim, 1, i)) {
         if (!ffb_swim[p->ext]) {
             pin_create(p->x, p->y, OBJ_oSplash);
             p = &PX(i);

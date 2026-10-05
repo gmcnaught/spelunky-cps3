@@ -58,6 +58,27 @@ static uint8_t gkind[PIN_MAX], gox0[PIN_MAX], goy0[PIN_MAX], gox1[PIN_MAX], goy1
    (an oSolid-family entry put in or taken out of the cells it may reach), both 16-bit within an epoch: when gclock
    would wrap, gepoch advances and every gver restarts at 0, and a record of an earlier epoch is never still */
 static uint16_t gclock = 1, gepoch, gver[GRID_H][GRID_W];
+/* the liquid index (collision_point_any): for each family of xf_obj, how many of its entries' integer boxes reach
+   each cell ([l, r - 1] x [t, b - 1] in cells, clamped), kept like the solid grid (an entry whose box may have changed
+   waits on xdhead until the next query); a cell with no count holds no point of the family. xfar counts the entries
+   with a box that is not BB_INT (any query of their family takes the scan). Destroyed entries keep their counts
+   until the slot is used again: a superset */
+#ifndef PCOL_EXACT
+#define XF_N 3
+static const int16_t xf_obj[XF_N] = { OBJ_oLava, OBJ_oWater, OBJ_oWaterSwim };
+static uint8_t xbits[OBJ_COUNT];                 /* bit f: the object is in family xf_obj[f] */
+static int xbits_ok;
+static uint16_t xcnt[XF_N][GRID_H][GRID_W];
+static uint16_t xfar[XF_N];
+static uint8_t xmask[PIN_MAX], xisfar[PIN_MAX], xond[PIN_MAX], xx0[PIN_MAX], xy0[PIN_MAX], xx1[PIN_MAX], xy1[PIN_MAX];
+static int16_t xdnext[PIN_MAX], xdhead = NOONE;
+static void xdirty(int i)
+{
+    xond[i] = 1;
+    xdnext[i] = xdhead;
+    xdhead = (int16_t)i;
+}
+#endif
 
 #ifndef GCLOCK_WRAP
 #define GCLOCK_WRAP 0xffff                       /* -DGCLOCK_WRAP=<small>: the host check of the wrap */
@@ -659,6 +680,9 @@ int pin_add(int obj, pos x, pos y, int32_t id)
     olink(i);
     gcell[i] = NOONE;
     gond[i] = 0;
+#ifndef PCOL_EXACT
+    if (xmask[i] && !xond[i]) xdirty(i);            /* a reused slot still counted in the liquid index */
+#endif
     grid_dirty(i);
     pcol_added(i);
     return i;
@@ -1314,6 +1338,22 @@ static void grid_reset(void)
         for (x = 0; x < GRID_W; x++) gver[y][x] = gclock;
     gmaxw = gmaxh = tmaxw = tmaxh = 1;
     gfar = 0;
+#ifndef PCOL_EXACT
+    if (!xbits_ok) {                             /* (the object tree is fixed: once) */
+        for (x = 0; x < OBJ_COUNT; x++) {
+            int f, b = 0;
+            for (f = 0; f < XF_N; f++) if (obj_is(x, xf_obj[f])) b |= 1 << f;
+            xbits[x] = (uint8_t)b;
+        }
+        xbits_ok = 1;
+    }
+    for (x = 0; x < PIN_MAX; x++) xmask[x] = xisfar[x] = xond[x] = 0;
+    for (x = 0; x < XF_N; x++) {
+        xfar[x] = 0;
+        for (y = 0; y < GRID_H; y++) { int c; for (c = 0; c < GRID_W; c++) xcnt[x][y][c] = 0; }
+    }
+    xdhead = NOONE;
+#endif
 }
 
 static void gsum_out(int i)
@@ -1390,6 +1430,9 @@ static void grid_unlink(int i)
 /* a solid's box may have changed (or it was added): placed again at the next query */
 static void grid_dirty(int i)
 {
+#ifndef PCOL_EXACT
+    if (xbits[PW.in[i].obj] && !xond[i]) xdirty(i);
+#endif
     if (gond[i] || !(obj_is(PW.in[i].obj, OBJ_oSolid) || !pin_needs_ext(PW.in[i].obj))) return;
     gond[i] = 1;
     gdnext[i] = gdhead;
@@ -1513,13 +1556,49 @@ int (collision_point_p)(double px, double py, int obj, int prec, int notme_self)
 /* collision_point(px, py, obj, prec, notme) != noone. For oSolid in the grid build (PCOL_EXACT keeps collision_point_p),
    whole point cells from the solid grid's summary: the point's cell holds a block (a box of exactly that cell) that
    is not the caller and not precise: a hit; no block there and no other oSolid-family entry reaching the cell
-   (gother): a miss (a block's box is its own cell); otherwise collision_point_p. Skipped: the stale touches of the
+   (gother): a miss (a block's box is its own cell); otherwise collision_point_p. For oLava, oWater and oWaterSwim, a
+   whole point in a cell that no entry of the family reaches in the liquid index is a miss. Skipped: the stale touches of the
    scan (pcol_touch_stale), which the grid build's searches do not depend on (pobj.c PLAY_REST). The host builds
    compare every summary answer */
-int collision_point_any(double px, double py, int obj, int prec, int notme_self)
+#ifndef PCOL_EXACT
+static void xplace(int i, int d)
+{
+    int f, x, y;
+    for (f = 0; f < XF_N; f++) {
+        if (!(xmask[i] >> f & 1)) continue;
+        if (xisfar[i]) { xfar[f] += d; continue; }
+        for (y = xy0[i]; y <= xy1[i]; y++)
+            for (x = xx0[i]; x <= xx1[i]; x++) xcnt[f][y][x] += d;
+    }
+}
+
+static __attribute__((noinline)) void xflush_run(void)
+{
+    while (xdhead >= 0) {
+        int i = xdhead, b;
+        int32_t ib[4];
+        xdhead = xdnext[i];
+        xond[i] = 0;
+        xplace(i, -1);
+        xmask[i] = xisfar[i] = 0;
+        if (!PW.in[i].alive || !(b = xbits[PW.in[i].obj]) || bbkind(i) == BB_NOSPR) continue;
+        xmask[i] = (uint8_t)b;
+        if (pin_ibox(i, ib)) {
+            if (ib[2] <= ib[0] || ib[3] <= ib[1]) { xmask[i] = 0; continue; }     /* empty: never hit */
+            xx0[i] = (uint8_t)clampi(ib[0] >> 4, 0, GRID_W - 1); xx1[i] = (uint8_t)clampi((ib[2] - 1) >> 4, 0, GRID_W - 1);
+            xy0[i] = (uint8_t)clampi(ib[1] >> 4, 0, GRID_H - 1); xy1[i] = (uint8_t)clampi((ib[3] - 1) >> 4, 0, GRID_H - 1);
+        } else
+            xisfar[i] = 1;
+        xplace(i, 1);
+    }
+}
+#endif
+
+int (collision_point_any)(double px, double py, int obj, int prec, int notme_self)
 {
 #ifndef PCOL_EXACT
     struct pq q;
+    int f;
     if (obj == OBJ_oSolid && !gfar && !pcol_quiet()) {
         int cx, cy, n, k, r = -1;
         if (fam_none(obj)) return 0;
@@ -1540,6 +1619,25 @@ int collision_point_any(double px, double py, int obj, int prec, int notme_self)
 #endif
             return r;
         }
+    }
+    f = obj == OBJ_oLava ? 0 : obj == OBJ_oWater ? 1 : obj == OBJ_oWaterSwim ? 2 : -1;
+    if (f >= 0 && !pcol_quiet()) {
+        int cx, cy;
+        if (fam_none(obj)) return 0;
+        pq_init(&q, px, py);
+        if (q.iok && q.ix >= 0 && q.iy >= 0 && (cx = q.ix >> 4) < GRID_W && (cy = q.iy >> 4) < GRID_H) {
+            if (xdhead >= 0) xflush_run();
+            if (xfar[f] == 0 && xcnt[f][cy][cx] == 0) {
+#ifdef PLAY_STATS
+                if (collision_point_p(px, py, obj, prec, notme_self) != NOONE) {
+                    fprintf(stderr, "collision_point_any: liquid index miss differs (%d %.17g %.17g)\n", obj, px, py);
+                    abort();
+                }
+#endif
+                return 0;
+            }
+        }
+        return collision_point_p(px, py, obj, prec, notme_self) != NOONE;
     }
 #endif
     return collision_point_p(px, py, obj, prec, notme_self) != NOONE;

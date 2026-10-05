@@ -829,8 +829,8 @@ static void rubblepiece_step(int i)
     py = p->y;
     x = X(i);
     y = Y(i);
-    if (collision_point_p(x, y, OBJ_oWaterSwim, 0, NOONE) != NOONE) pswamp_world(1041, i, 0);
-    else if (collision_point_p(x, y, OBJ_oLava, 0, NOONE) != NOONE) pin_destroy(i);
+    if (collision_point_any(x, y, OBJ_oWaterSwim, 0, NOONE)) pswamp_world(1041, i, 0);
+    else if (collision_point_any(x, y, OBJ_oLava, 0, NOONE)) pin_destroy(i);
     if (collision_point_any(x, y, OBJ_oSolid, 0, NOONE)) pin_destroy(i);
     view_read();
     if (PLTI(px, PW.xview - 32) || PGTI(px, PW.xview + 320 + 32) || PLTI(py, PW.yview - 32) || PGTI(py, PW.yview + 240 + 32))
@@ -934,7 +934,7 @@ int pswamp_player(int site, int i, int arg)
     case 2009:                                                 /* characterStepEvent :764: under water */
         if (instance_exists_p(OBJ_oCape)) cape_set_open(0);
         if (PL.state == FALLING && NGT(PE(p)->yVel, 0)) PL.yFric = N(0.5);
-        else if (collision_point_p(X(i), Y(i) - 9, OBJ_oWater, 0, NOONE) == NOONE) PL.yFric = N(1);
+        else if (!collision_point_any(X(i), Y(i) - 9, OBJ_oWater, 0, NOONE)) PL.yFric = N(1);
         else PL.yFric = N(0.9);
         return 1;
     case 2011:                                                 /* characterStepEvent :886 */

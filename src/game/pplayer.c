@@ -592,7 +592,7 @@ static void characterStepEvent(int i)
             PL.xFric = N(0.2);
             PL.yFric = N(0.2);
             PL.fallTimer = 0;
-        } else if (collision_point_p(PTOD(p->x), PTOD(p->y), OBJ_oWater, 0, NOONE) != NOONE) {   /* -1, -1: false */
+        } else if (collision_point_any(PTOD(p->x), PTOD(p->y), OBJ_oWater, 0, NOONE)) {   /* -1, -1: false */
             pswamp_player(2009, i, 0);
         } else {
             PL.swimming = 0;
@@ -1061,7 +1061,7 @@ void pl_step(int i)
     } else
         PL.whoaTimer = PL.whoaTimerMax;
     if (PL.firing > 0) PL.firing -= 1;                                         /* :174 */
-    if (collision_point_p(PTOD(p->x), PTOD(p->y), OBJ_oWaterSwim, 0, NOONE) != NOONE) pswamp_player(2032, i, 0);   /* -1, -1: false */
+    if (collision_point_any(PTOD(p->x), PTOD(p->y), OBJ_oWaterSwim, 0, NOONE)) pswamp_player(2032, i, 0);   /* -1, -1: false */
     if (PL.burning > 0) {                                                      /* :188 */
         if (RAND(1, 5) == 1) {
             int yb = RAND(4, 12);                                              /* arguments: last first */
@@ -1070,7 +1070,7 @@ void pl_step(int i)
         }
         PL.burning -= 1;
     }
-    if (collision_point_p(PTOD(p->x), PTOD(p->y) + 6, OBJ_oLava, 0, NOONE) != NOONE) ptemple_player(2033, i, 0);
+    if (collision_point_any(PTOD(p->x), PTOD(p->y) + 6, OBJ_oLava, 0, NOONE)) ptemple_player(2033, i, 0);
     if (PG.hasJetpack && platformCharacterIs(ON_GROUND)) PL.jetpackFuel = 50;
     if (PTOD(p->y) > PW.room_h + 16 && !PL.dead) {                             /* :221 */
         PG.plife -= 99;
@@ -1121,7 +1121,7 @@ void pl_step(int i)
             PL.fallTimer = 0;
             if (instance_exists_p(OBJ_oParachute)) pitems_player(2035, i, 0);
         }
-        if (PL.swimming && collision_point_p(PTOD(p->x), PTOD(p->y), OBJ_oLava, 0, NOONE) == NOONE) pswamp_player(2036, i, 0);
+        if (PL.swimming && !collision_point_any(PTOD(p->x), PTOD(p->y), OBJ_oLava, 0, NOONE)) pswamp_player(2036, i, 0);
         else PL.bubbleTimer = PL.bubbleTimerMax;
         if (PL.state != DUCKTOHANG && !PL.stunned && !PL.dead && !spr_is_exit(p->spr)) {   /* :318 */
             PL.bounced = 0;
