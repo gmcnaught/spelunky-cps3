@@ -1,11 +1,12 @@
 # PERF3: fitting the play step on jtcps3
 
-Status 2026-10-05: **paused after batch 22** (main d780b83). On jtcps3 the mean-step goal holds for the 18 hardware
-routes (route mean of means 391.4 K, caveman 503.5 K the largest; p5_snakes 0 of 241 pairs over 0.84 M, max 710.4 K).
-**Open:** p99 (MAME SOFTFP steps over 838,940 at x4.2: p5_reg_l14s16 25, l2s10 / l3s10 23, bomb_drop 17, bomb_throw
-15, spider 13, buy 12, idol / p1_walk 8: explosions, the boulder, temple traps); the four p5_reg_* routes, not in the
-jtcps3 set (mkjobs.py JT_ROUTES; l14s16 about 0.53 M a step by MAME x3.7); Phase 5 (level start, draw). Section 5
-lists what was measured and not kept. Builds on docs/REVIEW-SH2.md (the cost model and findings P1-P7) and docs/HANDOFF.md (branch
+Status 2026-10-05: **batch 23 on branch worktree-agent-adf10525aca9ad59f** (on main 3249c51, not merged; section 5,
+batch 23). Lush (levels 5-8) was the cabinet's slowdown and is now measured (p5_lush_* routes): MAME SOFTFP route
+means 172-202 K, down from 374-674 K on main, still over the 125 K proxy for 0.525 M. **Open:** lush means (spear
+traps' remaining nearest / double compares, eview, the step loop); p99 (MAME SOFTFP steps over 838,940 at x4.2,
+non-lush routes: 197 -> 117; l14s16 22, l2s10 / l3s10 16, l9s5 21, l4s10 11, l12s13 9, bomb_drop 8, idol 7); no
+jtcps3 run of batch 23; the four p5_reg_* routes and the lush routes are not in the jtcps3 set (mkjobs.py
+JT_ROUTES); Phase 5 (level start, draw). Section 5 lists what was measured and not kept. Builds on docs/REVIEW-SH2.md (the cost model and findings P1-P7) and docs/HANDOFF.md (branch
 state). It runs alongside, not instead of, PERF2's remaining items.
 
 ## 1. Goal and how it is measured
@@ -408,3 +409,35 @@ Load-use stall (from spelunky-cps3-a6, low priority): jtcps3 stalls 1 cycle on a
   compares over all 2^32 / 300 M pairs): p4 301 554.0 -> 552.4 K, p5 956 445.9 -> 448.0 K fit, stack stores +70.
 - Measured and dropped: a call-free pg_collect for pgrid_search (-1.4 / -1.0 / +0.6 / +0.2 %: noise, +3.5 KB).
 - jtcost hangs when asked for two consecutive steps of one route: trace one step per run.
+- Batch 23 (branch worktree-agent-adf10525aca9ad59f, rebased on main 3249c51; 17 commits from 7976459): p99 spikes,
+  then lush (the user's priority: slowdown on levels 5-6 at the cabinet).
+  - Attribution (jtcost fit, JTC_CALLERS): p5_spider 202 / p5_buy 198 were one or two dd_sincos fallbacks of
+    bat_fly (78 % / 67 % soft-float); explosion steps (bomb_drop 202, l2s10 183) are pcol_handle's grid searches for
+    rubble (25 of 44 searches, 0 pairs), detritus moveTo / isCollision*, cupdate_at (flat beyond that);
+    p5_reg_l14s16 (temple, dark) the light search's instance_nearest; p5_idol 252 detritus line tests against the
+    rotated boulder (precise_line); lush: oSpearTrap's 6 instance_nearest a trap a step (p5_lush_l5s11 201: 72
+    calls, 43 % of 1,185 K), oVampire's cr_trig double-double sin / cos (c_swamp_vampire 101: 315 K of 1,462 K),
+    swamp fish collision_point(.., oWater) creation-order scans (c_swamp_drain 101: 354 K of 1,071 K), oLeaves'
+    tree / leaves points (c_swamp_deadfish 101: 64 K). Frogs / monkeys / man traps (the user's suspects): 6-8 % each
+    on c_jungle_monkey 101 (monkey_step 5 calls 58 K, frog_step 6 calls 50 K of 741 K), not the main cost.
+  - Commits: psincos_cr's second Ziv test (sincos_r2; tests/sincos: all 1,135,869,954 float directions equal, the
+    second test keeps every first-test failure); pcol_handle's can_pair skip and direct_pairs (a short-list
+    searcher's pairs from the pairable instances); instance_nearest_p's integer bounds, list walk and per-family
+    floor cache (nc); fam_begin's pruned family walk; speartrap_step's nearest once a step; vampire_fly via
+    psincos_cr; collision_point_any's static-family existence path (xpoint_any, cell-filtered); oTree / oLeaves in
+    the static-family index; RAM (short rv lists, family walks on pcol's object tree; tests/game 34,624 B stack).
+  - MAME SOFTFP (main 3249c51 -> batch 23; route means steps 2+, steps over 838,940 at x4.2): p5_lush_l5s11 674.1 ->
+    201.8 K (p99 695 -> 223 K), l6s23 485.3 -> 178.0 K (p99 516 -> 204 K), l5s37 374.0 -> 171.5 K (p99 392 -> 191 K);
+    c_swamp_* / c_jungle_* at cd3bc01 -> before the RAM commits: vampire 470.8 -> 241.6 K, deadfish 429.3 -> 235.8 K,
+    drain 423.6 -> 332.6 K, frog 271.7 -> 171.1 K, monkey 259.5 -> 170.0 K; non-lush routes all -0.3 to -7 % (spider
+    -7.2 %, l14s16 -11.0 %, bomb_drop -4.4 %), over 197 -> 117 (spider 12 -> 0, buy 11 -> 0, bomb_throw 14 -> 3,
+    bomb_drop 16 -> 8, p1_walk 7 -> 2, l14s16 39 -> 22); all-route mean 182.8 -> 116.2 K, p99 686 -> 219 K.
+  - jtcost fit: p5_lush_l5s11 201 1,185 -> 748 K; c_swamp_deadfish 101 1,070 -> 879 K; c_swamp_drain 101 1,071 ->
+    947 K (before the cell filter); p5_reg_l2s10 183 1,128 -> 1,029 K (can_pair).
+  - Gates on 2682d0e: make check (host builds, constcheck, P5 21/21 + 3 lush routes without HD trace, EQUIV 85/85,
+    snd 19/19 0 differ), ctall 59/59, playsh2 9,701/9,701 (grid) and 9,701/9,701 (SOFTFP), game_check p4_exit559 0 px
+    at 30/150/300 (the tests/game link: 34,624 B of stack). The lush routes: playhost and playhost_grid output
+    byte-identical to main's builds.
+  - Not kept: none dropped after measurement; p5_reg_l9s5 (main's new route) rose 3.8 % with direct_pairs until its
+    candidate count bound (2682d0e: 143.5 -> 142.6 K).
+
