@@ -241,9 +241,12 @@ compares the host's per-step log.
 
 | Run (2026-10-05) | Capture | Result |
 |---|---|---|
-| CAP_PLAY=1500, monkey 1 | 979 steps, 109 runs, 1 page (308 bytes), dead | 979 of 979 steps equal; life 0 at step 853 in both; 15 of 15 checkpoints; end state equal; same capture after the restart |
-| CAP_PLAY=6000, monkey 7, Start 333 | 316 steps, dead | 316 of 316 equal; life 0 at step 259 in both; 4 of 4 checkpoints |
-| CAP_GOD=1 (DEV, INVINCIBLE), CAP_PLAY=24000, monkey 3 | 12,062 steps, 1,387 runs, 4 pages (3,036 bytes), taken mid-game | 12,062 of 12,062 equal; 188 of 188 checkpoints; end state equal |
+| CAP_PLAY=1500, monkey 1 (working tree) | 979 steps, 109 runs, 1 page (308 bytes), dead | 979 of 979 steps equal; life 0 at step 853 in both; 15 of 15 checkpoints; end state equal; same capture after the restart |
+| monkey 5, Start 401; build 0885bc53 (replayed from its commit) | 513 steps, 61 runs, dead | 513 of 513 equal; life 0 at step 448 in both; 8 of 8 checkpoints; end state equal; same capture after the restart |
+| CAP_GOD=1 CAP_TOGGLE=1 (DEV build: INVINCIBLE, RUN BUTTON TOGGLE), CAP_PLAY=24000, monkey 3; build 6548ef5d | 12,062 steps, 1,387 runs, 4 pages (3,036 bytes), taken mid-game | 12,062 of 12,062 equal; 188 of 188 checkpoints; end state equal; same capture after the restart |
+
+The same 12,062-step capture replayed without its RUN BUTTON TOGGLE flag differs from checkpoint 1 (step 128) on: the
+checkpoints catch a replay that is not the cabinet's game.
 
 **Not checked:** jtcps3. To check it, the lead runs these steps on the MiSTer:
 1. Install a release built from this code (`scripts/release.sh`). v0.1.0 has no capture.
