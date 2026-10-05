@@ -433,6 +433,11 @@ extern int play_cur_obj;                          /* the object whose event runs
 extern uint32_t play_time;                        /* oGame.time */
 extern int32_t play_rooms_entered;
 extern uint8_t play_toggle_run_on, play_toggle_run;   /* global.toggleRunEnabled / toggleRun (X10; game.c) */
+/* developer option INVINCIBLE (not in HD; dev builds only, src/main/game.c): the player loses no life (play_god_hold
+   puts back what a step took) and the branches that kill outright (crushed, the pit, spikes, lava, the ghost, the
+   man trap) do not run. Hits still knock back and stun. 0 in routes and in release builds */
+extern uint8_t play_god;
+extern int32_t play_god_life;                     /* the life play_god_hold keeps (the game's start: global.plife) */
 extern int play_noenemy;                          /* 1: remove the enemies at level start (TRACE_NOENEMY) */
 /* scrUpdateHighscores(type) (0 game over, 1 win, 2 minigame; global.keepScore is true: oTitle Create): the
    store is play_hs_hook's (src/main/game.c: the EEPROM, src/shell hs_update), called with the globals as they
@@ -472,5 +477,10 @@ struct pglobals {
     int16_t alienbosses, hawkmen, megamouths, yetikings, tomblords;
 };
 extern struct pglobals PG;
+static inline void play_god_hold(void)
+{
+    if (PG.plife < play_god_life) PG.plife = play_god_life;
+    else play_god_life = PG.plife;
+}
 
 #endif

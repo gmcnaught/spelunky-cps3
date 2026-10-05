@@ -45,6 +45,8 @@ struct settings {
     uint8_t coins_per_credit;   /* bits 8-11: 1..9 (0 read as 1) */
     uint8_t toggle_run;         /* bit 1: the run button toggles running (HD's global.toggleRunEnabled, X10) */
     uint8_t smooth;             /* bit 2 clear: smooth motion (src/draw draw_smooth; on in a new or older block) */
+    uint8_t invincible;         /* bit 3: developer option INVINCIBLE (src/game play_god); read only in SHELL_DEV
+                                   builds (DEV=1), so a release build ignores a bit a dev build left */
 };
 
 /* the globals oGlobals Create sets from the ini */

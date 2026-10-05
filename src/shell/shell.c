@@ -53,6 +53,13 @@ static void credit_line(void)
 }
 
 /* ---- settings screen (test switch) ---- */
+/* DEV=1 builds (SHELL_DEV) add the developer option INVINCIBLE before SAVE AND EXIT */
+#ifdef SHELL_DEV
+#define SEL_GOD  5
+#define SEL_LAST 6
+#else
+#define SEL_LAST 5
+#endif
 static void line(int row, int sel, const char *label)
 {
     cps3v_text(8, row, sel ? "+" : " ");          /* the SDK font has no ">" */
@@ -74,6 +81,7 @@ static void settings_run(void)
     st.coins_per_credit = SH.st.coins_per_credit;
     st.toggle_run = SH.st.toggle_run;
     st.smooth = SH.st.smooth;
+    st.invincible = SH.st.invincible;
     int sel = 0, clear = 0;
     uint32_t prev = 0xffffffffu, prev_sys = 0xffffffffu;
     cps3v_text(16, 3, "SPELUNKY SETTINGS");
@@ -91,7 +99,13 @@ static void settings_run(void)
         cps3v_text(32, 13, st.smooth ? "ON " : "OFF");
         line(15, sel == 4, "CLEAR HIGH SCORES");
         cps3v_text(32, 15, clear ? "YES" : "NO ");
-        line(18, sel == 5, "SAVE AND EXIT");
+#ifdef SHELL_DEV
+        line(17, sel == SEL_GOD, "INVINCIBLE (DEV)");
+        cps3v_text(32, 17, st.invincible ? "ON " : "OFF");
+        line(19, sel == SEL_LAST, "SAVE AND EXIT");
+#else
+        line(18, sel == SEL_LAST, "SAVE AND EXIT");
+#endif
         cps3v_wait_vblank();
         cps3v_vblank();
         uint32_t p = cps3_pad(0) | cps3_pad(1), sys = cps3_system();
@@ -100,7 +114,7 @@ static void settings_run(void)
         prev_sys = sys;
         if ((press & CPS3_UP) && sel > 0)
             sel--;
-        if ((press & CPS3_DOWN) && sel < 5)
+        if ((press & CPS3_DOWN) && sel < SEL_LAST)
             sel++;
         int leave = (spress & CPS3_TEST) != 0;
         int step = (press & (CPS3_B1 | CPS3_RIGHT)) ? 1 : (press & CPS3_LEFT) ? -1 : 0;
@@ -115,6 +129,10 @@ static void settings_run(void)
                 st.smooth = !st.smooth;
             else if (sel == 4)
                 clear = !clear;
+#ifdef SHELL_DEV
+            else if (sel == SEL_GOD)
+                st.invincible = !st.invincible;
+#endif
             else if (press & CPS3_B1)
                 leave = 1;
         }
@@ -124,7 +142,7 @@ static void settings_run(void)
     if (clear) {                                 /* the next boot finds no block: HD's first start (hs_boot) */
         for (int k = 0; k < HS_EE_WORDS; k++)
             shell_ee_write(HS_EE_AT + k, 0);
-        if (st.free_play || st.coins_per_credit != 1 || st.toggle_run || !st.smooth) {   /* keep the settings: a reset block */
+        if (st.free_play || st.coins_per_credit != 1 || st.toggle_run || !st.smooth || st.invincible) {   /* keep the settings: a reset block */
             struct hiscores hs;
             hs.value[0] = 0;
             for (int k = 1; k <= 10; k++)

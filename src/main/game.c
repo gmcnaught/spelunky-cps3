@@ -22,6 +22,7 @@ static void hs_store(int type)
 {
     struct hs_run r;
     if (game_cfg.route && !game_cfg.scores) return;
+    if (play_god) return;                         /* INVINCIBLE (dev): testing only, no scores */
     r.money = PG.money;
     r.time = PG.time;
     r.kills = PG.kills;
@@ -113,6 +114,9 @@ void game_begin(void)
     play_noenemy = !game_cfg.enemies;
     play_toggle_run_on = !game_cfg.route && SH.st.toggle_run;   /* the cabinet's setting; routes: HD's default */
     play_toggle_run = 0;                          /* each game starts walking (HD: once, scrInit) */
+#ifdef SHELL_DEV
+    play_god = !game_cfg.route && SH.st.invincible;   /* the developer option; routes: off */
+#endif
     if (game_cfg.nodark >= 0) G.noDarkLevel = (uint8_t)game_cfg.nodark;
     if (game_cfg.globals) {
         const char *s = game_cfg.globals;
@@ -123,6 +127,7 @@ void game_begin(void)
             s += n + (s[n] == ',');
         }
     }
+    play_god_life = PG.plife;
     rng_seed(&g_rng, game_cfg.seed ? game_cfg.seed : shell_seed());
     gen_room_force = game_cfg.room <= 3 ? game_cfg.room : -1;
     play_level_start(110325);                     /* the runner's instance id counter at rLevel (playhost) */
@@ -168,6 +173,7 @@ int game_step(const struct shell_input *in)
     do                                            /* the frame ended at a room change before oGamepad's Step: the */
         r = play_step(keys, rec_cb);              /* same keys again (playhost), nothing drawn in that frame */
     while (r == PLAY_ROOM_EARLY);
+    if (play_god) play_god_hold();                /* the life the step's collisions took, before the HUD */
     game_steps++;
     if (r != 0) {                                 /* a room the play loop does not model */
         game_over = 1;
