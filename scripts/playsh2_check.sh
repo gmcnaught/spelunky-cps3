@@ -3,7 +3,8 @@
 # src/game code; per-record checksums compared with the host build of the same code (tests/playsh2/host.c), SH-2
 # clocks per generation / step summarised (tests/playsh2/report.py).
 #   [PIN=1792] [OPT=-O2] [PROF=<ticks>] scripts/playsh2_check.sh
-# ATTR=1: time per category / event / object (tests/playsh2/attr.c).
+# ATTR=1: time per category / event / object and collision searches by calling object (tests/playsh2/attr.c;
+# built with UNITY=0: the --wrap hooks see only calls between translation units).
 # SOFTFP=1: link src/sh2/softfp.c in place of libgcc's fp-bit (scripts/softfp_check.sh tests it).
 # VARIANT=<name>: build and output in tests/playsh2/build/<name> (default run, run_prof).
 # PROF=<ticks> [PROF_SKIP=k] [PROF_KIND=1|3] [PROF_WRAP=1]: PC / PR sampled every <ticks> x 32 x k clocks during route steps (3) or generation (1) (timing then includes the sampler);
@@ -28,6 +29,7 @@ if [ -n "${GRID_SHIFT:-}" ]; then { echo "#define PCOL_GRID_SHIFT $GRID_SHIFT"; 
 # SNAP_FILE / SNAP_SED: an experimental edit of the snapshot (measurements only; src/game is never touched)
 if [ -n "${SNAP_SED:-}" ]; then sed -i '' "$SNAP_SED" "$G/$SNAP_FILE"; fi
 # the hot play files as one translation unit (scripts/unity.sh; UNITY=0: separate)
+[ "${ATTR:-0}" = 1 ] && export UNITY=0                                  # ATTR's --wrap hooks need the files separate
 scripts/unity.sh "$G"
 # snapcfg.h (tests/playsh2/core.c): where the snapshot keeps alpha
 sed -n '/^struct pin_ext {/,/^};/p' "$G/play.h" | grep -q "alpha" && echo "#define ALPHA_IN_EXT 1" > "$G/snapcfg.h" || : > "$G/snapcfg.h"
@@ -50,4 +52,4 @@ PSH2_OUT="$O/sh2.txt" scripts/mame.sh sfiii3na -rompath "$E/mame" -skip_gameinfo
   -snapshot_directory "$O/w/snap" -diff_directory "$O/w/diff" -state_directory "$O/w/sta" -inipath "$O/w" \
   -autoboot_script scripts/lua/playsh2.lua >"$O/mame.log" 2>&1 || true
 docker run --rm -v "$PWD":/p -w /p cps3-dev:latest sh-elf-nm -n $E/main.elf > "$O/nm.txt"
-python3 $T/report.py "$O/host.txt" "$O/sh2.txt" "$O/nm.txt"
+PSH2_JOBS=${ROUTES:+$E/jobs/jobs.h} python3 $T/report.py "$O/host.txt" "$O/sh2.txt" "$O/nm.txt"
