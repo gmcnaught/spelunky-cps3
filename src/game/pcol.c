@@ -646,10 +646,53 @@ PCOL_INLINE int s_overlap(const struct rbr *b)
     return s_overlap_slow(b);
 }
 
+/* a whole entry against a float search rectangle (s_r not whole): s_k[0] > ikey(r2) is s0 > r2 (the keys order as
+   the floats, and ikey(v) is (float)v's for the entry's |v| < 2^14), that is r2 <= ceil(s0) - 1; ikey(r0) > s_k[2]
+   is r0 >= floor(s2) + 1; the same in y. The four int bounds (s_ib: ceil(s0) - 1, ceil(s1) - 1, floor(s2) + 1,
+   floor(s3) + 1) are computed once a search (s_keys) when |s| < 2^15; PLAY_STATS builds compare with the keys */
+static int32_t s_ib[4];
+static uint8_t s_iv;
+
+static int s_kfloor(rk k, int neg, int32_t *o)              /* floor((neg ? -1 : 1) * the float of key k) */
+{
+    union { float f; uint32_t u; } v;
+    uint32_t e;
+    uint64_t pr;
+    int32_t ip;
+    v.u = kbits(k);
+    if (neg) v.u ^= 0x80000000u;
+    if ((v.u & 0x7fffffffu) == 0) { *o = 0; return 1; }
+    e = (v.u >> 23) & 0xffu;
+    if (e < 127) { *o = (v.u >> 31) ? -1 : 0; return 1; }
+    if (e > 141) return 0;
+    pr = (uint64_t)((v.u & 0x7fffffu) | 0x800000u) * fwhole_mul[e - 127];
+    ip = (int32_t)(pr >> 32);
+    *o = (v.u >> 31) ? ((uint32_t)pr ? -ip - 1 : -ip) : ip;
+    return 1;
+}
+
+static void s_ibounds(void)
+{
+    int32_t f0, f1, f2, f3;
+    s_iv = !s_r.w && s_kfloor(s_k[0], 1, &f0) && s_kfloor(s_k[1], 1, &f1) && s_kfloor(s_k[2], 0, &f2) &&
+           s_kfloor(s_k[3], 0, &f3);
+    if (s_iv) { s_ib[0] = -f0 - 1; s_ib[1] = -f1 - 1; s_ib[2] = f2 + 1; s_ib[3] = f3 + 1; }
+}
+
 static PCOL_NOINLINE int s_overlap_slow(const struct rbr *b)
 {
     if (b->w) {
         if (!s_kv) s_keys();
+        if (s_iv) {
+            int r = !(b->r[2] <= s_ib[0] || b->r[0] >= s_ib[2] || b->r[3] <= s_ib[1] || b->r[1] >= s_ib[3]);
+#ifdef PLAY_STATS
+            if (r != !(s_k[0] > ikey(b->r[2]) || ikey(b->r[0]) > s_k[2] || s_k[1] > ikey(b->r[3]) || ikey(b->r[1]) > s_k[3])) {
+                fprintf(stderr, "s_overlap_slow: the int bounds differ from the keys\n");
+                abort();
+            }
+#endif
+            return r;
+        }
         return !(s_k[0] > ikey(b->r[2]) || ikey(b->r[0]) > s_k[2] || s_k[1] > ikey(b->r[3]) || ikey(b->r[1]) > s_k[3]);
     }
     if (!s_kv) s_keys();
@@ -661,6 +704,7 @@ static void s_keys(void)
     int k;
     for (k = 0; k < 4; k++) s_k[k] = rkey(&s_r, k);
     s_kv = 1;
+    s_ibounds();
 }
 
 static void search_run(void);           /* the tree, or pcolgrid.h in play */
