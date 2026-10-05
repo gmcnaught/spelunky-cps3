@@ -1543,6 +1543,13 @@ static int ccb(int s, int d)
 
 /* the moving solid's viscidTop (the boulder's 1); another object's from its package (pcontent_msolid), -1 when
    none translates it */
+/* v is -0 (x + 0 would store +0) */
+#ifdef PLAY_FIXED
+static int pos_negz(pos v) { (void)v; return 0; }
+#else
+static int pos_negz(pos v) { union { float f; uint32_t u; } b; b.f = v; return b.u == 0x80000000u; }
+#endif
+
 static int viscidTop_of(int s) { return PX(s).obj == OBJ_oBoulder ? 1 : pcontent_msolid(s); }
 
 void pen_moving_solids(void)
@@ -1559,12 +1566,21 @@ void pen_moving_solids(void)
         int32_t xi = 0, yi = 0;
         if (!p->alive) continue;
         if (viscidTop_of(s) < 0) PUNTR(5050);                                 /* P7 hook (pcontent_msolid) */
-        PE(p)->xVel += PE(p)->xAcc;
-        PE(p)->yVel += PE(p)->yAcc;
-        if (approximatelyZero(PE(p)->xVel)) PE(p)->xVel = 0;
-        if (approximatelyZero(PE(p)->yVel)) PE(p)->yVel = 0;
-        if (approximatelyZero(PE(p)->xAcc)) PE(p)->xAcc = 0;
-        if (approximatelyZero(PE(p)->yAcc)) PE(p)->yAcc = 0;
+#if !defined(PLAY_FIXED) && !defined(NUM_IS_CLASS)
+        if (dzero(PE(p)->xVel) && dzero(PE(p)->yVel) && dzero(PE(p)->xAcc) && dzero(PE(p)->yAcc)) {
+            /* at rest (on the bits): the sums are +-0, approximatelyZero(+-0) sets each to +0, xi = yi = 0 below */
+            PE(p)->xVel = PE(p)->yVel = PE(p)->xAcc = PE(p)->yAcc = 0;
+            if (viscidOk != 2) continue;
+        } else
+#endif
+        {
+            PE(p)->xVel += PE(p)->xAcc;
+            PE(p)->yVel += PE(p)->yAcc;
+            if (approximatelyZero(PE(p)->xVel)) PE(p)->xVel = 0;
+            if (approximatelyZero(PE(p)->yVel)) PE(p)->yVel = 0;
+            if (approximatelyZero(PE(p)->xAcc)) PE(p)->xAcc = 0;
+            if (approximatelyZero(PE(p)->yAcc)) PE(p)->yAcc = 0;
+        }
         mstXPrev = p->x;
         mstYPrev = p->y;
         xVelFrac = NFRAC(NABS(PE(p)->xVel));
@@ -1581,6 +1597,9 @@ void pen_moving_solids(void)
         yi += NFLOOR(NABS(PE(p)->yVel));
         if (PE(p)->xVel < 0) xi = -xi;
         if (PE(p)->yVel < 0) yi = -yi;
+        /* no step: the loops below do nothing and the setters keep x, y (pin_setx: no change, no mark; x + 0 is x
+           unless x is -0); near's only other effect is viscidOk 2 -> 0. calcBounds and isCollisionRectangle have no side effect */
+        if (xi == 0 && yi == 0 && viscidOk != 2 && !pos_negz(p->x) && !pos_negz(p->y)) continue;
         {
             double lb, tb, rb, bb, x = X(s), y = Y(s);
             int sp = p->spr, xo = gsprcol[sp].xo, yo = gsprcol[sp].yo, sw = sprw(s), sh = sprh(s);
