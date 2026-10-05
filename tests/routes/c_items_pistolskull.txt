@@ -1,0 +1,14 @@
+# Survey reference (untrsurvey --global pickupItem=Pistol, level 10 seed 3): a pistol shot breaks a skull at step 33
+# (oSkull Collision_oBullet, pobj.c 1096; its Destroy throws bones)
+# seed 3
+# level 10
+# nodark 0
+# globals pickupItem=Pistol
+27 RJN
+27 RJA
+11 R
+16 LJ
+3 RUAN
+19 UJN
+6 R
+11 L

@@ -1704,6 +1704,10 @@ void ev_collision(int self, int other)
         else
             ptemple_world(1094, self, other);
         break;
+    case OBJ_oSkull:                                                           /* objects/oSkull/Collision_oBullet.gml */
+        if (obj_is(oo, OBJ_oBullet)) pin_destroy(self);
+        else if (!pcontent_ev(FEV_COLLISION, self, other)) PUNTR(1096);
+        break;
     case OBJ_oLockedChest: pitems_world(1095, self, other); break;
     default: if (!pcontent_ev(FEV_COLLISION, self, other)) PUNTR(1096); break;    /* P7 hook */
     }
