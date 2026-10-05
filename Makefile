@@ -54,7 +54,7 @@ $(GEN)/playtables.h: tools/hdplaytables.py $(U) $(GEN)/objects.h
 	$(PY) tools/hdplaytables.py $(U) $@
 $(GEN)/playtables.c: $(GEN)/playtables.h ;
 
-$(GEN)/fronttables.h: tools/fronttables.py $(U)
+$(GEN)/fronttables.h: tools/fronttables.py tools/titlelogo.py $(U)
 	$(PY) tools/fronttables.py $(U) $(GEN)
 $(GEN)/fronttables.c: $(GEN)/fronttables.h ;
 

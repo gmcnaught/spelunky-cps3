@@ -2,9 +2,9 @@
 """The title logo, "SPELUNKY CLASSIC ARCADE" (sTitle_HD in place of HD's "SPELUNKY CLASSIC HD"), built from HD's own
 sTitle_HD at build time so the repo carries no HD art: rows 0..31, columns 0..127 (SPELUNKY over CLASSIC) unchanged,
 at the same place (oTitleLogo's sTitle, drawn behind it 1 px left, is its shadow); HD's big "HD" (columns 131..192)
-dropped; a third line, ARCADE (rows 32..47), as wide as SPELUNKY (128 columns) in the same cracked letters: A and C
-from CLASSIC, E from SPELUNKY, R from P's bowl over K's stem and leg, D from P and U with the right corners cut; each
-letter widened to 20 / 21 columns by repeating columns that equal their left neighbour (so the cracks stay as they are).
+dropped; a third line, ARCADE (rows 32..47), in CLASSIC's cracked 15 x 16 letters 1 column apart, centred under it
+(columns 16..110): A and C from CLASSIC, E from SPELUNKY, R from P's bowl over K's stem and leg, D from P and U with
+the right corners cut.
 
     tools/titlelogo.py <hd src dir> <out.png>      the logo (preview)
 
@@ -16,9 +16,12 @@ import sys
 from PIL import Image
 
 NAME = 'sTitle_HD'
+# rTitle's oTitleLogo_HD (this logo) and oTitleLogo (sTitle, its shadow) moved right by DX (tools/fronttables.py): the
+# 128-column logo (SPELUNKY's width) centred in the cavern's open columns at its rows (view x 30..288 at the attract camera, 320, 0)
+MOVED, DX = ('oTitleLogo_HD', 'oTitleLogo'), 40
 TOP_W = 128                                     # SPELUNKY / CLASSIC: columns 0..127
 GLYPH = {'P': (16, 0), 'E': (32, 0), 'U': (64, 0), 'K': (96, 0), 'C': (14, 16), 'A': (46, 16)}   # 15 x 16 each
-WIDTHS = [21, 20, 21, 20, 21, 20]               # A R C A D E, 1 column apart: 128 in all
+ARCADE_X = 16                                   # A R C A D E, 15 columns each, 1 apart: columns 16..110 (CLASSIC: 14..112)
 # D: P's top and U's bottom, as a pixel map ('.': none, 0 dark, 1 light, 2 fill), the right corners cut by 3
 D_ROWS = ['011111111111...',
           '1222222220221..',
@@ -56,30 +59,15 @@ def _glyph(hd, ch):
     return [[px(x0 + x, y0 + y) for x in range(15)] for y in range(16)]
 
 
-def _widen(g, w):
-    """g widened to w columns: repeat the columns equal to their left neighbour (nearest the middle first)"""
-    n = len(g[0])
-    plain = sorted((c for c in range(1, n) if all(r[c] == r[c - 1] for r in g)), key=lambda c: abs(c - n // 2))
-    if not plain:
-        raise SystemExit('titlelogo: a letter with no column to repeat')
-    reps = {c: 0 for c in plain}
-    for k in range(w - n):
-        reps[plain[k % len(plain)]] += 1
-    return [sum(([r[c]] * (1 + reps.get(c, 0)) for c in range(n)), []) for r in g]
-
-
-def _letter(hd, ch, w):
-    """letter ch, w columns wide; R: P's bowl widened, K's rows 11..15 below with the leg moved right by w - 15 (the
-    leg as K draws it), and a crack in the top bar as E's (row 1 dark, row 2 light)"""
-    g = _widen(_glyph(hd, ch), w)
+def _letter(hd, ch):
+    """letter ch; R: P's bowl, K's rows 11..15 (the stem and the leg) below, a crack in the top bar as E's (row 1
+    dark, row 2 light)"""
+    g = _glyph(hd, ch)
     if ch == 'R':
         kx0, ky0 = GLYPH['K']
-        none = (0, 0, 0, 0)
-        for y in range(11, 16):
-            k = [hd.getpixel((kx0 + x, ky0 + y)) for x in range(15)]
-            g.append(k[:4] + [none] * (w - 15) + k[4:])
+        g += [[hd.getpixel((kx0 + x, ky0 + y)) for x in range(15)] for y in range(11, 16)]
         ex, ey = GLYPH['E']
-        g[1][w - 8], g[2][w - 8] = hd.getpixel((ex + 9, ey + 1)), hd.getpixel((ex + 9, ey + 2))
+        g[1][7], g[2][7] = hd.getpixel((ex + 9, ey + 1)), hd.getpixel((ex + 9, ey + 2))
     return g
 
 
@@ -87,13 +75,11 @@ def build(src):
     hd = original(src)
     im = Image.new('RGBA', (TOP_W, 48), (0, 0, 0, 0))
     im.paste(hd.crop((0, 0, TOP_W, 32)), (0, 0))
-    x0 = 0
-    for ch, w in zip('ARCADE', WIDTHS):
-        for y, row in enumerate(_letter(hd, ch, w)):
+    for i, ch in enumerate('ARCADE'):
+        for y, row in enumerate(_letter(hd, ch)):
             for x, c in enumerate(row):
                 if c[3]:
-                    im.putpixel((x0 + x, 32 + y), c)
-        x0 += w + 1
+                    im.putpixel((ARCADE_X + 16 * i + x, 32 + y), c)
     return im
 
 
