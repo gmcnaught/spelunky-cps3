@@ -2,6 +2,10 @@
  * Searches return the oldest matching instance (P2: collision_point, instance_place, instance_find, obj.var). */
 #include "play.h"
 #include "pint.h"                 /* PL (pw_release) */
+#ifdef PLAY_STATS
+#include <stdio.h>
+#include <stdlib.h>
+#endif
 #include "pcol.h"
 #include "inst.h"                 /* GRID_W, GRID_H: the solid grid covers the generator's level grid */
 
@@ -467,7 +471,7 @@ static void dead_init(void)
    alive instances; the per-slot state of pcol.c went in RemoveMarked, the grid's dirty list is flushed here */
 void pw_release(void)
 {
-    int k, j, s, flush = 0;
+    int k, j, s, n, lo, hi, smin = 32767, flush = 0;
     /* in batches (the compaction of pw_ord and the sweep cost about PW.nord): 64 removed, or the unused slots and
        the free ones close to running out (a step creates fewer than PW_RELEASE_ROOM) */
     if (nrmq < PW_RELEASE_BATCH && nfree + (PIN_DEAD - PW.n) >= PW_RELEASE_ROOM) return;
@@ -477,6 +481,7 @@ void pw_release(void)
         s = rmq(k);
         relmark[s] = 1;
         flush |= gond[s];
+        if (pw_seq[s] < smin) smin = pw_seq[s];
     }
     if (flush) grid_flush();
     REL(PL.idx);
@@ -490,7 +495,21 @@ void pw_release(void)
         REL(x->enemyID);
         if (x->en > 0) REL(pin_en[x->en].bombID);
     }
-    for (k = j = 0; k < PW.nord; k++)
+    /* pw_ord is in creation order (pw_seq ascends along it): the entries before the oldest removed one stay where they
+       are, so the compaction starts there (found by a binary search) */
+    n = PW.nord;
+    lo = 0;
+    hi = n;
+    while (lo < hi) {
+        int m = (lo + hi) >> 1;
+        if (pw_seq[pw_ord[m]] < smin) lo = m + 1;
+        else hi = m;
+    }
+#ifdef PLAY_STATS
+    for (k = 0; k < lo; k++)                         /* the host builds check the premise */
+        if (relmark[pw_ord[k]]) { fprintf(stderr, "pw_release: removed slot %d before %d\n", pw_ord[k], lo); abort(); }
+#endif
+    for (k = j = lo; k < n; k++)
         if (!relmark[pw_ord[k]]) pw_ord[j++] = pw_ord[k];
     PW.nord = (int16_t)j;
     if (PW.seq > PW_SEQ_RENUM) {                     /* creation numbers from 0 again, in the same order */
