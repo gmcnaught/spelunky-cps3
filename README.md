@@ -4,7 +4,10 @@ Spelunky® Copyright (c) 2008, 2009 Derek Yu and Mossmouth, LLC. This is an unof
 port of [Spelunky Classic HD](https://github.com/yancharkin/SpelunkyClassicHD) (yancharkin), itself a modified
 version of Derek Yu's Spelunky Classic. It is not an official or unmodified version of the game, is not affiliated
 with or endorsed by Mossmouth or Capcom, and may not be sold. It is distributed under the Spelunky User License
-v1.1b ([LICENSE](LICENSE)). No game assets or Capcom ROMs are included.
+v1.1b ([LICENSE](LICENSE)). No game assets or Capcom ROMs are included (`docs/img/title.png` is a screenshot of
+the port running in MAME).
+
+![Title screen: Spelunky Classic Arcade](docs/img/title.png)
 
 Spelunky Classic HD 1.2.2 re-implemented in C as a homebrew ROM set for the Capcom CPS3 (SH-2). It runs in MAME
 (`cps3` driver, using the `sfiii3na` set name) and on MiSTer with the jtcps3 core. The design decisions and their
