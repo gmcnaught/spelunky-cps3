@@ -294,6 +294,13 @@ Load-use stall (from spelunky-cps3-a6, low priority): jtcps3 stalls 1 cycle on a
 - Batch 10 (perf3-b2): pcol_handle's searcher rectangle from its tree entry when not stale (83d07c9: caveman 200
   650.3 -> 635.6 K, p4 301 / p5 956 -0.9 %; PLAY_STATS checks it against ebbox_rect), jar3 (a6, 918e69e: jar_step's
   constant compares on the bits, src/game/pcmpc.h; p5_snakes record 3 711.8 -> 700.9 K).
+  On jtcps3 (.62, batch-9 JT): PASS 23/23, route mean of means **465.6 K** (-4.4 %), 4 of 18 over 0.525 M: caveman
+  638.5 K, giant 563.7 K, idol 547.5 K, bomb_drop 540.6 K.
+- Measured and dropped: pgrid_search with a float search rectangle comparing whole entries by the rectangle's integer
+  bounds (pg_kside: exact for every float below 2^14) and float entries by keys inline. p4_bomb_drop record 202 (the
+  bomb's explosion, 1.50 M fit: debris searching in pcol_handle) 1497.7 -> 1447.7 K with the compares inline in the
+  scan, but p4 301 / p5 956 +1.1 / +1.9 % (I-misses: the scan grew); out of line, 1482.2 K and P4 / P5 +1.3 / +0.9 %
+  with fewer instructions (layout). The explosion's steps stay beyond a frame pair either way.
 - Measured and not kept (a6, jar-fp f8916d8): the jars' speed test on the bits and the hit rectangle on whole
   corners: 80 soft-float calls gone on p5_snakes 203 but jar_step's fetch misses up, 666.9 -> 667.3 K.
 - Measured and dropped: anim_one's image compares as integer bit tests (img_ge / img_lt0, equal to the float
