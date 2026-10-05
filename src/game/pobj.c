@@ -16,6 +16,7 @@ __attribute__((weak)) int front_room(int room) { (void)room; return 0; }
 #include "penemy.h"                  /* P5 hooks: enemies, damsel, shop (each marked "P5 hook") */
 #include "pcontent.h"                            /* P7 content packages (docs/CONTENT.md) */
 #include "pcol.h"                                /* pcol_quiet (the resting-object skip) */
+#include "pcmpc.h"                               /* jar_step's compares against constants on the bits */
 
 struct pgame PGAME;
 struct plevel PLEV;
@@ -819,7 +820,8 @@ void item_step(int i)
     }
 }
 
-/* objects/oJar/Step_0.gml and objects/oSkull/Step_0.gml (no inherit) */
+/* objects/oJar/Step_0.gml and objects/oSkull/Step_0.gml (no inherit). The compares against constants on the bits
+   (pcmpc.h: the same answers as NLT / NGT, no soft-float call) */
 static void jar_step(int i, int skull)
 {
     struct pin *p = &PX(i);
@@ -836,18 +838,18 @@ static void jar_step(int i, int skull)
         struct pin *pl = &PX(PL.idx);
         if (PL.facing == LEFT) pin_setx(p, pl->x - PI(4));
         else if (PL.facing == RIGHT) pin_setx(p, pl->x + PI(4));
-        if (PL.state == DUCKING && NLT(NABS(PE(pl)->xVel), N(2))) pin_sety(p, pl->y + PI(4));
+        if (PL.state == DUCKING && CLT(NABS(PE(pl)->xVel), 2, CMPC_L_2)) pin_sety(p, pl->y + PI(4));
         else pin_sety(p, pl->y);
         pin_setdepth(p, 1);
     } else {
         moveTo(i, PE(p)->xVel, PE(p)->yVel, 0, 0);
-        if (NLT(PE(p)->yVel, N(6))) PE(p)->yVel += PE(p)->myGrav;
+        if (CLT(PE(p)->yVel, 6, CMPC_L_6)) PE(p)->yVel += PE(p)->myGrav;
         if (isCollisionTop(i, 1)) PE(p)->colTop = 1;
         if (isCollisionLeft(i, 1)) PE(p)->colLeft = 1;
         if (isCollisionRight(i, 1)) PE(p)->colRight = 1;
         if (isCollisionBottom(i, 1)) PE(p)->colBot = 1;
         if (PE(p)->colTop && NLT(PE(p)->yVel, N(0))) {
-            if (skull ? NLT(PE(p)->yVel, N(2)) : NLT(PE(p)->yVel, N(-3))) destroy = 1;
+            if (skull ? CLT(PE(p)->yVel, 2, CMPC_L_2) : CLT(PE(p)->yVel, -3, CMPC_L_M3)) destroy = 1;
             PE(p)->yVel = NMUL(-PE(p)->yVel, N(0.8));
         }
         if (PE(p)->colLeft || PE(p)->colRight) {
@@ -856,10 +858,10 @@ static void jar_step(int i, int skull)
         }
         if (!skull && collision_point_p(PTOD(p->x), PTOD(p->y), OBJ_oSolid, 0, NOONE) != NOONE) destroy = 1;
         if (PE(p)->colBot) {
-            if (NGT(PE(p)->yVel, N(3))) destroy = 1;
-            if (NGT(PE(p)->yVel, N(1))) PE(p)->yVel = NMUL(-PE(p)->yVel, N(0.5));
+            if (CGT(PE(p)->yVel, 3, CMPC_H_3)) destroy = 1;
+            if (CGT(PE(p)->yVel, 1, CMPC_H_1)) PE(p)->yVel = NMUL(-PE(p)->yVel, N(0.5));
             else PE(p)->yVel = 0;
-            if (NLT(NABS(PE(p)->xVel), N(0.1))) PE(p)->xVel = 0;
+            if (CLT(NABS(PE(p)->xVel), 0.1, CMPC_L_0_1)) PE(p)->xVel = 0;
             else if (NNE(NABS(PE(p)->xVel), N(0))) PE(p)->xVel = NMUL(PE(p)->xVel, N(0.3));
         }
         if (PE(p)->colLeft) {
@@ -869,7 +871,7 @@ static void jar_step(int i, int skull)
             pin_setx(p, p->x - (PI(1)));
             PE(p)->yVel = 0;
         }
-        if (isCollisionBottom(i, 0) && NLT(NABS(PE(p)->yVel), N(1))) {
+        if (isCollisionBottom(i, 0) && CLT(NABS(PE(p)->yVel), 1, CMPC_L_1)) {
             pin_sety(p, p->y - (PI(1)));
             PE(p)->yVel = 0;
         }
