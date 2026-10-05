@@ -32,8 +32,16 @@ struct player {
     int16_t pickupItemType;                   /* enum ptype (T_NONE = "") */
     int32_t money;
     int32_t bet;                              /* the dice house's bet (P5) */
+    double distToNearestLightSource;          /* oPlayer1 Step :74-147 (oLevel's darkness; LIGHT_ON) */
 };
 extern struct player PL;
+/* oFlare's distToPlayer (objects/oFlare/Step_0.gml :2-3), kept in the ext record's direction */
+#define FLARE_DIST(p) (PE(p)->direction)
+/* the light search (oPlayer1 :74-147, oFlare :2-3) is read only by oLevel Step's darkness (:111 if global.darkLevel),
+   itself read only by oLevel Draw on a dark level. A level turns dark mid-level only when oSacAltarLeft's Destroy
+   sets global.darkLevel (:47; oPlayer1 Other_7 :122 only clears it): with the search run while an altar exists too,
+   every value read is the one HD computes, and the search costs nothing on the other levels */
+#define LIGHT_ON() (G.darkLevel || instance_exists_p(OBJ_oSacAltarLeft))
 
 /* GML constants (characterCreateEvent) */
 enum { STANDING = 10, RUNNING = 11, DUCKING = 12, LOOKING_UP = 13, CLIMBING = 14, JUMPING = 15, FALLING = 16,

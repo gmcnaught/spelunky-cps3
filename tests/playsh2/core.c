@@ -122,6 +122,7 @@ void run_route(int job, uint32_t seed, const struct route *rt, int tail)
     PG.bombs = 4;
     PG.rope = 4;
     PG.money = rt->money;
+    if (rt->nodark >= 0) G.noDarkLevel = (uint8_t)rt->nodark;   /* playhost --nodark (TRACE_NODARK: dark levels) */
     rng_seed(&g_rng, seed);
     snd_init(15, 15);                             /* as playhost (sndhost_init): src/snd's state at the start */
     plat_begin();

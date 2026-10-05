@@ -87,7 +87,7 @@ struct pin_ext {
     int16_t xAct;
     int16_t en;             /* its struct pin_en (0: the shared zeros) */
     num px, py;             /* oRopeThrow px, py */
-    double direction;       /* oArrow */
+    double direction;       /* oArrow; oFlare: distToPlayer (FLARE_DIST: an oFlare has no direction) */
     double alpha;           /* image_alpha (oSmokePuff: life / 12) */
     int8_t lbo, tbo, rbo, bbo; /* setCollisionBounds offsets */
     uint8_t etype, style;
