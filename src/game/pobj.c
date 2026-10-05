@@ -756,8 +756,24 @@ void item_step(int i)
             if (NLT(NABS(PE(p)->xVel), N(0.1))) PE(p)->xVel = 0;
             else if (NNE(NABS(PE(p)->xVel), N(0))) PE(p)->xVel = NMUL(PE(p)->xVel, PE(p)->frictionFactor);
             if (NLT(NABS(PE(p)->yVel), N(1))) {
-                pin_sety(p, p->y - (PI(1)));
-                if (!isCollisionBottom(i, 1)) pin_sety(p, p->y + (PI(1)));
+#if PLAY_REST
+                /* the grid build: the test at y - 1 on the field alone, then the final y and one mark. The query
+                   reads the position fields (ibounds / calcBounds) and searches oSolid without the item, and the
+                   grid build's answers do not depend on when the item's entry is flushed; the setters' marks
+                   (draw, box cache, dirty / test list fronts; rest_end reads only whether one happened) are those
+                   one pin_changed_ leaves: the flush between the two marks does not touch the test list
+                   (cupdate_at), and the stale stack is read in creation order. The final y is the setters' */
+                if (!obj_is(p->obj, OBJ_oSolid)) {
+                    pos y1 = p->y - (PI(1)), y2 = y1 + (PI(1));
+                    PIN_WR(pos, p->y) = y1;
+                    if (!isCollisionBottom(i, 1)) PIN_WR(pos, p->y) = y2;
+                    pin_changed_(p);
+                } else
+#endif
+                {
+                    pin_sety(p, p->y - (PI(1)));
+                    if (!isCollisionBottom(i, 1)) pin_sety(p, p->y + (PI(1)));
+                }
                 PE(p)->yVel = 0;
             }
         }
