@@ -24,8 +24,8 @@ def load(path):
 
 
 def jobs():
-    """the job table from build/jobs.h"""
-    t = open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'build', 'jobs.h')).read()
+    """the job table from build/jobs.h, or $PSH2_JOBS (scripts/playsh2_check.sh ROUTES=: build/<VARIANT>/jobs/jobs.h)"""
+    t = open(os.environ.get('PSH2_JOBS') or os.path.join(os.path.dirname(os.path.abspath(__file__)), 'build', 'jobs.h')).read()
     names = re.findall(r'\{ "(\w+)", m_', t)
     js = [(int(s), int(l), int(r)) for s, l, r in re.findall(r'\{ (\d+)u, (-?\d+), (-?\d+) \}', t)]
     return js, names
@@ -117,15 +117,18 @@ def attribution(path, sh2, js):
     nonc = sorted(v['clk'] - v['extra'] for _, v in steps)
     first = [v['clk'] - v['extra'] for k, v in steps if k[2] == 1]
     n = len(nonc)
+    if n == 0:
+        print('\nATTR: no route steps'); return
     print('\nATTR: route steps %d, %.0f clocks a step (wrappers included); collision searches %.0f (%.1f%%)'
           % (n, tot / n, coll / n, 100.0 * coll / tot))
     print('  outside collision searches, a step: mean %.0f, median %d, p90 %d, max %d; first steps of levels: %s'
           % (sum(nonc) / n, nonc[n // 2], nonc[int(n * 0.9)], nonc[-1], ', '.join(str(x) for x in first)))
-    cats, ev = {}, []
+    cats, ev, kr = {}, [], []
     for line in open(path):
         f = line.split()
         if f[0] == 'C': cats[int(f[1])] = (float(f[2]), int(f[3]))
         if f[0] == 'E': ev.append((float(f[3]), int(f[1]), int(f[2]), int(f[4])))
+        if f[0] == 'K': kr.append((float(f[2]), int(f[1]), int(f[3])))
     TYPES = ['Create', 'Destroy', 'Step', 'End Step', 'Alarm', 'Animation End', 'Collision', 'Draw']
     nc = tot - coll
     print('  per step (exclusive):  %-28s %10s %8s %9s' % ('', 'clocks', '% non-c', 'calls'))
@@ -141,6 +144,13 @@ def attribution(path, sh2, js):
     for clk, t, o, calls in sorted(ev, reverse=True)[:20]:
         print('    %-16s %-14s %10.0f a step %6.1f%%  %8.1f calls a step  %7.0f a call'
               % (names[o] if o < len(names) else o, TYPES[t], clk / n, 100.0 * clk / nc, calls / n, clk / calls))
+    if kr:
+        CN = {0: 'dispatch (no event)', 2: 'collision-event pass', 3: 'instance searches'}
+        print('  collision searches by calling object (the innermost enclosing event\'s object), largest:')
+        for clk, r, calls in sorted(kr, reverse=True)[:20]:
+            nm = CN.get(r, '?') if r < 4 else (names[r - 4] if r - 4 < len(names) else str(r - 4))
+            print('    %-30s %10.0f a step %6.1f%%  %8.1f calls a step  %7.0f a call'
+                  % (nm, clk / n, 100.0 * clk / max(cats[1][0], 1), calls / n, clk / calls))
 
 
 COLL = re.compile(r'^(collision_\w+|instance_place_p|instance_nearest_p|pin_bbox|point_hit|line_hit|rect_hit|seg_box|'

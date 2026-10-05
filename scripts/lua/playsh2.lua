@@ -40,6 +40,11 @@ emu.register_periodic(function()
         if calls > 0 then g:write(string.format("E %d %d %.0f %d\n", t, o, clk, calls)) end
       end
     end
+    -- collision searches by caller: rows 0-3 categories (no enclosing event), 4 + obj the enclosing event's object
+    for r = 0, nobj + 3 do
+      local clk, calls = e64(0x0418c000 + 12 * r)
+      if calls > 0 then g:write(string.format("K %d %.0f %d\n", r, clk, calls)) end
+    end
     g:close()
   end
   -- FPCHECK builds (tests/playsh2/fpcheck.c): the assembly / C soft-float disagreements
