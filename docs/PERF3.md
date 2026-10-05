@@ -356,6 +356,18 @@ Load-use stall (from spelunky-cps3-a6, low priority): jtcps3 stalls 1 cycle on a
   +0.34 %, and jtcost p5_caveman 178 with the liquid index had instructions +0.27 %, D-misses in RAM +3.0 % (the
   index's arrays, 11.5 KB of .bss, move the play state's arrays against the 4 KB cache's sets). Caveman's margin to
   0.525 M is 1.3 %.
+- Batch 21 (merged 1fa4ffc): pen_moving_solids skips a solid that does not step (a86bc73: p5_reg_l14s16 -8.4 %);
+  ebbox at scale +-1 without fmaf and s_overlap_slow on int bounds (a6, be71087 / 107c21a: bomb_drop 202 -5.8 %,
+  snakes 203 / caveman 178 / exit559 301 -2.0 to -2.4 % fit); the lava rectangle tests from the index (7600fc0:
+  l14s16 -3.9 %); the static-family index (1fa4ffc: oLadder / oLadderTop / oSpikes / oWeb join the liquids, and
+  collision_point_p / collision_rect_p / collision_rect_i answer its misses: MAME SOFTFP snakes -4.1 %, p1_walk -3.2 %,
+  bomb_drop -2.5 %, caveman / idol -2.3 %, spider / l2s10 -2.0 %). MAME SOFTFP steps over 838,940 at x4.2 (gates):
+  l14s16 34, l2s10 / l3s10 23, bomb_drop 17, l4s10 16, bomb_throw 15, spider 13, buy 12, idol / p1_walk 8.
+- Measured and not kept (a6): moveTo's final pin_setx + pin_sety as one pin_setxy (one pw_changed): l2s10 183 -0.3 %,
+  snakes 203 -0.8 %, caveman 178 +0.15 %, bomb_drop 202 +1.0 % (fit). isCollisionLeft / Right / Top / Bottom's line
+  ends for fractional positions in fixed point: the path almost never runs (debris is whole after moveTo's pixel
+  steps). isCollisionTop's cost on detritus is the pcol flush in solid_hline_any (the movers' dirty entries), not the
+  double path. Not kept (a6): treasure_step's colBot settle as raw writes (the path does not run on bomb_drop 202).
 - Measured and not kept (a6): PERF3 3.2's hot / cold split of characterStepEvent (4 cold helpers): caveman 178
   +0.01 %, snakes 203 +0.04 %, exit559 301 -0.6 % (its misses are code that runs every step).
 - Measured and not kept (a6): a pw_onz bitmap of non-empty object lists for snapshot / the alarm pass: +0.3 / +0.8 %
