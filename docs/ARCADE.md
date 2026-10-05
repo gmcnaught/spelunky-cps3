@@ -109,6 +109,12 @@ left back, test or B1 on SAVE AND EXIT leave). Leaving stores the settings and r
 credit is cleared with the rest). RUN BUTTON TOGGLE applies to cabinet games only (routes keep HD's default) and each
 game starts walking (HD resets `toggleRun` once, in `scrInit`).
 
+Developer options (testing only, not in HD): `tests/game DEV=1` builds (`-DSHELL_DEV`; set `spelunkydev`, "Spelunky
+Classic Arcade (Dev)") add INVINCIBLE (DEV) before SAVE AND EXIT. With it on, a cabinet game's player loses no life
+(src/game `play_god_hold` puts back what a step took) and the branches that kill outright do not run (crushed, the
+pit, spikes, lava, oGhost, oManTrap); hits still knock back and stun. Such a game stores no high scores. Routes never
+set it. scripts/release.sh builds without DEV: no menu row, and the EEPROM bit is not read.
+
 ## 3. EEPROM
 
 HD keeps its scores in `spelunky.ini` `[highscore]` (`objects/oGlobals/Create_0.gml`, `scripts/scrUpdateHighscores`,
@@ -122,7 +128,7 @@ minigame rooms) and kept. Not kept: `settings.json`, `keys.json`, `gamepad.json`
 | 0-15 | not used (left to the stand-in set, as Maldita) |
 | 16 | magic 0x53504b01 |
 | 17-26 | value1 .. value10 |
-| 27 | settings: bit 0 free play, bit 1 run button toggle, bit 2 smooth motion off, bits 8-11 coins per credit |
+| 27 | settings: bit 0 free play, bit 1 run button toggle, bit 2 smooth motion off, bit 3 INVINCIBLE (DEV builds only), bits 8-11 coins per credit |
 | 28 | check: words 16-27 summed, xor 0x5a5a5a5a |
 
 A wrong magic or check reads as HD without `spelunky.ini`: every value 0, then as HD: `global.tunnel1 / 2` take the

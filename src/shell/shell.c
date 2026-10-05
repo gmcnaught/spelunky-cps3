@@ -57,8 +57,10 @@ static void credit_line(void)
 #ifdef SHELL_DEV
 #define SEL_GOD  5
 #define SEL_LAST 6
+#define HELP_ROW 22
 #else
 #define SEL_LAST 5
+#define HELP_ROW 20
 #endif
 static void line(int row, int sel, const char *label)
 {
@@ -85,9 +87,9 @@ static void settings_run(void)
     int sel = 0, clear = 0;
     uint32_t prev = 0xffffffffu, prev_sys = 0xffffffffu;
     cps3v_text(16, 3, "SPELUNKY SETTINGS");
-    cps3v_text(8, 20, "UP / DOWN    CHOOSE");
-    cps3v_text(8, 22, "B1 / RIGHT   CHANGE");
-    cps3v_text(8, 24, "TEST         SAVE AND EXIT");
+    cps3v_text(8, HELP_ROW, "UP / DOWN    CHOOSE");
+    cps3v_text(8, HELP_ROW + 2, "B1 / RIGHT   CHANGE");
+    cps3v_text(8, HELP_ROW + 4, "TEST         SAVE AND EXIT");
     for (;;) {
         line(7, sel == 0, "FREE PLAY");
         cps3v_text(32, 7, st.free_play ? "ON " : "OFF");
