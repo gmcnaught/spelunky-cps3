@@ -330,7 +330,12 @@ Load-use stall (from spelunky-cps3-a6, low priority): jtcps3 stalls 1 cycle on a
   collision_point_any (353e2ae, the GML's `collision_point(.., oSolid, ..) != noone` tests: pplayer.c 27, pobj.c 11,
   the CP wrappers); MAME SOFTFP route means (steps 2+): caveman -5.1 %, cavestun -4.7 %, giant -5.4 %, idol -7.0 %,
   l4 -4.1 %, snakes -7.0 %; gametime (MAME) p5_snakes pair mean 141.4 -> 134.1 K.
-- Batch 18 (perf3-b2): collision_rect_any (989b93c: the rectangle tests; route means about -1 %).
+- Batch 18 (merged a50573a): collision_rect_any (989b93c: the rectangle tests; route means about -1 %).
+  On jtcps3, batch 16 (sight): JT PASS 23/23, caveman 545.1 K (as batch 15), l4 450.5 K.
+- Batch 19 (perf3-b2): isCollisionSolid's whole path by solid_rect_any (a6, e3e27e3: caveman 178 619.0 -> 618.7 K),
+  pen_motion's sight step without the double sums (a6, ee44e84: p5_l4 151 -0.65 %; tests/sightmv 2.3 G cases).
+- Measured and not kept (a6): PERF3 3.2's hot / cold split of characterStepEvent (4 cold helpers): caveman 178
+  +0.01 %, snakes 203 +0.04 %, exit559 301 -0.6 % (its misses are code that runs every step).
 - Measured and not kept (a6): a pw_onz bitmap of non-empty object lists for snapshot / the alarm pass: +0.3 / +0.8 %
   on caveman 178 (no variable shift on the SH-2; pw_ohead mostly cached).
 - Measured and dropped: pcol_handle skipping a searcher no live object can pair with (can_pair): terrain blocks can
