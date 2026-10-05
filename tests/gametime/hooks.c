@@ -154,13 +154,14 @@ static void put_col(char *l, int col, uint32_t v)
 void jt_show(void)
 {
     static const char *const rows[] = { "VB AV", "VB MAX", "SN AV", "SN MAX", "ST AV", "ST MAX", "DR AV", "DR MAX",
-                                        "SH AV", "SH MAX", "PR AV", "PR MAX", "PR OVER", "PAIRS", "START" };
+                                        "SH AV", "SH MAX", "PR AV", "PR MAX", "PR OVER", "PAIRS", "START",
+                                        "PR AT" };
     char l[48];
     int r, c;
     big_init();
     big_text(0, "FRAME BUDGET");
     cps3v_text(0, 3, "        ATTRACT    GAME 1     GAME 2");
-    for (r = 0; r < 15; r++) {
+    for (r = 0; r < 16; r++) {
         for (c = 0; c < 47; c++) l[c] = ' ';
         l[47] = 0;
         for (c = 0; rows[r][c]; c++) l[c] = rows[r][c];
@@ -168,16 +169,16 @@ void jt_show(void)
             const volatile struct sec *s = &M.s[c];
             uint32_t f = s->frames ? s->frames : 1, n = s->steps ? s->steps : 1, p = s->pairs ? s->pairs : 1;
             uint64_t ps = (uint64_t)s->pair_sum_hi << 32 | s->pair_sum_lo;
-            uint32_t v[15] = { s->vbl_sum / f, s->vbl_max, s->snd_sum / f, s->snd_max, s->step_sum / n, s->step_max,
+            uint32_t v[16] = { s->vbl_sum / f, s->vbl_max, s->snd_sum / f, s->snd_max, s->step_sum / n, s->step_max,
                                s->draw_sum / n, s->draw_max, s->shl_sum / (f > n ? f - n : 1), s->shl_max,
-                               (uint32_t)(ps / p), s->pair_max, s->over, s->pairs, s->start_clk };
+                               (uint32_t)(ps / p), s->pair_max, s->over, s->pairs, s->start_clk, s->pair_max_at };
             put_col(l, 8 + 11 * c, v[r]);
         }
         l[42] = 0;
         cps3v_text(0, 4 + r, l);
     }
     cps3v_text(0, 20, "VB VBLANK SN SOUND ST STEP DR DRAW SH SHELL");
-    cps3v_text(0, 21, "PR 2-FRAME PAIR, OVER: PAIRS > 838940");
+    cps3v_text(0, 21, "PR 2-FRAME PAIR, OVER: > 838940, AT: MAX PAIR");
     cps3v_text(0, 22, "GAME 1 " ROUTE_NAME);
     cps3v_text(0, 23, "GAME 2 " ROUTE2_NAME);
 }

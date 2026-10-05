@@ -46,9 +46,12 @@ for s in range(3):
     print('%s: frames %d, steps %d, pairs %d' % (names[s], g('frames'), g('steps'), g('pairs')))
     for k, d in (('vbl', fr), ('snd', fr), ('step', n), ('draw', n), ('shl', max(fr - n, 1))):
         print('  %-5s mean %9.0f  max %9d' % (k, g(k + '_sum') / d, g(k + '_max')))
-    print('  pair  mean %9.0f  median %d  p90 %d  p99 %d  max %d; over 2 frames %d' % (
+    print('  pair  mean %9.0f  median %d  p90 %d  p99 %d  max %d (pair %d); over 2 frames %d' % (
         (g('pair_sum_lo') + 2 ** 32 * g('pair_sum_hi')) / max(g('pairs'), 1), q(.5), q(.9), q(.99), g('pair_max'),
-        g('over')))
+        g('pair_max_at'), g('over')))
+    U = M.get((s, 'pair'), [])
+    if U: print('  largest pairs (pair: clocks; pair k opens at the game\'s step k + 1): %s' % ', '.join(
+        '%d: %d' % (k, U[k]) for k in sorted(range(len(U)), key=lambda k: -U[k])[:5]))
     if s: print('  game start (frames before the first step, the largest: game_begin) %d' % g('start_clk'))
 PY
 ls "$O"/snap/*/*.png
