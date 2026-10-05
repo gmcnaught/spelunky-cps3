@@ -65,6 +65,7 @@ void main_boot(void)
         if (GAME_ATTRACT > 1) front_start_at(GAME_ATTRACT);   /* tests: the cycle from that room */
     }
 #endif
+#ifndef GAME_PLAY                                 /* PLAY=1: game_cfg's defaults, the cabinet's controls */
     game_cfg.route = route_keys;
     game_cfg.nroute = ROUTE_N;
     game_cfg.tail = ROUTE_TAIL;
@@ -75,8 +76,10 @@ void main_boot(void)
     game_cfg.nodark = ROUTE_NODARK;
     game_cfg.room = ROUTE_ROOM;
     game_cfg.globals = ROUTE_GLOBALS;
+#endif
 }
 
+#ifndef GAME_PLAY                                 /* PLAY=1: src/main's cps3_pad inputs */
 static uint32_t frame;
 void main_inputs(uint32_t *pad0, uint32_t *pad1, uint32_t *lines)
 {
@@ -89,6 +92,7 @@ void main_inputs(uint32_t *pad0, uint32_t *pad1, uint32_t *lines)
     *lines = frame >= 20 && frame < 24 ? CR_COIN1 : 0;
 #endif
 }
+#endif
 
 static uint32_t t0, pend_draw;
 static int32_t pend_rec = -1;
