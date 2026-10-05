@@ -154,7 +154,10 @@ extern struct pworld pw_mem;
 /* PW: the play world. On the SH-2 it is addressed through GBR (pw_gbr_init sets it to &pw_mem at boot, before any
    play code runs): PW.in and its scalars are one mov @(disp,GBR) each, not a literal-pool load of PW's address and
    then the access (322 of the missed literal loads of p5_caveman step 150 were PW's address). GBR is used nowhere
-   else (the SDK and the tests' assembly do not touch it); the host builds use pw_mem directly */
+   else (the SDK and the tests' assembly do not touch it); the host builds use pw_mem directly. Never take the address
+   of a PW field (&PW.x). Measured: pcol.c's search state (s_r passed as &s_r, s_k, s_cb, s_ctx) behind GBR gave 237
+   SH-2 checksums different from the host on p5_reg_l2s10 (the host was right); the flags whose address is never
+   taken did not. Cause not isolated (likely a GBR-relative load kept across a write through the pointer) */
 #if defined(__sh__) && !defined(PW_NO_GBR)
 #define PW (*(struct pworld *)__builtin_thread_pointer())
 static inline void pw_gbr_init(void) { __builtin_set_thread_pointer(&pw_mem); }
