@@ -113,7 +113,7 @@ convention".
 |---|---|---|
 | 3.1 | **Unity build experiment:** one TU that `#include`s src/game's .c files (the toolchain has no LTO), compiled -O2. This enables cross-file inlining and `-fipa-ra`. Measure fetch misses and .text; keep it only if jtcost improves on both steps | static name clashes are renamed first, as a separate commit |
 | 3.2 | **Hot / cold split of the big events:** pl_step (3.7 KB touched a step), characterStepEvent, item_step, jar_step, gameStepEvent. Move rare branches (damage, death, shop, pick-up, explosions) into `__attribute__((cold, noinline))` helpers; `__builtin_expect` on the common tests | codegen-only |
-| 3.3 | **Not to repeat:** whole-program hot-first layout (+0.5 % on jtcps3), CCR.OD (worse), -Os everywhere (+2.4 %), the stack in cache RAM (−1 % net in the model, unverifiable in MAME) | measured already |
+| 3.3 | **Not to repeat:** whole-program hot-first layout (+0.5 % on jtcps3), CCR.OD (worse), -Os everywhere (+2.4 %), the stack in cache RAM (−1 % net in the model, unverifiable in MAME), cache-set-aware code / data placement (jtcost's fully associative bound at 03b4638, fit: p4 301 511.2 -> 510.7 K, −0.1 %; p5 956 434.4 -> 406.1 K, −6.5 %: misses are mostly capacity), -falign-functions=16 (p4 +3.9 %, p5 +1.5 %; with -falign-loops / -falign-jumps=16 +2.4 / +1.5 %: fewer fetch misses, more literal-pool misses) | measured already |
 
 ### Phase 4: RAM structure (decision needed before work starts)
 
