@@ -6,6 +6,7 @@
 # OK against host values built in). This script: the host check that the patched
 # limits change nothing for these jobs, the expected hashes, the build, a MAME run with a snapshot of the screen.
 #   scripts/playsh2_jt.sh          -> tests/playsh2/build/jt/elf/mame/sfiii3na (the set), build/jt/out/{snap,jt.txt}
+#   JT_ROUTES=a,b,...: those routes in place of the 18 (tests/playsh2/mkjobs.py; at most 18: the screen has 23 rows)
 set -e
 cd "$(dirname "$0")/.."
 T=tests/playsh2; B=$T/build; J=$B/jt; V=${JTV:-}; O=$J/out$V; N=${PIN:-1792}
