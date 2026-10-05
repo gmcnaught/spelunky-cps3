@@ -234,3 +234,21 @@ an inline int -> float (i2f, exact for |v| < 2^24): +0.6 to +1.2 %.
 Budget note (inferred, to measure): the 0.525 M step goal assumes 0.28 M for the draw in the 0.84 M pair (PERF2's
 26daf63-era figure). The current draw is 35-40 K MAME, about 0.11-0.12 M jtcps3 at the 3.0x draw ratio measured then;
 the pair on jtcps3 (tests/gametime on the MiSTer) decides.
+
+Batch 4 on jtcps3 (.62, JT build of a64f299, PASS 23/23): route mean of means **565,532** (-2.0 %; modelled -4 %);
+11 of 18 over 0.525 M (buy 657 K, caveman 819 K, giant 714 K, spider 539 K, snakes 593 K, ...).
+
+**The frame budget measured on jtcps3** (tests/gametime, the game program with GBR, batch 4, .62; clocks per 2-frame
+pair, budget 838,940):
+
+| | attract | game 1 (p4_push_rope) | game 2 (p5_snakes) |
+|---|---|---|---|
+| step mean / max | 165 K / 25.9 M | 452.9 K / 5.26 M | 576.5 K / 827 K |
+| draw mean / max | 181 K / 1.62 M | 111.8 K / 1.88 M | 99.0 K / 135 K |
+| pair mean / max | 354 K / 28.3 M | 573.6 K / 8.17 M | 681.8 K / 942 K |
+| pairs over budget | 5 of 1,799 (room starts) | 1 of 375 (the level start) | **18 of 241** |
+
+So the draw is about 0.1 M, not the 0.28 M the 0.525 M step goal assumed: a step fits a pair up to about 0.72 M. The
+binding constraint is the spike steps of the enemy routes (p5_snakes: 7.5 % of pairs drop a frame), not the mean.
+Load-use stall (from spelunky-cps3-a6, low priority): jtcps3 stalls 1 cycle on a load used by the next instruction
+(jtframe SH_core.sv:191); jtcost does not model it; 11,936 pairs on p4_exit559 301, 16,145 on p5_caveman 150 (~2 %).
