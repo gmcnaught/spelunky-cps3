@@ -1664,6 +1664,65 @@ static int can_pair(int s)
     return 0;
 }
 
+#ifndef PCOL_EXACT
+/* pcol_handle's pairs of searcher s (s_r set, s_kv 0) without the grid search, when its lists are short (can_pair's
+   bound): the grid search calls collision_result for every grid entry whose rectangle overlaps s_r (pg_overlap: the
+   predicate it applies; the grid finds every such entry), newest first (pw_seq descending), and collision_result
+   keeps only entries that can pair with s: alive instances of a target's family or of an object on s's rv list
+   (pworld.c's instance lists pw_ohead / pw_inext), or destroyed entries still in the grid (pend). Here those
+   candidates, the grid's members among them that overlap s_r, sorted newest first, go to collision_result in that
+   order: the pairs it keeps, and their order, are the search's. 0 (nothing kept, the caller searches): more than
+   DP_MAX candidates, or two of them with one creation number. PLAY_STATS builds also search and compare */
+#define DP_MAX 16
+static int direct_pairs(int s)
+{
+    int os = PW.in[s].obj, k, j, n = 0, o, i, t;
+    const struct pobj *q = &pobj[os];
+    int16_t c[DP_MAX];
+    for (k = 0; k < q->ncol; k++) {
+        t = pcol[q->col0 + k];
+        if (!ocnt[t]) continue;
+        for (o = t; o >= 0; o = fam_obj_next(t, o))
+            for (i = pw_ohead[o]; i >= 0; i = pw_inext[i]) {
+                if (n == DP_MAX) return 0;
+                c[n++] = (int16_t)i;
+            }
+    }
+    for (k = rv_off[os]; k < rv_off[os + 1]; k++) {
+        o = rv_obj[k];
+        if (!ocnt[o]) continue;
+        for (i = pw_ohead[o]; i >= 0; i = pw_inext[i]) {
+            if (n == DP_MAX) return 0;
+            c[n++] = (int16_t)i;
+        }
+    }
+    for (k = 0; k < npend; k++) {
+        int e = pend[k];
+        if (!(ef[e] & EF_TREE) || !(has_col(s, e) || has_col(e, s))) continue;
+        if (n == DP_MAX) return 0;
+        c[n++] = (int16_t)e;
+    }
+    for (k = j = 0; k < n; k++) {                 /* the grid's members that overlap s_r */
+        int e = c[k];
+        if ((ef[e] & EF_TREE) && pg_overlap(e)) c[j++] = (int16_t)e;
+    }
+    n = j;
+    for (k = 1; k < n; k++) {                     /* newest first */
+        int16_t v = c[k];
+        for (j = k; j > 0 && pw_seq[c[j - 1]] < pw_seq[v]; j--) c[j] = c[j - 1];
+        c[j] = v;
+    }
+    for (k = j = 0; k < n; k++) {                 /* repeats (an instance in two lists) out */
+        if (j > 0 && c[j - 1] == c[k]) continue;
+        if (j > 0 && pw_seq[c[j - 1]] == pw_seq[c[k]]) return 0;
+        c[j++] = c[k];
+    }
+    for (k = 0; k < j; k++)
+        if (!collision_result(c[k], 0)) break;
+    return 1;
+}
+#endif
+
 void pcol_handle(void)
 {
     int k, nkeep = 0;
@@ -1703,6 +1762,26 @@ void pcol_handle(void)
         s_ctx = 0;
         rlock = 1;
         PCST(pcol_st.searches++);
+#ifndef PCOL_EXACT
+        if (PCOL_GRID_ON && pobj[PW.in[s].obj].ncol + rv_off[PW.in[s].obj + 1] - rv_off[PW.in[s].obj] <= 8 &&
+            rv_ok == 1) {
+            int np1 = npairs;
+            if (!direct_pairs(s)) search_run();
+#ifdef PLAY_STATS
+            else {                                /* the host builds search too and compare the pairs */
+                int16_t qa[PAIRS_MAX], qb[PAIRS_MAX];
+                int nd = npairs, m;
+                for (m = np1; m < nd; m++) { qa[m] = pa[m]; qb[m] = pb[m]; }
+                npairs = np1;
+                search_run();
+                if (npairs != nd) { fprintf(stderr, "pcol_handle: direct_pairs %d pairs, the search %d (entry %d)\n", nd - np1, npairs - np1, s); abort(); }
+                for (m = np1; m < nd; m++)
+                    if (qa[m] != pa[m] || qb[m] != pb[m]) { fprintf(stderr, "pcol_handle: direct_pairs' pair %d differs (entry %d)\n", m, s); abort(); }
+            }
+#endif
+            (void)np1;
+        } else
+#endif
         search_run();                             /* the tree, or pcolgrid.h in play */
         rlock = 0;
 #ifdef PLAY_STATS
