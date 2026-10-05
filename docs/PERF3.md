@@ -320,6 +320,10 @@ Load-use stall (from spelunky-cps3-a6, low priority): jtcps3 stalls 1 cycle on a
   0 of 241 over, pair max 787.3 K, step mean 443.5 K; game 1 step mean 377.7 K.
 - Batch 15 (merged 32195fe): pin_add / ext_alloc by words (c67b360: p5_giant 28 714.6 -> 700.2 K), item (a6: prandom
   from u's bits, e1c0966; item_step's colBot settle on the raw field, d4396ee: caveman 178 737.4 -> 718.2 K).
+- Batch 16 (merged a927404): oEnemySight's speed at dir 0 / 180 computed once (a6, 03d7199: p5_idol 109 650.2 ->
+  544.6 K; MAME route means l4 -6.1 %, idol -1.3 %, caveman flat).
+- Measured and not kept (a6): a pw_onz bitmap of non-empty object lists for snapshot / the alarm pass: +0.3 / +0.8 %
+  on caveman 178 (no variable shift on the SH-2; pw_ohead mostly cached).
 - Measured and dropped: pcol_handle skipping a searcher no live object can pair with (can_pair): terrain blocks can
   always pair (live objects target oSolid), so it only added the test (p5_caveman 2 3.19 -> 3.32 M).
 - Measured and dropped: a 4-entry cache of rotated boxes in bbox_dbl (p5_idol 252: pin_bbox <- line_hit 39.7 ->
