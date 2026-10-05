@@ -1,0 +1,43 @@
+# seed 23
+# level 6
+# P5 lush (perf, docs/PERF3.md): random cabinet-like input (run, jump, whip, duck, climb), level 6, seed 23, enemies on, 600 steps
+8 J
+13 R
+18 L
+26 -
+4 RA
+4 LJ
+6 LJ
+14 U
+40 L
+6 J
+6 J
+10 L
+4 LA
+9 RJ
+9 D
+6 LA
+19 R
+9 L
+19 R
+40 R
+40 L
+10 -
+11 U
+3 A
+9 LJ
+2 A
+36 L
+33 R
+19 -
+12 -
+11 RJ
+9 RJ
+19 -
+10 D
+37 L
+7 RJ
+8 J
+10 -
+6 LA
+38 L
