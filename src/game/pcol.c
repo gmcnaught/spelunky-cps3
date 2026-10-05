@@ -885,7 +885,32 @@ static void tlist_front(int e)
 
 /* sin and cos of a float angle in radians (|a| <= 2 pi), rounded to float as glibc's sincosf: the polynomials in
    double are within 1e-16 of the true values */
+static void sincos_poly(float a, float *s, float *c);
+
+/* sincos_poly through a small cache keyed by the angle's bits: the result is a function of a alone, so a hit gives
+   the same floats (a rotated instance's box is recomputed several times a step, at an angle that rarely changes;
+   each evaluation is about 10 K jtcps3 clocks in soft-float double). The entry for a's bits keeps the last result */
+#define SC_CACHE 8
+static uint32_t sc_key[SC_CACHE];
+static uint8_t sc_ok[SC_CACHE];
+static float sc_s[SC_CACHE], sc_c[SC_CACHE];
+
 static void sincos_f(float a, float *s, float *c)
+{
+    union { float f; uint32_t u; } k;
+    unsigned h;
+    k.f = a;
+    h = (k.u ^ (k.u >> 11) ^ (k.u >> 19)) & (SC_CACHE - 1);
+    if (!sc_ok[h] || sc_key[h] != k.u) {
+        sincos_poly(a, &sc_s[h], &sc_c[h]);
+        sc_key[h] = k.u;
+        sc_ok[h] = 1;
+    }
+    *s = sc_s[h];
+    *c = sc_c[h];
+}
+
+static void sincos_poly(float a, float *s, float *c)
 {
     double x = a, r, r2, ps, pc;
     int q = 0;
