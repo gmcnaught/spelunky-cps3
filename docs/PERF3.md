@@ -350,6 +350,12 @@ Load-use stall (from spelunky-cps3-a6, low priority): jtcps3 stalls 1 cycle on a
   -> 1,107.0 K), pcinst_of's 2-entry cache (a6, 4fd8eeb: idol 252 -> 1,061.2 K; MAME max step 321.3 -> 262.1 K), the
   liquid index (7f5e32e: oLava / oWater / oWaterSwim point misses from per-cell counts; p5_reg_l14s16's MAME SOFTFP
   step mean 269.6 -> 172.1 K, steps over at x4.2 215 -> 49; the other routes +0.15 to +0.34 %).
+  On jtcps3: JT PASS 23/23, route mean of means **405.0 K (+1.9 % on batch 19; every route +0.9 to +2.9 %)**,
+  caveman 518.3 K; the generation jobs G1-G5 -1.5 to -6.1 %, which run none of the changed code; frame budget game 2
+  0 of 241 over, pair max 723.0 K, step mean 414.6 K (-0.3 %). Read as data layout: MAME instructions were within
+  +0.34 %, and jtcost p5_caveman 178 with the liquid index had instructions +0.27 %, D-misses in RAM +3.0 % (the
+  index's arrays, 11.5 KB of .bss, move the play state's arrays against the 4 KB cache's sets). Caveman's margin to
+  0.525 M is 1.3 %.
 - Measured and not kept (a6): PERF3 3.2's hot / cold split of characterStepEvent (4 cold helpers): caveman 178
   +0.01 %, snakes 203 +0.04 %, exit559 301 -0.6 % (its misses are code that runs every step).
 - Measured and not kept (a6): a pw_onz bitmap of non-empty object lists for snapshot / the alarm pass: +0.3 / +0.8 %
