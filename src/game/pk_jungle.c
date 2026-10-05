@@ -862,7 +862,8 @@ static void speartrap_step(int i)                                    /* objects/
     }
     p = &PX(i);
     if (eview(i, 8, 8) && !CP(X(i), Y(i) + 16, OBJ_oSolid)) pin_destroy(i);   /* :79 */
-    if (p->obj == OBJ_oSpearTrapBottom) {                                 /* :87 (Bottom only) */
+    if (p->obj == OBJ_oSpearTrapBottom && !pin_xy_int(i, &ix, &iy)) {     /* :87 (Bottom only) */
+        /* (at whole x, y: ceil gives the same bits, -0 included, and the setters change nothing) */
         pin_setx(p, PI(PCEIL(p->x)));
         pin_sety(p, PI(PCEIL(p->y)));
     }
