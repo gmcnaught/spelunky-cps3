@@ -116,7 +116,11 @@ void run_route(int job, uint32_t seed, const struct route *rt, int tail)
     int k, r, idx = 0, n = rt->n;
     const uint16_t *masks = rt->masks;
     play_noenemy = !rt->enemies;
-    gen_new_game();
+    scrClearGlobals();                            /* as playhost and src/main game.c's game_begin: global.downToRun
+                                                     1 (scrInit :50), the has* flags, counts and life reset (the
+                                                     SH-2 runs the jobs one after another) */
+    play_toggle_run_on = 0;                       /* game_begin for a route: HD's default, walking */
+    play_toggle_run = 0;
     G.currLevel = (int16_t)rt->level;
     PG.plife = 4;
     PG.bombs = 4;
