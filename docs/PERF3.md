@@ -220,3 +220,17 @@ Batch 3 on jtcps3 (.62, JT build of 80d620b, PASS 23/23): route mean of means **
 over 0.525 M: 11 of 18 (p1_walk 576 K, bomb_drop 652 K, buy 673 K, caveman 829 K, cavestun 631 K, giant 721 K, idol
 650 K, l4 659 K, shop 660 K, snakes 605 K, spider 549 K). Under: exit559 477 K, hang_ladder 491 K, items 491 K, spikes
 302 K, push_rope 459 K, bomb_throw 449 K, l3spider 516 K.
+
+### Batch 4 (merged 1d83951, gated on a64f299)
+
+69cccbd Draw dispatch by a per-object claimant (PLAY_DCHECK: P5 19/19, c_ 48/48), c8cf3ca PW through GBR (1.4 step 1),
+a64f299 the GBR rule (never &PW.field: pcol.c's search state behind GBR with s_r passed by address gave 237 SH-2
+checksums off; its flags behind GBR measured slower; neither kept). jtcost fit p4 / p5 / caveman: 565.3 / 523.2 / 790.5 K
+(batch 3: 587.0 / 547.3 / 821.8). MAME SOFTFP mean of means 154.3 -> 149.1 K. Gates as batch 3 plus gametime_check (the
+game program with GBR set by src/main/main.c): pair mean 155.6 K / 163.0 K MAME (p4_push_rope / p5_snakes), draw mean
+40.2 K / 34.9 K MAME. Stack 78,432 / 74,160 B. Measured and dropped: a has_col cache, pcinst_of's whole-box path with
+an inline int -> float (i2f, exact for |v| < 2^24): +0.6 to +1.2 %.
+
+Budget note (inferred, to measure): the 0.525 M step goal assumes 0.28 M for the draw in the 0.84 M pair (PERF2's
+26daf63-era figure). The current draw is 35-40 K MAME, about 0.11-0.12 M jtcps3 at the 3.0x draw ratio measured then;
+the pair on jtcps3 (tests/gametime on the MiSTer) decides.
