@@ -1051,7 +1051,7 @@ static void dice_body(int i)
             else pin_sety(p, p->y + PI(1));
         }
         pin_setdepth(p, G.hasSpectacles ? 0 : 101);
-        if (collision_rect_p(X(i) - 3, Y(i) - 3, X(i) + 3, Y(i) + 3, OBJ_oLava, 0, NOONE) != NOONE) {
+        if (collision_rect_any(X(i) - 3, Y(i) - 3, X(i) + 3, Y(i) + 3, OBJ_oLava, 0, NOONE)) {
             PE(p)->myGrav = 0;
             PE(p)->xVel = 0;
             PE(p)->yVel = 0;

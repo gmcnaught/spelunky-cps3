@@ -921,7 +921,7 @@ static void smashtrap_step(int i)
         pin_sety(p, PADDV(p->y, N(0.05)));
         if (CP(X(i), Y(i) - 1, OBJ_oLava)) pin_destroy(i);
     }
-    if (collision_rect_p(X(i) + 1, Y(i) + 1, X(i) + 15, Y(i) + 15, OBJ_oLava, 0, NOONE) != NOONE) PE(p)->status = 99;
+    if (collision_rect_any(X(i) + 1, Y(i) + 1, X(i) + 15, Y(i) + 15, OBJ_oLava, 0, NOONE)) PE(p)->status = 99;
 }
 
 /* the rubble of oSmashTrap / oCeilingTrap Destroy (sRubbleTan) and oDoor Destroy (k = 4, small only) */
@@ -1139,7 +1139,7 @@ static void lava_sink(struct pin *p)
     PE(p)->yVel = 0;
     pin_sety(p, PADDV(p->y, N(0.05)));
 }
-static int lava_rect(int i) { return collision_rect_p(X(i) - 3, Y(i) - 3, X(i) + 3, Y(i) + 3, OBJ_oLava, 0, NOONE) != NOONE; }
+static int lava_rect(int i) { return collision_rect_any(X(i) - 3, Y(i) - 3, X(i) + 3, Y(i) + 3, OBJ_oLava, 0, NOONE); }
 static int lava_point(int i) { return CP(X(i), Y(i) - 5, OBJ_oLava); }
 static void lava_melt(int i)
 {

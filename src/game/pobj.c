@@ -819,7 +819,7 @@ void item_step(int i)
     }
     if (br) {                                                                  /* :171-185 (branch :69) */
         p = &PX(i);
-        if (collision_rect_p(PTOD(p->x) - 3, PTOD(p->y) - 3, PTOD(p->x) + 3, PTOD(p->y) + 3, OBJ_oLava, 0, NOONE) != NOONE)
+        if (collision_rect_any(PTOD(p->x) - 3, PTOD(p->y) - 3, PTOD(p->x) + 3, PTOD(p->y) + 3, OBJ_oLava, 0, NOONE))
             ptemple_world(1032, i, 0);
         else
             PE(p)->myGrav = N(0.6);
@@ -894,7 +894,7 @@ static void jar_step(int i, int skull)
         rest_end(i, (uint8_t)destroy);
         pin_setdepth(p, 100);
     lava:
-        if (collision_rect_p(PTOD(p->x) - 3, PTOD(p->y) - 3, PTOD(p->x) + 3, PTOD(p->y) + 3, OBJ_oLava, 0, NOONE) != NOONE ||
+        if (collision_rect_any(PTOD(p->x) - 3, PTOD(p->y) - 3, PTOD(p->x) + 3, PTOD(p->y) + 3, OBJ_oLava, 0, NOONE) ||
             collision_point_any(PTOD(p->x), PTOD(p->y) - 5, OBJ_oLava, 0, NOONE))
             ptemple_world(1036, i, skull);
         NOPS(12);
@@ -955,7 +955,7 @@ terrain_done:
     if (G.hasSpectacles || PG.hasUdjatEye) pin_setdepth(p, 0);
     else pin_setdepth(p, 101);
     NOPS(8);
-    if (collision_rect_p(PTOD(p->x) - 3, PTOD(p->y) - 3, PTOD(p->x) + 3, PTOD(p->y) + 3, OBJ_oLava, 0, NOONE) != NOONE ||
+    if (collision_rect_any(PTOD(p->x) - 3, PTOD(p->y) - 3, PTOD(p->x) + 3, PTOD(p->y) + 3, OBJ_oLava, 0, NOONE) ||
         collision_point_any(PTOD(p->x), PTOD(p->y) - 5, OBJ_oLava, 0, NOONE))
         ptemple_world(1039, i, 0);
 }

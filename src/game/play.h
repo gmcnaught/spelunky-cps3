@@ -346,6 +346,8 @@ int pcol_count(int obj);
 #define pw_noinst_tree(obj) ((obj) >= 0 && pcol_count(obj) == 0)
 #define collision_point_p(px, py, obj, prec, notme) \
     (pw_noinst_point(obj) ? NOONE : (collision_point_p)((px), (py), (obj), (prec), (notme)))
+#define collision_rect_any(x1, y1, x2, y2, obj, prec, notme) \
+    (pw_noinst_tree(obj) ? 0 : (collision_rect_any)((x1), (y1), (x2), (y2), (obj), (prec), (notme)))
 #define collision_point_any(px, py, obj, prec, notme) \
     (pw_noinst_point(obj) ? 0 : (collision_point_any)((px), (py), (obj), (prec), (notme)))
 #define collision_line_p(x1, y1, x2, y2, obj, prec, notme) \
@@ -358,7 +360,7 @@ int collision_rect_i(int32_t x1, int32_t y1, int32_t x2, int32_t y2, int obj, in
 int solid_vline_any(int32_t x, int32_t y1, int32_t y2, int notme_self);   /* collision_line(x, y1, x, y2, oSolid, 1, notme) != NOONE */
 int solid_hline_any(int32_t y, int32_t x1, int32_t x2, int notme_self);   /* collision_line(x1, y, x2, y, oSolid, 1, notme) != NOONE */
 int solid_rect_any(int32_t l, int32_t t, int32_t r, int32_t b, int notme_self);   /* collision_rectangle(.., oSolid, 1, notme) != noone, whole */
-int collision_rect_any(double x1, double y1, double x2, double y2, int obj, int prec, int notme_self);   /* collision_rect_p(..) != NOONE */
+int (collision_rect_any)(double x1, double y1, double x2, double y2, int obj, int prec, int notme_self);   /* collision_rect_p(..) != NOONE */
 /* v as an int in (-30000, 30000) when it is a whole number; x and y as ints when both are (inline: the results stay
    in registers, no stack traffic in the collision helpers) */
 static inline int pos_int(pos v, int32_t *o)

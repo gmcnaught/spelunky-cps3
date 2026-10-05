@@ -2154,13 +2154,50 @@ int solid_rect_any(int32_t l, int32_t t, int32_t r, int32_t b, int notme_self)
     return rect_any_i(l, t, r, b, 1, notme_self);
 }
 
+#ifndef PCOL_EXACT
+/* no entry of liquid family f reaches the cells of [l, r] x [t, b] (whole, l <= r, t <= b) */
+static int xrect_none(int f, int32_t l, int32_t t, int32_t r, int32_t b)
+{
+    int x, y, x0 = clampi(l >> 4, 0, GRID_W - 1), xe = clampi(r >> 4, 0, GRID_W - 1);
+    int y0 = clampi(t >> 4, 0, GRID_H - 1), ye = clampi(b >> 4, 0, GRID_H - 1);
+    if (xdhead >= 0) xflush_run();
+    if (xfar[f]) return 0;
+    for (y = y0; y <= ye; y++)
+        for (x = x0; x <= xe; x++)
+            if (xcnt[f][y][x]) return 0;
+    return 1;
+}
+#endif
+
 /* collision_rectangle(x1, y1, x2, y2, obj, prec, notme) != noone: whole corners of an oSolid query by rect_any_i (the
-   corners rq_init would take as ints: dwhole), else collision_rect_p */
-int collision_rect_any(double x1, double y1, double x2, double y2, int obj, int prec, int notme_self)
+   corners rq_init would take as ints: dwhole); whole corners of a prec 0 liquid query (oLava, oWater, oWaterSwim)
+   with no entry of the family in the cells they cover (the liquid index) a miss: rect_hit on an integer box is
+   max(l, bl) < min(r, br) and in y, a pixel of the box inside the corners (an empty box never hits); else
+   collision_rect_p */
+int (collision_rect_any)(double x1, double y1, double x2, double y2, int obj, int prec, int notme_self)
 {
     int32_t a, b, c, d;
     if (obj == OBJ_oSolid && dwhole(x1, &a) && dwhole(y1, &b) && dwhole(x2, &c) && dwhole(y2, &d))
         return rect_any_i(a < c ? a : c, b < d ? b : d, a < c ? c : a, b < d ? d : b, prec, notme_self);
+#ifndef PCOL_EXACT
+    {
+        int f = obj == OBJ_oLava ? 0 : obj == OBJ_oWater ? 1 : obj == OBJ_oWaterSwim ? 2 : -1;
+        if (f >= 0 && !prec && dwhole(x1, &a) && dwhole(y1, &b) && dwhole(x2, &c) && dwhole(y2, &d)) {
+            int q = pcol_query(obj);                     /* (as collision_rect_p: the tree's updates first) */
+            if (q < 0) return 0;
+            if (!pcol_quiet() && xrect_none(f, a < c ? a : c, b < d ? b : d, a < c ? c : a, b < d ? d : b)) {
+#ifdef PLAY_STATS
+                if (collision_rect_p(x1, y1, x2, y2, obj, prec, notme_self) != NOONE) {
+                    fprintf(stderr, "collision_rect_any: liquid index miss differs (%d %.17g %.17g %.17g %.17g)\n",
+                            obj, x1, y1, x2, y2);
+                    abort();
+                }
+#endif
+                return 0;
+            }
+        }
+    }
+#endif
     return collision_rect_p(x1, y1, x2, y2, obj, prec, notme_self) != NOONE;
 }
 
