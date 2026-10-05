@@ -1,0 +1,21 @@
+# Survey reference (untrsurvey --global pickupItem=Web~Cannon, level 10 seed 150, 250 steps: the run's 259th step
+# meets another C difference, a crawl): a UFO's laser destroys a web at step 235 (oWeb Collision_oLaser, pobj.c 1093)
+# seed 150
+# level 10
+# nodark 0
+# globals pickupItem=Web~Cannon
+6 RU
+37 R
+8 JA
+30 -
+30 LA
+1 R
+9 RJ
+30 JA
+13 LU
+5 RI
+21 L
+10 LJA
+14 DA
+13 LUI
+23 R

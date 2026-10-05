@@ -1,0 +1,9 @@
+# Survey reference (untrsurvey level 13 seed 43): a web over lava is destroyed at the first step (oWeb
+# Collision_oWater through oLava, pobj.c 1093)
+# seed 43
+# level 13
+# nodark 0
+24 LJ
+2 RI
+9 J
+25 O

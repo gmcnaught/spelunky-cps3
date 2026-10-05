@@ -1,0 +1,11 @@
+# Survey reference (untrsurvey level 5 seed 21): webs generated over the lake's water are destroyed at the first
+# step (oWeb Collision_oWater, pobj.c 1093)
+# seed 21
+# level 5
+# nodark 0
+21 RJAIN
+16 R
+12 RAIB
+8 R
+23 LAB
+10 L

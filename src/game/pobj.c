@@ -1672,7 +1672,9 @@ void ev_collision(int self, int other)
         } else if (obj_is(oo, OBJ_oTreasure)) {
             PE(&PX(other))->xVel = 0;
             PE(&PX(other))->yVel = 0;
-        } else if (!pcontent_ev(FEV_COLLISION, self, other))                       /* P7 hook (Collision_oSlash) */
+        } else if (obj_is(oo, OBJ_oWater) || obj_is(oo, OBJ_oLaser))            /* Collision_oWater (oLava too), */
+            pin_destroy(self);                                                 /* Collision_oLaser: instance_destroy() */
+        else if (!pcontent_ev(FEV_COLLISION, self, other))                     /* P7 hook (Collision_oSlash) */
             PUNTR(1093);
         break;
     case OBJ_oJar:
