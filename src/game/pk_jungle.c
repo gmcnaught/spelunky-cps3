@@ -869,6 +869,14 @@ static void speartrap_step(int i)                                    /* objects/
     }
 }
 
+/* 1 when instance i's Step does nothing at this point: oTree's and oTreeBranch's Steps test eview(i, 16, 16) first
+   and do nothing else when it is false (eview reads the view and the instance only; prun.c's Step loop) */
+int pjungle_idle(int i)
+{
+    int o = PX(i).obj;
+    return (o == OBJ_oTree || o == OBJ_oTreeBranch) && !eview(i, 16, 16);
+}
+
 static int jungle_step(int i)
 {
     struct pin *p = &PX(i);

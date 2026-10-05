@@ -3,6 +3,7 @@
 #include "pint.h"
 #include "penemy.h"
 #include "pcol.h"
+#include "pcontent.h"
 #include "../snd/sndgame.h"                     /* the GML sound calls (src/snd) */
 #include "front.h"                                     /* P8: the front end's hooks (src/front/front.h) */
 static void start_music(int levelType);
@@ -504,6 +505,10 @@ int play_step(uint16_t keys, void (*record_cb)(int phase))
             if (play_goto_room >= 0 && (PW.room == R_rEnd || PW.room == R_rEnd2 || PW.room == R_rEnd3 ||
                                         PW.room == R_rCredits2)) gp_skip = 1;
             else gamepad_step(keys);
+        } else if ((PX(i).obj == OBJ_oTree || PX(i).obj == OBJ_oTreeBranch) && !front_on && pjungle_idle(i)) {
+            /* ev_step would reach pjungle_ev's Step (stepk SK_OWN, ptrans_step and the oTreasure / oItem tests no,
+               pcontent_step's claimant 1: caches only) and find nothing to do there */
+            pcol_event_done(i);
         } else {
             ev_step(i);
             pcol_event_done(i);
