@@ -20,9 +20,17 @@ Two constant sets, both computed on every run (one JTCOST line each); the tables
     MUL.L / DMULx.L +4.37; MULx.W +0.96; DIVU (store to 0xFFFFFF04 / 0xFFFFFF14) +37; uncached loads +0.
 What-ifs (both sets): WAYS=2 (two-way mode), CRAM_STACK=1 (stack accesses at cache-RAM cost), NOLIT=1 (literal-pool
 loads removed).
+Fully associative bound (every run, model_fa): the same costs with the misses of a fully associative LRU cache of the
+same size (WAYS x 64 lines); placement of code and data cannot remove more than model - model_fa (LRU, not optimal
+replacement, so an estimate of that bound).
+Miss classes (every run): a fully associative LRU cache of the same size sees the same accesses; a line's first access
+is compulsory, a miss of the fully associative cache that is not compulsory is capacity, and the rest of the
+set-associative cache's misses are conflict (address bits 4-9 pick the set: lines 1 KB apart compete for 4 ways).
 JTCOST lines: ins instructions; mame_cyc MAME interpreter cycles by the opcode table (the fit's base; not the FRT
 clocks playsh2 records); model jtcps3 clocks; stores (stack_st of them on the stack); imiss fetch line misses;
-dmiss_ram / dmiss_simm data line misses (lit of them literal pools of the running function).
+dmiss_ram / dmiss_simm data line misses (lit of them literal pools of the running function); model_fa the fully
+associative bound; i_cold / i_cap / i_conf
+and d_cold / d_cap / d_conf the fetch and data misses by class.
 usage: jtcost.py [--route R] [--step N] [--consts review|fit] trace nm.txt"""
 import sys, re, bisect, collections, os
 
@@ -81,7 +89,28 @@ class Cache:
             if len(st) == WAYS: st.pop(0)
             st.append(tag)
         return False
-C = Cache()
+class FACache:                                   # fully associative, LRU, WAYS x 64 lines
+    def __init__(s): s.lines = collections.OrderedDict(); s.n = WAYS * 64
+    def access(s, a, alloc=True):
+        t = a >> 4
+        if t in s.lines:
+            s.lines.move_to_end(t); return True
+        if alloc:
+            if len(s.lines) == s.n: s.lines.popitem(last=False)
+            s.lines[t] = True
+        return False
+SA_C = Cache(); FA_C = FACache(); seen = set()   # the model bills SA_C's misses; model_fa FA_C's
+mc = collections.Counter()                       # miss classes: i_ / d_ + cold / cap / conf
+def access(a, kind, alloc=True):
+    """One cached access (kind 'i' fetch, 'd' load or store): (set-associative hit, fully associative hit, the
+    set-associative miss's class or None)."""
+    h_sa = SA_C.access(a, alloc); h_fa = FA_C.access(a, alloc)
+    t = a >> 4; cold = t not in seen
+    if alloc: seen.add(t)
+    k = None
+    if not h_sa and alloc:
+        k = kind + ('_cold' if cold else '_cap' if not h_fa else '_conf'); mc[k] += 1
+    return h_sa, h_fa, k
 
 def region(a):
     a &= 0x1fffffff
@@ -95,7 +124,7 @@ memre = re.compile(r'@(\(\$?([0-9A-Fa-f]+),(R\d+|GBR|PC)\)|\(R0,(R\d+)\)|-(R\d+)
 size = {'B': 1, 'W': 2, 'L': 4}
 st = collections.Counter()
 per = collections.defaultdict(collections.Counter)
-tot = [0.0, 0.0]
+tot = [0.0, 0.0]; tot_fa = [0.0, 0.0]
 inside = False; ret = None; sp0 = None; last_line = -1
 cbr = None   # pending conditional branch: (kind, pc), kind 1 BT / BF, 2 BT/S / BF/S, 3 its delay slot seen
 for line in open(tr):
@@ -123,6 +152,7 @@ for line in open(tr):
     dis = dis.strip(); op = dis.split()[0] if dis else ''
     args_ = dis[len(op):].strip()
     ev = collections.Counter()          # this instruction's events (keys of CONSTS)
+    evf = collections.Counter()         # the fully associative cache's events minus ev's
     mame = 1 + MAMEX.get(op, 0)
     if cbr is not None:                 # the previous conditional branch: taken?
         k, bpc = cbr
@@ -141,7 +171,10 @@ for line in open(tr):
     if line_a != last_line:
         last_line = line_a
         if (pc >> 29) == 0:
-            if not C.access(pc):
+            h, hf, k = access(pc, 'i')
+            if k == 'i_conf': c['iconf'] += 1
+            if h != hf: evf['imiss'] += 1 if h else -1
+            if not h:
                 ev['imiss'] += 1; st['imiss'] += 1; c['imiss'] += 1
         else:
             ev['ufetch'] += 1  # uncached fetch (not expected)
@@ -180,14 +213,18 @@ for line in open(tr):
                 ev['store'] += 1
                 if a in (0xffffff04, 0xffffff14): ev['divu'] += 1; st['divu'] += 1
                 dsto['stack' if stack else dname(a)] += 1
-                if (a >> 29) == 0: C.access(a, alloc=False)
+                if (a >> 29) == 0: access(a, 'd', alloc=False)
             else:
                 if (a >> 29) != 0 or reg in ('io', 'video'):
                     ev['ld_unc_simm' if reg == 'simm' else 'ld_unc_other'] += 1; st['ld_unc'] += 1
-                elif C.access(a):
-                    ev['ld_hit'] += 1
                 else:
-                    ev['dmiss_' + ('simm' if reg == 'simm' else 'ram')] += 1
+                    h, hf, _ = access(a, 'd'); dk = 'dmiss_' + ('simm' if reg == 'simm' else 'ram')
+                    if h != hf:
+                        evf[dk] += 1 if h else -1; evf['ld_hit'] += -1 if h else 1
+                    if h:
+                        ev['ld_hit'] += 1
+                        continue
+                    ev[dk] += 1
                     st['dmiss_' + reg] += 1; c['dmiss'] += 1
                     dm[('lit:' + fn(a)) if (reg == 'simm' and fn(a) == f) else dname(a)] += 1
                     if reg == 'simm' and m.group(3) == 'PC': litmiss[a] += 1
@@ -198,6 +235,7 @@ for line in open(tr):
     for s in (0, 1):
         cost = (1.0 if s == 0 else mame) + sum(CONSTS[k][s] * n for k, n in ev.items())
         tot[s] += cost
+        tot_fa[s] += cost + sum(CONSTS[k][s] * n for k, n in evf.items())
         if s == SI: c['cost'] += cost
 if not inside: sys.exit('jtcost.py: play_step (%08X) not entered in the trace' % PLAY)
 
@@ -213,10 +251,13 @@ K = {k: v[SI] for k, v in CONSTS.items()}
 print('stores %d (%.0f%% stack) -> %.0f jtcps3 clocks; I-miss %d lines -> %.0f; D-miss ram %d / simm %d -> %.0f' % (
     stores, 100 * st['st_stack'] / max(stores, 1), stores * (1 + K['store']), st['imiss'], st['imiss'] * K['imiss'],
     st['dmiss_ram'], st['dmiss_simm'], st['dmiss_ram'] * K['dmiss_ram'] + st['dmiss_simm'] * K['dmiss_simm']))
-print('\nfunction           instr   model  ratio  imiss  dmiss  stores(stack)  calls')
+print('miss classes: fetch cold %d / capacity %d / conflict %d; data cold %d / capacity %d / conflict %d; fully '
+      'associative bound %.0f (%+.1f%%)' % (mc['i_cold'], mc['i_cap'], mc['i_conf'], mc['d_cold'], mc['d_cap'],
+                                           mc['d_conf'], tot_fa[SI], 100 * (tot_fa[SI] / cost - 1)))
+print('\nfunction           instr   model  ratio  imiss  iconf  dmiss  stores(stack)  calls')
 for f, c in sorted(per.items(), key=lambda x: -x[1]['cost'])[:45]:
     s = sum(v for k, v in c.items() if k.startswith('st_'))
-    print('%-22s %7d %7.0f %5.2f %6d %6d %6d(%d) %6d' % (f[:22], c['ins'], c['cost'], c['cost'] / c['ins'], c['imiss'], c['dmiss'], s, c['st_stack'], c['entries']))
+    print('%-22s %7d %7.0f %5.2f %6d %6d %6d %6d(%d) %6d' % (f[:22], c['ins'], c['cost'], c['cost'] / c['ins'], c['imiss'], c['iconf'], c['dmiss'], s, c['st_stack'], c['entries']))
 
 print('\nD-miss lines by symbol (lit: = literal pool of the running function)')
 print('  literal pools total', lit)
@@ -242,10 +283,11 @@ for g, c in sorted(G.items(), key=lambda x: -x[1]['cost']):
           c['cost'] / c['ins'], c['imiss'], c['dmiss'], c['st_stack']))
 print()
 for s in (0, 1):
-    print('JTCOST route=%s step=%s consts=%s ins=%d mame_cyc=%d model=%.0f ratio=%.2f stores=%d stack_st=%d imiss=%d '
-          'dmiss_ram=%d dmiss_simm=%d lit=%d' % (opt['--route'], opt['--step'], SETS[s], ins, st['mame'], tot[s],
-                                                tot[s] / max(ins, 1), stores, st['st_stack'], st['imiss'],
-                                                st['dmiss_ram'], st['dmiss_simm'], lit))
+    print('JTCOST route=%s step=%s consts=%s ins=%d mame_cyc=%d model=%.0f model_fa=%.0f ratio=%.2f stores=%d stack_st=%d imiss=%d '
+          'dmiss_ram=%d dmiss_simm=%d lit=%d i_cold=%d i_cap=%d i_conf=%d d_cold=%d d_cap=%d d_conf=%d' % (
+              opt['--route'], opt['--step'], SETS[s], ins, st['mame'], tot[s], tot_fa[s], tot[s] / max(ins, 1), stores,
+              st['st_stack'], st['imiss'], st['dmiss_ram'], st['dmiss_simm'], lit, mc['i_cold'], mc['i_cap'],
+              mc['i_conf'], mc['d_cold'], mc['d_cap'], mc['d_conf']))
 
 if WATCH:
     print('\nJTC_CALLERS: calls by caller, inclusive model cost (%s constants)' % SETS[SI])
