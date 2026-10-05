@@ -252,3 +252,17 @@ So the draw is about 0.1 M, not the 0.28 M the 0.525 M step goal assumed: a step
 binding constraint is the spike steps of the enemy routes (p5_snakes: 7.5 % of pairs drop a frame), not the mean.
 Load-use stall (from spelunky-cps3-a6, low priority): jtcps3 stalls 1 cycle on a load used by the next instruction
 (jtframe SH_core.sv:191); jtcost does not model it; 11,936 pairs on p4_exit559 301, 16,145 on p5_caveman 150 (~2 %).
+
+### Batches 5 and 6
+
+- Batch 5 (merged abebbe3): fne setters, flying-bat trig (psincos_cr: pcos_cr / psin_cr's bits for all 1,135,869,954
+  float directions; p5_buy 150 857.5 -> 583.5 K fit). jtcps3 (.62): route mean of means **553.0 K** (-2.2 %), buy
+  657 -> 550 K, spider 539 -> 496 K (now under 0.525 M); 10 of 18 over. Frame budget, game 2 (p5_snakes): pair mean
+  674.7 K, **14 of 241 pairs over** (was 18), max 931 K.
+- Batch 6 (merged 95c829e): pw_release's compaction from the oldest removed slot (p5_snakes record 203, the batch's
+  spike step: pw_release 43.4 -> 24.0 K), rset_i inline, jar-search (a6: JAR_FAST before the enemy / damsel
+  collision_rectangle in the grid build; caveman 150 -5.6 %, cavestun 150 -8.6 % fit), attr-caller (a6: ATTR's
+  collision searches by calling object). MAME SOFTFP mean of means 145.8 -> 140.1 K (snakes -9.1 %, cavestun
+  -7.5 %, caveman -6.2 %); gametime (MAME) p5_snakes pair max 226.5 -> 204.2 K. Gates as before, all equal.
+- Measured and dropped: a call-free pg_collect for pgrid_search (-1.4 / -1.0 / +0.6 / +0.2 %: noise, +3.5 KB).
+- jtcost hangs when asked for two consecutive steps of one route: trace one step per run.
