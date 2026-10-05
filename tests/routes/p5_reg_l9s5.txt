@@ -1,0 +1,35 @@
+# seed 5
+# level 9
+# P5 regression case: a random-input survey route (level 9, seed 5, 1500 steps; its runner trace was made with TRACE_NODARK=0, the level is not dark: playhost's output is the same with and without --nodark 0). Record 152: left + down after running right into a wall at xVel 3.038 takes characterStepEvent :722 (global.downToRun, scrInit :50 true). playhost stops at the death's room_goto(rHighscores), record 493
+4 LN
+28 L
+25 RDJ
+9 RJ
+25 N
+11 L
+22 -
+27 RJAI
+13 LD
+23 RDJ
+28 -
+6 LA
+17 RAN
+12 LJ
+22 LN
+24 LU
+1 R
+29 LA
+30 RDA
+17 RJN
+7 RJ
+26 L
+6 JN
+13 LD
+23 -
+11 RI
+17 RUO
+16 -
+26 LUA
+4 RA
+6 L
+972 -
