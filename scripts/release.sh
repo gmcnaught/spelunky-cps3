@@ -15,6 +15,8 @@ sed "s/^#define PIN_MAX [0-9][0-9]*\$/#define PIN_MAX 1792/" "$G/play.h" > "$G/p
 grep -q "^#define PIN_MAX 1792\$" "$G/play.h"
 scripts/unity.sh "$G"
 touch "$G/stamp"
-scripts/dmake.sh $T OUT=build/release PLAY=1 mister
+# the build's commit in the game capture's header (docs/ARCADE.md section 7): HEAD, and whether the tree differs
+REV=$(git rev-parse --short=8 HEAD); DIRTY=0; git diff --quiet HEAD -- src tests/game build/gen || DIRTY=1
+scripts/dmake.sh $T OUT=build/release PLAY=1 REV=$REV DIRTY=$DIRTY mister
 cp "$T"/build/release/mister/* "$R/"
 ls -l "$R"

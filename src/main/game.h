@@ -37,6 +37,41 @@ extern int32_t game_steps;       /* route steps used */
 extern uint8_t game_over;        /* the route ended, or the play loop left the rooms it models */
 extern int32_t game_end_room;    /* the room the game left for (R_rHighscores: the attract cycle starts there), -1 */
 
+/* The capture of the last cabinet game (docs/ARCADE.md section 7): everything a host replay needs from game_begin
+   (tests/game/host.c HOST_REPLAY, scripts/replay.sh). Written by game_begin / game_step for cabinet games only
+   (game_cfg.route NULL); nothing in play reads it. The SH-2 builds keep it in sprite RAM outside the areas main_boot
+   clears (CAPTURE_SECTION, tests/game/sprbss.ld), so it survives the settings screen's restart; the next game_begin
+   replaces it. The settings screen's GAME CAPTURE shows it (src/shell, game_capture_size / game_capture_byte).
+   Blob (big-endian): the CAP_HDR words, ent[0 .. nent), chk[0 .. nchk) (16 bits each), CRC-32 of the bytes before.
+   ent: a run of steps with the same controls: bits 0-9 struct shell_input down's bits 0-9, bit 10 KEY_PAY, bits
+   11-15 the run's steps - 1 (1..32). chk: every CAP_CHK_EVERY steps a 16-bit hash of the play state (capture_hash:
+   the RNG, the player's position, life, money, room, view, instance count). */
+#define CAP_MAGIC     0x53504b43u      /* "SPKC" */
+#define CAP_VERSION   1u
+#define CAP_ENT_MAX   7168
+#define CAP_CHK_MAX   1024
+#define CAP_CHK_EVERY 64
+enum {                                 /* header words */
+    CAP_W_MAGIC, CAP_W_VERSION, CAP_W_FLAGS, CAP_W_REV, CAP_W_SEED, CAP_W_STEPS, CAP_W_NENT, CAP_W_NCHK,
+    CAP_W_LEVEL, CAP_W_PLIFE, CAP_W_MONEY, CAP_W_ROOM, CAP_W_DEAD, CAP_W_END_ROOM, CAP_HDR
+};
+#define CAP_F_TOGGLE_RUN 0x01u         /* settings RUN BUTTON TOGGLE (play_toggle_run_on) */
+#define CAP_F_SMOOTH     0x02u         /* SMOOTH MOTION (drawing only) */
+#define CAP_F_GOD        0x04u         /* INVINCIBLE (dev builds) */
+#define CAP_F_DEV        0x08u         /* a SHELL_DEV build */
+#define CAP_F_OVER       0x10u         /* the game ended (game_step returned nonzero) */
+#define CAP_F_TRUNC      0x20u         /* ent or chk full: steps after CAP_W_STEPS are not recorded */
+#define CAP_F_LOSSY      0x40u         /* controls outside bits 0-9 and KEY_PAY were held (not recorded) */
+#define CAP_F_DIRTY      0x80u         /* the build's tree differed from CAP_W_REV's commit */
+struct capture {
+    uint32_t h[CAP_HDR];
+    uint16_t ent[CAP_ENT_MAX];
+    uint16_t chk[CAP_CHK_MAX];
+};
+extern struct capture capture;
+uint16_t capture_hash(void);
+void game_probe(uint32_t *o);           /* tests: 6 words of play state (game.c) */
+
 /* platform hooks (weak defaults in main.c; tests/game overrides them) */
 void main_inputs(uint32_t *pad0, uint32_t *pad1, uint32_t *lines);   /* the frame's pads and system lines */
 void main_frame_done(void);      /* after each frame's VBlank work (list sent) */

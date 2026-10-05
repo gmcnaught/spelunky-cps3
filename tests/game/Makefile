@@ -15,6 +15,10 @@ TITLE  := $(if $(filter 1,$(PLAY)),Spelunky Classic Arcade,Spelunky CPS3)$(if $(
 ROOT   := ../..
 GEN    := $(ROOT)/build/gen
 OPT    ?= -O2
+# REV: the build's commit, 8 hex digits (scripts/release.sh passes it: the container has no repository), DIRTY=1:
+# the tree differed from it. Both go into the game capture's header (src/main game.h)
+REV    ?= 0
+DIRTY  ?= 0
 ROUTE  ?= p4_exit559
 SEED   ?= 559
 SNAPS  ?=
@@ -32,7 +36,7 @@ CFLAGS := $(OPT) -std=gnu99 -fno-bit-tests -Wno-unused-parameter -Wno-sign-compa
           -Ibuild/g -Ibuild -I. -I$(GEN) -I$(ROOT)/src/draw -I$(ROOT)/src/main -I$(ROOT)/src/hud -I$(ROOT)/src/shell \
           -I$(ROOT)/src/snd -I$(ROOT)/src/front -DSOFTFP_ASM -fdata-sections -Wl,-T,sprbss.ld -Wl,-T,../ramcheck.ld \
           '-DDRAW_MAPS_SECTION=__attribute__((section(".bss.drawmaps")))' \
-          '-DDRAW_CACHE_SECTION=__attribute__((section(".bss.drawcache")))' $(if $(filter 1,$(DPROF)),-DDRAW_PROFILE) $(if $(filter 0,$(HUD)),-DGAME_NOHUD) $(if $(DARK),-DGAME_DARK=$(DARK)) $(if $(ATTRACT),-DGAME_ATTRACT=$(ATTRACT)) $(if $(HOLD),-DGAME_HOLD=$(HOLD)) $(if $(filter 1,$(PLAY)),-DGAME_PLAY) $(if $(filter 1,$(SMOOTH)),-DGAME_SMOOTH) $(if $(filter 1,$(DEV)),-DSHELL_DEV)
+          '-DDRAW_CACHE_SECTION=__attribute__((section(".bss.drawcache")))' '-DCAPTURE_SECTION=__attribute__((section(".bss.capture")))' -DCAPTURE_REV=0x$(REV)u -DCAPTURE_DIRTY=$(DIRTY) $(if $(filter 1,$(DPROF)),-DDRAW_PROFILE) $(if $(filter 0,$(HUD)),-DGAME_NOHUD) $(if $(DARK),-DGAME_DARK=$(DARK)) $(if $(ATTRACT),-DGAME_ATTRACT=$(ATTRACT)) $(if $(HOLD),-DGAME_HOLD=$(HOLD)) $(if $(filter 1,$(PLAY)),-DGAME_PLAY) $(if $(filter 1,$(SMOOTH)),-DGAME_SMOOTH) $(if $(filter 1,$(DEV)),-DSHELL_DEV)
 FLASH  := build/flash.bin
 include ../../../cps3-testgame/sdk/sdk.mk
 
