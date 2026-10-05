@@ -1,0 +1,57 @@
+# The game as a MiSTer jtcps3 set (scripts/release.sh): spelunky.zip + "Spelunky Classic Arcade.mra", from the
+# committed build/gen and build/snd (no refs/). Every push and pull request uploads them as a workflow artifact; a
+# v* tag also creates a GitHub release with them attached:
+#   git tag v0.1 && git push origin v0.1
+# The SH-2 toolchain is ../cps3-testgame/docker (cps3-dev, GCC 13.3 built from source: about 20 min the first time,
+# then from the Actions cache). scripts/dmake.sh needs cps3-testgame beside this repo, as locally.
+name: build
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+env:
+  CPS3_TESTGAME_REF: b78e1ec1ae7aeb8a8cc68eac29a1c7ac076faccd   # gmcnaught/cps3-testgame: the SDK, mkcps3.py, mkmra3.py
+
+jobs:
+  game:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write   # gh release create (tags)
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          path: spelunky-cps3
+      - uses: actions/checkout@v5
+        with:
+          repository: gmcnaught/cps3-testgame
+          ref: ${{ env.CPS3_TESTGAME_REF }}
+          path: cps3-testgame
+      - uses: docker/setup-buildx-action@v3
+      - name: cps3-dev image
+        uses: docker/build-push-action@v6
+        with:
+          context: cps3-testgame/docker
+          tags: cps3-dev:latest
+          load: true
+          cache-from: type=gha,scope=cps3-dev
+          cache-to: type=gha,mode=max,scope=cps3-dev
+      - name: Build
+        run: spelunky-cps3/scripts/release.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: spelunky-${{ github.sha }}
+          path: spelunky-cps3/build/release/
+          if-no-files-found: error
+      - name: Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        working-directory: spelunky-cps3/build/release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --title "$GITHUB_REF_NAME" --generate-notes \
+            --notes "MiSTer (jtcps3 core): spelunky.zip in games/mame/, the .mra in _Arcade/ (GitHub names it Spelunky.Classic.Arcade.mra; rename it to Spelunky Classic Arcade.mra for the menu). jtcps3 also needs your jtbeta.zip." \
+            spelunky.zip "Spelunky Classic Arcade.mra"

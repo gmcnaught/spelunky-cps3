@@ -7,6 +7,7 @@
 #   make check-mame      SH-2 gates in MAME (Docker): playsh2, softfp, shell, sndrules, sound, hud, view, zoom
 #   make game-check      scripts/game_check.sh on ROUTE/SEED/TRACE/RECS (defaults below)
 #   make game | mister   tests/game set for MAME / MiSTer (needs tests/game/build/g from a game-check)
+#   make release         scripts/release.sh: the playable MiSTer set in build/release (committed build/gen, no refs/)
 #   make images          the Docker images (cps3-dev, spelunky-mame, spelunky-hd-runner)
 
 PY      ?= python3
@@ -98,6 +99,10 @@ game: gen
 mister: gen
 	$(DMAKE) tests/game ROUTE=$(ROUTE) SEED=$(SEED) SNAPS=$(SNAPS) mister
 
+# no gen prerequisite: the release builds from the committed build/gen and build/snd
+release:
+	scripts/release.sh
+
 # ---- gates ----
 check: host constcheck regress equiv snd
 
@@ -134,5 +139,5 @@ clean:
 distclean: clean
 	rm -rf $(GEN) $(SND)
 
-.PHONY: all gen refs-check host sh2 constcheck game mister check regress equiv snd game-check check-mame \
+.PHONY: all gen refs-check host sh2 constcheck game mister release check regress equiv snd game-check check-mame \
         $(MAME_GATES) images clean distclean
