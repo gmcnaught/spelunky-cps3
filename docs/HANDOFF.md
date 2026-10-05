@@ -1,3 +1,16 @@
+# Handoff
+
+## 2026-10-05: next is the game loop
+
+Main is 2239a8e (smooth motion and VBlank pacing, docs/DRAW.md section 7). Next work: **docs/GAMELOOP.md** (death ->
+scores -> rHighscores, the ending, the lake roll blocker after level 4). Of the 2026-10-04 items below:
+- section 1 (ramcheck) is done on main (docs/DRAW.md section 6);
+- perf3 is paused after batch 22 (docs/PERF3.md);
+- the pk-lake branch (section 2) is **not merged**, and its lake roll is GAMELOOP item 1;
+- section 3: darkness is not on main (`PLEV.darkness` is never set); the cimg fix was not checked.
+
+MiSTer: .81 has the playable build (the user plays there).
+
 # Handoff, 2026-10-04 16:45
 
 Main is e264467. The grid build ships (PLAN §1). Gates:
