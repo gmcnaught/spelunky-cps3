@@ -50,7 +50,7 @@ static int isCollisionSolid(int i)
 {
     double lb, tb, rb, bb;
     calcBounds(i, &lb, &tb, &rb, &bb);
-    return collision_rect_p(lb, tb, rb - 1, bb - 1, OBJ_oSolid, 1, i) != NOONE;
+    return collision_rect_any(lb, tb, rb - 1, bb - 1, OBJ_oSolid, 1, i);
 }
 
 static void make_active(struct pin *p) { PE(p)->xVel = PE(p)->yVel = PE(p)->xAcc = PE(p)->yAcc = 0; }

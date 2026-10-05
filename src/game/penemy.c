@@ -56,7 +56,7 @@ static int isCollisionSolid(int i)
 {
     double lb, tb, rb, bb;
     calcBounds(i, &lb, &tb, &rb, &bb);
-    return collision_rect_p(lb, tb, rb - 1, bb - 1, OBJ_oSolid, 1, i) != NOONE;
+    return collision_rect_any(lb, tb, rb - 1, bb - 1, OBJ_oSolid, 1, i);
 }
 
 static int pl(void) { return PL.idx; }
@@ -987,8 +987,8 @@ static void boulder_step(int i)
         if (NLT(NABS(PE(p)->xVel), N(0.5))) PE(p)->xVel = 0;
     }
     if (!CP(X(i), Y(i) + 16, OBJ_oSolid)) {
-        PE(p)->colLeft = collision_rect_p(X(i) - 16, Y(i) - 16, X(i) - 8, Y(i) + 16, OBJ_oSolid, 0, i) != NOONE;
-        PE(p)->colRight = collision_rect_p(X(i) + 8, Y(i) - 16, X(i) + 16, Y(i) + 16, OBJ_oSolid, 0, i) != NOONE;
+        PE(p)->colLeft = collision_rect_any(X(i) - 16, Y(i) - 16, X(i) - 8, Y(i) + 16, OBJ_oSolid, 0, i);
+        PE(p)->colRight = collision_rect_any(X(i) + 8, Y(i) - 16, X(i) + 16, Y(i) + 16, OBJ_oSolid, 0, i);
         if (PE(p)->colLeft && !PE(p)->colRight) pin_setx(p, p->x + (PI(1)));
         else if (PE(p)->colRight && !PE(p)->colLeft) pin_setx(p, p->x - (PI(1)));
     }

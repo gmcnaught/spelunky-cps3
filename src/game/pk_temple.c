@@ -482,7 +482,7 @@ static int isCollisionSolid(int i)
 {
     double lb, tb, rb, bb;
     calcBounds(i, &lb, &tb, &rb, &bb);
-    return collision_rect_p(lb, tb, rb - 1, bb - 1, OBJ_oSolid, 1, i) != NOONE;
+    return collision_rect_any(lb, tb, rb - 1, bb - 1, OBJ_oSolid, 1, i);
 }
 
 /* objects/oMagmaMan/Step_0.gml (no inherited Step) */
@@ -1525,7 +1525,7 @@ static void yellowball_step(int i)
     struct pin *p = &PX(i);
     pin_setx(p, PADDV(p->x, PE(p)->xVel));
     pin_sety(p, PADDV(p->y, PE(p)->yVel));
-    if (collision_rect_p(X(i) - 8, Y(i) - 8, X(i) + 8, Y(i) + 8, OBJ_oSolid, 0, NOONE) != NOONE &&
+    if (collision_rect_any(X(i) - 8, Y(i) - 8, X(i) + 8, Y(i) + 8, OBJ_oSolid, 0, NOONE) &&
         collision_rect_p(X(i) - 8, Y(i) - 8, X(i) + 8, Y(i) + 8, OBJ_oOlmec, 0, NOONE) == NOONE) {
         int n, obj = -1;
         pin_setx(p, PSUBV(p->x, PE(p)->xVel));

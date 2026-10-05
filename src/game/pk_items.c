@@ -138,7 +138,7 @@ static void use_teleporter(int i)
         }
     }
     n = 0;
-    while (collision_rect_p(tele_tx - 4, tele_ty - 4, tele_tx + 4, tele_ty + 4, OBJ_oSolid, 0, NOONE) != NOONE &&
+    while (collision_rect_any(tele_tx - 4, tele_ty - 4, tele_tx + 4, tele_ty + 4, OBJ_oSolid, 0, NOONE) &&
            n < 3 && tele_ty > 16) {
         tele_ty -= 16;
         n += 1;

@@ -1827,15 +1827,15 @@ static inline __attribute__((always_inline)) int line_any(int32_t x1, int32_t y1
    that meets it and is not precise is a hit; no block meeting it and no other oSolid-family entry reaching those
    cells (gother: a superset of the cells an entry's box meets) is a miss; otherwise collision_rect_i's search. The
    host builds compare every summary answer with the search */
-int solid_rect_any(int32_t l, int32_t t, int32_t r, int32_t b, int notme_self)
+static int rect_any_i(int32_t l, int32_t t, int32_t r, int32_t b, int prec, int notme_self)
 {
     int q = pcol_query(OBJ_oSolid), sure = 1, x, y, k;
     int x0, xe, y0, ye;
     PWST(rect, 1);
     if (q < 0) return 0;
-    if (q != 1 || l > r || t > b) return collision_rect_i(l, t, r, b, OBJ_oSolid, 1, notme_self) != NOONE;
+    if (q != 1 || l > r || t > b) return collision_rect_i(l, t, r, b, OBJ_oSolid, prec, notme_self) != NOONE;
     grid_flush();
-    if (gfar) return collision_rect_i(l, t, r, b, OBJ_oSolid, 1, notme_self) != NOONE;
+    if (gfar) return collision_rect_i(l, t, r, b, OBJ_oSolid, prec, notme_self) != NOONE;
     x0 = clampi(l >> 4, 0, GRID_W - 1); xe = clampi(r >> 4, 0, GRID_W - 1);
     y0 = clampi(t >> 4, 0, GRID_H - 1); ye = clampi(b >> 4, 0, GRID_H - 1);
     for (y = y0; y <= ye; y++)
@@ -1850,9 +1850,9 @@ int solid_rect_any(int32_t l, int32_t t, int32_t r, int32_t b, int notme_self)
                 if (n > 1) sure = 0;                      /* k is a miss; another block may not be */
                 continue;
             }
-            if (!precise(k)) {
+            if (!prec || !precise(k)) {
 #ifdef PLAY_STATS
-                if (collision_rect_i(l, t, r, b, OBJ_oSolid, 1, notme_self) == NOONE) {
+                if (collision_rect_i(l, t, r, b, OBJ_oSolid, prec, notme_self) == NOONE) {
                     fprintf(stderr, "solid_rect_any: summary hit, search none (%d %d %d %d)\n", (int)l, (int)t, (int)r, (int)b);
                     abort();
                 }
@@ -1862,13 +1862,28 @@ int solid_rect_any(int32_t l, int32_t t, int32_t r, int32_t b, int notme_self)
             sure = 0;
         }
 #ifdef PLAY_STATS
-    if (sure && collision_rect_i(l, t, r, b, OBJ_oSolid, 1, notme_self) != NOONE) {
+    if (sure && collision_rect_i(l, t, r, b, OBJ_oSolid, prec, notme_self) != NOONE) {
         fprintf(stderr, "solid_rect_any: summary miss, search hit (%d %d %d %d)\n", (int)l, (int)t, (int)r, (int)b);
         abort();
     }
 #endif
     if (sure) return 0;
-    return collision_rect_i(l, t, r, b, OBJ_oSolid, 1, notme_self) != NOONE;
+    return collision_rect_i(l, t, r, b, OBJ_oSolid, prec, notme_self) != NOONE;
+}
+
+int solid_rect_any(int32_t l, int32_t t, int32_t r, int32_t b, int notme_self)
+{
+    return rect_any_i(l, t, r, b, 1, notme_self);
+}
+
+/* collision_rectangle(x1, y1, x2, y2, obj, prec, notme) != noone: whole corners of an oSolid query by rect_any_i (the
+   corners rq_init would take as ints: dwhole), else collision_rect_p */
+int collision_rect_any(double x1, double y1, double x2, double y2, int obj, int prec, int notme_self)
+{
+    int32_t a, b, c, d;
+    if (obj == OBJ_oSolid && dwhole(x1, &a) && dwhole(y1, &b) && dwhole(x2, &c) && dwhole(y2, &d))
+        return rect_any_i(a < c ? a : c, b < d ? b : d, a < c ? c : a, b < d ? d : b, prec, notme_self);
+    return collision_rect_p(x1, y1, x2, y2, obj, prec, notme_self) != NOONE;
 }
 
 /* collision_line(x, y1, x, y2, oSolid, 1, notme) != noone and collision_line(x1, y, x2, y, ...): isCollisionLeft /

@@ -1316,14 +1316,14 @@ void pl_step(int i)
                 if (p->x < o->x) {
                     if (!collision_point_any(px1 + 8, py1, OBJ_oSolid, 0, NOONE)) {
                         double ox = PTOD(o->x), oy = PTOD(o->y);
-                        if (collision_rect_p(ox - 8, oy, ox - 7, oy + 16, OBJ_oSolid, 0, NOONE) == NOONE) pin_setx(o, o->x - (PI(8)));
-                        else if (collision_rect_p(ox + 7, oy, ox + 8, oy + 16, OBJ_oSolid, 0, NOONE) == NOONE) pin_setx(o, o->x + (PI(8)));
+                        if (!collision_rect_any(ox - 8, oy, ox - 7, oy + 16, OBJ_oSolid, 0, NOONE)) pin_setx(o, o->x - (PI(8)));
+                        else if (!collision_rect_any(ox + 7, oy, ox + 8, oy + 16, OBJ_oSolid, 0, NOONE)) pin_setx(o, o->x + (PI(8)));
                         else t = 0;
                     } else t = 0;
                 } else if (!collision_point_any(px1 - 8, py1, OBJ_oSolid, 0, NOONE)) {
                     double ox = PTOD(o->x), oy = PTOD(o->y);
-                    if (collision_rect_p(ox + 7, oy, ox + 8, oy + 16, OBJ_oSolid, 0, NOONE) == NOONE) pin_setx(o, o->x + (PI(8)));
-                    else if (collision_rect_p(ox - 8, oy, ox - 7, oy + 16, OBJ_oSolid, 0, NOONE) == NOONE) pin_setx(o, o->x - (PI(8)));
+                    if (!collision_rect_any(ox + 7, oy, ox + 8, oy + 16, OBJ_oSolid, 0, NOONE)) pin_setx(o, o->x + (PI(8)));
+                    else if (!collision_rect_any(ox - 8, oy, ox - 7, oy + 16, OBJ_oSolid, 0, NOONE)) pin_setx(o, o->x - (PI(8)));
                     else t = 0;
                 } else t = 0;
                 if (!t)
@@ -1812,12 +1812,12 @@ void scrUseItem(void)
                     ox = PTOD(r->x);
                     oy = PTOD(r->y);
                     if (p->x < r->x && !collision_point_any(PTOD(p->x) + 2, PTOD(p->y), OBJ_oSolid, 0, NOONE)) {
-                        if (collision_rect_p(ox - 8, oy, ox - 7, oy + 16, OBJ_oSolid, 0, NOONE) == NOONE) pin_setx(r, r->x - (PI(8)));
-                        else if (collision_rect_p(ox + 7, oy, ox + 8, oy + 16, OBJ_oSolid, 0, NOONE) == NOONE) pin_setx(r, r->x + (PI(8)));
+                        if (!collision_rect_any(ox - 8, oy, ox - 7, oy + 16, OBJ_oSolid, 0, NOONE)) pin_setx(r, r->x - (PI(8)));
+                        else if (!collision_rect_any(ox + 7, oy, ox + 8, oy + 16, OBJ_oSolid, 0, NOONE)) pin_setx(r, r->x + (PI(8)));
                         else t = 0;
                     } else if (!collision_point_any(PTOD(p->x) - 2, PTOD(p->y), OBJ_oSolid, 0, NOONE)) {
-                        if (collision_rect_p(ox + 7, oy, ox + 8, oy + 16, OBJ_oSolid, 0, NOONE) == NOONE) pin_setx(r, r->x + (PI(8)));
-                        else if (collision_rect_p(ox - 8, oy, ox - 7, oy + 16, OBJ_oSolid, 0, NOONE) == NOONE) pin_setx(r, r->x - (PI(8)));
+                        if (!collision_rect_any(ox + 7, oy, ox + 8, oy + 16, OBJ_oSolid, 0, NOONE)) pin_setx(r, r->x + (PI(8)));
+                        else if (!collision_rect_any(ox - 8, oy, ox - 7, oy + 16, OBJ_oSolid, 0, NOONE)) pin_setx(r, r->x - (PI(8)));
                         else t = 0;
                     }
                     if (!t) {
