@@ -199,6 +199,7 @@ static uint8_t *slurp(const char *dir, const char *name)
     return b;
 }
 
+static int cabinet, cab_step;
 static int game2_on;                             /* HOST_GAME2: 1 the first game, 2 the second */
 static int32_t hlast = -1;
 
@@ -293,7 +294,9 @@ int main(int argc, char **argv)
     game_cfg.enemies = atoi(argv[5]);
     game_cfg.tail = atoi(argv[6]);
     game_cfg.scores = getenv("HOST_SCORES") != 0;   /* the route stores its scores (scrUpdateHighscores) */
-    game2_on = getenv("HOST_GAME2") != 0;
+    game2_on = getenv("HOST_GAME2") && atoi(getenv("HOST_GAME2"));
+    if ((cabinet = getenv("HOST_CABINET") != 0)) game_cfg.route = 0;   /* HOST_CABINET: the route's keys as the
+                                                                          cabinet's controls (src/main's own paths) */
     hs_boot(&SH.hs, &SH.st, &SH.g);               /* a blank EEPROM: HD's first start */
     draw_boot();
     snd_init(15, 15);
@@ -301,7 +304,9 @@ int main(int argc, char **argv)
 again:
     for (;;) {
         struct shell_input in = { 0, 0, 0 };
-        int over = game_step(&in);
+        int over;
+        if (cabinet) in.down = cab_step < n ? masks[cab_step] : 0, cab_step++;
+        over = game_step(&in);
         cps3v_begin();
         game_draw();
         cps3v_end();
