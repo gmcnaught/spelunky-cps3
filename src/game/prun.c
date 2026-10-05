@@ -363,6 +363,13 @@ void play_level_start(int32_t next_id)
     play_rooms_entered++;
     PW.room_new = 1;
     pcol_load_done();
+    /* the solid grid's first build (every loaded oSolid-family entry: grid_flush_run, bbkind_set) here instead of at
+       the first play_step's first query (about 0.6 M jtcps3 clocks there on p5_l4). The grid's answers do not depend
+       on when its pending updates are applied: grid_point keeps the oldest hit (PIN_OLDER), the line scans and the
+       cell summary test for any hit (the summary's representative block only decides when the scan runs), and an
+       entry that changes before the first query is marked again and re-put then. pw_rest_clock values move earlier;
+       rest records compare only clocks taken after them */
+    pw_grid_sync();
 }
 
 /* scripts/startMusic for a level (global.music: snd_music_on; global.musicVol 15, scrInit's): the room is a level here,
