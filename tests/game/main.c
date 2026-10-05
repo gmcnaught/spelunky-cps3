@@ -7,7 +7,8 @@
  *   +20 draws, +24 draw clocks last, +28 max, +32 sum (low), +36 sum (high)
  *   +40 vblank clocks last, +44 max, +48 entries last, +52 entries max, +56 sprites, +60 cells
  *   +64 unsup, +68 todo, +72 noart, +76 dropped, +80 route steps, +84 view x, +88 view y, +92 room
- *   +96 records, +100 snapshot index, +104..+120 DRAW_PROFILE: FRC ticks (x 32 clocks) of the draw's parts
+ *   +96 records, +100 snapshot index, +104..+120 DRAW_PROFILE: FRC ticks (x 32 clocks) of the draw's parts,
+ *   +124..+144 game_probe (src/main game.c) after the drawn step
  * The cabinet's coin and Start are simulated (frames 20 and 40): the game starts through the shell. CPU clocks from
  * the FRC at phi / 32 (32 clocks a tick, 2.1 M clocks before it wraps; a draw is far below that). */
 #include "cps3.h"
@@ -26,6 +27,7 @@ struct marker {
     uint32_t unsup, todo, noart, dropped, steps;
     int32_t vx, vy, room, recs, snap;
     uint32_t prof[5];
+    uint32_t probe[6];                            /* +124: game_probe after the draw's step (scripts/lua/capture.lua) */
 };
 static volatile struct marker M __attribute__((section(".trace"), used));
 
@@ -127,6 +129,11 @@ void main_draw_end(void)
     M.room = PW.room;
     M.recs = game_rec;
     for (int k = 0; k < 5; k++) M.prof[k] = draw_st.prof[k] * 32;
+    {
+        uint32_t o[6];
+        game_probe(o);
+        for (int k = 0; k < 6; k++) M.probe[k] = o[k];
+    }
     pend_rec = game_rec1;
     pend_draw = 1;
 }
