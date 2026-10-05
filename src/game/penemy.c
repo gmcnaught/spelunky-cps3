@@ -1061,6 +1061,24 @@ int pen_step(int i)
 }
 
 /* ---- built-in motion (GameMaker: after the Step events, x += hspeed, y += vspeed) ------------------------ */
+#if !defined(PLAY_FIXED) && !defined(NUM_IS_CLASS)
+/* a sight's motion (pen_sight_speed's +-10 and a |vspeed| < 2^-47) without the double sums, for 1 <= |x|, |y| < 2^20:
+   x + 10 is exact in binary64 (x a float there: at most 44 significant bits), so (float)((double)x +- 10) is the
+   float sum x +- 10.0f (one rounding of the exact sum); (double)y + vspeed is within 2^-31 of y, under half a float
+   ulp of y (>= 2^-25), so P() gives y back and pin_sety would change nothing. tests/sightmv checks both over every
+   float in the range */
+static int sight_fast(const struct pin *p)
+{
+    union { double d; uint64_t u; } h, v;
+    union { float f; uint32_t u; } x, y;
+    uint32_t ex, ey;
+    h.d = PEN(p)->hspeed; v.d = PEN(p)->vspeed; x.f = p->x; y.f = p->y;
+    ex = (x.u >> 23) & 0xff; ey = (y.u >> 23) & 0xff;
+    return (h.u == 0x4024000000000000ull || h.u == 0xc024000000000000ull) &&
+           (v.u & 0x7fffffffffffffffull) < 0x3d00000000000000ull && ex >= 127 && ex < 147 && ey >= 127 && ey < 147;
+}
+#endif
+
 void pen_motion(void)
 {
     int k;
@@ -1068,6 +1086,12 @@ void pen_motion(void)
     for (k = pw_ohead[OBJ_oEnemySight]; k >= 0; k = pw_inext[k]) {
         struct pin *p = &PW.in[k];
         if (!p->alive || (dzero(PEN(p)->hspeed) && dzero(PEN(p)->vspeed))) continue;
+#if !defined(PLAY_FIXED) && !defined(NUM_IS_CLASS)
+        if (sight_fast(p)) {                                                   /* the same floats (sight_fast) */
+            pin_setx(p, p->x + (PEN(p)->hspeed > 0 ? 10.0f : -10.0f));
+            continue;
+        }
+#endif
         pin_setx(p, P(PTOD(p->x) + PEN(p)->hspeed));
         pin_sety(p, P(PTOD(p->y) + PEN(p)->vspeed));
     }
