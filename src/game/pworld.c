@@ -1686,10 +1686,46 @@ int (collision_point_p)(double px, double py, int obj, int prec, int notme_self)
    scan (pcol_touch_stale), which the grid build's searches do not depend on (pobj.c PLAY_REST). The host builds
    compare every summary answer */
 
+#ifndef PCOL_EXACT
+/* some instance of static family obj (xf_of) but notme holds the whole point q: point_hit over the family's object
+   lists (fpre's preorder, subtrees with olive 0 skipped), in any order and without the touches */
+static int xpoint_any(int obj, int notme, const struct pq *q, int prec)
+{
+    int j, k;
+    for (j = fpos[obj]; j < fend[obj];) {
+        int o = fpre[j];
+        if (olive[o] == 0) { j = fend[o]; continue; }
+        j++;
+        for (k = pw_ohead[o]; k >= 0; k = pw_inext[k])
+            if (k != notme && point_hit(k, q, prec)) return 1;
+    }
+    return 0;
+}
+#endif
+
 int (collision_point_any)(double px, double py, int obj, int prec, int notme_self)
 {
 #ifndef PCOL_EXACT
     struct pq q;
+    /* a static family (liquids, ladders, spikes, webs): the index's miss as collision_point_p's, else whether any
+       instance is hit (xpoint_any). collision_point_p returns the oldest instance hit and touches (pcol_touch) the
+       ones before it in creation order: whether one is hit does not depend on the order, and the touches only update
+       stale collision entries, which the grid build's searches do not depend on (as the oSolid summary below; with
+       pcol_quiet 0 every instance is synced). The host builds compare every answer with collision_point_p */
+    if (obj >= 0 && obj != OBJ_oSolid && xf_of[obj] >= 0 && !pcol_quiet()) {
+        int r;
+        if (fam_none(obj)) return 0;
+        pq_init(&q, px, py);
+        if (xpoint_none(xf_of[obj], &q)) r = 0;
+        else r = xpoint_any(obj, notme_self, &q, prec);
+#ifdef PLAY_STATS
+        if (r != (collision_point_p(px, py, obj, prec, notme_self) != NOONE)) {
+            fprintf(stderr, "collision_point_any: static family %d answer %d differs (%.17g %.17g)\n", obj, r, px, py);
+            abort();
+        }
+#endif
+        return r;
+    }
     if (obj == OBJ_oSolid && !gfar && !pcol_quiet()) {
         int cx, cy, n, k, r = -1;
         if (fam_none(obj)) return 0;
