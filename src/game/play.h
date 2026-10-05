@@ -429,7 +429,13 @@ int play_step(uint16_t keys, void (*record_cb)(int phase));
 extern int play_untranslated;                     /* set when GML that is not translated is reached */
 extern int play_untr_obj;                         /* the object of the instance whose event reached it (-1) */
 extern int play_cur_obj;                          /* the object whose event runs (prun.c dispatch) */
+#ifdef PLAY_UNTR_LOG    /* test/host/untrsurvey.c: every PUNTR reached, with its C site */
+void play_untr_log(int code, const char *file, int line);
+#define PUNTR(code) do { play_untr_log((code), __FILE__, __LINE__); \
+    if (!play_untranslated) { play_untranslated = (code); play_untr_obj = play_cur_obj; } } while (0)
+#else
 #define PUNTR(code) do { if (!play_untranslated) { play_untranslated = (code); play_untr_obj = play_cur_obj; } } while (0)
+#endif
 extern uint32_t play_time;                        /* oGame.time */
 extern int32_t play_rooms_entered;
 extern uint8_t play_toggle_run_on, play_toggle_run;   /* global.toggleRunEnabled / toggleRun (X10; game.c) */
