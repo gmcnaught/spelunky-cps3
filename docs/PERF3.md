@@ -340,8 +340,16 @@ Load-use stall (from spelunky-cps3-a6, low priority): jtcps3 stalls 1 cycle on a
   (p4_push_rope) 1 of 375 over (pair 1, the level's first steps), step mean 376.5 K.
 - Batch 18 (merged a50573a): collision_rect_any (989b93c: the rectangle tests; route means about -1 %).
   On jtcps3, batch 16 (sight): JT PASS 23/23, caveman 545.1 K (as batch 15), l4 450.5 K.
-- Batch 19 (perf3-b2): isCollisionSolid's whole path by solid_rect_any (a6, e3e27e3: caveman 178 619.0 -> 618.7 K),
-  pen_motion's sight step without the double sums (a6, ee44e84: p5_l4 151 -0.65 %; tests/sightmv 2.3 G cases).
+  On jtcps3, batch 18: JT PASS 23/23, route mean of means 400.7 K, caveman 511.8 K; frame budget game 2 0 of 241
+  over, pair max 731.3 K.
+- Batch 19 (merged b6faebf, gated on e68ee6a): isCollisionSolid's whole path by solid_rect_any (a6, e3e27e3: caveman
+  178 619.0 -> 618.7 K), pen_motion's sight step without the double sums (a6, ee44e84: p5_l4 151 -0.65 %;
+  tests/sightmv 2.3 G cases). On jtcps3: JT PASS 23/23, route mean of means **397.4 K**, caveman 509.0 K; frame
+  budget game 2 0 of 241 over, pair max 727.5 K, step mean 415.7 K.
+- Batch 20 (merged 7f5e32e): precise_line along an axis-parallel line (a6, 5c8b530: p5_idol 252, the boulder, 1,205.6
+  -> 1,107.0 K), pcinst_of's 2-entry cache (a6, 4fd8eeb: idol 252 -> 1,061.2 K; MAME max step 321.3 -> 262.1 K), the
+  liquid index (7f5e32e: oLava / oWater / oWaterSwim point misses from per-cell counts; p5_reg_l14s16's MAME SOFTFP
+  step mean 269.6 -> 172.1 K, steps over at x4.2 215 -> 49; the other routes +0.15 to +0.34 %).
 - Measured and not kept (a6): PERF3 3.2's hot / cold split of characterStepEvent (4 cold helpers): caveman 178
   +0.01 %, snakes 203 +0.04 %, exit559 301 -0.6 % (its misses are code that runs every step).
 - Measured and not kept (a6): a pw_onz bitmap of non-empty object lists for snapshot / the alarm pass: +0.3 / +0.8 %
