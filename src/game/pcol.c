@@ -1658,7 +1658,7 @@ static int can_pair(int s)
 {
     int os = PW.in[s].obj, k, n;
     const struct pobj *q = &pobj[os];
-    if (rv_ok != 1) return 1;
+    if (rv_ok != 1 || q->ncol + rv_off[os + 1] - rv_off[os] > 8) return 1;   /* long lists (oPlayer1's 42): search */
     for (k = 0; k < q->ncol; k++) if (ocnt[pcol[q->col0 + k]]) return 1;
     for (k = rv_off[os], n = rv_off[os + 1]; k < n; k++) if (ocnt[rv_obj[k]]) return 1;
     return 0;
