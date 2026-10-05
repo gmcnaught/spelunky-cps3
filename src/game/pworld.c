@@ -1657,6 +1657,47 @@ int (collision_point_any)(double px, double py, int obj, int prec, int notme_sel
     return collision_point_p(px, py, obj, prec, notme_self) != NOONE;
 }
 
+/* collision_rectangle(x + l, y + t, x + r, y + b, obj, 0, noone) != noone and collision_point(x + dx, y + dy, obj, 0,
+   noone) != noone at instance i's x, y (|l|, ... <= 16): with x, y whole and |x|, |y| < 29900 the corners are whole
+   doubles within dwhole's range, which rq_init / pq_init take as these ints (collision_rect_i's query; the point's
+   cell for the static-family index), without the double sums; otherwise collision_rect_any / collision_point_any on
+   the doubles */
+static int xy_int_near(int i, int32_t *x, int32_t *y)
+{
+    return pin_xy_int(i, x, y) && *x > -29900 && *x < 29900 && *y > -29900 && *y < 29900;
+}
+
+int (collision_rect_any_at)(int i, int32_t l, int32_t t, int32_t r, int32_t b, int obj)
+{
+    int32_t x, y;
+    if (xy_int_near(i, &x, &y)) return collision_rect_i(x + l, y + t, x + r, y + b, obj, 0, NOONE) != NOONE;
+    return (collision_rect_any)(PTOD(PW.in[i].x) + l, PTOD(PW.in[i].y) + t, PTOD(PW.in[i].x) + r, PTOD(PW.in[i].y) + b,
+                                obj, 0, NOONE);
+}
+
+int (collision_point_any_at)(int i, int32_t dx, int32_t dy, int obj)
+{
+#ifndef PCOL_EXACT
+    {
+        int32_t x, y;
+        if (obj >= 0 && xf_of[obj] >= 0 && !pcol_quiet() && xy_int_near(i, &x, &y)) {
+            struct pq q;
+            q.iok = 1; q.ix = x + dx; q.iy = y + dy;
+            if (xpoint_none(xf_of[obj], &q)) {
+#ifdef PLAY_STATS
+                if (collision_point_p(PTOD(PW.in[i].x) + dx, PTOD(PW.in[i].y) + dy, obj, 0, NOONE) != NOONE) {
+                    fprintf(stderr, "collision_point_any_at: index miss differs (%d %d %d)\n", obj, q.ix, q.iy);
+                    abort();
+                }
+#endif
+                return 0;
+            }
+        }
+    }
+#endif
+    return (collision_point_any)(PTOD(PW.in[i].x) + dx, PTOD(PW.in[i].y) + dy, obj, 0, NOONE);
+}
+
 /* a line query with whole-number ends: their bounding box, and whether the line is axis-aligned */
 struct lq { int iok, axis; int32_t lx, ly, hx, hy; };
 
