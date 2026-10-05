@@ -13,6 +13,10 @@
 #include "pmath.h"
 #include "pcontent.h"
 #include "../snd/sndgame.h"                     /* the GML sound calls (src/snd) */
+#ifdef PLAY_STATS
+#include <stdio.h>
+#include <stdlib.h>
+#endif
 
 #define DIR(p)         (PE(p)->direction)       /* dir (oPiranha, oDeadFish, oVampire, oGhost, oJaws) */
 #define BUBBLETIMER(p) (PEN(p)->turnTimer)      /* oPiranha / oDeadFish / oJaws bubbleTimer */
@@ -562,11 +566,21 @@ static void zombie_step(int i)
 }
 
 /* ---- oVampire: objects/oVampire/Step_0.gml ----------------------------------------------------------------- */
+/* d is a float's value in [0, 360] (point_direction_d's float, or 0 / 90 / 180 / 270): psincos_cr gives pcos_cr's
+   and psin_cr's bits for every such d (tests/sincos, as bat_fly), without cr_trig's double-double series. The host
+   builds check the premise */
 static void vampire_fly(struct pin *p, double c, double d)
 {
-    double r = degtorad_d(d);
-    PE(p)->xVel = ND(c * pcos_cr(r));
-    PE(p)->yVel = ND(-c * psin_cr(r));
+    double s, co;
+#ifdef PLAY_STATS
+    if (!((double)(float)d == d && d >= 0 && d <= 360)) {
+        fprintf(stderr, "vampire_fly: d %.17g is not a float in [0, 360]\n", d);
+        abort();
+    }
+#endif
+    psincos_cr(degtorad_d(d), &s, &co);
+    PE(p)->xVel = ND(c * co);
+    PE(p)->yVel = ND(-c * s);
 }
 
 static void vampire_step(int i)
