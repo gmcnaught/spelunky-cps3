@@ -1366,9 +1366,51 @@ static void set_dyn(int obj)
         if (obj_is(o, obj) && !(oinfo[o] & (OI_MEMBER | OI_DYN))) oinfo[o] |= OI_DYN;
 }
 
+/* the grid build's query_dyn: the instances of obj's family from each member object's instance list (pworld.c
+   pw_ohead / pw_inext: every alive instance of the object) instead of a scan of every entry in creation order. The
+   same entries go in (alive, not dead, of the family, not yet in the tree) with the same writes; only the order of
+   pgrid_put differs, and pgrid_search orders what it collects by pw_seq. PLAY_STATS builds count the scan's entries
+   first and abort on a different number */
+static void query_dyn_grid(int obj)
+{
+    int o, i, put = 0;
+#ifdef PLAY_STATS
+    int e, want = 0;
+    for (e = 0; e < PW.nord; e++) {
+        int ent = pw_ord[e];
+        if (PW.in[ent].alive && !edead(ent) && obj_is(eobj(ent), obj) && !(ef[ent] & EF_TREE)) want++;
+    }
+#endif
+    for (o = 0; o < OBJ_COUNT; o++) {
+        if (!obj_is(o, obj)) continue;
+        for (i = pw_ohead[o]; i >= 0; i = pw_inext[i]) {
+            struct rbr b;
+            if (!PW.in[i].alive || edead(i) || (ef[i] & EF_TREE)) continue;
+            sync1(i);
+            ef[i] &= (uint8_t)~EF_STALE;          /* Compute_BoundingBox(false) */
+            ebbox_rect(i, 0, 0, &b);
+            b.id = (int16_t)i;
+            PCST(pcol_st.inserts++);
+            er_set(i, &b);
+            ef[i] |= EF_TREE;
+            pgrid_put(i);
+            put++;
+        }
+    }
+#ifdef PLAY_STATS
+    if (put != want) { fprintf(stderr, "query_dyn_grid: %d entries, the scan %d (obj %d)\n", put, want, obj); abort(); }
+#endif
+    (void)put;
+}
+
 /* query_e's first query of an object that is not yet in the tree: its instances go in */
 static __attribute__((noinline)) void query_dyn(int obj, int gen)
 {
+    if (!gen && PCOL_GRID_ON) {
+        set_dyn(obj);
+        query_dyn_grid(obj);
+        return;
+    }
     {
         int e, n = gen ? W.n : PW.nord;
         set_dyn(obj);
