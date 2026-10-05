@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""The front end's room tables (src/front): rIntro, rTitle, rHighscores from HD 1.2.2's data file (game.unx, read by
+"""The front end's room tables (src/front): rIntro, rTitle, rHighscores and the ending's rEnd, rEnd2, rEnd3, rCredits2
+from HD 1.2.2's data file (game.unx, read by
 UndertaleModTool's CLI in Docker, as tools/hdplaytables.py reads the transition rooms): every room instance in the
 data file's creation order with its runtime id, object, x, y, scale and its layer's depth, the creation code (as
 text, translated by hand in src/front), and the room's background layers.
@@ -14,7 +15,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import hdplaytables  # noqa: E402
 
-ROOMS = ['rIntro', 'rTitle', 'rHighscores']
+ROOMS = ['rIntro', 'rTitle', 'rHighscores', 'rEnd', 'rEnd2', 'rEnd3', 'rCredits2']
 CSX = r'''
 using System.IO;
 using System.Text;
@@ -100,7 +101,7 @@ def write(txt, gen):
         C += ['};', f'static const struct frtile froom_{rn}_t[{max(1, len(r["tiles"]))}] = {{']
         C += [f'    {{ GSPR_{t[0]}, {t[1]}, {t[2]}, {t[3]}, {t[4]}, {t[5]}, {t[6]}, {t[7]} }},' for t in r['tiles']] or ['    { 0 }']
         C += ['};', f'const struct froom froom_{rn} = {{ {r["w"]}, {r["h"]}, {len(r["insts"])}, froom_{rn}_in, '
-              f'GSPR_{r["bg"]}, {len(r["tiles"])}, froom_{rn}_t }};', '']
+              f'{"GSPR_" + r["bg"] if r["bg"] else -1}, {len(r["tiles"])}, froom_{rn}_t }};', '']
     H += [f'#define FRONT_CC_{c.replace("gml_RoomCC_", "")} {k}' for k, c in enumerate(ccs)]
     H += ['#endif', '']
     open(os.path.join(gen, 'fronttables.h'), 'w').write('\n'.join(H))

@@ -518,6 +518,7 @@ static void build_room(void)
     if (cols * rows > MAPC_MAX) rows = MAPC_MAX / cols;
     ncells = cols * rows;
     bg_spr = PW.room == 1 /* rIntro */ ? SPR_backgroundNight :
+             (PW.room == R_rEnd2 || PW.room == R_rEnd3 || PW.room == R_rCredits2) ? -1 :   /* no tiled layer */
              (PW.room == R_rOlmec || (G.levelType == 3 && !front_on)) ? SPR_bgTemple : SPR_bgCave;
     if (bg_spr != bg_shown) bg_dirty = 1;
     /* cells per depth */
@@ -1276,7 +1277,12 @@ void draw_frame(void)
         }
         cur_pal = DRAW_PAL;
     /* the list: background, then bands and drawables by depth */
-    band_out(0);
+    if (bg_spr >= 0) band_out(0);
+    if (PW.room == R_rEnd3 || PW.room == R_rCredits2) {   /* the rooms' two bgClouds layers (480 x 200, not tiled */
+        spr_out(SPR_bgClouds, 0, -160, 0, 0);             /* horizontally): layer 0 at x -160, then layer 1 at 160, */
+        spr_out(SPR_bgClouds, 0, 160, 0, 0);              /* rEnd3's tiled vertically (rCredits2's not); rEnd2: */
+        if (PW.room == R_rEnd3) spr_out(SPR_bgClouds, 0, 160, 200, 0);   /* its colour layer, under oEnd2BG */
+    }
     for (k = 0; k < n; k++) {
         const struct ent *e = &ents[ord[k]];
         if (dark && cur_pal == DRAW_PAL && (e->dkey < lkey || (e->dkey == lkey && e->id < lid)))
@@ -1349,7 +1355,7 @@ void draw_vblank(void)
     uint32_t cells = 0;
     if (built_rooms < 0 || !frame_pending) return;
     frame_pending = 0;
-    if (bg_dirty) {                               /* the background sprite's 4 x 4 cells over the whole map */
+    if (bg_dirty && bg_spr >= 0) {                /* the background sprite's 4 x 4 cells over the whole map */
         uint16_t bg[4][4];
         const struct sprdef *sd = &sprdefs[bg_spr];
         const struct framedef *fd = &framedefs[sd->frame];

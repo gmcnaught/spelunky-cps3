@@ -34,6 +34,7 @@ KIND = {
     'oLevel': 'DK_NONE',          # the dark-level rectangle (draw.c draws it from global.darkLevel)
     'oMsgSign': 'DK_NONE',        # empty Draw event: draws nothing
     'oIntro': 'DK_FRONT',         # src/front draws it (the fade rectangle, the story text)
+    'oEnd3': 'DK_FRONT',          # showFinalScore (src/front; the fade rectangle: front_fade)
     'oPDummy3': 'DK_PDUMMY',      # the intro's actor: oPDummy's drawing (image_xscale from facing; no jetpack / item)
 }
 # Draw events not translated (not in the mines play rooms): drawn as draw_self and counted (draw_stats.todo)

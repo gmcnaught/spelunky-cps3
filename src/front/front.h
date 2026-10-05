@@ -1,5 +1,6 @@
-/* The front end (PLAN P8): HD 1.2.2's intro, title and high-scores rooms as the cabinet's attract mode, run by the
- * play loop (src/game) with the room-specific objects translated here.
+/* The front end (PLAN P8): HD 1.2.2's intro, title and high-scores rooms as the cabinet's attract mode, and the
+ * ending's rooms (rEnd, rEnd2, rEnd3, rCredits2) in a game, run by the play loop (src/game) with the room-specific
+ * objects translated here.
  *
  * The hook API (src/game implements the calls marked [game], src/front the rest):
  *
@@ -9,9 +10,11 @@
  *                            alarm number or the other instance of a collision). Returns 1 if src/front ran it.
  *                            [game] each ev_* entry point calls it first, while front_on:
  *                                if (front_on && front_ev(FEV_STEP, i, 0)) return;
- *   front_room(room)         [front] enter a front room (rIntro, rTitle, rHighscores: its instances, their Create
- *                            events, PW set up as play_transition_start does). Returns 1 if it is one.
- *                            [game] room_change() calls it for a room it does not model, while front_on.
+ *   front_room(room)         [front] enter a front room (rIntro, rTitle, rHighscores, the ending's: its instances,
+ *                            their Create events, PW set up as play_transition_start does). Returns 1 if it is one.
+ *                            [game] room_change() calls it for a room it does not model, while front_on, and for
+ *                            rEnd (rOlmec's oXEnd): front_on is then set until the credits' room_goto(rHighscores),
+ *                            which front_room refuses (front_on 0 again): the game ends there (src/main).
  *   front_view_obj, front_hborder
  *                            [front] the view's target object (-1: none, the room's code moves the view) and its
  *                            horizontal border; [game] view_update() follows front_view_obj instead of oPlayer1
