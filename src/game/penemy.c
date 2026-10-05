@@ -1380,13 +1380,22 @@ void pen_item_hit_enemy(int it)
     }
 }
 
+/* the jar's speed test (:104 / :148's second operand) before its collision_rectangle in the grid build: the query
+   has no result-visible effect there (searches go in creation order, whatever the flush history: pobj.c PLAY_REST),
+   so a jar at |xVel|, |yVel| <= 2 skips it. The exact build keeps the query first (it moves the R-tree's flush) */
+#ifdef PCOL_EXACT
+#define JAR_FAST(j) 1
+#else
+#define JAR_FAST(j) (NGT(NABS(PE(j)->xVel), N(2)) || NGT(NABS(PE(j)->yVel), N(2)))
+#endif
+
 /* oJar / oSkull Step :104-145: 1 if the jar hit an enemy (it breaks) */
 int pen_jar_hit(int jar, int skull)
 {
     double x = X(jar), y = Y(jar);
     struct pin *j = &PX(jar);
     (void)skull;
-    if (collision_rect_p(x - 3, y - 3, x + 3, y + 3, OBJ_oEnemy, 0, NOONE) != NOONE &&
+    if (JAR_FAST(j) && collision_rect_p(x - 3, y - 3, x + 3, y + 3, OBJ_oEnemy, 0, NOONE) != NOONE &&
         (NGT(NABS(PE(j)->xVel), N(2)) || NGT(NABS(PE(j)->yVel), N(2)))) {
         int e = instance_nearest_p(x, y, OBJ_oEnemy);
         if (!PX(e).invincible) {
