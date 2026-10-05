@@ -234,7 +234,7 @@ static void characterStepEvent(int i)
     if (isCollisionPlatform(i)) PL.colPlat = 1;
     if (isCollisionWaterTop(i, 1)) PL.colWaterTop = 1;
     if (collision_point_p(PTOD(p->x), PTOD(p->y) + 8, OBJ_oIce, 0, NOONE) != NOONE) PL.colIceBot = 1;
-    if (GPd(K_RUN)) {                                                          /* :120 checkRun() */
+    if (play_toggle_run_on ? play_toggle_run : GPd(K_RUN)) {                  /* :120 checkRun() */
         PL.runHeld = 100;
         PL.runKey = 1;
     }
@@ -1612,6 +1612,7 @@ void pl_step(int i)
         }
     }
     PG.xmoney += PG.money - PL.money;
+    if (play_toggle_run_on && GPp(K_RUN)) play_toggle_run = !play_toggle_run;  /* :2093 */
 }
 
 /* objects/oPlayer1/Step_2.gml */

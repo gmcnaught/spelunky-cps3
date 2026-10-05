@@ -7,7 +7,7 @@
  * file, the host runner (src/game: play_step(keys)) and the cabinet give the play code the same 16-bit mask.
  *
  * Not mapped: checkLangPressed (language switch, X3), checkFlarePressed (oPlayer1/Step_0.gml:415: commented out in
- * HD), keyboard F-keys (oDebug, X8; restart F6), the run toggle (X10: global.toggleRunEnabled stays false). */
+ * HD), keyboard F-keys (oDebug, X8; restart F6). The run toggle (X10) is the settings screen's RUN BUTTON (game.c). */
 #ifndef SHELL_INPUT_H
 #define SHELL_INPUT_H
 #include <stdint.h>

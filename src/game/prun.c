@@ -16,6 +16,7 @@ uint32_t play_time;
 int play_goto_room = -1;
 int32_t play_rooms_entered;
 int play_noenemy = 1;
+uint8_t play_toggle_run_on, play_toggle_run;
 const struct inst *play_gen_inst;
 int play_gen_created;                    /* P4 references: TRACE_NOENEMY (playhost --enemies clears it) */
 uint32_t play_dops;

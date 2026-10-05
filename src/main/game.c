@@ -85,6 +85,8 @@ void game_begin(void)
     G.currLevel = game_cfg.level;
     PG.money = game_cfg.money;
     play_noenemy = !game_cfg.enemies;
+    play_toggle_run_on = !game_cfg.route && SH.st.toggle_run;   /* the cabinet's setting; routes: HD's default */
+    play_toggle_run = 0;                          /* each game starts walking (HD: once, scrInit) */
     if (game_cfg.nodark >= 0) G.noDarkLevel = (uint8_t)game_cfg.nodark;
     if (game_cfg.globals) {
         const char *s = game_cfg.globals;

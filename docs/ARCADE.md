@@ -28,9 +28,9 @@ play code the same 16-bit mask.
 | `KEY_PAY` 0x0800 | P | `checkPayPressed` (buy the held shop item, `oPlayer1/Step_0.gml:1327`) | P | Start, in play |
 | `KEY_START` 0x1000 | S | `checkStartPressed` (intro / title / transition skip, restart after death, pause) | Escape | Start, outside play (`INPUT_START_MENU`) |
 
-Not mapped: `checkLangPressed` (language, VARIANTS X3), the run toggle (X10; `global.toggleRunEnabled` stays false,
-so `checkRun` is the held button), the F-keys (`oDebug`, restart F6: X8), the key / pad configuration (X4).
-`global.downToRun` stays HD's default (true, `scrInit:50`).
+Not mapped: `checkLangPressed` (language, VARIANTS X3), the F-keys (`oDebug`, restart F6: X8), the key / pad configuration (X4).
+The run toggle (X10) is the settings screen's RUN BUTTON (section 2; HOLD by default, so `checkRun` is the held
+button). `global.downToRun` stays HD's default (true, `scrInit:50`).
 
 **Start and pay.** HD needs seven play buttons (jump, whip, item, run, bomb, rope, pay); the CPS3 panel has six. Start
 is pay during play (`INPUT_START_PAY`, `struct shell`'s `start_mode`; the game can switch it to `INPUT_START_MENU`),
@@ -87,9 +87,12 @@ Checks:
   201 records with none in either log.
 - MAME vs model: 0 px on the gated records (`scripts/game_check.sh` ATTRACT=1 / 5).
 
-The test switch (MAME: Service Mode; jtcps3: F2) opens the settings screen: FREE PLAY, COINS PER CREDIT, CLEAR HIGH
-SCORES, SAVE AND EXIT (up / down choose, B1 or right change, left back, test or B1 on SAVE AND EXIT leave). Leaving
-stores the settings and restarts the program.
+The test switch (MAME: Service Mode; jtcps3: F2), or Coin + B2 on either panel held together for 60 frames (the
+stock jtcps3 has no OSD test switch), opens the settings screen: FREE PLAY, COINS PER CREDIT, RUN BUTTON (HOLD /
+TOGGLE: HD's `global.toggleRunEnabled`, X10), CLEAR HIGH SCORES, SAVE AND EXIT (up / down choose, B1 or right change,
+left back, test or B1 on SAVE AND EXIT leave). Leaving stores the settings and restarts the program (the combo's coin
+credit is cleared with the rest). RUN BUTTON TOGGLE applies to cabinet games only (routes keep HD's default) and each
+game starts walking (HD resets `toggleRun` once, in `scrInit`).
 
 ## 3. EEPROM
 
@@ -104,7 +107,7 @@ minigame rooms) and kept. Not kept: `settings.json`, `keys.json`, `gamepad.json`
 | 0-15 | not used (left to the stand-in set, as Maldita) |
 | 16 | magic 0x53504b01 |
 | 17-26 | value1 .. value10 |
-| 27 | settings: bit 0 free play, bits 8-11 coins per credit |
+| 27 | settings: bit 0 free play, bit 1 run button toggle, bits 8-11 coins per credit |
 | 28 | check: words 16-27 summed, xor 0x5a5a5a5a |
 
 A wrong magic or check reads as HD without `spelunky.ini`: every value 0, then as HD: `global.tunnel1 / 2` take the

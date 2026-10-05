@@ -7,9 +7,9 @@
  * (the game slows down; no step is skipped, so play stays step-exact).
  *
  * Flow: ATTRACT (the game's intro / title / scores rooms run without controls; the cabinet's Start begins a game
- * only with a credit or in free play) -> PLAY (until the game reports its end) -> ATTRACT. The test switch opens the
- * settings screen at any time (free play, coins per credit, clear high scores); leaving it stores the settings and
- * restarts the program. */
+ * only with a credit or in free play) -> PLAY (until the game reports its end) -> ATTRACT. The test switch, or Coin +
+ * B2 held for a second, opens the settings screen at any time (free play, coins per credit, run button hold /
+ * toggle, clear high scores); leaving it stores the settings and restarts the program. */
 #ifndef SHELL_H
 #define SHELL_H
 #include <stdint.h>

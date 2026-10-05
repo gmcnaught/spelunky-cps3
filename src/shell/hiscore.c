@@ -2,6 +2,7 @@
 #include "hiscore.h"
 
 #define SET_FREE   0x1u
+#define SET_TRUN   0x2u
 #define SET_CPC_AT 8
 
 static uint32_t check_of(const uint32_t *w)
@@ -14,7 +15,8 @@ static uint32_t check_of(const uint32_t *w)
 
 static uint32_t settings_word(const struct settings *st)
 {
-    return (st->free_play ? SET_FREE : 0) | (uint32_t)(st->coins_per_credit & 15) << SET_CPC_AT;
+    return (st->free_play ? SET_FREE : 0) | (st->toggle_run ? SET_TRUN : 0) |
+           (uint32_t)(st->coins_per_credit & 15) << SET_CPC_AT;
 }
 
 void hs_write(const struct hiscores *hs, const struct settings *st)
@@ -47,11 +49,13 @@ void hs_boot(struct hiscores *hs, struct settings *st, struct hs_globals *g)
     int ok = w[0] == HS_MAGIC && w[12] == check_of(w);
     st->free_play = 0;
     st->coins_per_credit = 1;
+    st->toggle_run = 0;
     hs->value[0] = 0;
     for (int k = 1; k <= 10; k++)
         hs->value[k] = ok ? (int32_t)w[k] : 0;
     if (ok) {
         st->free_play = (w[11] & SET_FREE) != 0;
+        st->toggle_run = (w[11] & SET_TRUN) != 0;
         st->coins_per_credit = (uint8_t)(w[11] >> SET_CPC_AT & 15);
         if (st->coins_per_credit == 0)
             st->coins_per_credit = 1;

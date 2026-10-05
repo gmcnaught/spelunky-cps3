@@ -70,6 +70,7 @@ static void settings_run(void)
     struct settings st;
     st.free_play = SH.st.free_play;
     st.coins_per_credit = SH.st.coins_per_credit;
+    st.toggle_run = SH.st.toggle_run;
     int sel = 0, clear = 0;
     uint32_t prev = 0xffffffffu, prev_sys = 0xffffffffu;
     cps3v_text(16, 3, "SPELUNKY SETTINGS");
@@ -81,9 +82,11 @@ static void settings_run(void)
         cps3v_text(32, 7, st.free_play ? "ON " : "OFF");
         line(9, sel == 1, "COINS PER CREDIT");
         put_num(32, 9, st.coins_per_credit, 1);
-        line(11, sel == 2, "CLEAR HIGH SCORES");
-        cps3v_text(32, 11, clear ? "YES" : "NO ");
-        line(14, sel == 3, "SAVE AND EXIT");
+        line(11, sel == 2, "RUN BUTTON");
+        cps3v_text(32, 11, st.toggle_run ? "TOGGLE" : "HOLD  ");
+        line(13, sel == 3, "CLEAR HIGH SCORES");
+        cps3v_text(32, 13, clear ? "YES" : "NO ");
+        line(16, sel == 4, "SAVE AND EXIT");
         cps3v_wait_vblank();
         cps3v_vblank();
         uint32_t p = cps3_pad(0) | cps3_pad(1), sys = cps3_system();
@@ -92,7 +95,7 @@ static void settings_run(void)
         prev_sys = sys;
         if ((press & CPS3_UP) && sel > 0)
             sel--;
-        if ((press & CPS3_DOWN) && sel < 3)
+        if ((press & CPS3_DOWN) && sel < 4)
             sel++;
         int leave = (spress & CPS3_TEST) != 0;
         int step = (press & (CPS3_B1 | CPS3_RIGHT)) ? 1 : (press & CPS3_LEFT) ? -1 : 0;
@@ -102,6 +105,8 @@ static void settings_run(void)
             else if (sel == 1)
                 st.coins_per_credit = (uint8_t)((st.coins_per_credit - 1 + step + 9) % 9 + 1);
             else if (sel == 2)
+                st.toggle_run = !st.toggle_run;
+            else if (sel == 3)
                 clear = !clear;
             else if (press & CPS3_B1)
                 leave = 1;
@@ -112,7 +117,7 @@ static void settings_run(void)
     if (clear) {                                 /* the next boot finds no block: HD's first start (hs_boot) */
         for (int k = 0; k < HS_EE_WORDS; k++)
             shell_ee_write(HS_EE_AT + k, 0);
-        if (st.free_play || st.coins_per_credit != 1) {   /* keep the settings: a reset block with them */
+        if (st.free_play || st.coins_per_credit != 1 || st.toggle_run) {   /* keep the settings: a reset block */
             struct hiscores hs;
             hs.value[0] = 0;
             for (int k = 1; k <= 10; k++)
@@ -144,11 +149,24 @@ void shell_init(void)
 static uint32_t start_prev = 0x3;                /* Start 1 / 2 at the previous frame (held at boot: no press) */
 static uint32_t test_prev = SHELL_TEST;          /* test switch held at boot (or still held on leaving): no press */
 
+/* the settings screen from a pad (MiSTer's stock jtcps3 has no OSD test switch; the test line is keyboard F2 only):
+   Coin + B2 on either panel held together for SETTINGS_HOLD frames, as JTFRAME's Pocket combo for test. The Coin
+   counts a credit as usual; leaving the screen restarts the program, which clears the credits. */
+#define SETTINGS_COMBO (CPS3_COIN | CPS3_B2)
+#define SETTINGS_HOLD  60
+static uint8_t combo_armed;                      /* 0 until a frame without the combo: held at boot is no press */
+static uint8_t combo_n;
+
 int shell_frame(uint32_t pad0, uint32_t pad1, uint32_t lines)
 {
     if (lines & ~test_prev & SHELL_TEST)
         settings_run();
     test_prev = lines & SHELL_TEST;
+    if ((pad0 & SETTINGS_COMBO) != SETTINGS_COMBO && (pad1 & SETTINGS_COMBO) != SETTINGS_COMBO) {
+        combo_armed = 1;
+        combo_n = 0;
+    } else if (combo_armed && ++combo_n == SETTINGS_HOLD)
+        settings_run();
     credit_frame(&SH.cr, &SH.st, lines);
     uint32_t starts = (pad0 & CPS3_START ? 1u : 0) | (pad1 & CPS3_START ? 2u : 0);
     uint32_t spress = starts & ~start_prev;

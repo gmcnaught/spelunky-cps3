@@ -432,6 +432,7 @@ extern int play_cur_obj;                          /* the object whose event runs
 #define PUNTR(code) do { if (!play_untranslated) { play_untranslated = (code); play_untr_obj = play_cur_obj; } } while (0)
 extern uint32_t play_time;                        /* oGame.time */
 extern int32_t play_rooms_entered;
+extern uint8_t play_toggle_run_on, play_toggle_run;   /* global.toggleRunEnabled / toggleRun (X10; game.c) */
 extern int play_noenemy;                          /* 1: remove the enemies at level start (TRACE_NOENEMY) */
 
 /* event entry points (pobj.c, pplayer.c) */
