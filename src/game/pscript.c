@@ -1,5 +1,9 @@
 /* GML scripts of the play loop (refs/hd/src/scripts/<name>/<name>.gml; line numbers in comments). */
 #include "pint.h"
+#ifdef PLAY_STATS
+#include <stdio.h>
+#include <stdlib.h>
+#endif
 #include "../snd/sndgame.h"                     /* the GML sound calls (src/snd) */
 #include "pmsg.h"                                /* the HUD messages (trMessages) */
 #include "pcontent.h"
@@ -244,6 +248,18 @@ static void vel_parts(num a, struct vparts *o)
 #define PLAY_WALK 0
 #endif
 
+#if PLAY_WALK
+/* no oPlatform instance's box meets the region a character's fall of n pixels tests (the bounds now, n rows down, one
+   pixel of margin round): then every isCollisionPlatform / isCollisionPlatformBottom of the walk is false (a precise
+   hit needs the box first; the tests are searches excluding the mover) */
+static int platform_none(int i, int32_t n)
+{
+    double lb, tb, rb, bb;
+    calcBounds(i, &lb, &tb, &rb, &bb);
+    return collision_rect_p(lb - 1, tb - 1, rb + 1, bb + n + 1, OBJ_oPlatform, 0, i) == NOONE;
+}
+#endif
+
 /* scripts/moveTo */
 void moveTo(int i, num a0, num a1, int32_t *xio, int32_t *yio)
 {
@@ -251,7 +267,7 @@ void moveTo(int i, num a0, num a1, int32_t *xio, int32_t *yio)
     pos mtXPrev = p->x, mtYPrev = p->y;
     struct vparts vx, vy;
     int32_t xVelInteger = 0, yVelInteger = 0;
-    int ch, xdone = 0, ydone = 0, raw = 0;
+    int ch, xdone = 0, ydone = 0, raw = 0, noplat = 0;
 #if PLAY_WALK
     int32_t il, it, ir, ib;
 #endif
@@ -289,7 +305,7 @@ void moveTo(int i, num a0, num a1, int32_t *xio, int32_t *yio)
                 if (anyCollisionRight(i, 1)) break;
                 continue;
             }
-            solidId = getIdCollisionRight(i, 1);
+            solidId = (!raw || anyCollisionRight(i, 1)) ? getIdCollisionRight(i, 1) : NOONE;
             if (solidId != NOONE) {
                 if (objdefs[PX(solidId).obj].parent == OBJ_oMoveableSolid && is_character(i)) {
                     /* with solidId: `break` leaves the with, not the for */
@@ -308,7 +324,7 @@ void moveTo(int i, num a0, num a1, int32_t *xio, int32_t *yio)
                 if (anyCollisionLeft(i, 1)) break;
                 continue;
             }
-            solidId = getIdCollisionLeft(i, 1);
+            solidId = (!raw || anyCollisionLeft(i, 1)) ? getIdCollisionLeft(i, 1) : NOONE;
             if (solidId != NOONE) {
                 if (objdefs[PX(solidId).obj].parent == OBJ_oMoveableSolid && is_character(i)) {
                     if (!place_meeting_p(solidId, PTOD(PX(solidId).x) - 1, PTOD(PX(solidId).y), OBJ_oSolid)) {
@@ -328,13 +344,22 @@ void moveTo(int i, num a0, num a1, int32_t *xio, int32_t *yio)
         ydone = 1;
     }
 #endif
+#if PLAY_WALK
+    if (raw && ch && yVelInteger > 0 && !ydone) noplat = platform_none(i, yVelInteger);
+#endif
     if (yVelInteger > 0 && !ydone)                                             /* :89 */
         for (; p->y < mtYPrev + PI(yVelInteger); MT_SETY(p->y + (PI(1)))) {
             if (isCollisionBottom(i, 1))
                 break;
-            if (is_character(i))
+            if (is_character(i) && !noplat)
                 if (!isCollisionPlatform(i) && isCollisionPlatformBottom(i, 1) && !PL.kDown)
                     break;
+#ifdef PLAY_STATS
+            if (noplat && (isCollisionPlatform(i) || isCollisionPlatformBottom(i, 1))) {   /* the host builds check it */
+                fprintf(stderr, "moveTo: platform_none missed a platform (instance %d)\n", i);
+                abort();
+            }
+#endif
         }
     if (yVelInteger < 0 && !ydone)                                             /* :98 */
         for (; p->y > mtYPrev + PI(yVelInteger); MT_SETY(p->y - (PI(1))))
