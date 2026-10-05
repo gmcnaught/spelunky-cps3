@@ -1,5 +1,11 @@
 # Handoff
 
+## 2026-10-05 12:20: game loop done on main a309f12
+
+docs/GAMELOOP.md items 1-6 and darkness are merged and gated (section 5 there). The release set (scripts/release.sh)
+is on MiSTer .81 for the user's playthrough. Next: the open items in docs/GAMELOOP.md section 5, of which the
+user's is release-mode seeding (level generation must not be pinned).
+
 ## 2026-10-05: next is the game loop
 
 Main is 2239a8e (smooth motion and VBlank pacing, docs/DRAW.md section 7). Next work: **docs/GAMELOOP.md** (death ->

@@ -1,7 +1,7 @@
 # Game loop: one cabinet game from Start to the end
 
-Status 2026-10-05 (updated), main a2d661f: items 1-5 below are done and gated; the ending (item 6) and darkness
-are in progress on branches `ending` and `darkness`. See section 5.
+Status 2026-10-05 (updated), main a309f12: items 1-6 and darkness are done and gated; the release set is on MiSTer
+.81 for a playthrough. See section 5.
 
 Goal: a cabinet game runs HD's whole flow on one boot:
 - levels 1-16 and Olmec through the transition rooms;
@@ -56,7 +56,7 @@ Also on the path, not blocking the loop:
    - Translate oXEnd (2061), the rEnd* rooms and objects, rCredits1 / 2, `showFinalScore`, `scrUpdateHighscores(1)`.
    - These are front-end style rooms (scripted, no controls but the skip), so src/front's room machinery (`front_room`) is the likely home.
    - Check the 510-entry display budget on the credits.
-   - Done on branch `ending`: rOlmec's oXEnd -> rEnd -> rEnd2 -> rEnd3 -> rCredits2 -> scores stored ->
+   - Done (merged a309f12): rOlmec's oXEnd -> rEnd -> rEnd2 -> rEnd3 -> rCredits2 -> scores stored ->
      rHighscores (src/front, src/game pplayer.c / pk_temple.c / prun.c). `scripts/end_host.sh`: 3183 / 3183 records
      equal to the runner's `g_end_win_s7` (tests/routes/end_win.txt, `# room rEnd`). At most 343 display entries
      (the credits' testers page). rCredits1 (the title's credits door) is not reached on the cabinet.
@@ -99,7 +99,23 @@ Done on main (a2d661f), gated as one batch: gates.sh (p5_regress 19/19 and 18/18
 Host test modes (tests/game/host.c): HOST_SCORES, HOST_EE (EEPROM writes), HOST_AFTER=<steps> (the attract after the
 game, v_a<k>.bin), HOST_GAME2=1, HOST_CABINET=1 (route keys as the cabinet's controls).
 
+- **Darkness** (5e2d097, branch darkness): oLevel.darkness, oPlayer1.distToNearestLightSource, oFlare.distToPlayer;
+  0 differences in darkness / distLight on g_p7_dark_s18, c_items_flare_s69, c_jungle_scarab_s615,
+  c_ice_darkfall_s202. The light search runs only on a dark level or with a Kali altar (the only GML readers).
+  Step cost, mean MAME clocks: p7_dark 138.1 -> 150.3 K, c_items_flare 132.6 -> 148.5 K, c_jungle_scarab
+  119.5 -> 132.7 K (soft-float in instance_nearest / distance); +30 to +44 on lit levels. Within the 146-154 K
+  budget but at its top: the first speed target if dark levels run slow on jtcps3.
+- **6 ending** (merged with main in 20c1ab3, then ci-ending a309f12). Gates on that tree: gates.sh 19/19 + 19/19,
+  ctall 50/50, EQUIV 74/74, playsh2 6851/6851 (mean route step 140.0 K), end_host 3183/3183.
+- **Release** (a309f12, scripts/release.sh): spelunky.zip + "Spelunky Classic Arcade.mra" on .81
+  (_CPS3Test); boots to the intro and title on the real core (screenshots 2026-10-05 12:19).
+
 Open:
+- Ending: no route beats Olmec (the door path is tested with HOST_XEND injecting oXEnd on the player); a
+  playthrough on .81 is the check. tools/drawmodel.py does not model the ending's clouds and text (game_check
+  differs at records 1150 and 2300 for that reason). Text under a fade rectangle is hidden from half alpha
+  instead of fading (the text palettes have no fade). scripts/front_host.sh does not link since 4d20eda
+  (src/shell/hiscore.c missing from its link line).
 - MAME frame check of the panel: scripts/game_check.sh over_giant 253 g_over_giant_s253 200,260,300,330 differs only
   in the panel text, because tools/tracer.py's TRACE_GUI draws scrDrawHUD and showMessages but not showEndMessage,
   and tools/drawmodel.py does not model the panel. Both need the panel added for an exact gate.
