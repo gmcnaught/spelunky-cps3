@@ -91,7 +91,7 @@ static int16_t freel[PIN_MAX];
 #define PW_SEQ_RENUM (32766 - PIN_MAX)           /* at most PIN_MAX creations between two releases */
 #endif
 #define rmq(k) freel[PIN_MAX - 1 - (k)]
-static int nfree, nrmq;
+static int nfree, nrmq, nrmq_prev;            /* nrmq_prev: nrmq at the previous step's end (pw_release) */
 static uint8_t relmark[PIN_MAX];
 static uint8_t dead_ok;                          /* PIN_DEAD written in this room (after the loader: W.in) */
 /* every alive instance in creation order: pw_ahead, then pw_anext[i] (an instance unlinked keeps its pw_anext, so a
@@ -472,9 +472,15 @@ static void dead_init(void)
 void pw_release(void)
 {
     int k, j, s, n, lo, hi, smin = 32767, flush = 0;
-    /* in batches (the compaction of pw_ord and the sweep cost about PW.nord): 64 removed, or the unused slots and
-       the free ones close to running out (a step creates fewer than PW_RELEASE_ROOM) */
-    if (nrmq < PW_RELEASE_BATCH && nfree + (PIN_DEAD - PW.n) >= PW_RELEASE_ROOM) return;
+    /* in batches (the compaction of pw_ord and the sweep cost about PW.nord): 64 removed, at the end of a step that
+       removed none (not the step whose removals filled the batch: an explosion's, the frame budget's spike, p5_snakes
+       record 203), or the unused slots and the free ones close to running out (a step creates fewer than
+       PW_RELEASE_ROOM). Which slots go back when is not seen by the game (instances are reached through pw_ord, the
+       per-object lists and creation numbers) */
+    if (nfree + (PIN_DEAD - PW.n) >= PW_RELEASE_ROOM && (nrmq < PW_RELEASE_BATCH || nrmq != nrmq_prev)) {
+        nrmq_prev = nrmq;
+        return;
+    }
     if (nrmq == 0) return;
     dead_init();
     for (k = 0; k < nrmq; k++) {
@@ -528,7 +534,7 @@ void pw_release(void)
         }
 #endif
     }
-    nrmq = 0;
+    nrmq = nrmq_prev = 0;
 }
 
 #ifdef PIN_EXT_CHECK
@@ -586,7 +592,7 @@ void pw_reset(void)
     PW.n = 0;
     PW.nord = 0;
     PW.seq = 0;
-    nfree = nrmq = 0;
+    nfree = nrmq = nrmq_prev = 0;
     dead_ok = 0;
     for (k = 0; k < nddlist; k++) ddmark[ddlist[k]] = 0;
     nddlist = 0;                                     /* a new room: the drawing starts from scratch */
