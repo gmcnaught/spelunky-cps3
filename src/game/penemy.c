@@ -11,7 +11,11 @@
 #include "../snd/sndgame.h"                     /* the GML sound calls (src/snd) */
 #include "pmath.h"
 #include "pcontent.h"                            /* P7 content packages (docs/CONTENT.md) */
-#include "pcol.h"                                /* pcol_query / pcol_touch (line_solid) */
+#include "pcol.h"
+#ifdef PLAY_STATS
+#include <stdio.h>
+#include <stdlib.h>
+#endif                                /* pcol_query / pcol_touch (line_solid) */
 
 enum { E_STUNNED = 98, E_DEAD = 99, E_LEFT = 0, E_RIGHT = 1 };
 
@@ -487,10 +491,21 @@ static void snake_step(int i)
 }
 
 /* ---- oBat: objects/oBat/Step_0.gml (no inherited Step) ---------------------------------------------- */
+/* dir is a float's value in [0, 360] (point_direction_d's float, or 90 / 180 / 270 / 0): psincos_cr gives pcos_cr's
+   and psin_cr's bits for every such dir (checked for all 1,135,869,954 of them), with one range reduction and,
+   about 9 times in 10, no double-double series. The host builds check the premise */
 static void bat_fly(struct pin *p, double dir)
 {
-    PE(p)->xVel = ND(1 * pcos_cr(degtorad_d(dir)));
-    PE(p)->yVel = ND(-1 * psin_cr(degtorad_d(dir)));
+    double s, c;
+#ifdef PLAY_STATS
+    if (!((double)(float)dir == dir && dir >= 0 && dir <= 360)) {
+        fprintf(stderr, "bat_fly: dir %.17g is not a float in [0, 360]\n", dir);
+        abort();
+    }
+#endif
+    psincos_cr(degtorad_d(dir), &s, &c);
+    PE(p)->xVel = ND(1 * c);
+    PE(p)->yVel = ND(-1 * s);
 }
 
 static void bat_step(int i)

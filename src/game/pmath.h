@@ -12,5 +12,6 @@ double point_direction_d(double x1, double y1, double x2, double y2);
 double degtorad_d(double d);
 double psin_cr(double x);                     /* correctly rounded (glibc's sin / cos) */
 double pcos_cr(double x);
+void psincos_cr(double a, double *s, double *c);   /* both, the same bits, one reduction */
 float patan2f(float y, float x);              /* glibc's atan2f (fdlibm float) */
 #endif
