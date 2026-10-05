@@ -326,6 +326,11 @@ Load-use stall (from spelunky-cps3-a6, low priority): jtcps3 stalls 1 cycle on a
   self time play_step 12.6 %, pgrid_search 9.1 %, collision_point_p 5.0 %, snapshot 3.0 %.
 - Batch 16 (merged a927404): oEnemySight's speed at dir 0 / 180 computed once (a6, 03d7199: p5_idol 109 650.2 ->
   544.6 K; MAME route means l4 -6.1 %, idol -1.3 %, caveman flat).
+- Batch 17 (merged 353e2ae): the oSolid "any" queries from the solid grid's cell summary: solid_rect_any (f9cabd4) and
+  collision_point_any (353e2ae, the GML's `collision_point(.., oSolid, ..) != noone` tests: pplayer.c 27, pobj.c 11,
+  the CP wrappers); MAME SOFTFP route means (steps 2+): caveman -5.1 %, cavestun -4.7 %, giant -5.4 %, idol -7.0 %,
+  l4 -4.1 %, snakes -7.0 %; gametime (MAME) p5_snakes pair mean 141.4 -> 134.1 K.
+- Batch 18 (perf3-b2): collision_rect_any (989b93c: the rectangle tests; route means about -1 %).
 - Measured and not kept (a6): a pw_onz bitmap of non-empty object lists for snapshot / the alarm pass: +0.3 / +0.8 %
   on caveman 178 (no variable shift on the SH-2; pw_ohead mostly cached).
 - Measured and dropped: pcol_handle skipping a searcher no live object can pair with (can_pair): terrain blocks can
