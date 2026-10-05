@@ -867,7 +867,7 @@ static void ghost_step(int i)                                  /* objects/oGhost
 static void ghost_hit_player(int i, int c)                     /* objects/oGhost/Collision_oCharacter.gml */
 {
     struct pin *p = &PX(i);
-    if (PL.invincible != 0) return;
+    if (PL.invincible != 0 || play_god) return;
     bones_and_skull(PX(c).x, PX(c).y, -2);                     /* :6-12 (global.enemyDeaths: statistics) */
     pin_setvisible(&PX(c), 0);
     PL.invincible = 9999;

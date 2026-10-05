@@ -346,6 +346,10 @@ int main(int argc, char **argv)
     if ((cabinet = getenv("HOST_CABINET") != 0)) game_cfg.route = 0;   /* HOST_CABINET: the route's keys as the
                                                                           cabinet's controls (src/main's own paths) */
     hs_boot(&SH.hs, &SH.st, &SH.g);               /* a blank EEPROM: HD's first start */
+#ifdef SHELL_DEV
+    SH.st.invincible = getenv("HOST_GOD") != 0;   /* HOST_GOD (built with -DSHELL_DEV, with HOST_CABINET): the
+                                                     developer option INVINCIBLE */
+#endif
     draw_boot();
     snd_init(15, 15);
     snd_log_open();
@@ -396,7 +400,11 @@ again:
             fprintf(stderr, "H%d %d %08x\n", game2_on, game_rec1, hsh);
         }
         if (over) break;
+        if (getenv("HOST_MAXSTEPS") && game_steps >= atoi(getenv("HOST_MAXSTEPS"))) break;   /* a game that does
+                                                     not end (HOST_GOD) */
     }
+    fprintf(stderr, "end steps %d plife %d dead %d\n", (int)game_steps, (int)PG.plife,
+            PL.idx != NOONE ? PL.dead : -1);
     if (play_untranslated) fprintf(stderr, "untranslated %d (object %d)\n", play_untranslated, play_untr_obj);
     if (getenv("HOST_AFTER") && strcmp(argv[8], "-")) {   /* HOST_AFTER=<steps>: the shell's attract after the game
                                                            (rHighscores after a game over); v_a<step>.bin each 30 */

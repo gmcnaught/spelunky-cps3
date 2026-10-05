@@ -1,5 +1,29 @@
 # Handoff
 
+## 2026-10-05 14:05: v0.1.0 released; next session
+
+v0.1.0 is on GitHub (tag build green, spelunky.zip + MRA) and on .81 (/media/fat/_Arcade/). Next, in order:
+
+1. **Hardware bug capture.** The user's death on .81 is unexplained (no host repro in ~200 K runs). Add a way to get
+   a cabinet session back to the host (input history from the start of the game, readable after the fact), so a
+   .81 report replays in playhost. Then triage whatever the v0.1.0 playthrough turns up.
+2. **Fresh untranslated survey on main.** docs/CONTENT.md's survey is from 2026-10-04 07:57, before the content
+   packages; 85 PUNTR sites remain in src/game. Re-run the random-input survey (levels 1-16, 30 seeds) and fix the
+   codes normal play reaches. Tunnel man (4005 / 4011 / 4020) stays untranslated (GAMELOOP section 3).
+3. **p99 step spikes on jtcps3** (docs/PERF3.md "Open"): explosions, the boulder, temple traps over 0.84 M; dark
+   levels at the top of the mean budget (+30-44 K). These show as slowdown in play.
+4. **Exact gates for the new rooms:** showEndMessage in tools/tracer.py TRACE_GUI and tools/drawmodel.py; the
+   ending's clouds and text in drawmodel; a route that beats Olmec (the door path is only tested via HOST_XEND).
+5. Small: compass arrows cropped (docs/ARCADE.md section 6); ending text under fade rectangles hidden at half alpha.
+6. **Done 2026-10-05 (branch devinv; docs/ARCADE.md section 2):** ~~Developer options in the service menu: INVINCIBLE (ON / OFF).~~ The settings screen is src/shell/shell.c
+   (docs/ARCADE.md section 2); store the option in EEPROM word 27 next to the other settings bits. HD's
+   `oPlayer1.invincible` (pint.h) is the post-hit blink timer, not a god mode: check which damage paths skip it
+   (spikes, crush, lava, falls, explosions) and add one flag those paths test. Routes and gates keep it off.
+   Decided (the user, 2026-10-05): testing only. An invincible game stores no high scores, and the option is
+   compiled only into dev builds (e.g. tests/game DEV=1); scripts/release.sh builds without it, and a release
+   build ignores the EEPROM bit if a dev build set it.
+7. Housekeeping: about 40 local branches and the agent worktrees are merged or abandoned; prune them.
+
 ## 2026-10-05 12:20: game loop done on main a309f12
 
 docs/GAMELOOP.md items 1-6 and darkness are merged and gated (section 5 there). The release set (scripts/release.sh)

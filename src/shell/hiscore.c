@@ -4,6 +4,7 @@
 #define SET_FREE   0x1u
 #define SET_TRUN   0x2u
 #define SET_NOSMOOTH 0x4u
+#define SET_GOD    0x8u
 #define SET_CPC_AT 8
 
 static uint32_t check_of(const uint32_t *w)
@@ -17,6 +18,7 @@ static uint32_t check_of(const uint32_t *w)
 static uint32_t settings_word(const struct settings *st)
 {
     return (st->free_play ? SET_FREE : 0) | (st->toggle_run ? SET_TRUN : 0) | (st->smooth ? 0 : SET_NOSMOOTH) |
+           (st->invincible ? SET_GOD : 0) |
            (uint32_t)(st->coins_per_credit & 15) << SET_CPC_AT;
 }
 
@@ -52,6 +54,7 @@ void hs_boot(struct hiscores *hs, struct settings *st, struct hs_globals *g)
     st->coins_per_credit = 1;
     st->toggle_run = 0;
     st->smooth = 1;
+    st->invincible = 0;
     hs->value[0] = 0;
     for (int k = 1; k <= 10; k++)
         hs->value[k] = ok ? (int32_t)w[k] : 0;
@@ -59,6 +62,9 @@ void hs_boot(struct hiscores *hs, struct settings *st, struct hs_globals *g)
         st->free_play = (w[11] & SET_FREE) != 0;
         st->toggle_run = (w[11] & SET_TRUN) != 0;
         st->smooth = (w[11] & SET_NOSMOOTH) == 0;
+#ifdef SHELL_DEV
+        st->invincible = (w[11] & SET_GOD) != 0;
+#endif
         st->coins_per_credit = (uint8_t)(w[11] >> SET_CPC_AT & 15);
         if (st->coins_per_credit == 0)
             st->coins_per_credit = 1;

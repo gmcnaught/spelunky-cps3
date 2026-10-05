@@ -968,7 +968,7 @@ static void mantrap_player(int i, int c)
         else PE(p)->xVel -= N(1);
         p->ispd = (img_t)0.5;
         snd_play(SND_xhit);                                                           /* :18 */
-    } else if (o->visible && PL.invincible == 0) {
+    } else if (o->visible && PL.invincible == 0 && !play_god) {
         if (PE(p)->status != E_STUNNED && PE(p)->status != MT_EATING) {
             PE(p)->xVel = 0;
             PE(p)->status = MT_EATING;

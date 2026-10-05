@@ -1014,13 +1014,13 @@ static void hurt_logic(int i)
     double x = PTOD(p->x), y = PTOD(p->y);
     int obj;
     if (PG.plife < -10000) PG.plife = -10000;                                  /* :1452 */
-    if (PG.plife < -99 && p->visible) {
+    if (PG.plife < -99 && p->visible && !play_god) {
         scrCreateBlood(i, p->x, p->y, 3);
         pin_setvisible(p, 0);
     }
     if (!(PG.plife >= -99 && p->visible && !spr_is_exit(p->spr)))
         return;
-    if (collision_point_any(x, y, OBJ_oSolid, 0, NOONE)) {              /* :1463 crushed */
+    if (!play_god && collision_point_any(x, y, OBJ_oSolid, 0, NOONE)) {   /* :1463 crushed */
         PG.plife -= 99;
         PL.active = 0;
         PE(p)->yVel = N(-3);
@@ -1085,7 +1085,7 @@ static void hurt_logic(int i)
         else PE(p)->myGrav = N(0.6);
     } else
         PE(p)->myGrav = N(0.6);
-    if (PL.colSpikes && NGT(PE(p)->yVel, N(0)) && (PL.fallTimer > 4 || PL.stunned)) {     /* :1663 */
+    if (PL.colSpikes && NGT(PE(p)->yVel, N(0)) && (PL.fallTimer > 4 || PL.stunned) && !play_god) {   /* :1663 */
         if (!PL.dead) {
             scrCreateBlood(i, p->x, p->y, 3);
             PG.plife -= 99;
@@ -1178,9 +1178,9 @@ void pl_step(int i)
         }
         PL.burning -= 1;
     }
-    if (collision_point_any(PTOD(p->x), PTOD(p->y) + 6, OBJ_oLava, 0, NOONE)) ptemple_player(2033, i, 0);
+    if (!play_god && collision_point_any(PTOD(p->x), PTOD(p->y) + 6, OBJ_oLava, 0, NOONE)) ptemple_player(2033, i, 0);
     if (PG.hasJetpack && platformCharacterIs(ON_GROUND)) PL.jetpackFuel = 50;
-    if (PTOD(p->y) > PW.room_h + 16 && !PL.dead) {                             /* :221 */
+    if (PTOD(p->y) > PW.room_h + 16 && !PL.dead && !play_god) {                /* :221 */
         PG.plife -= 99;
         PE(p)->xVel = 0;
         PE(p)->yVel = 0;
@@ -1590,6 +1590,7 @@ void pl_step(int i)
     }
     if (PL.dead && PL.deadCounter > 0) PL.deadCounter -= 1;                    /* :1818 */
     if (isLevel()) {
+        if (play_god) play_god_hold();
         if (!PL.dead && PG.plife < 1) {
             if (PG.hasAnkh) pitems_player(2054, i, 0);
             else {
