@@ -141,10 +141,52 @@ static int16_t olive[OBJ_COUNT];
 #define odesc0 obj_desc0
 #define odesc obj_desc
 
+/* the object forest in preorder (fpre_init, once): obj's family (obj_is(o, obj)) is fpre[fpos[obj] .. fend[obj]),
+   so fam_begin skips a whole subtree with no alive instance (olive counts a family) */
+static int16_t fpre[OBJ_COUNT], fpos[OBJ_COUNT], fend[OBJ_COUNT];
+static uint8_t fpre_ok;
+
+static void fpre_init(void)
+{
+    static int16_t child[OBJ_COUNT], sib[OBJ_COUNT];
+    int o, r, n = 0;
+    for (o = 0; o < OBJ_COUNT; o++) child[o] = sib[o] = -1;
+    for (o = OBJ_COUNT - 1; o >= 0; o--) {
+        int p = objdefs[o].parent;
+        if (p >= 0) { sib[o] = child[p]; child[p] = (int16_t)o; }
+    }
+    for (r = 0; r < OBJ_COUNT; r++) {
+        if (objdefs[r].parent >= 0) continue;
+        int done = 0;
+        o = r;
+        while (!done) {
+            fpos[o] = (int16_t)n;
+            fpre[n++] = (int16_t)o;
+            if (child[o] >= 0) { o = child[o]; continue; }
+            for (;;) {                                /* o's subtree is done: on to the next sibling, or up */
+                fend[o] = (int16_t)n;
+                if (o == r) { done = 1; break; }
+                if (sib[o] >= 0) { o = sib[o]; break; }
+                o = objdefs[o].parent;
+            }
+        }
+    }
+#ifdef PLAY_STATS
+    for (o = 0; o < OBJ_COUNT; o++) {                 /* the host builds check each family against obj_desc */
+        int j, m = 0;
+        for (j = fpos[o]; j < fend[o]; j++) if (!obj_is(fpre[j], o)) abort();
+        for (j = 0; j < OBJ_COUNT; j++) m += obj_is(j, o);
+        if (m != fend[o] - fpos[o] || n != OBJ_COUNT) { fprintf(stderr, "fpre_init: family %d\n", o); abort(); }
+    }
+#endif
+    fpre_ok = 1;
+}
+
 static void olists_reset(void)
 {
     int o;
     obj_desc_init();
+    if (!fpre_ok) fpre_init();
     for (o = 0; o < OBJ_COUNT; o++) {
         pw_ohead[o] = otail[o] = NOONE;
         olive[o] = 0;
@@ -211,8 +253,13 @@ static void fam_begin(struct fam *it, int obj)
     it->k = -1;
     it->obj = obj;
     if (obj < 0) { it->lin = 1; return; }       /* -2: every instance */
-    for (j = odesc0[obj]; j < odesc0[obj + 1]; j++) {
-        int h = pw_ohead[odesc[j]];
+    /* the family's objects in preorder (fpre), a subtree without alive instances skipped: the same non-empty lists
+       as obj_desc's (in another order: fam_next takes the oldest head, creation numbers are unique) */
+    for (j = fpos[obj]; j < fend[obj];) {
+        int o = fpre[j], h;
+        if (olive[o] == 0) { j = fend[o]; continue; }
+        h = pw_ohead[o];
+        j++;
         if (h < 0) continue;
         if (it->n == FAM_K) { it->lin = 1; return; }
         it->cur[it->n++] = (int16_t)h;
