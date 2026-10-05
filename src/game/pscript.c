@@ -644,6 +644,7 @@ void scrUpdateHighscores(int type)
 void scrClearGlobals(void)
 {
     gen_new_game();
+    PG.downToRun = 1;          /* scrInit :50 (once at start; only oCheckBox3, not in the port, changes it) */
     PG.ghostExists = 0;                                                        /* :20 */
     PG.drawHUD = 0;
     PG.collect = 0;

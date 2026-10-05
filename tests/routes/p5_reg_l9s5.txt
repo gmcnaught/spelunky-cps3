@@ -1,0 +1,32 @@
+# seed 5
+# level 9
+# P5 regression case: the first 470 steps of a random-input survey route (level 9, seed 5); the player dies.
+# Record 152: left + down after running right into a wall at xVel 3.038 takes characterStepEvent :722
+# (global.downToRun, scrInit :50 true): the runner keeps crawling at xVel 2.87924
+4 LN
+28 L
+25 RDJ
+9 RJ
+25 N
+11 L
+22 -
+27 RJAI
+13 LD
+23 RDJ
+28 -
+6 LA
+17 RAN
+12 LJ
+22 LN
+24 LU
+1 R
+29 LA
+30 RDA
+17 RJN
+7 RJ
+26 L
+6 JN
+13 LD
+23 -
+11 RI
+11 RUO

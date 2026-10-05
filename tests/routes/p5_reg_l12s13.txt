@@ -1,0 +1,25 @@
+# seed 13
+# level 12
+# P5 regression case: the first 409 steps of a random-input survey route (level 12, seed 13), before its exit
+# to rTransition3x. Step 300: left + down + rope at xVel -6 takes characterStepEvent :722 (global.downToRun,
+# scrInit :50 true): the runner keeps sRunLeft at xVel -6
+19 RJN
+18 DJP
+30 LA
+14 LUJA
+14 LJ
+24 L
+6 RJN
+21 LAP
+22 L
+16 RJN
+60 L
+30 RIN
+26 LJA
+6 LDO
+29 L
+25 JA
+13 RJP
+2 LN
+18 R
+16 LUJ
