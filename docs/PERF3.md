@@ -296,6 +296,16 @@ Load-use stall (from spelunky-cps3-a6, low priority): jtcps3 stalls 1 cycle on a
   constant compares on the bits, src/game/pcmpc.h; p5_snakes record 3 711.8 -> 700.9 K).
   On jtcps3 (.62, batch-9 JT): PASS 23/23, route mean of means **465.6 K** (-4.4 %), 4 of 18 over 0.525 M: caveman
   638.5 K, giant 563.7 K, idol 547.5 K, bomb_drop 540.6 K.
+- Batch 11 (merged 2c9237e): moveTo's non-characters test the line alone in place of getIdCollisionRight / Left
+  (de8372c: caveman 200 638.9 -> 608.0 K), step1 (a6: evobj_init at play_level_start, query_dyn from the family's
+  lists). On jtcps3 (.62): frame budget game 2 (p5_snakes) **0 of 241 over**, pair max 806.3 K at pair 203 (32.6 K
+  under), step mean / max 463.9 / 704.0 K; JT PASS 23/23, route mean of means **452.8 K** (-2.7 %), 3 of 18 over
+  0.525 M: caveman 614.2 K, giant 540.1 K, idol 536.8 K (bomb_drop 511.4 K now under).
+- Batch 12 (merged 2b9c2c1): moveTo's pixel walks without the per-pixel setter in the grid build (b8b010f, PLAY_WALK:
+  caveman 200 608.0 -> 559.0 K, p4 301 -2.4 %), pgrid_search with one key per hit (d3707b5: p5_l4 2, the level's first
+  step, 4662.4 -> 4421.3 K), the solid grid built at the end of play_level_start (a6, b078556: p5_l4 2 -15 %).
+- Measured and dropped: pq_init's (double)(float)v and floor on the bits (dfl_floor, exact over 16.6 G doubles):
+  pq_init 12.6 -> 6.9 K on caveman 200 but the step 556.7 -> 565.2 K, instructions flat (layout).
 - Measured and dropped: pgrid_search with a float search rectangle comparing whole entries by the rectangle's integer
   bounds (pg_kside: exact for every float below 2^14) and float entries by keys inline. p4_bomb_drop record 202 (the
   bomb's explosion, 1.50 M fit: debris searching in pcol_handle) 1497.7 -> 1447.7 K with the compares inline in the
