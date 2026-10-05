@@ -126,9 +126,15 @@ Open:
   a sliver of its top and HD's (x +- 9, y - 9) test grabs it. pplayer.c pushblock_covered refuses the non-glove
   solid grab when a solid covers the push block's top (columns 1..14); ledge flips are unchanged. No death was
   reproduced from these hangs (hermetic harness, about 200 K runs); the user's death on .81 is unexplained.
-- MAME frame check of the panel: scripts/game_check.sh over_giant 253 g_over_giant_s253 200,260,300,330 differs only
-  in the panel text, because tools/tracer.py's TRACE_GUI draws scrDrawHUD and showMessages but not showEndMessage,
-  and tools/drawmodel.py does not model the panel. Both need the panel added for an exact gate.
+- **MAME frame check of the panel (done 2026-10-05):** tools/tracer.py's TRACE_GUI runs showEndMessage after
+  scrDrawHUD / showMessages, and TRACE_HUD records carry the end block (flags bit 5: oGame.drawStatus / moneyCount,
+  oEnd3's and oCredits2's state, global.kills / damsels); tools/drawmodel.py draws the panel (`end_text`; the port's
+  prompt PRESS ATTACK on the MAME screen, HD's PRESS X against the runner's GUI frames). The route needs its enemies
+  (p5_giant's spider): `scripts/game_check.sh over_giant 253 g_over_giant_s253 200,260,300,330 1 0 1` is 0 px at
+  all four records against MAME, the runner's frames and its GUI frames (trace remade: `TRACE_HUD=1
+  TRACE_SHOT=200,260,300,330 TRACE_GUI=200,260,300,330 XVFB_SCREEN=1280x960x24 scripts/hd_trace.sh over_giant 253
+  g_over_giant_s253`); `HUD=1 scripts/game_host.sh over_giant 253 g_over_giant_s253 1 0 1`: 334 / 334 frames equal.
+  Without the enemies (the default 0) the player does not die and every record differs.
 - **Release-mode seeding (done 2026-10-05):** PLAY builds seed a game and each attract intro from `shell_seed()`, the
   input history mixed every frame (docs/ARCADE.md, seeding rule). Checked in MAME on the release set: Coin at frame
   200, Start at 400 twice gives the same RNG state and level 1; Start at 401 and 460 give two other levels.

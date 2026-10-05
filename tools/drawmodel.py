@@ -11,7 +11,9 @@ follow as the runner applies it before drawing. Independent of the C code: it re
         pixels of the MAME snapshot whose 5-bit colour differs from the model; --shot also compares the model's
         320 x 240 view with the runner's own frame (TRACE_SHOT: application_surface, no GUI); --gui gui.png (with
         --hud) the model's view with the HUD and oTransition's text against the runner's frame with its GUI
-        (tools/tracer.py TRACE_GUI); --dark a8: drawn as a dark level at alpha byte a8 (tests/game DARK=a8)
+        (tools/tracer.py TRACE_GUI); --dark a8: drawn as a dark level at alpha byte a8 (tests/game DARK=a8).
+        The port's own changes (not in HD) are drawn on the MAME screen only, HD's for --gui: the game-over panel's
+        prompt (PRESS ATTACK, docs/GAMELOOP.md section 3; HD: the runner's attack key X)
     tools/drawmodel.py hostcmp <trace.bin> <names> <gen dir> <host out dir> [--hud]
         every v_<rec>.bin of tests/game/host.c (the C display list composed on the host) against the model's view,
         view lines 8..231 (the screen), all 320 columns
@@ -445,6 +447,43 @@ def trans_text(hd, insts, names):
     return out
 
 
+def tr(s):
+    """scripts/tr: HD's English text (datafiles/locale/locales/en/text.json), upper case; the key when absent"""
+    if not hasattr(tr, 'm'):
+        import json
+        tr.m = json.load(open(os.path.join(SRC, 'datafiles', 'locale', 'locales', 'en', 'text.json')))
+    v = tr.m.get(s, '')
+    return v.upper() if v else s
+
+
+def centred(text, size='small'):
+    """drawTextHCentered's x on the 320-px display: ceil((display_w - length * width) / 2)"""
+    return -((len(text) * (16 if size == 'large' else 8) - 320) // 2)
+
+
+def end_text(hd, insts, names, port=True):
+    """scripts/showEndMessage, a level's part (oGame's Draw GUI after showMessages; English) from a record with the
+    end block (TRACE_HUD): [(text, x, y, size, yellow)]. The prompt names the attack button on the port
+    (docs/GAMELOOP.md section 3: src/draw end_out); HD names the key (scrGetKey(global.keyAttackVal): X)"""
+    h = hd.get('hud') or {}
+    ds = h.get('oGame.drawStatus', -1e9)
+    if ds < -1e8 or names['R'].get(hd['room'], '') not in LEVEL_ROOMS:
+        return []
+    pl = next((i for i in insts if names['O'][i['obj']] == 'oPlayer1'), None)
+    if pl is None or not int(pl['vars'].get('dead', 0)):
+        return []
+    out = []
+    if ds > 0:
+        out.append(('GAME OVER', 32 + 16, 'large', True))
+    if ds > 1:
+        out.append(('FINAL SCORE:', 64 + 16, 'small', True))
+    if ds > 2:
+        out.append((tr('$') + str(int(h['oGame.moneyCount'])), 72 + 16, 'large', False))
+        prompt = 'PRESS ATTACK FOR HIGH SCORES.' if port else tr('PRESS ') + 'X' + tr(' FOR HIGH SCORES.')
+        out.append((prompt, 120, 'small', True))
+    return [(t, centred(t, size), y, size, yel) for t, y, size, yel in out]
+
+
 def scores_text(hd, insts, names):
     """oHighscores' Draw GUI (objects/oHighscores/Draw_64.gml, English) for a cabinet's blank EEPROM (every score 0):
     [(text, x or None for centred, y, yellow)]"""
@@ -468,8 +507,9 @@ def scores_text(hd, insts, names):
     return out
 
 
-def view555(g, names, tiles, hd, insts, kind, art=None):
-    """the model's 320 x 240 view as bgr555 words (None: nothing), with the HUD when art (hudcheck.Art) is given"""
+def view555(g, names, tiles, hd, insts, kind, art=None, port=True):
+    """the model's 320 x 240 view as bgr555 words (None: nothing), with the HUD when art (hudcheck.Art) is given;
+    port: the port's own changes (the MAME screen; False: HD's, the runner's GUI frames)"""
     import hudcheck
     vx, vy = view_after(hd, insts, names)
     v = hudcheck.View()
@@ -484,6 +524,8 @@ def view555(g, names, tiles, hd, insts, kind, art=None):
             if x is None:
                 x = -((len(text) * 8 - 320) // 2)
             hudcheck.draw_text(v, art, text, 'small', x, y, hudcheck.YELLOW if yel else hudcheck.WHITE)
+        for text, x, y, size, yel in end_text(hd, insts, names, port):
+            hudcheck.draw_text(v, art, text, size, x, y, hudcheck.YELLOW if yel else hudcheck.WHITE)
     return v, (vx, vy)
 
 
@@ -605,7 +647,8 @@ def model(trace, names_path, rec, gen, hud=False):
     v, cam = view555(g, names, tiles, hd, insts, kind)
     vh = view555(g, names, tiles, hd, insts, kind, hudcheck.Art(SRC))[0] if hud else None
     scr = hudcheck.screen(vh if hud else v)
-    model.with_gui = vh
+    model.with_gui = vh                           # the port's screen (MAME, jtcps3)
+    model.hd_gui = lambda: view555(g, names, tiles, hd, insts, kind, hudcheck.Art(SRC), port=False)[0]
     return g, v, scr, cam
 
 
@@ -675,7 +718,7 @@ def main():
         fail = fail or k != 0
     if opt('--gui') and hud:
         s = opt('--gui')
-        k = shot555(model.with_gui, s, s.replace('.png', '.mdiff.png'))
+        k = shot555(model.hd_gui(), s, s.replace('.png', '.mdiff.png'))
         msg += f'; runner GUI frame vs model {k} px'
         fail = fail or k != 0
     print(msg)
