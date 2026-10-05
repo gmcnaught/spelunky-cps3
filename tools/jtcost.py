@@ -65,6 +65,8 @@ def fn(pc):
 PLAY = [a for a, n in syms if n == '_play_step'][0]
 PCHIST = os.getenv('JTC_PCHIST'); pch = collections.Counter()   # JTC_PCHIST=<symbol>: its instructions by address
 callers = collections.Counter()
+WATCH = set(x for x in os.getenv('JTC_CALLERS', '').split(',') if x)   # JTC_CALLERS=<sym>,...: calls by caller, inclusive
+wcalls = collections.Counter(); wcost = collections.Counter(); wstk = []   # (sym, caller, return PR, SP, cost at entry)
 litmiss = collections.Counter()               # literal-pool line misses by the literal's address
 STARTS = set(SA)                                  # a function's first instruction: one entry (call) of it
 dm = collections.Counter(); dsto = collections.Counter()
@@ -109,7 +111,11 @@ for line in open(tr):
         else: continue
     elif pc == ret and R[15] == sp0:
         break
+    while wstk and pc == wstk[-1][2] and R[15] == wstk[-1][3]:
+        ws, wc, _, _, w0 = wstk.pop(); wcost[(ws, wc)] += tot[SI] - w0
     f = fn(pc); c = per[f]
+    if pc in STARTS and f in WATCH:
+        wcalls[(f, fn(R[16]))] += 1; wstk.append((f, fn(R[16]), R[16], R[15], tot[SI]))
     if pc in STARTS:
         c['entries'] += 1
         if f.startswith('___'): callers[(f, fn(R[16]))] += 1     # libgcc helper: who called it (PR)
@@ -241,6 +247,10 @@ for s in (0, 1):
                                                 tot[s] / max(ins, 1), stores, st['st_stack'], st['imiss'],
                                                 st['dmiss_ram'], st['dmiss_simm'], lit))
 
+if WATCH:
+    print('\nJTC_CALLERS: calls by caller, inclusive model cost (%s constants)' % SETS[SI])
+    for (ws, wc), v in sorted(wcost.items(), key=lambda t: -t[1]):
+        print('  %-22s <- %-26s %5d calls %9.0f' % (ws, wc, wcalls[(ws, wc)], v))
 print('\nsoft-float / libgcc calls by caller')
 for (h, cf), v in callers.most_common(30): print('  %-16s <- %-24s %6d' % (h, cf, v))
 
