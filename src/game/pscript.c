@@ -7,11 +7,13 @@
 #include "../snd/sndgame.h"                     /* the GML sound calls (src/snd) */
 #include "pmsg.h"                                /* the HUD messages (trMessages) */
 #include "pcontent.h"
+#include "prand.h"                              /* prandom: u * 2^-32 * n from the bits */
 #include "precip.h"                             /* moveTo: round(1 / frac(|v|)) from the bits */                            /* P7 content packages (docs/CONTENT.md) */
 
+/* (double)u * (1.0 / 4294967296.0) * n, from u's bits (prand.h: the same double) */
 double prandom(double n)
 {
-    return (double)rng_next(&g_rng) * (1.0 / 4294967296.0) * n;
+    return prand_scale(rng_next(&g_rng), n);
 }
 
 /* scripts/setCollisionBounds */
