@@ -775,22 +775,33 @@ static void speartrap_step(int i)                                    /* objects/
 {
     struct pin *p = &PX(i);
     double x = X(i), y = Y(i), range = 64, prox = 4;
-    int q = pl(), obj, side;
+    int q = pl(), obj, side, have = 0, ne = NOONE, nm = NOONE, ni = NOONE;
     if (PE(p)->fired > 0) PE(p)->fired -= 1;
+    /* each test reads the nearest instance only after fired == 0 (instance_nearest has no effect), and only spears()
+       changes anything here: it sets fired, after which no test passes. So the three nearest instances are found
+       once, at the first test that can use them, and kept: until a spears() they are what each call would return
+       (12 spear traps on a lush level made 72 instance_nearest calls a step) */
     for (side = 0; side < 2; side++) {
         /* oPlayer1 */
         if (PE(&PX(i))->fired == 0 && DLT(dabs(Y(q) - y - 8), prox) && (side ? DGT(X(q), x + 8) : DLT(X(q), x)) &&
             DLT(point_distance_d(x + 8, y + 8, X(q), Y(q)), range))
             spears(i, side);
-        obj = instance_nearest_p(x, y, OBJ_oEnemy);
+        if (PE(&PX(i))->fired != 0) continue;
+        if (!have) {
+            ne = instance_nearest_p(x, y, OBJ_oEnemy);
+            nm = instance_nearest_p(x, y, OBJ_oMoveableSolid);
+            ni = instance_nearest_p(x, y, OBJ_oItem);
+            have = 1;
+        }
+        obj = ne;
         if (obj != NOONE && PE(&PX(i))->fired == 0 && DLT(dabs(Y(obj) - y), prox) &&
             (side ? DGT(X(obj), x) : DLT(X(obj), x)) && DLT(point_distance_d(x, y, X(obj), Y(obj)), range))
             spears(i, side);
-        obj = instance_nearest_p(x, y, OBJ_oMoveableSolid);
+        obj = nm;
         if (obj != NOONE && PE(&PX(i))->fired == 0 && DLT(dabs(Y(obj) - y), prox) &&
             (side ? DGT(X(obj), x) : DLT(X(obj), x)) && DLT(point_distance_d(x, y, X(obj), Y(obj)), range))
             spears(i, side);
-        obj = instance_nearest_p(x, y, OBJ_oItem);
+        obj = ni;
         if (obj != NOONE && PE(&PX(i))->fired == 0 && DLT(dabs(Y(obj) - y - 8), prox) &&
             (side ? DGT(X(obj), x + 8) : DLT(X(obj), x + 8)) &&
             DLT(point_distance_d(x + 8, y + 8, X(obj), Y(obj)), range))
