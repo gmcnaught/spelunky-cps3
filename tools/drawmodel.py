@@ -29,6 +29,7 @@ import sys
 from PIL import Image
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import titlelogo  # noqa: E402
 import tracer  # noqa: E402
 import viewlevel  # noqa: E402
 import drawtables  # noqa: E402
@@ -254,6 +255,8 @@ def drawables(names, tiles, insts, g, kind, blink=-1, a8=None, front=None):
         if held is not None and i['id'] == held:
             depth = 0
         x, y = pix(i['x']), pix(i['y'])
+        if on in titlelogo.MOVED:               # the port's title logo and its shadow, moved (tools/titlelogo.py)
+            x += titlelogo.DX
         v = i['vars']
         ops = []
 

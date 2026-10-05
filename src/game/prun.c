@@ -271,6 +271,7 @@ void play_level_start(int32_t next_id)
     int k;
     static const int16_t rooms[4] = { R_rLevel, R_rLevel2, R_rLevel3, R_rOlmec };
     int levelType = G.levelType;               /* oLevel Create's startMusic runs before oGame Create's scrInitLevel */
+    int darkPrev = G.darkLevel;                /* and its darkness (:16-17): the darkLevel before scrInitLevel's */
     /* the event-object table (a function of the object tables only) is built here, out of the first play_step
        (393 K jtcps3 clocks there on p5_l4); the step's own check stays for callers that start without a level */
     if (evobj0[16] == 0) evobj_init();
@@ -349,6 +350,7 @@ void play_level_start(int32_t next_id)
     PG.ghostExists = 0;
     PG.drawHUD = 1;
     PLEV.musicFade = 0;
+    PLEV.darkness = darkPrev ? 1 : 0;                                          /* oLevel Create :16-17 */
     if (snd_music_on) start_music(levelType);                                           /* :20 */
     for (k = 0; k < PW.n; k++)
         if (PX(k).alive && PE(&PX(k))->held && PL.idx != NOONE) {                    /* the item scrHoldItem gave */

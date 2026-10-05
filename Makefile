@@ -54,11 +54,11 @@ $(GEN)/playtables.h: tools/hdplaytables.py $(U) $(GEN)/objects.h
 	$(PY) tools/hdplaytables.py $(U) $@
 $(GEN)/playtables.c: $(GEN)/playtables.h ;
 
-$(GEN)/fronttables.h: tools/fronttables.py $(U)
+$(GEN)/fronttables.h: tools/fronttables.py tools/titlelogo.py $(U)
 	$(PY) tools/fronttables.py $(U) $(GEN)
 $(GEN)/fronttables.c: $(GEN)/fronttables.h ;
 
-$(GEN)/sprites.h: tools/hdsprites.py
+$(GEN)/sprites.h: tools/hdsprites.py tools/titlelogo.py
 	$(PY) tools/hdsprites.py $(SRC) $(GEN)
 $(GEN)/sprites.c $(GEN)/gfx.bin $(GEN)/gfx.json: $(GEN)/sprites.h ;
 
@@ -66,7 +66,7 @@ $(GEN)/hudart.h: tools/hudart.py $(GEN)/gfx.json
 	$(PY) tools/hudart.py $(SRC) $(GEN)
 $(GEN)/hud.bin $(GEN)/hud.json: $(GEN)/hudart.h ;
 
-$(GEN)/rgbsrc.json: tools/darkfade.py tools/hdsprites.py
+$(GEN)/rgbsrc.json: tools/darkfade.py tools/hdsprites.py tools/titlelogo.py
 	$(PY) tools/darkfade.py sources $(SRC) $(GEN)
 
 $(GEN)/fade.h: tools/darkfade.py $(GEN)/gfx.json $(GEN)/hud.json $(GEN)/rgbsrc.json

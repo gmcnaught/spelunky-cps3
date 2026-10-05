@@ -12,6 +12,8 @@ int32_t game_rec, game_rec1 = -1, game_steps;
 void (*game_rec_hook)(int32_t rec);               /* tests: called at each record point with its number */
 uint8_t game_over;
 int32_t game_end_room = -1;
+#define GAME_OVER_WAIT 900                        /* steps: 30 s at room_speed 30 */
+static int32_t over_wait;
 
 /* scrUpdateHighscores' store (play.h play_hs_hook): the run's globals into the EEPROM (src/shell hs_update); the
    "new" marks go to the scores room (front_new). The tunnel man and the shortcuts are not on the cabinet (docs/
@@ -138,6 +140,7 @@ void game_begin(void)
     game_steps = 0;
     game_over = 0;
     game_end_room = -1;
+    over_wait = 0;
     play_hs_hook = hs_store;
     draw_new_game();
 }
@@ -153,8 +156,15 @@ int game_step(const struct shell_input *in)
             return 1;
         }
         keys = game_steps < game_cfg.nroute ? game_cfg.route[game_steps] : 0;
-    } else
+    } else {
         keys = in->down;
+        /* an unattended game-over panel (HD waits for a press): after GAME_OVER_WAIT steps on it the cabinet presses
+           attack itself, every other step (the first press shows the final score, the next goes to rHighscores) */
+        if (PL.idx != NOONE && PL.dead && PGAME.drawStatus > 0) {
+            if (++over_wait > GAME_OVER_WAIT && (over_wait & 1)) keys |= K_ATTACK;
+        } else
+            over_wait = 0;
+    }
     do                                            /* the frame ended at a room change before oGamepad's Step: the */
         r = play_step(keys, rec_cb);              /* same keys again (playhost), nothing drawn in that frame */
     while (r == PLAY_ROOM_EARLY);

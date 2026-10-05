@@ -1,6 +1,7 @@
 # Game loop: one cabinet game from Start to the end
 
-Status 2026-10-05, main 2239a8e. Plan for the next session; nothing here is implemented yet.
+Status 2026-10-05 (updated), main a2d661f: items 1-5 below are done and gated; the ending (item 6) and darkness
+are in progress on branches `ending` and `darkness`. See section 5.
 
 Goal: a cabinet game runs HD's whole flow on one boot:
 - levels 1-16 and Olmec through the transition rooms;
@@ -78,3 +79,30 @@ Also on the path, not blocking the loop:
 - **Host:** playhost and `scripts/game_host.sh` on the new routes; front rooms by `scripts/front_host.sh`.
 - **MAME:** `scripts/game_check.sh` snapshots (panel, rHighscores with the new score); EEPROM word 16-28 read back after the run (as `scripts/shell_check.sh` reads word 27).
 - **Hardware:** the user's playthrough on MiSTer .81 (`tests/game PLAY=1`, deployed as in docs/ARCADE.md).
+
+## 5. Progress (2026-10-05)
+
+Done on main (a2d661f), gated as one batch: gates.sh (p5_regress 19/19 and 18/18, P4, gen, colprobe, snd), ctall
+50/50, EQUIV 74/74, playsh2 6851/6851 checksums (mean route step 137.4 K MAME clocks).
+- **1 lake roll:** the 4 pk-lake commits cherry-picked (9346665 .. 58a5323); c_swamp_lake 190/190, c_swamp_lakejaws
+  295/295.
+- **2-4 death -> scores -> rHighscores** (4d20eda): `scrUpdateHighscores` in src/game/pscript.c calls `play_hs_hook`
+  (src/main/game.c `hs_store` -> `hs_update`; routes leave the EEPROM unless `game_cfg.scores`), then
+  `global.time = floor(time / 1000)`. The panel is `end_out` in src/draw/draw.c. `game_end_room` makes
+  `game_attract_step` start the cycle in rHighscores; `front_new` places oNew on the new records until the intro.
+  Route `over_giant` is 336/336 records equal to the HD trace `g_over_giant_s253`.
+- **5 second game** (dc7f6b0): draw.c's price-tag counters (icid) were carried into the next game. tests/game/host.c
+  HOST_GAME2=1: game 2's frame hash equals game 1's at every record on 16 routes.
+- **Cabinet idle timeout** (a2d661f, not in HD): 900 steps on the game-over panel and the cabinet presses attack
+  itself, so an unattended cabinet returns to attract.
+
+Host test modes (tests/game/host.c): HOST_SCORES, HOST_EE (EEPROM writes), HOST_AFTER=<steps> (the attract after the
+game, v_a<k>.bin), HOST_GAME2=1, HOST_CABINET=1 (route keys as the cabinet's controls).
+
+Open:
+- MAME frame check of the panel: scripts/game_check.sh over_giant 253 g_over_giant_s253 200,260,300,330 differs only
+  in the panel text, because tools/tracer.py's TRACE_GUI draws scrDrawHUD and showMessages but not showEndMessage,
+  and tools/drawmodel.py does not model the panel. Both need the panel added for an exact gate.
+- **Next session (the user, 2026-10-05): release mode must not pin level generation.** Today PLAY builds seed the
+  level RNG from the frame counter at Start (src/main/game.c `rng_seed(... SH.frame * 2654435761u + 1)`); the attract
+  intro always uses `front_seed = 1` (src/front/front.c). Check what else fixes the seed in a PLAY build and make it vary.

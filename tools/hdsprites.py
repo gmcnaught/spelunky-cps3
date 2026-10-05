@@ -21,6 +21,8 @@ import sys
 
 from PIL import Image
 
+import titlelogo
+
 SIZES = [(4, 4), (4, 2), (2, 4), (2, 2), (4, 1), (1, 4), (2, 1), (1, 2), (1, 1)]   # (w, h) in tiles, largest first
 
 
@@ -42,6 +44,11 @@ def bgr555(r, g, b):
 
 def frames_of(src, name):
     y = load_yy(os.path.join(src, 'sprites', name, name + '.yy'))
+    if name == titlelogo.NAME:      # the port's title logo, "SPELUNKY CLASSIC ARCADE" (tools/titlelogo.py)
+        im = titlelogo.build(src)
+        y = dict(y, width=im.width, height=im.height, bbox_left=0, bbox_top=0, bbox_right=im.width - 1,
+                 bbox_bottom=im.height - 1)
+        return y, [im]
     out = []
     for f in y['frames']:
         png = os.path.join(src, 'sprites', name, f['name'] + '.png')
@@ -122,12 +129,31 @@ def main():
     tiles, tile_of = [], {}         # deduplicated tile bytes
     runs = {}                       # piece tile-run bytes -> first tile number
     sprites, frames, pieces = [], [], []
+
+    def index_of(n, r, g, b):
+        c = bgr555(r, g, b)
+        if c in split:
+            c = (r, g, b)
+        if c not in colour:
+            colour[c] = len(colour) + 1
+            rgb_of[colour[c]] = (r, g, b)
+            if colour[c] > 255:
+                raise SystemExit(f'{n}: more than 255 colours in all')
+        return colour[c]
+
     for n in names:
         y, ims = frames_of(src, n)
         w, h = y['width'], y['height']
         sq = y.get('sequence', {})
         xo, yo = int(sq.get('xorigin', 0)), int(sq.get('yorigin', 0))
         first_frame = len(frames)
+        if n == titlelogo.NAME:     # HD's own logo's colours first, in its order: the palette stays HD's
+            hd = titlelogo.original(src)
+            for yy in range(hd.height):
+                for xx in range(hd.width):
+                    r, g, b, a = hd.getpixel((xx, yy))
+                    if a >= 128:
+                        index_of(n, r, g, b)
         for im in ims:
             pix = [[0] * w for _ in range(h)]
             if im is not None:
@@ -136,15 +162,7 @@ def main():
                     for xx in range(min(w, im.width)):
                         r, g, b, a = px[xx, yy]
                         if a >= 128:
-                            c = bgr555(r, g, b)
-                            if c in split:
-                                c = (r, g, b)
-                            if c not in colour:
-                                colour[c] = len(colour) + 1
-                                rgb_of[colour[c]] = (r, g, b)
-                                if colour[c] > 255:
-                                    raise SystemExit(f'{n}: more than 255 colours in all')
-                            pix[yy][xx] = colour[c]
+                            pix[yy][xx] = index_of(n, r, g, b)
             first_piece = len(pieces)
             for tx, ty, sw, sh in cut(pix, w, h):
                 run = b''.join(tile_bytes(pix, w, h, tx + i, ty + j) for i in range(sw) for j in range(sh))

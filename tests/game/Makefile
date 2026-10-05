@@ -5,11 +5,12 @@
 #   scripts/dmake.sh tests/game ROUTE=p4_exit559 SEED=559 SNAPS=100,200 [LEVEL=1 MONEY=0 ENEMIES=0] [OPT=-O2]
 #   [HOLD=n: the SNAPS frames held n frames each on their own, sound running (jtcps3 frame check, scripts/jt_frames.sh)]
 #   [ATTRACT=1: no coin / start, the attract mode (src/front) from the intro; ATTRACT=5: from rHighscores]
-#   [PLAY=1: playable: the cabinet's coin / Start and controls, a random seed, enemies on, level 1 (route unused)]
+#   [PLAY=1: playable: the cabinet's coin / Start and controls, a random seed, enemies on, level 1 (route unused);
+#    the MiSTer set is spelunky.zip + "Spelunky Classic Arcade.mra"]
 #   [SMOOTH=1: smooth motion on the route (scripts/smooth_check.sh: each held record's midpoint and own frames)]
 #   [DPROF=1: src/draw's parts timed (draw_st.prof)] [DARK=a8: drawn as a dark level at alpha byte a8] [HUD=0: no HUD, as the runner's application_surface frames]
-PROG   := game
-TITLE  := Spelunky CPS3
+PROG   := $(if $(filter 1,$(PLAY)),spelunky,game)
+TITLE  := $(if $(filter 1,$(PLAY)),Spelunky Classic Arcade,Spelunky CPS3)
 ROOT   := ../..
 GEN    := $(ROOT)/build/gen
 OPT    ?= -O2

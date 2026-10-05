@@ -5,6 +5,7 @@
  * Untranslated GML that P4's routes do not reach (items and rooms of later milestones) sets play_untranslated.
  */
 #include "pint.h"
+#include "pcol.h"                                /* pcol_touch (the light search) */
 #include "penemy.h"
 #include "../snd/sndgame.h"                     /* the GML sound calls (src/snd) */
 #include "pmsg.h"                                /* the HUD messages (trMessages) */
@@ -26,6 +27,7 @@ void pl_init_from_gen(int i)
     struct pin *p = &PX(i);
     PL.idx = i;
     PL.bet = 0;                                                                /* oPlayer1 Create :38 (P5) */
+    PL.distToNearestLightSource = 999;                                         /* :31 */
     pmsg_player_reset();                                                       /* :103 */
     /* characterCreateEvent :7-117 */
     PL.hangCount = 0;
@@ -1084,6 +1086,39 @@ static void hurt_logic(int i)
     }
 }
 
+/* oPlayer1 Step :74-147: distToNearestLightSource, the nearest light (oLevel Step's darkness on dark levels):
+   distance_to_object(source) of the nearest instance of each kind (instance_nearest by origin) */
+static double light_dist(int self, int obj)
+{
+    int s = instance_nearest_p(PTOD(PX(self).x), PTOD(PX(self).y), obj);
+    pcol_touch(self);                                /* F_DistanceToObject computes both boxes */
+    pcol_touch(s);
+    return (float)distance_to_instance_p(self, s);  /* the runner's distance_to_object is a float */
+}
+static void pl_light(int i)
+{
+    static const int16_t near[] = { OBJ_oLava, OBJ_oLamp, OBJ_oLampItem, OBJ_oFlareCrate };            /* :82-105 */
+    static const int16_t near48[] = { OBJ_oTikiTorch, OBJ_oArrowTrapLeftLit, OBJ_oArrowTrapRightLit,
+                                      OBJ_oSpearTrapLit, OBJ_oSmashTrapLit };                           /* :106-135 */
+    static const int16_t blast[] = { OBJ_oShotgunBlastLeft, OBJ_oShotgunBlastRight };                   /* :136-147 */
+    double d = 999, e;
+    unsigned k;
+    if (instance_exists_p(OBJ_oExplosion)) {                                   /* :75-81 */
+        int s = instance_nearest_p(PTOD(PX(i).x), PTOD(PX(i).y), OBJ_oExplosion);
+        double img = (double)PX(s).img;
+        d = light_dist(i, OBJ_oExplosion);
+        if (img <= 3) d -= img * 16;
+        else d += (img - 3) * 16;
+    }
+    for (k = 0; k < sizeof near / sizeof near[0]; k++)
+        if (instance_exists_p(near[k]) && (e = light_dist(i, near[k])) < d) d = e;
+    for (k = 0; k < sizeof near48 / sizeof near48[0]; k++)
+        if (instance_exists_p(near48[k]) && (e = light_dist(i, near48[k])) + 48 < d) d = e + 48;
+    for (k = 0; k < sizeof blast / sizeof blast[0]; k++)
+        if (instance_exists_p(blast[k]) && (e = light_dist(i, blast[k])) < d) d = e;
+    PL.distToNearestLightSource = d;
+}
+
 /* objects/oPlayer1/Step_0.gml */
 void pl_step(int i)
 {
@@ -1106,7 +1141,7 @@ void pl_step(int i)
         PE(p)->myGrav = 0;
         PL.bounced = 1;
     }
-    /* :74-147 distToNearestLightSource: read only by dark levels' drawing; no state */
+    if (LIGHT_ON()) pl_light(i);                                               /* :74-147 */
     /* WHOA :150 */
     if (p->spr == GSPR_sWhoaLeft || p->spr == GSPR_sDamselWhoaL || p->spr == GSPR_sTunnelWhoaL) {
         if (PL.whoaTimer > 0) PL.whoaTimer -= 1;
