@@ -8,7 +8,8 @@ v1.1b ([LICENSE](LICENSE)). No game assets or Capcom ROMs are included.
 
 Spelunky Classic HD 1.2.2 re-implemented in C as a homebrew ROM set for the Capcom CPS3 (SH-2). It runs in MAME
 (`cps3` driver, using the `sfiii3na` set name) and on MiSTer with the jtcps3 core. The design decisions and their
-measurements are in [PLAN.md](PLAN.md). The current state is in [docs/HANDOFF.md](docs/HANDOFF.md).
+measurements are in [PLAN.md](PLAN.md). Its title (title screen and MRA) is **Spelunky Classic Arcade**: the
+logo is built from HD's at build time (`tools/titlelogo.py`), with ARCADE in place of HD. The current state is in [docs/HANDOFF.md](docs/HANDOFF.md).
 
 Game assets are never committed. Everything under `refs/`, `build/` and `rom/` is git-ignored and is rebuilt
 locally (see [Build inputs](#build-inputs-refs-and-buildgen)).
