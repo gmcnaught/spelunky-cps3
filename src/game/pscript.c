@@ -629,6 +629,14 @@ double patan_deg(double a)
     return patan(a) * 180.0 / 3.14159265358979323846;
 }
 
+/* scripts/scrUpdateHighscores (play.h) */
+void (*play_hs_hook)(int type);
+void scrUpdateHighscores(int type)
+{
+    if (play_hs_hook) play_hs_hook(type);
+    PG.time = PG.time / 1000;                                                  /* :59 (time >= 0: floor) */
+}
+
 /* scripts/scrClearGlobals: a new game. The generator's globals (struct gglobals: gen_new_game, which also sets the
    values oGlobals / scrInit / oTitle Create give them), then the play loop's in the script's order; the globals the
    port does not model (titleStart, entityGen, yviewPrev, xview / yview, waterCounter, crapsPoint,

@@ -7,10 +7,30 @@
 #include "pmsg.h"
 #include "game.h"
 
-struct game_cfg game_cfg = { 0, 0, 30, 0, 1, 0, 1, -1, -1, 0 };
+struct game_cfg game_cfg = { 0, 0, 30, 0, 1, 0, 1, -1, -1, 0, 0 };
 int32_t game_rec, game_rec1 = -1, game_steps;
 void (*game_rec_hook)(int32_t rec);               /* tests: called at each record point with its number */
 uint8_t game_over;
+int32_t game_end_room = -1;
+
+/* scrUpdateHighscores' store (play.h play_hs_hook): the run's globals into the EEPROM (src/shell hs_update); the
+   "new" marks go to the scores room (front_new). The tunnel man and the shortcuts are not on the cabinet (docs/
+   GAMELOOP.md section 3): global.tunnel1 / 2 keep the EEPROM's values, usedShortcut is false; no minigames */
+static void hs_store(int type)
+{
+    struct hs_run r;
+    if (game_cfg.route && !game_cfg.scores) return;
+    r.money = PG.money;
+    r.time = PG.time;
+    r.kills = PG.kills;
+    r.damsels = PG.damsels;
+    r.tunnel1 = SH.g.tunnel1;
+    r.tunnel2 = SH.g.tunnel2;
+    r.mini1 = r.mini2 = r.mini3 = 0;
+    r.used_shortcut = 0;
+    r.keep_score = 1;
+    front_new = (uint8_t)hs_update(&SH.hs, &SH.st, &r, (enum hs_type)type);
+}
 
 /* tools/tracer.py's record points: the tracer (and test/host/playhost.c) reads the view there, which the play
    state depends on (view_read: the follow is applied when the view was set this frame) */
@@ -26,7 +46,11 @@ static void rec_cb(int phase)
 void game_attract_step(void)
 {
     front_rec_cb = rec_cb;
-    if (!front_on) game_rec = 0, game_rec1 = -1;
+    if (!front_on) {
+        game_rec = 0, game_rec1 = -1;
+        if (game_end_room == R_rHighscores) front_start_at(R_rHighscores);   /* the game's room_goto(rHighscores) */
+        game_end_room = -1;
+    }
     front_step();
 }
 
@@ -105,6 +129,8 @@ void game_begin(void)
     game_rec1 = -1;
     game_steps = 0;
     game_over = 0;
+    game_end_room = -1;
+    play_hs_hook = hs_store;
     draw_new_game();
 }
 
@@ -127,6 +153,7 @@ int game_step(const struct shell_input *in)
     game_steps++;
     if (r != 0) {                                 /* a room the play loop does not model */
         game_over = 1;
+        game_end_room = r;
         return 1;
     }
     return 0;

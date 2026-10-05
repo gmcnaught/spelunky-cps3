@@ -434,6 +434,11 @@ extern uint32_t play_time;                        /* oGame.time */
 extern int32_t play_rooms_entered;
 extern uint8_t play_toggle_run_on, play_toggle_run;   /* global.toggleRunEnabled / toggleRun (X10; game.c) */
 extern int play_noenemy;                          /* 1: remove the enemies at level start (TRACE_NOENEMY) */
+/* scrUpdateHighscores(type) (0 game over, 1 win, 2 minigame; global.keepScore is true: oTitle Create): the
+   store is play_hs_hook's (src/main/game.c: the EEPROM, src/shell hs_update), called with the globals as they
+   are; then global.time = floor(global.time / 1000) as in HD */
+extern void (*play_hs_hook)(int type);
+void scrUpdateHighscores(int type);
 
 /* event entry points (pobj.c, pplayer.c) */
 void ev_create(int i);

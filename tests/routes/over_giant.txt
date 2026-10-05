@@ -1,0 +1,19 @@
+# seed 253
+# level 1
+# p5_giant's death, then the game-over panel and rHighscores (docs/GAMELOOP.md items 2-4): the first attack press
+# shows the final score at once, the second goes to rHighscores
+10 R
+50 -
+24 R
+20 -
+1 L
+50 -
+1 A
+14 -
+1 A
+14 -
+150 -
+1 A
+60 -
+1 A
+30 -

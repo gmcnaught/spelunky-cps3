@@ -837,6 +837,22 @@ static void transition_out(void)
     }
 }
 
+/* scripts/showEndMessage, a level's part (oGame Draw GUI after showMessages; English, room_offset 0): the game-over
+   panel while oPlayer1 is dead. The prompt names the attack button as such (docs/GAMELOOP.md section 3) */
+static void end_out(void)
+{
+    char b[16];
+    if (PL.idx == NOONE || !I_ALIVE(PL.idx) || !PL.dead || !isLevel()) return;
+    if (PGAME.drawStatus > 0) hud_text_centered("GAME OVER", HUD_FONT_LARGE, 1, 0, 32 + 16);
+    if (PGAME.drawStatus > 1) hud_text_centered("FINAL SCORE:", HUD_FONT_SMALL, 1, 0, 64 + 16);
+    if (PGAME.drawStatus > 2) {
+        b[0] = '$';
+        hud_itoa(PGAME.moneyCount, b + 1);
+        hud_text_centered(b, HUD_FONT_LARGE, 0, 0, 72 + 16);
+        hud_text_centered("PRESS ATTACK FOR HIGH SCORES.", HUD_FONT_SMALL, 1, 0, 120);
+    }
+}
+
 /* scrDrawHUD / showMessages' state from the play state (docs/ARCADE.md §4) */
 static void hud_out(void)
 {
@@ -1287,7 +1303,10 @@ void draw_frame(void)
         hud_out();
         transition_out();
     }
-    if (!front_on && pw_ohead[OBJ_oGame] >= 0) pmsg_frame();      /* oGame Draw GUI: showMessages' countdown */
+    if (!front_on && pw_ohead[OBJ_oGame] >= 0) {  /* oGame Draw GUI */
+        pmsg_frame();                             /* showMessages' countdown */
+        if (draw_hud_on) end_out();               /* showEndMessage */
+    }
     if (front_on) front_draw_gui();
     PROF(4);
     draw_st.entries = ent_n;

@@ -1487,6 +1487,7 @@ void pl_step(int i)
             else {
                 PG.plife = 0;
                 PG.drawHUD = 0;
+                scrUpdateHighscores(0);                                        /* :1886 (no minigame rooms) */
                 PL.dead = 1;
                 snd_play(SND_xdie);                                            /* :1890 */
             }

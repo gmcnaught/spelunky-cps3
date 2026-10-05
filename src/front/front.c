@@ -34,6 +34,7 @@
 uint8_t front_on;
 int16_t front_view_obj = -1, front_hborder = 160;
 uint32_t front_seed = 1;                          /* oIntro's randomize() */
+uint8_t front_new;
 static int room_steps;
 static int16_t lpos[PIN_MAX];                     /* the room instance's place in its layer, by slot */
 static int32_t lpos_id[PIN_MAX];                  /* ... while the slot holds that instance */
@@ -113,7 +114,8 @@ static void title_create_w(void)
 }
 
 /* objects/oHighscores/Create_0.gml (two instances in rHighscores: each runs it): the globals, the trophies for the
-   EEPROM's scores (src/shell: SH.hs), the "new" marks (none at a cabinet's boot), global.scoresStart 0 */
+   EEPROM's scores (src/shell: SH.hs), the "new" marks (front_new: after a game; none at a cabinet's boot),
+   global.scoresStart 0 */
 static void scores_create_w(void)
 {
     int32_t tMoney = SH.hs.value[HS_MONEY], tTime = SH.hs.value[HS_TIME], tKills = SH.hs.value[3];
@@ -148,6 +150,10 @@ static void scores_create_w(void)
         else if (tSaves >= 6) inst_set_sprite(t, GSPR_sSilverTrophy);
         else inst_set_sprite(t, GSPR_sBronzeTrophy);
     }
+    if (front_new & HS_NEW_MONEY) instance_create(272, 48, OBJ_oNew);         /* :135 */
+    if (front_new & HS_NEW_KILLS) instance_create(272, 64, OBJ_oNew);
+    if (front_new & HS_NEW_SAVES) instance_create(272, 80, OBJ_oNew);
+    if (front_new & HS_NEW_TIME) instance_create(272, 96, OBJ_oNew);
 }
 
 /* ---- room loading (as play_transition_start: the instances into W, the Create events that need the
@@ -642,6 +648,7 @@ int front_ev(int ev, int i, int arg)
     case OBJ_oMoon:
         if (ev == FEV_STEP) parallax_step(i, 0.01, 208);
         return ev == FEV_STEP || ev == FEV_CREATE;
+    case OBJ_oNew:                               /* Create: global.sNewNew, the English new.png = sNew, its default */
     case OBJ_oDesert: case OBJ_oDesertTop: case OBJ_oDesert2: case OBJ_oGlobals:
         return ev == FEV_CREATE;
     default:
@@ -662,6 +669,7 @@ void front_start_at(int room)                     /* tests: the attract cycle fr
 void front_start(void)
 {
     front_on = 1;
+    front_new = 0;
     gen_new_game();                                                            /* oGlobals: scrClearGlobals */
     PW.next_id = 110220 - 0;                                                   /* the runner's: oGamepad 110219 */
     front_room(R_rIntro);

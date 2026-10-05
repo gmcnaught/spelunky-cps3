@@ -24,6 +24,7 @@ struct game_cfg {
     int32_t room;                /* the first room: -1 the level's own (the cabinet); routes 0 rLevel (default), 1 rLevel2,
                                     2 rLevel3 (a lake), 3 rOlmec (gen_room_for_level) */
     const char *globals;         /* "name=value,..." ("~" a space), or NULL */
+    int32_t scores;              /* a route: 1 stores scores in the EEPROM as the cabinet does (tests); 0 leaves it */
 };
 extern struct game_cfg game_cfg;
 
@@ -33,6 +34,7 @@ extern int32_t game_rec;         /* records written so far */
 extern int32_t game_rec1;        /* the last phase-1 record (-1 none): the frame drawn after the step shows it */
 extern int32_t game_steps;       /* route steps used */
 extern uint8_t game_over;        /* the route ended, or the play loop left the rooms it models */
+extern int32_t game_end_room;    /* the room the game left for (R_rHighscores: the attract cycle starts there), -1 */
 
 /* platform hooks (weak defaults in main.c; tests/game overrides them) */
 void main_inputs(uint32_t *pad0, uint32_t *pad1, uint32_t *lines);   /* the frame's pads and system lines */

@@ -38,6 +38,9 @@ void front_start_at(int room);          /* tests: start the cycle in that room (
 void front_step(void);                  /* one attract step (no controls) */
 extern void (*front_rec_cb)(int phase);  /* play_step's record callback for the attract steps (tests: records) */
 void front_stop(void);                  /* a game begins (shell credit / start) */
+extern uint8_t front_new;               /* global.newMoney / newKills / newSaves / newTime (src/shell HS_NEW_*): the
+                                           last game's records, marked in rHighscores until the intro runs (oTitle
+                                           Create clears them in HD) */
 /* drawing (src/draw): the black rectangle the room's code draws (oIntro's fade): its instance and alpha byte, -1
    for none; the Draw-event text of instance i (src/draw calls it at i's place in the depth order) */
 int front_fade(int *a8);

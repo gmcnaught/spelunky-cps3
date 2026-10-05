@@ -26,6 +26,15 @@
 
 struct shell SH;
 volatile uint32_t vbl_count;
+/* src/shell/hiscore.c's EEPROM (scrUpdateHighscores' store, src/main game.c): words in memory, HOST_EE=1 prints the
+   writes on stderr */
+static uint32_t ee[64];
+uint32_t shell_ee_read(int word) { return ee[word & 63]; }
+void shell_ee_write(int word, uint32_t v)
+{
+    ee[word & 63] = v;
+    if (getenv("HOST_EE")) fprintf(stderr, "EE %d %08lx\n", word, (unsigned long)v);
+}
 void main_draw_begin(void) {}
 /* src/snd/snd.c is linked (the play loop's and the front end's sounds): the SDK's voice registers as no-ops */
 void cps3s_init(void) {}
@@ -280,6 +289,8 @@ int main(int argc, char **argv)
     game_cfg.money = atoi(argv[4]);
     game_cfg.enemies = atoi(argv[5]);
     game_cfg.tail = atoi(argv[6]);
+    game_cfg.scores = getenv("HOST_SCORES") != 0;   /* the route stores its scores (scrUpdateHighscores) */
+    hs_boot(&SH.hs, &SH.st, &SH.g);               /* a blank EEPROM: HD's first start */
     draw_boot();
     snd_init(15, 15);
     game_begin();
@@ -309,6 +320,25 @@ int main(int argc, char **argv)
             fprintf(stderr, "D %d %u %u\n", game_rec1, draw_st.entries, draw_st.sprites);
         }
         if (over) break;
+    }
+    if (getenv("HOST_AFTER") && strcmp(argv[8], "-")) {   /* HOST_AFTER=<steps>: the shell's attract after the game
+                                                           (rHighscores after a game over); v_a<step>.bin each 30 */
+        int k, steps = atoi(getenv("HOST_AFTER"));
+        for (k = 0; k < steps; k++) {
+            game_attract_step();
+            cps3v_begin();
+            game_draw();
+            cps3v_end();
+            draw_vblank();
+            if (k % 30 == 0) {
+                char path[512];
+                FILE *o;
+                compose();
+                snprintf(path, sizeof path, "%s/v_a%d.bin", argv[8], k);
+                if ((o = fopen(path, "wb"))) { fwrite(view, 2, 320 * 240, o); fclose(o); }
+                fprintf(stderr, "A %d room %d entries %u\n", k, PW.room, draw_st.entries);
+            }
+        }
     }
     return 0;
 }
