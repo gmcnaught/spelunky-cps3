@@ -1546,10 +1546,75 @@ static int line_box_f(float x1, float y1, float x2, float y2, float l, float t, 
     return 1;
 }
 
+/* precise_line's walk along an axis-parallel line (solid_hline_any / solid_vline_any against a rotated or precise
+   solid: the idol's boulder). slope is +-0 there and v - lo >= +0 (v starts at max(side, lo) and grows), so the
+   interpolated coordinate's (v - lo) * slope + lo, and its difference d from the instance's position, are the
+   same float on every pixel: the per-pixel products with d (c0, c1) are computed once by the caller, the rest
+   keeps its operands and order (no contraction: -ffp-contract=off). x-major: tx from (cs * dx + c1), ty from
+   (c0 + dx * ns), c0 = cs * dy, c1 = sn * dy; y-major: tx from (c0 + sn * dy), ty from (cs * dy + c1), c0 = cs * dx,
+   c1 = dx * ns. A division by a scale of 1.0f (its bits) is left out (q / 1.0f is q), and (float)(int32_t)
+   dfloor(q) is q's floor on the bits (pl_floor) compared as an int with the mask box's whole floats; pc_bit's
+   (int)(t - ml) is then the ints' difference. -1: outside the integer range (|q| >= 2^15, a mask box that is not
+   whole): the caller's walk. PLAY_STATS builds run precise_line_ref beside every answer */
+static int pl_one(float f) { union { float f; uint32_t u; } v; v.f = f; return v.u == 0x3f800000u; }
+static int pl_zero(float f) { union { float f; uint32_t u; } v; v.f = f; return (v.u << 1) == 0; }
+
+static int pl_floor(float q, int32_t *o)                  /* floor(q) for |q| < 2^15 (fwhole's product) */
+{
+    union { float f; uint32_t u; } v;
+    uint32_t e;
+    uint64_t pr;
+    int32_t ip;
+    v.f = q;
+    if ((v.u & 0x7fffffffu) == 0) { *o = 0; return 1; }
+    e = (v.u >> 23) & 0xffu;
+    if (e < 127) { *o = (v.u >> 31) ? -1 : 0; return 1; }
+    if (e > 141) return 0;
+    pr = (uint64_t)((v.u & 0x7fffffu) | 0x800000u) * fwhole_mul[e - 127];
+    ip = (int32_t)(pr >> 32);
+    *o = (v.u >> 31) ? ((uint32_t)pr ? -ip - 1 : -ip) : ip;
+    return 1;
+}
+
+static int pl_axis(const struct pcinst *A, float v, float end, int xmajor, float c0, float c1, float sn, float cs,
+                   float ns)
+{
+    int32_t ml, mt, mr, mb, tx, ty;
+    int xs1 = pl_one(A->xs), ys1 = pl_one(A->ys);
+    static const uint8_t bit[8] = { 0x80, 0x40, 0x20, 0x10, 0x08, 0x04, 0x02, 0x01 };
+    if (!fwhole(A->ml, &ml) || !fwhole(A->mt, &mt) || !fwhole(A->mr, &mr) || !fwhole(A->mb, &mb)) return -1;
+    for (; !(end < v); v = v + 1.0f) {
+        float qx, qy;
+        if (xmajor) {
+            float dx = v - A->x;
+            qx = cs * dx + c1;
+            qy = c0 + dx * ns;
+        } else {
+            float dy = v - A->y;
+            qx = c0 + sn * dy;
+            qy = cs * dy + c1;
+        }
+        if (!xs1) qx = qx / A->xs;
+        qx = qx + A->xo;
+        if (!pl_floor(qx, &tx)) return -1;
+        if (ml > tx || tx > mr) continue;
+        if (!ys1) qy = qy / A->ys;
+        qy = qy + A->yo;
+        if (!pl_floor(qy, &ty)) return -1;
+        if (mt > ty || ty > mb) continue;
+        {
+            int cx = tx - ml, cy = ty - mt;
+            if (A->mask[cy * A->bpr + (cx >> 3)] & bit[cx & 7]) return 1;
+        }
+    }
+    return 0;
+}
+
+#ifdef PLAY_STATS
 /* CSprite::PreciseCollisionLine: the clipped segment (o: x1 y1 x2 y2) a pixel at a time along its longer axis
    (whole steps from the bbox side or the end, the other coordinate interpolated), each point rotated back and
    divided by the scale, floored, inside the mask box, the bit; a single point is PreciseCollisionPoint */
-static int precise_line(int k, const float *o)
+static int precise_line_ref(int k, const float *o)
 {
     struct pcinst A;
     float sn, cs, a, x1 = o[0], y1 = o[1], x2 = o[2], y2 = o[3], lo_x, lo_y, hi_x, hi_y, slope, v, end, ns;
@@ -1585,6 +1650,70 @@ static int precise_line(int k, const float *o)
     end = (float)r < hi_x ? (float)r : hi_x;
     if (!(end >= v)) return 0;
     slope = (hi_y - lo_y) / (hi_x - lo_x);
+    for (; !(end < v); v = v + 1.0f) {
+        float dx = v - A.x, dy = ((v - lo_x) * slope + lo_y) - A.y, tx, ty;
+        tx = (float)(int32_t)dfloor((cs * dx + sn * dy) / A.xs + A.xo);
+        if (A.ml > tx || tx > A.mr) continue;
+        ty = (float)(int32_t)dfloor((cs * dy + dx * ns) / A.ys + A.yo);
+        if (A.mt > ty || ty > A.mb) continue;
+        if (pc_bit(&A, tx, ty)) return 1;
+    }
+    return 0;
+}
+#define PL_CHECK(r) do { if ((r) != precise_line_ref(k, o)) { fprintf(stderr, "precise_line: pl_axis %d differs (%d)\n", (r), k); abort(); } } while (0)
+#else
+#define PL_CHECK(r) ((void)0)
+#endif
+
+/* CSprite::PreciseCollisionLine: the clipped segment (o: x1 y1 x2 y2) a pixel at a time along its longer axis
+   (whole steps from the bbox side or the end, the other coordinate interpolated), each point rotated back and
+   divided by the scale, floored, inside the mask box, the bit; a single point is PreciseCollisionPoint */
+static int precise_line(int k, const float *o)
+{
+    struct pcinst A;
+    float sn, cs, a, x1 = o[0], y1 = o[1], x2 = o[2], y2 = o[3], lo_x, lo_y, hi_x, hi_y, slope, v, end, ns;
+    double l, t, r, b;
+    if (!pcinst_of(k, 0, 0, &A)) return 0;
+    if (!A.mask) return 1;
+    if (x1 == x2 && y1 == y2) return precise_point(k, x1, y1);
+    pin_bbox(k, &l, &t, &r, &b);
+    a = A.ang * -3.14159274101257324f;
+    a = a / 180.0f;
+    pcol_sincosf(a, &sn, &cs);
+    ns = -sn;
+    if (!((x2 - x1 < 0 ? x1 - x2 : x2 - x1) >= (y2 - y1 < 0 ? y1 - y2 : y2 - y1))) {
+        if (y1 > y2) { hi_x = x1; hi_y = y1; lo_x = x2; lo_y = y2; }
+        else { hi_x = x2; hi_y = y2; lo_x = x1; lo_y = y1; }
+        v = (float)t > lo_y ? (float)t : lo_y;
+        end = (float)b < hi_y ? (float)b : hi_y;
+        if (end < v) return 0;
+        slope = (hi_x - lo_x) / (hi_y - lo_y);
+        if (pl_zero(slope)) {                 /* a vertical line: dx the same every pixel (pl_axis) */
+            float dx = ((v - lo_y) * slope + lo_x) - A.x;
+            int r = pl_axis(&A, v, end, 0, cs * dx, dx * ns, sn, cs, ns);
+            if (r >= 0) { PL_CHECK(r); return r; }
+        }
+        for (; !(end < v); v = v + 1.0f) {
+            float dx = ((v - lo_y) * slope + lo_x) - A.x, dy = v - A.y, tx, ty;
+            tx = (float)(int32_t)dfloor((cs * dx + sn * dy) / A.xs + A.xo);
+            if (A.ml > tx || tx > A.mr) continue;
+            ty = (float)(int32_t)dfloor((cs * dy + dx * ns) / A.ys + A.yo);
+            if (A.mt > ty || ty > A.mb) continue;
+            if (pc_bit(&A, tx, ty)) return 1;
+        }
+        return 0;
+    }
+    if (x1 > x2) { hi_x = x1; hi_y = y1; lo_x = x2; lo_y = y2; }
+    else { hi_x = x2; hi_y = y2; lo_x = x1; lo_y = y1; }
+    v = (float)l > lo_x ? (float)l : lo_x;
+    end = (float)r < hi_x ? (float)r : hi_x;
+    if (!(end >= v)) return 0;
+    slope = (hi_y - lo_y) / (hi_x - lo_x);
+    if (pl_zero(slope)) {                     /* a horizontal line: dy the same every pixel (pl_axis) */
+        float dy = ((v - lo_x) * slope + lo_y) - A.y;
+        int r = pl_axis(&A, v, end, 1, cs * dy, sn * dy, sn, cs, ns);
+        if (r >= 0) { PL_CHECK(r); return r; }
+    }
     for (; !(end < v); v = v + 1.0f) {
         float dx = v - A.x, dy = ((v - lo_x) * slope + lo_y) - A.y, tx, ty;
         tx = (float)(int32_t)dfloor((cs * dx + sn * dy) / A.xs + A.xo);
