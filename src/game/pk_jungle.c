@@ -9,6 +9,10 @@
 #include "pcontent.h"
 #include "../snd/sndgame.h"
 #include "pmath.h"
+#ifdef PLAY_STATS
+#include <stdio.h>
+#include <stdlib.h>
+#endif
 
 enum { E_STUNNED = 98, E_DEAD = 99, E_LEFT = 0, E_RIGHT = 1 };
 /* oManTrap statuses */
@@ -776,6 +780,8 @@ static void speartrap_step(int i)                                    /* objects/
     struct pin *p = &PX(i);
     double x = X(i), y = Y(i), range = 64, prox = 4;
     int q = pl(), obj, side, have = 0, ne = NOONE, nm = NOONE, ni = NOONE;
+    int32_t ix, iy;
+    int whole = pin_xy_int(i, &ix, &iy);
     if (PE(p)->fired > 0) PE(p)->fired -= 1;
     /* each test reads the nearest instance only after fired == 0 (instance_nearest has no effect), and only spears()
        changes anything here: it sets fired, after which no test passes. So the three nearest instances are found
@@ -788,10 +794,31 @@ static void speartrap_step(int i)                                    /* objects/
             spears(i, side);
         if (PE(&PX(i))->fired != 0) continue;
         if (!have) {
-            ne = instance_nearest_p(x, y, OBJ_oEnemy);
-            nm = instance_nearest_p(x, y, OBJ_oMoveableSolid);
-            ni = instance_nearest_p(x, y, OBJ_oItem);
+            /* (whole x, y) the nearest passes its tests below only when |obj.y - y| < 4 and |obj.x - x| < 64
+               (oEnemy, oMoveableSolid; the rounded differences are monotonic in obj.y / obj.x, the bounds whole, and
+               point_distance's dx * dx alone reaches 4096 when |dx| >= 64) or when y + 4 < obj.y < y + 12 and
+               |obj.x - x - 8| < 64 (oItem): with no instance of the family whose floors lie in that box (made one
+               wider), every test fails whatever instance_nearest returns, so it is not computed (no side effect) */
+            ne = !whole || instance_box_maybe(OBJ_oEnemy, ix - 65, ix + 64, iy - 5, iy + 4) ?
+                 instance_nearest_p(x, y, OBJ_oEnemy) : NOONE;
+            nm = !whole || instance_box_maybe(OBJ_oMoveableSolid, ix - 65, ix + 64, iy - 5, iy + 4) ?
+                 instance_nearest_p(x, y, OBJ_oMoveableSolid) : NOONE;
+            ni = !whole || instance_box_maybe(OBJ_oItem, ix - 58, ix + 73, iy + 3, iy + 12) ?
+                 instance_nearest_p(x, y, OBJ_oItem) : NOONE;
             have = 1;
+#ifdef PLAY_STATS
+            {   /* the host builds: a skipped nearest could not have passed */
+                int e = instance_nearest_p(x, y, OBJ_oEnemy), m = instance_nearest_p(x, y, OBJ_oMoveableSolid);
+                int t = instance_nearest_p(x, y, OBJ_oItem);
+                if ((ne == NOONE && e != NOONE && DLT(dabs(Y(e) - y), prox) && DLT(point_distance_d(x, y, X(e), Y(e)), range)) ||
+                    (nm == NOONE && m != NOONE && DLT(dabs(Y(m) - y), prox) && DLT(point_distance_d(x, y, X(m), Y(m)), range)) ||
+                    (ni == NOONE && t != NOONE && DLT(dabs(Y(t) - y - 8), prox) &&
+                     DLT(point_distance_d(x + 8, y + 8, X(t), Y(t)), range))) {
+                    fprintf(stderr, "speartrap_step: a skipped nearest passes (trap %d)\n", i);
+                    abort();
+                }
+            }
+#endif
         }
         obj = ne;
         if (obj != NOONE && PE(&PX(i))->fired == 0 && DLT(dabs(Y(obj) - y), prox) &&

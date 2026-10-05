@@ -392,6 +392,7 @@ uint32_t pw_watch_end(void);
 int instance_place_p(int self, double px, double py, int obj);
 #define place_meeting_p(self, px, py, obj) (instance_place_p((self), (px), (py), (obj)) != NOONE)
 int instance_nearest_p(double px, double py, int obj);
+int instance_box_maybe(int obj, int32_t x0, int32_t x1, int32_t y0, int32_t y1);
 int instance_exists_p(int obj);
 int instance_first_p(int obj);
 int instance_number_p(int obj);

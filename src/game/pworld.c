@@ -2927,6 +2927,27 @@ int instance_nearest_p(double px, double py, int obj)
     return best;
 }
 
+/* 0 when no alive instance of the family has floor(x) in [x0, x1] and floor(y) in [y0, y1] (nc_get's floors); 1 when
+   one has, or may (the family does not fit the cache, PLAY_FIXED). No side effect besides the cache (the speartrap
+   step: an instance_nearest whose answer cannot pass the tests that follow is not computed) */
+int instance_box_maybe(int obj, int32_t x0, int32_t x1, int32_t y0, int32_t y1)
+{
+#ifndef PLAY_FIXED
+    const struct ncache *c;
+    int j;
+    if (fam_none(obj)) return 0;
+    if (obj < 0) return 1;
+    c = nc_get(obj);
+    if (c->ok != 1) return 1;
+    for (j = 0; j < c->n; j++)
+        if (c->x[j] >= x0 && c->x[j] <= x1 && c->y[j] >= y0 && c->y[j] <= y1) return 1;
+    return 0;
+#else
+    (void)obj; (void)x0; (void)x1; (void)y0; (void)y1;
+    return 1;
+#endif
+}
+
 int instance_first_p(int obj)
 {
     struct fam it;
