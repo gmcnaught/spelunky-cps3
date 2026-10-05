@@ -26,8 +26,8 @@ static int CP(double x, double y, int obj) { return collision_point_p(x, y, obj,
    (bounding box only) and notme (self not excluded). Observed: c_ice_alienboss record 213, oYeti's ledge test at
    (528, 48) hits an oDarkFall at 528, 48 whose precise mask has pixel (0, 0) clear */
 static int CPn(double x, double y, int obj, int self) { (void)self; return collision_point_p(x, y, obj, 0, NOONE) != NOONE; }
-static int sprw(int i) { int s = PX(i).spr; return s >= 0 ? (int)(psprite[s].w * PX(i).xscale) : 0; }
-static int sprh(int i) { int s = PX(i).spr; return s >= 0 ? (int)(psprite[s].h * PX(i).yscale) : 0; }
+static int sprw(int i) { int s = PX(i).spr; return s >= 0 ? spr_dim(psprite[s].w, PX(i).xscale) : 0; }
+static int sprh(int i) { int s = PX(i).spr; return s >= 0 ? spr_dim(psprite[s].h, PX(i).yscale) : 0; }
 static int bloodless_of(int i)                                     /* Create's bloodless = true */
 {
     int o = PX(i).obj;
@@ -367,9 +367,9 @@ void pen_parent_step(int i)
         if (PL.holdItem == NOONE || PE(p)->status < 98) PE(p)->held = 0;
     } else
         pin_setdepth(p, 60);
-    if (CPn(X(i) + dfloor(sprw(i) / 2.0), Y(i) + dfloor(sprh(i) / 2.0), OBJ_oWaterSwim, i)) {   /* :34 */
+    if (CPn(X(i) + (sprw(i) >> 1), Y(i) + (sprh(i) >> 1), OBJ_oWaterSwim, i)) {   /* :34 */
         if (!PEN(p)->swimming) {
-            pin_create(P(X(i) + dfloor(sprw(i) / 2.0)), p->y, OBJ_oSplash);
+            pin_create(P(X(i) + (sprw(i) >> 1)), p->y, OBJ_oSplash);
             p = &PX(i);
             PEN(p)->swimming = 1;
             snd_play(SND_xsplash);                                             /* :40 */
@@ -388,8 +388,8 @@ void pen_parent_step(int i)
         }
         PEN(p)->burning -= 1;
     }
-    if (CP(X(i) + dfloor(sprw(i) / 2.0), Y(i) - 1, OBJ_oLava)) ptemple_world(5012, i, 1);                   /* :63 */
-    if (CP(X(i) + dfloor(sprw(i) / 2.0), Y(i) + sprh(i) - 2, OBJ_oLava)) ptemple_world(5012, i, 2);   /* :65 */
+    if (CP(X(i) + (sprw(i) >> 1), Y(i) - 1, OBJ_oLava)) ptemple_world(5012, i, 1);                   /* :63 */
+    if (CP(X(i) + (sprw(i) >> 1), Y(i) + sprh(i) - 2, OBJ_oLava)) ptemple_world(5012, i, 2);   /* :65 */
     if (collision_rect_p(X(i) + 2, Y(i) + 2, X(i) + 14, Y(i) + 14, OBJ_oSpearsLeft, 0, NOONE) != NOONE)
         pcontent_enemy(5013, i, 0);                                                     /* P7 hook */
     if (CP(X(i) + 8, Y(i) + 16, OBJ_oSpikes) && NGT(PE(p)->yVel, N(2))) {  /* :108 */

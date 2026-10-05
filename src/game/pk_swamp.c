@@ -27,8 +27,8 @@ enum { V_IDLE, V_WALK, V_ATTACK, V_THROW, V_RECOVER, V_BOUNCE, V_HANG, V_FLY };
 static double X(int i) { return PTOD(PX(i).x); }
 static double Y(int i) { return PTOD(PX(i).y); }
 static int CP(double x, double y, int obj) { return collision_point_p(x, y, obj, 0, NOONE) != NOONE; }
-static int sprw(int i) { int s = PX(i).spr; return s >= 0 ? (int)(psprite[s].w * PX(i).xscale) : 0; }
-static int sprh(int i) { int s = PX(i).spr; return s >= 0 ? (int)(psprite[s].h * PX(i).yscale) : 0; }
+static int sprw(int i) { int s = PX(i).spr; return s >= 0 ? spr_dim(psprite[s].w, PX(i).xscale) : 0; }
+static int sprh(int i) { int s = PX(i).spr; return s >= 0 ? spr_dim(psprite[s].h, PX(i).yscale) : 0; }
 static double dabs(double a) { return a < 0 ? -a : a; }
 
 /* the enemies' view test: x > xview - l and x < xview + 320 + r (same for y) */

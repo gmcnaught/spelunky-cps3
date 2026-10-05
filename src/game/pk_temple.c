@@ -27,8 +27,8 @@ static double Y(int i) { return PTOD(PX(i).y); }
 static int CP(double x, double y, int obj) { return collision_point_p(x, y, obj, 0, NOONE) != NOONE; }
 /* collision_point(x, y, obj, -1, -1): the runner reads a bool argument as value > 0.5, so prec and notme are false */
 static int CPm(double x, double y, int obj) { return collision_point_p(x, y, obj, 0, NOONE) != NOONE; }
-static int sprw(int i) { int s = PX(i).spr; return s >= 0 ? (int)(psprite[s].w * PX(i).xscale) : 0; }
-static int sprh(int i) { int s = PX(i).spr; return s >= 0 ? (int)(psprite[s].h * PX(i).yscale) : 0; }
+static int sprw(int i) { int s = PX(i).spr; return s >= 0 ? spr_dim(psprite[s].w, PX(i).xscale) : 0; }
+static int sprh(int i) { int s = PX(i).spr; return s >= 0 ? spr_dim(psprite[s].h, PX(i).yscale) : 0; }
 static int pl(void) { return PL.idx; }
 static double dabs(double a) { return a < 0 ? -a : a; }
 

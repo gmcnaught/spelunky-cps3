@@ -29,8 +29,8 @@ static int CP(double x, double y, int obj) { return collision_point_p(x, y, obj,
    c_ice_alienboss record 213, oYeti's ledge test at (528, 48) hits an oDarkFall at 528, 48 whose precise mask has
    pixel (0, 0) clear) */
 static int CPn(double x, double y, int obj, int self) { (void)self; return collision_point_p(x, y, obj, 0, NOONE) != NOONE; }
-static int sprw(int i) { int s = PX(i).spr; return s >= 0 ? (int)(psprite[s].w * PX(i).xscale) : 0; }
-static int sprh(int i) { int s = PX(i).spr; return s >= 0 ? (int)(psprite[s].h * PX(i).yscale) : 0; }
+static int sprw(int i) { int s = PX(i).spr; return s >= 0 ? spr_dim(psprite[s].w, PX(i).xscale) : 0; }
+static int sprh(int i) { int s = PX(i).spr; return s >= 0 ? spr_dim(psprite[s].h, PX(i).yscale) : 0; }
 static int pl(void) { return PL.idx; }
 static void make_active(struct pin *p) { PE(p)->xVel = PE(p)->yVel = PE(p)->xAcc = PE(p)->yAcc = 0; }
 static double gabs(double a) { return a < 0 ? -a : a; }

@@ -224,6 +224,15 @@ static inline int fwhole(float f, int32_t *o)
     return 1;
 }
 
+/* sprite_width / sprite_height: (int)(w * s) for a sprite size w (0 <= w < 2^15) and a float scale s. s = +-k whole,
+   k <= 256 (fwhole): |w k| < 2^23, so the float product is w k exactly; other s take the float product */
+static inline int spr_dim(int w, float s)
+{
+    int32_t k;
+    if (fwhole(s, &k) && k >= -256 && k <= 256) return w * k;
+    return (int)(w * s);
+}
+
 /* GML comparisons of reals (the runner's YYCompareVal): d = a - b; equal when |d| <= epsilon (math_set_epsilon,
    default 0.00001), else the sign of d decides. Observed: build/trace/p4_push_rope_s365 record 168, a rope's
    yVel -4.2e-15 passes `yVel >= 0`. NLT .. NNE take two num (the fractional GML variables), DLT .. DNE two
