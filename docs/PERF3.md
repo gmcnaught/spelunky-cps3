@@ -310,6 +310,15 @@ Load-use stall (from spelunky-cps3-a6, low priority): jtcps3 stalls 1 cycle on a
 - Batch 13 (perf3-b2): moveTo's other walks step the fields alone (46f37fa: characters and fractional movers, one
   setter per axis at the end; p4_exit559 301 487.4 -> 421.4 K, p5_snakes 203 571.1 -> 547.4 K), set_dyn /
   query_dyn_grid by family lists (a6, 7f268eb: p5_l4 2 -4.5 %).
+  On jtcps3 (.62): JT PASS 23/23, route mean of means **421.7 K** (-3.2 %), 1 of 18 over: **caveman 552.1 K**; frame
+  budget game 2 0 of 241 over, pair max 802.2 K, step mean 451.2 K; game 1 step mean 386.1 K.
+- Batch 14 (merged 53f71dd): a character's fall skips the per-pixel platform tests when one prec-0 oPlatform box query
+  over the fall finds nothing, and a character's sideways step tests the line before getIdCollision's search (e5e50be:
+  p5_caveman 178 737.5 -> 680.0 K, p4 301 -3.1 %; PLAY_STATS checks the skipped tests), sincos_f's 8-entry cache
+  (a6, a54ed43: p5_giant 28 745.1 -> 705.7 K).
+- Batch 15 (perf3-b2): pin_add / ext_alloc by words (c67b360: p5_giant 28 714.6 -> 700.2 K).
+- Measured and dropped: distance_to_instance_p's double path from isqrt(floor(d)) + 1 (1.9 G sampled d equal): the
+  measured steps never take it (whole boxes: dist_newton_i).
 - Measured and dropped: moveTo's fractional walks on explicit double lines (detritus moveTo 64.1 -> 67.2 K: the
   setter calls, not the lines, were the cost; 46f37fa keeps the original calls).
 - Measured and dropped: pq_init's (double)(float)v and floor on the bits (dfl_floor, exact over 16.6 G doubles):
