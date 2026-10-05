@@ -110,6 +110,11 @@ void main_draw_begin(void) { t0 = ticks(); }
 void main_draw_end(void)
 {
     uint32_t c = ((ticks() - t0) & 0xffff) * 32, lo;
+    {                                             /* before M.steps: a script that sees the new steps (at any */
+        uint32_t o[6];                            /* frame end) sees this step's probe */
+        game_probe(o);
+        for (int k = 0; k < 6; k++) M.probe[k] = o[k];
+    }
     M.dclk = c;
     if (c > M.dmax) M.dmax = c;
     lo = M.dsum_lo + c;
@@ -129,11 +134,6 @@ void main_draw_end(void)
     M.room = PW.room;
     M.recs = game_rec;
     for (int k = 0; k < 5; k++) M.prof[k] = draw_st.prof[k] * 32;
-    {
-        uint32_t o[6];
-        game_probe(o);
-        for (int k = 0; k < 6; k++) M.probe[k] = o[k];
-    }
     pend_rec = game_rec1;
     pend_draw = 1;
 }
