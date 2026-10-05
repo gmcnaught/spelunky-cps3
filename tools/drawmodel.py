@@ -143,7 +143,13 @@ def room_size(rname):
 # the view's target per room (the room's view 0, refs/hd/src/rooms/<room>.yy; the levels: oScreen's oPlayer1) and
 # its vertical border; None: the room's code places the view (rTitle: oTitle Step)
 VIEW_TARGET = {'rIntro': ('oPDummy3', 160), 'rTitle': (None, 0)}
-ROOM_BG = {'rIntro': 'backgroundNight'}
+ROOM_BG = {'rIntro': 'backgroundNight', 'rEnd3': None, 'rCredits2': None}   # None: no background (bgClouds layers)
+# the ending's two bgClouds layers (480 x 200, not tiled horizontally): (layer depth, x, y); rEnd3's second layer is
+# tiled vertically (y 0 and 200 cover the view), rCredits2's not (refs/hd/src/rooms/<room>/<room>.yy)
+CLOUDS = {'rEnd3': [(2147483500, -160, 0), (2147483400, 160, 0), (2147483400, 160, 200)],
+          'rCredits2': [(2147483500, -160, 0), (2147483400, 160, 0)]}
+GUI_DEPTH = -1 << 60     # Draw GUI: after every Draw event
+WHITE, YELLOW = (255, 255, 255), (255, 255, 0)
 
 
 def view_after(hd, insts, names):
@@ -189,6 +195,15 @@ LOCSIGN = {o: 's' + o[1:] for o in ('oStartSign', 'oScoresSign', 'oQuitSign', 'o
 DARK_FORCE = None        # cmp --dark a8: drawn as a dark level at that alpha byte (tests/game DARK=a8)
 
 
+def alpha_byte(a):
+    """draw_set_alpha(a)'s alpha byte for the front rooms' black rectangles (oIntro, oEnd3, oCredits2): a as a
+    single-precision float, times 255, truncated (g_end_win_s7 record 1250: fadeLevel 0.7999999999999999 is drawn
+    as a8 204, not 203; src/front front_fade the same)"""
+    import struct
+    f = struct.unpack('<f', struct.pack('<f', a))[0]
+    return max(0, min(255, int(f * 255)))
+
+
 def dark_a8(hd):
     """the alpha byte of oLevel's rectangle for this record, None when no dark level"""
     if DARK_FORCE is not None:
@@ -212,8 +227,12 @@ def front_lpos():
     return front_lpos.m
 
 
-def drawables(names, tiles, insts, g, kind, blink=-1, a8=None, front=None):
+def drawables(names, tiles, insts, g, kind, blink=-1, a8=None, front=None, hud=None, room='', gui=False):
     out = []
+    for k, (dep, X, Y) in enumerate(CLOUDS.get(room, [])):
+        out.append((dep, -len(CLOUDS[room]) + k, 'frame', g.frame(g.sprid['bgClouds'], 0), X, Y, False))
+    if gui and room == 'rCredits2' and hud and hud.get('oCredits2.drawStatus', -1e9) > -1e8:
+        out += [(GUI_DEPTH, 0) + op for op in credits_ops(hud)]
     for k, (bg, left, top, w, h, x, y, depth) in enumerate(tiles):
         sid = g.sprid.get(bg)
         if sid is None:
@@ -246,10 +265,12 @@ def drawables(names, tiles, insts, g, kind, blink=-1, a8=None, front=None):
         if on == 'oIntro' and front is not None:  # objects/oIntro/Draw_0.gml: the fade, then the story's lines
             dep = int(d.get('depth', 0))
             fl = front['fadeLevel']
-            out.append((dep, base + k, 'dark', max(0, min(255, int(fl * 255))), 0, 0, False))
+            out.append((dep, base + k, 'dark', alpha_byte(fl), 0, 0, False))
             for n, (txt, y) in enumerate(zip(front['str'], (100, 116, 132))):
                 if front['drawStatus'] > n:
-                    out.append((dep, base + k, 'text', txt, -((len(txt) * 8 - 320) // 2), y, False))
+                    out.append((dep, base + k, 'text', txt, centred(txt), y, 'small', WHITE))
+        if on == 'oEnd3' and hud and hud.get('oEnd3.drawStatus', -1e9) > -1e8:
+            out += [(int(d.get('depth', 0)), base + k) + op for op in final_score_ops(hud)]
         if not d.get('visible', 1):
             continue
         kd = kind.get(on, 'SELF')
@@ -301,6 +322,80 @@ def drawables(names, tiles, insts, g, kind, blink=-1, a8=None, front=None):
             out.append((depth, base + k, 'tag', int(v['cimg']), x, y - 12, False))
     out.sort(key=lambda e: (-e[0], e[1]))
     return out
+
+
+def final_score_ops(h):
+    """scripts/showFinalScore(drawStatus, fadeOut) as oEnd3's Draw runs it (room coordinates, English, room_offset
+    0: lblX 64, valX 224): the lines, the black rectangle at alpha fadeLevel while fadeOut, then the last line"""
+    ds = h['oEnd3.drawStatus']
+    ops = []
+
+    def text(t, x, y, size, col):
+        ops.append(('text', t, x, y, size, col))
+    if ds > 0:
+        text(tr('YOU MADE IT!'), centred(tr('YOU MADE IT!'), 'large'), 32, 'large', YELLOW)
+    if ds > 1:
+        text(tr('FINAL SCORE:'), centred(tr('FINAL SCORE:')), 56, 'small', YELLOW)
+    if ds > 2:
+        t = tr('$') + str(int(h['oEnd3.moneyCount']))
+        text(t, centred(t, 'large'), 72, 'large', WHITE)
+    if ds > 4:
+        sec = int(h['time'] // 1000)
+        m = 0
+        while sec > 59:
+            sec -= 60
+            m += 1
+        text(tr('TIME:  '), 64, 96, 'small', YELLOW)
+        text(f'{m}:{sec:02d}', 224, 96, 'small', WHITE)
+    if ds > 5:
+        text(tr('KILLS:  '), 64, 96 + 8, 'small', YELLOW)
+        text(str(int(h['kills'])), 224, 96 + 8, 'small', WHITE)
+    if ds > 6:
+        text(tr('SAVES:  '), 64, 96 + 16, 'small', YELLOW)
+        text(str(int(h['damsels'])), 224, 96 + 16, 'small', WHITE)
+    if h['oEnd3.fadeOut']:
+        ops.append(('dark', alpha_byte(h['oEnd3.fadeLevel']), 0, 0, False))
+    if ds == 8:
+        t = tr('YOU SHALL BE REMEMBERED AS A HERO.')
+        text(t, centred(t), 116, 'small', WHITE)
+    return ops
+
+
+CREDITS = {
+    1: [('SPELUNKY', 'large', 1, 16, 16)],
+    2: [('A GAME BY', 'small', 1, 16, 16), ('DEREK YU', 'small', 2, 32, 32)],
+    3: [('PLATFORM ENGINE', 'small', 1, 16, 16), ('MARTIN PIECYK', 'small', 2, 32, 32),
+        ('SOUND EFFECTS MADE USING', 'small', 1, 16, 48), ("DR PETTER'S SFXR", 'small', 2, 32, 64),
+        ('SCREEN SCALING CODE', 'small', 1, 16, 80), ('CHEVYRAY', 'small', 2, 32, 96)],
+    4: [('MUSIC BY', 'small', 1, 16, 16), ('GEORGE BUZINKAI', 'small', 2, 32, 32),
+        ('JONATHAN PERRY', 'small', 2, 32, 40)],
+    5: [('BETA TESTING BY', 'small', 1, 16, 16)] + [
+        (n, 'small', 2, 144 if i >= 11 else 32, 32 + 8 * i - (88 if i >= 11 else 0)) for i, n in enumerate([
+            'ANNABELLE K.', 'BENZIDO', 'CHUTUP', 'CORPUS', 'GENERALVALTER', 'GUERT', 'GRAHAM GORING', 'HAOWAN',
+            'HIDEOUS', 'INANE', 'INCREPARE', 'KAO', 'MARK JOHNS', 'MELLY', 'PAUL ERES', 'SUPER JOE', 'TANTAN',
+            'TEAM QUIGGAN', 'TERRY', 'XION', 'ZAPHOS'])],
+    6: [('SPELUNKY CLASSIC HD BY', 'small', 1, 16, 16), ('YANCHARKIN', 'small', 2, 32, 32),
+        ('CONTRIBUTORS', 'small', 1, 16, 48)] + [
+        (n, 'small', 2, 32, 64 + 8 * i) for i, n in enumerate([
+            'NKRAPIVIN', 'GRHEAVY', 'SPENCJO', 'GABRIEL ALBUQUERQUE FERREIRA', 'BAKUSTARVER', 'LERETARDATN',
+            'MASTERPHW', 'BRNBOT3K', 'V9TN'])],
+    7: [('THANKS FOR PLAYING!', 'small', 1, 16, 16), ('SEE YOU NEXT ADVENTURE!', 'small', 2, 32, 32)],
+}
+# drawCredits' translated lines (tr(); the names are not translated)
+CREDITS_TR = {'A GAME BY', 'PLATFORM ENGINE', 'SOUND EFFECTS MADE USING', 'SCREEN SCALING CODE', 'MUSIC BY',
+              'BETA TESTING BY', 'SPELUNKY CLASSIC HD BY', 'CONTRIBUTORS', 'THANKS FOR PLAYING!',
+              'SEE YOU NEXT ADVENTURE!'}
+
+
+def credits_ops(h):
+    """scripts/drawCredits(c_yellow, c_white) as oCredits2's Draw GUI runs it (English: X1 16, X2 32, X3 144): the
+    page's lines, then the black rectangle at alpha fadeLevel while fadeIn or fadeOut"""
+    ops = []
+    for t, size, c, x, y in CREDITS.get(int(h['oCredits2.drawStatus']), []):
+        ops.append(('text', tr(t) if t in CREDITS_TR else t, x, y, size, YELLOW if c == 1 else WHITE))
+    if h['oCredits2.fadeIn'] or h['oCredits2.fadeOut']:
+        ops.append(('dark', alpha_byte(h['oCredits2.fadeLevel']), 0, 0, False))
+    return ops
 
 
 def hud_case(hd, insts, names, vx, vy):
@@ -375,24 +470,46 @@ def compose555(dr, g, vx, vy, W=320, H=240, bgname='bgCave'):
                         blit_tile(tile + i * ph + j, x - dx - 16 * pw + 16 * (pw - 1 - i), y + dy + 16 * j, True)
                     else:
                         blit_tile(tile + i * ph + j, x + dx + 16 * i, y + dy + 16 * j)
+    def blit_text(text, size, colour, x, y):
+        """draw_text with HD's English sprite fonts (as tools/hudcheck.py draw_text), the colour blended in; the
+        pixels keep their 8-bit colour for a later rectangle"""
+        import hudcheck
+        if not hasattr(compose555, 'art'):
+            compose555.art = hudcheck.Art(SRC)
+        im, w = (compose555.art.large, 16) if size == 'large' else (compose555.art.small, 8)
+        p = im.load()
+        for k, ch in enumerate(str(text)):
+            i = ord(ch) - 32
+            if not 0 <= i < 59:
+                continue
+            for j in range(w):
+                Y = y + j
+                if not 0 <= Y < H:
+                    continue
+                for ii in range(w):
+                    X = x + k * w + ii
+                    r, gg, b, a = p[i * w + ii, j]
+                    if a >= 128 and 0 <= X < W:
+                        rgb = (r * colour[0] // 255, gg * colour[1] // 255, b * colour[2] // 255)
+                        img[Y][X] = hdsprites.bgr555(*rgb)
+                        src[Y][X] = rgb
     tag = None
-    bg = g.sprid[bgname]
-    bw, bh = g.spr[bg][0], g.spr[bg][1]
-    for ry in range((vy // bh) * bh, vy + H, bh):
-        for rx in range((vx // bw) * bw, vx + W, bw):
-            blit_frame(g.spr[bg][9], rx - vx, ry - vy, False)
+    if bgname:
+        bg = g.sprid[bgname]
+        bw, bh = g.spr[bg][0], g.spr[bg][1]
+        for ry in range((vy // bh) * bh, vy + H, bh):
+            for rx in range((vx // bw) * bw, vx + W, bw):
+                blit_frame(g.spr[bg][9], rx - vx, ry - vy, False)
     for d in dr:
         if d[2] == 'cell':
             blit_tile(d[3], 16 * d[4] - vx, 16 * d[5] - vy)
         elif d[2] == 'frame':
             blit_frame(d[3], d[4] - vx, d[5] - vy, d[6])
-        elif d[2] == 'text':                      # a Draw-event text (src/front): (text, x, y) in room coordinates
-            import hudcheck
-            if not hasattr(compose555, 'art'):
-                compose555.art = hudcheck.Art(SRC)
-            tv = hudcheck.View(W, H)
-            tv.px = img
-            hudcheck.draw_text(tv, compose555.art, d[3], 'small', d[4] - vx, d[5] - vy)
+        elif d[2] == 'text':                      # a Draw-event text (src/front): (text, x, y, size, colour) in room
+            if d[0] == GUI_DEPTH:                 # coordinates; Draw GUI text in view coordinates
+                blit_text(d[3], d[6], d[7], d[4], d[5])
+            else:
+                blit_text(d[3], d[6], d[7], d[4] - vx, d[5] - vy)
         elif d[2] == 'dark':
             a8 = d[3]
             for Y in range(H):
@@ -516,8 +633,9 @@ def view555(g, names, tiles, hd, insts, kind, art=None, port=True):
     rname = names['R'].get(hd['room'], '')
     h = hd.get('hud') or {}
     front = h if h.get('fadeLevel', -1e9) > -1e8 else None
-    v.px = compose555(drawables(names, tiles, insts, g, kind, hd.get('blinkToggle', -1), dark_a8(hd), front), g, vx, vy,
-                      bgname=room_bg(hd, names))
+    v.px = compose555(drawables(names, tiles, insts, g, kind, hd.get('blinkToggle', -1), dark_a8(hd), front, h, rname,
+                                art is not None),
+                      g, vx, vy, bgname=room_bg(hd, names))
     if art:
         hudcheck.model(hud_case(hd, insts, names, vx, vy), art, 320, v)
         for text, x, y, yel in trans_text(hd, insts, names) + scores_text(hd, insts, names):
@@ -559,6 +677,12 @@ def hostcmp(trace, names_path, gen, d, hud):
     fb = open(os.path.join(gen, 'fade.bin'), 'rb').read()      # code 1 at fade a8 (tools/darkfade.py table)
     fades = [struct.unpack_from('<256H', fb, 512 * k) for k in range(256)]
     hfades = [struct.unpack_from('<256H', fb, 512 * (256 + k)) for k in range(256)]
+    hyfades = [struct.unpack_from('<256H', fb, 512 * (512 + k)) for k in range(256)]   # code 6: c_yellow text faded
+
+    def colour(w, fa8):
+        code = w >> 8
+        return (fades[fa8] if code == 1 else hfades[fa8] if code == 5 else hyfades[fa8] if code == 6 else
+                pals.get(code, [0] * 256))[w & 255] if w else 0
     want = {}
     if d == '-':                                  # a stream from tests/game/host.c (out dir "-"): s32 rec + view
         inp = sys.stdin.buffer
@@ -613,8 +737,7 @@ def hostcmp(trace, names_path, gen, d, hud):
             row = v.px[y]
             for x in range(320):
                 w = px[y * 320 + x]
-                code = w >> 8
-                c = (fades[fa8] if code == 1 else hfades[fa8] if code == 5 else pals.get(code, [0] * 256))[w & 255] if w else 0
+                c = colour(w, fa8)
                 if c != (row[x] or 0):
                     n += 1
                     bb = [min(bb[0], x), min(bb[1], y), max(bb[2], x), max(bb[3], y)]
@@ -622,7 +745,7 @@ def hostcmp(trace, names_path, gen, d, hud):
         if n and SAVE and bad < 3:                # --save dir: model / host views of the first differing frames
             from PIL import Image
             for nm, get in (('model', lambda x, y: v.px[y][x] or 0),
-                            ('host', lambda x, y: (fades[fa8] if px[y * 320 + x] >> 8 == 1 else hfades[fa8] if px[y * 320 + x] >> 8 == 5 else pals.get(px[y * 320 + x] >> 8, [0] * 256))[px[y * 320 + x] & 255] if px[y * 320 + x] else 0)):
+                            ('host', lambda x, y: colour(px[y * 320 + x], fa8))):
                 im = Image.new('RGB', (320, 240))
                 ip = im.load()
                 for yy in range(240):

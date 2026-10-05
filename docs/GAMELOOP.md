@@ -113,8 +113,18 @@ game, v_a<k>.bin), HOST_GAME2=1, HOST_CABINET=1 (route keys as the cabinet's con
 
 Open:
 - Ending: no route beats Olmec (the door path is tested with HOST_XEND injecting oXEnd on the player); a
-  playthrough on .81 is the check. tools/drawmodel.py does not model the ending's clouds and text (game_check
-  differs at records 1150 and 2300 for that reason).
+  playthrough on .81 is the check.
+- **Ending frames (done 2026-10-05):** tools/drawmodel.py models rEnd3 / rCredits2: the two bgClouds layers (no
+  room background), showFinalScore in oEnd3's Draw, drawCredits in oCredits2's Draw GUI, their rectangles, from the
+  trace's end block; the front rooms' layer order needs build/gen/fronttables_rt.txt from a current `make gen`.
+  Trace remade with the GUI frames (`TRACE_ROOM=rEnd TRACE_MONEY=12345
+  TRACE_GLOBALS=kaliPunish=2,kills=7,damsels=2,time=754321 TRACE_HUD=1 TRACE_SND=1 XVFB_SCREEN=1280x960x24
+  TRACE_SHOT=<recs> TRACE_GUI=<recs> scripts/hd_trace.sh end_win 7 g_end_win_s7`). `scripts/game_check.sh end_win 7
+  g_end_win_s7 300,450,520,560,700,850,1150,1244,1246,1248,1250,1252,1256,1260,1278,1280,1300,1500,1700,2300,2600,3000
+  1 12345`: 0 px at all 22 records against MAME, the runner's frames and its GUI frames; on the host
+  (`HOST_ROOM=23 HOST_GLOBALS=... HUD=1 scripts/game_host.sh end_win 7 g_end_win_s7 1 12345 0`) 3175 / 3175 frames
+  equal. scripts/end_host.sh: 3183 / 3183 records; sndcmp 25 differ (6 with the old trace): every one an xflame
+  replay, whose count follows the runner's audio timing (the host's voices never end).
 - **Ending text under the fade rectangles (done 2026-10-05):** the lines showFinalScore (:62) and drawCredits (:64)
   draw before their black rectangle use the HUD palettes src/draw fades with it: colour code 5 (DRAW_PAL_HUDDARK,
   white) and the new code 6 (DRAW_PAL_HUDDARK_YELLOW, c_yellow; tools/darkfade.py's third table at
