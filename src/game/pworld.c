@@ -1706,13 +1706,26 @@ int (collision_point_p)(double px, double py, int obj, int prec, int notme_self)
    lists (fpre's preorder, subtrees with olive 0 skipped), in any order and without the touches */
 static int xpoint_any(int obj, int notme, const struct pq *q, int prec)
 {
-    int j, k;
+    int j, k, f = xf_of[obj], cx = -1, cy = -1;
+    /* the index's cells (xflush_run brings them up to date): an instance whose integer box holds the whole point
+       reaches the point's cell (xplace's [l, r - 1] x [t, b - 1] in cells, clamped as the point is in the grid);
+       one not placed (xmask 0: no sprite, an empty box) is never hit; far ones (box not BB_INT) take point_hit */
+    if (xdhead >= 0) xflush_run();
+    if (q->iok && q->ix >= 0 && q->iy >= 0 && (q->ix >> 4) < GRID_W && (q->iy >> 4) < GRID_H) {
+        cx = q->ix >> 4;
+        cy = q->iy >> 4;
+    }
     for (j = fpos[obj]; j < fend[obj];) {
         int o = fpre[j];
         if (olive[o] == 0) { j = fend[o]; continue; }
         j++;
-        for (k = pw_ohead[o]; k >= 0; k = pw_inext[k])
-            if (k != notme && point_hit(k, q, prec)) return 1;
+        for (k = pw_ohead[o]; k >= 0; k = pw_inext[k]) {
+            if (k == notme) continue;
+            if (cx >= 0 && !xisfar[k] && (!(xmask[k] >> f & 1) || cx < xx0[k] || cx > xx1[k] || cy < xy0[k] ||
+                                          cy > xy1[k]))
+                continue;
+            if (point_hit(k, q, prec)) return 1;
+        }
     }
     return 0;
 }
