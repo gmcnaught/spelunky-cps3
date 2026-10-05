@@ -785,14 +785,14 @@ static uint8_t oinit;
 /* the object tree from objdefs' parents (obj_init): an object's first child and next sibling, so a family (obj_is(o,
    b): b and its descendants) is walked by fam_obj_next in place of a test of every object (obj_anc's rows: a cache
    line each) */
-static int16_t ochild[OBJ_COUNT], osib[OBJ_COUNT];
+int16_t pcol_ochild[OBJ_COUNT], pcol_osib[OBJ_COUNT];   /* also pworld.c's family walks (pcol_obj_tree) */
 
 /* the object after o in a walk of root's family (preorder; -1 at the end) */
 static int fam_obj_next(int root, int o)
 {
-    if (ochild[o] >= 0) return ochild[o];
+    if (pcol_ochild[o] >= 0) return pcol_ochild[o];
     while (o != root) {
-        if (osib[o] >= 0) return osib[o];
+        if (pcol_osib[o] >= 0) return pcol_osib[o];
         o = objdefs[o].parent;
     }
     return -1;
@@ -854,10 +854,10 @@ static void rv_build(void)
 static void obj_init(void)
 {
     int o, k;
-    for (o = 0; o < OBJ_COUNT; o++) ochild[o] = osib[o] = -1;
+    for (o = 0; o < OBJ_COUNT; o++) pcol_ochild[o] = pcol_osib[o] = -1;
     for (o = OBJ_COUNT - 1; o >= 0; o--) {
         int p = objdefs[o].parent;
-        if (p >= 0) { osib[o] = ochild[p]; ochild[p] = (int16_t)o; }
+        if (p >= 0) { pcol_osib[o] = pcol_ochild[p]; pcol_ochild[p] = (int16_t)o; }
     }
 #ifdef PLAY_STATS
     {   /* the host builds check the walk against obj_is for every pair */
@@ -880,6 +880,8 @@ static void obj_init(void)
     }
     oinit = 1;
 }
+
+void pcol_obj_tree(void) { if (!oinit) obj_init(); }
 
 static void obj_count(int obj, int d)
 {

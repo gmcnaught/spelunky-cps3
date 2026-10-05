@@ -65,18 +65,19 @@ static uint16_t gclock = 1, gepoch, gver[GRID_H][GRID_W];
    with a box that is not BB_INT, xsat a cell count past 255 (then every query of the family takes the search).
    Destroyed entries keep their counts until the slot is used again: a superset */
 #ifndef PCOL_EXACT
-#define XF_N 9
+#define XF_N 8
+/* family 7 counts oTree's and oLeaves' instances together: for a query of either it is a superset count, and
+   xpoint_any tests only the query's own family */
 static const int16_t xf_obj[XF_N] = { OBJ_oLava, OBJ_oWater, OBJ_oWaterSwim, OBJ_oLadder, OBJ_oLadderTop, OBJ_oSpikes,
-                                      OBJ_oWeb, OBJ_oTree, OBJ_oLeaves };
-static const uint16_t xf_bit[XF_N] = { 1, 2, 4, 8, 16, 32, 64, 128, 256 };
-static uint16_t xbits[OBJ_COUNT];                /* bit f: the object is in family xf_obj[f] */
+                                      OBJ_oWeb, OBJ_oTree };
+static const uint8_t xf_bit[XF_N] = { 1, 2, 4, 8, 16, 32, 64, 128 };
+static uint8_t xbits[OBJ_COUNT];                 /* bit f: the object is in family xf_obj[f] (7: or oLeaves') */
 static int8_t xf_of[OBJ_COUNT];                  /* the family index of a query's obj, -1 none */
 static int xbits_ok;
 static uint8_t xcnt[XF_N][GRID_H][GRID_W];
 static uint16_t xfar[XF_N];
 static uint8_t xsat[XF_N];
-static uint16_t xmask[PIN_MAX];
-static uint8_t xisfar[PIN_MAX], xond[PIN_MAX], xx0[PIN_MAX], xy0[PIN_MAX], xx1[PIN_MAX], xy1[PIN_MAX];
+static uint8_t xmask[PIN_MAX], xisfar[PIN_MAX], xond[PIN_MAX], xx0[PIN_MAX], xy0[PIN_MAX], xx1[PIN_MAX], xy1[PIN_MAX];
 static int16_t xdnext[PIN_MAX], xdhead = NOONE;
 static void xdirty(int i)
 {
@@ -149,52 +150,23 @@ static void nc_inval(int obj);
 static void nc_reset(void);
 #endif
 
-/* the object forest in preorder (fpre_init, once): obj's family (obj_is(o, obj)) is fpre[fpos[obj] .. fend[obj]),
-   so fam_begin skips a whole subtree with no alive instance (olive counts a family) */
-static int16_t fpre[OBJ_COUNT], fpos[OBJ_COUNT], fend[OBJ_COUNT];
-static uint8_t fpre_ok;
-
-static void fpre_init(void)
+/* a family walk over the object tree (pcol.c's pcol_ochild / pcol_osib) in preorder: the object after o in root's
+   family, o's subtree skipped when it holds no alive instance (olive counts a family) */
+static int ofam_next(int root, int o)
 {
-    int16_t child[OBJ_COUNT], sib[OBJ_COUNT];        /* (once, at a level start: on the stack) */
-    int o, r, n = 0;
-    for (o = 0; o < OBJ_COUNT; o++) child[o] = sib[o] = -1;
-    for (o = OBJ_COUNT - 1; o >= 0; o--) {
-        int p = objdefs[o].parent;
-        if (p >= 0) { sib[o] = child[p]; child[p] = (int16_t)o; }
+    if (olive[o] && pcol_ochild[o] >= 0) return pcol_ochild[o];
+    while (o != root) {
+        if (pcol_osib[o] >= 0) return pcol_osib[o];
+        o = objdefs[o].parent;
     }
-    for (r = 0; r < OBJ_COUNT; r++) {
-        if (objdefs[r].parent >= 0) continue;
-        int done = 0;
-        o = r;
-        while (!done) {
-            fpos[o] = (int16_t)n;
-            fpre[n++] = (int16_t)o;
-            if (child[o] >= 0) { o = child[o]; continue; }
-            for (;;) {                                /* o's subtree is done: on to the next sibling, or up */
-                fend[o] = (int16_t)n;
-                if (o == r) { done = 1; break; }
-                if (sib[o] >= 0) { o = sib[o]; break; }
-                o = objdefs[o].parent;
-            }
-        }
-    }
-#ifdef PLAY_STATS
-    for (o = 0; o < OBJ_COUNT; o++) {                 /* the host builds check each family against obj_desc */
-        int j, m = 0;
-        for (j = fpos[o]; j < fend[o]; j++) if (!obj_is(fpre[j], o)) abort();
-        for (j = 0; j < OBJ_COUNT; j++) m += obj_is(j, o);
-        if (m != fend[o] - fpos[o] || n != OBJ_COUNT) { fprintf(stderr, "fpre_init: family %d\n", o); abort(); }
-    }
-#endif
-    fpre_ok = 1;
+    return -1;
 }
 
 static void olists_reset(void)
 {
     int o;
     obj_desc_init();
-    if (!fpre_ok) fpre_init();
+    pcol_obj_tree();
 #ifndef PLAY_FIXED
     nc_reset();
 #endif
@@ -267,13 +239,12 @@ static void fam_begin(struct fam *it, int obj)
     it->k = -1;
     it->obj = obj;
     if (obj < 0) { it->lin = 1; return; }       /* -2: every instance */
-    /* the family's objects in preorder (fpre), a subtree without alive instances skipped: the same non-empty lists
+    /* the family's objects in preorder (ofam_next), a subtree without alive instances skipped: the same non-empty lists
        as obj_desc's (in another order: fam_next takes the oldest head, creation numbers are unique) */
-    for (j = fpos[obj]; j < fend[obj];) {
-        int o = fpre[j], h;
-        if (olive[o] == 0) { j = fend[o]; continue; }
-        h = pw_ohead[o];
-        j++;
+    for (j = obj; j >= 0; j = ofam_next(obj, j)) {
+        int h;
+        if (olive[j] == 0) continue;
+        h = pw_ohead[j];
         if (h < 0) continue;
         if (it->n == FAM_K) { it->lin = 1; return; }
         it->cur[it->n++] = (int16_t)h;
@@ -1426,7 +1397,9 @@ static void grid_reset(void)
                 if (obj_is(x, xf_obj[f])) b |= 1 << f;
                 if (x == xf_obj[f]) xf_of[x] = (int8_t)f;
             }
-            xbits[x] = (uint16_t)b;
+            if (obj_is(x, OBJ_oLeaves)) b |= 1 << 7;
+            if (x == OBJ_oLeaves) xf_of[x] = 7;
+            xbits[x] = (uint8_t)b;
         }
         xbits_ok = 1;
     }
@@ -1637,7 +1610,7 @@ static __attribute__((noinline)) void xflush_run(void)
         xplace(i, -1);
         xmask[i] = xisfar[i] = 0;
         if (!PW.in[i].alive || !(b = xbits[PW.in[i].obj]) || bbkind(i) == BB_NOSPR) continue;
-        xmask[i] = (uint16_t)b;
+        xmask[i] = (uint8_t)b;
         if (pin_ibox(i, ib)) {
             if (ib[2] <= ib[0] || ib[3] <= ib[1]) { xmask[i] = 0; continue; }     /* empty: never hit */
             xx0[i] = (uint8_t)clampi(ib[0] >> 4, 0, GRID_W - 1); xx1[i] = (uint8_t)clampi((ib[2] - 1) >> 4, 0, GRID_W - 1);
@@ -1705,7 +1678,7 @@ int (collision_point_p)(double px, double py, int obj, int prec, int notme_self)
 
 #ifndef PCOL_EXACT
 /* some instance of static family obj (xf_of) but notme holds the whole point q: point_hit over the family's object
-   lists (fpre's preorder, subtrees with olive 0 skipped), in any order and without the touches */
+   lists (ofam_next's preorder, subtrees with olive 0 skipped), in any order and without the touches */
 static int xpoint_any(int obj, int notme, const struct pq *q, int prec)
 {
     int j, k, f = xf_of[obj], cx = -1, cy = -1;
@@ -1717,10 +1690,9 @@ static int xpoint_any(int obj, int notme, const struct pq *q, int prec)
         cx = q->ix >> 4;
         cy = q->iy >> 4;
     }
-    for (j = fpos[obj]; j < fend[obj];) {
-        int o = fpre[j];
-        if (olive[o] == 0) { j = fend[o]; continue; }
-        j++;
+    for (j = obj; j >= 0; j = ofam_next(obj, j)) {
+        int o = j;
+        if (olive[o] == 0) continue;
         for (k = pw_ohead[o]; k >= 0; k = pw_inext[k]) {
             if (k == notme) continue;
             if (cx >= 0 && !xisfar[k] && (!(xmask[k] & xf_bit[f]) || cx < xx0[k] || cx > xx1[k] || cy < xy0[k] ||
@@ -2822,10 +2794,9 @@ static void nc_fill(struct ncache *c, int obj)
     int j, k, n = 0;
     c->obj = (int16_t)obj;
     c->ok = 2;
-    for (j = fpos[obj]; j < fend[obj];) {
-        int o = fpre[j];
-        if (olive[o] == 0) { j = fend[o]; continue; }
-        j++;
+    for (j = obj; j >= 0; j = ofam_next(obj, j)) {
+        int o = j;
+        if (olive[o] == 0) continue;
         for (k = pw_ohead[o]; k >= 0; k = pw_inext[k]) {
             int32_t xk, yk;
             if (n == NEAR_MAX || !pl_floor(PW.in[k].x, &xk) || !pl_floor(PW.in[k].y, &yk) ||
@@ -2873,7 +2844,7 @@ static struct ncache *nc_get(int obj)
    in y; L = lox^2 + loy^2 and U = hix^2 + hiy^2 are whole numbers below 2^31 (doubles exactly) and rounding is
    monotonic, so the double d of instance k is in [L_k, U_k]. The first instance of least d has L <= its d <= every
    U; the double loop over the instances with L <= min U, in the same order, picks it. NaN cannot occur (every
-   operand finite). The integer pass walks the family's object lists one after another (fpre, as fam_begin), not in
+   operand finite). The integer pass walks the family's object lists one after another (ofam_next, as fam_begin), not in
    creation order; the candidates (L <= min U, a few) are then sorted by creation number (pw_seq: the family's
    order, fam_next's) before the double pass. The family's floors come from nc_get. Up to NEAR_MAX instances, else
    the double loop over all */
