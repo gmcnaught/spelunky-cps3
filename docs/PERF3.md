@@ -368,6 +368,14 @@ Load-use stall (from spelunky-cps3-a6, low priority): jtcps3 stalls 1 cycle on a
   ends for fractional positions in fixed point: the path almost never runs (debris is whole after moveTo's pixel
   steps). isCollisionTop's cost on detritus is the pcol flush in solid_hline_any (the movers' dirty entries), not the
   double path. Not kept (a6): treasure_step's colBot settle as raw writes (the path does not run on bomb_drop 202).
+- Batch 22 (merged a6b3cef, the batches since 20 run as one on jtcps3): batch 21, the lava tests at an instance's
+  whole x, y (b7d61b2: p5_reg_l14s16 -5.0 % MAME SOFTFP, 25 steps over at x4.2) and the index's arrays in sprite RAM
+  in the JT build (a6b3cef, tests/playsh2/jtcold.ld). On jtcps3 (.62): JT PASS 23/23, route mean of means **391.4 K**
+  (batch 20: 405.0 K, batch 19: 397.4 K), **caveman 503.5 K** (the largest; 4.1 % under 0.525 M); frame budget game 2
+  (p5_snakes) 0 of 241 over, pair max 710.4 K (128.5 K under), step mean 398.3 K. Batch 21's code with the same
+  placement (one JT run, no gates, 08:20): 390.2 K, caveman 501.3 K, so b7d61b2 is +0.3 % here (within run noise).
+  The route maxima (the first step after the level start) rose 0.2-0.4 M: the index places every indexed entry at
+  the first query (MAME step 1 +7 to +19 K x4.2), and the level start is Phase 5.1.
 - Measured and not kept (a6): anim_one's step through a direct-mapped cache keyed by img / ispd / sp / fr bits (16 or 64
   entries; image_speed on p5_reg_l14s16 is 0.4 / 0.5 / 0.8 / 0.3 / 0.25, sp always 1, so a k / 2^n fixed-point path
   covers under 40 %): MAME SOFTFP l14s16 -1.5 %, jtcost fit record 22 +0.5 / +0.7 % (the table's D-misses). A
