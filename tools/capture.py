@@ -60,11 +60,11 @@ def read_cells(px, dx, dy):
         for blk in range(8):
             bx, by = x0 + 4 * (blk % 2), y0 + 2 * (blk // 2)
             s = [classify(px[bx + u, by + w]) for u in (1, 2) for w in (0, 1)]
-            c = max(set(s), key=s.count)
+            c = max('KWR', key=s.count)
             if s.count(c) < 3:
                 bad = True
             if blk == 7:
-                marks += c == 'R'
+                marks += c == 'R' and s.count(c) >= 3
             else:
                 v = v << 1 | (c == 'W')
                 bad = bad or c == 'R'
@@ -93,15 +93,16 @@ def read_shot(path):
             if 8 * COL0 + dx < 0 or 8 * ROW0 + dy < 0 or 8 * (COL0 + COLS) + dx > 384 or 8 * (ROW0 + ROWS) + dy > 224:
                 continue
             vals, marks = read_cells(px, dx, dy)
-            if best is None or marks > best[1]:
-                best = (vals, marks, dx, dy)
+            unsure = sum(v is None for v in vals)
+            if best is None or (marks, -unsure) > (best[1], -best[4]):
+                best = (vals, marks, dx, dy, unsure)
     return best
 
 
 def decode(shots, out):
     pages, npages, size = {}, None, None
     for s in shots:
-        vals, marks, dx, dy = read_shot(s)
+        vals, marks, dx, dy, _ = read_shot(s)
         pg = cells_bytes(vals)
         ok = page_ok(pg)
         print(f'{os.path.basename(s)}: offset {dx},{dy}, marks {marks}/{CELLS}, unsure cells '
