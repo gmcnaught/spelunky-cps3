@@ -220,14 +220,28 @@ void pw_changed(int i);                           /* pworld.c: the box cache, th
    __ashiftrt_r4_6 call on the SH-2, which has no multi-bit arithmetic shift) */
 #define PIN_IDX(p) ((int)((uint32_t)((const char *)(p) - (const char *)PW.in) / (uint32_t)sizeof(struct pin)))
 static inline void pin_changed_(struct pin *p) { pw_changed(PIN_IDX(p)); }
-static inline void pin_setx(struct pin *p, pos v) { pos o = p->x; PIN_WR(pos, p->x) = v; if (o != v) pin_changed_(p); }
-static inline void pin_sety(struct pin *p, pos v) { pos o = p->y; PIN_WR(pos, p->y) = v; if (o != v) pin_changed_(p); }
+/* a != b for floats on the bits (no __nesf2 call): unequal when either is a NaN, or the bits differ and they are not
+   +0 and -0 */
+static inline int fne(float a, float b)
+{
+    union { float f; uint32_t u; } x, y;
+    x.f = a; y.f = b;
+    if ((x.u & 0x7fffffffu) > 0x7f800000u || (y.u & 0x7fffffffu) > 0x7f800000u) return 1;
+    return x.u != y.u && ((x.u | y.u) << 1) != 0;
+}
+#ifdef PLAY_FIXED
+#define POS_NE(a, b) ((a) != (b))                 /* pos is an integer there */
+#else
+#define POS_NE(a, b) fne((a), (b))
+#endif
+static inline void pin_setx(struct pin *p, pos v) { pos o = p->x; PIN_WR(pos, p->x) = v; if (POS_NE(o, v)) pin_changed_(p); }
+static inline void pin_sety(struct pin *p, pos v) { pos o = p->y; PIN_WR(pos, p->y) = v; if (POS_NE(o, v)) pin_changed_(p); }
 static inline void pin_setxy(struct pin *p, pos x, pos y)
 {
     pos ox = p->x, oy = p->y;
     PIN_WR(pos, p->x) = x;
     PIN_WR(pos, p->y) = y;
-    if (ox != x || oy != y) pin_changed_(p);
+    if (POS_NE(ox, x) || POS_NE(oy, y)) pin_changed_(p);
 }
 static inline void pin_setspr(struct pin *p, int v)         /* sprite_index without pin_set_sprite's image rule */
 {
@@ -247,7 +261,7 @@ static inline void pin_setimg(struct pin *p, img_t v)
 {
     img_t o = p->img;
     PIN_WR(img_t, p->img) = v;
-    if (o != v) pw_draw_mark(PIN_IDX(p));
+    if (fne(o, v)) pw_draw_mark(PIN_IDX(p));
 }
 static inline void pin_setvisible(struct pin *p, int v)
 {
@@ -259,7 +273,7 @@ static inline void pin_setdepth(struct pin *p, float v)
 {
     float o = p->depth;
     PIN_WR(float, p->depth) = v;
-    if (o != v) pw_draw_mark(PIN_IDX(p));
+    if (fne(o, v)) pw_draw_mark(PIN_IDX(p));
 }
 static inline void pin_setxscale(struct pin *p, double v)
 {
