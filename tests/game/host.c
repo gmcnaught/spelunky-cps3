@@ -5,6 +5,11 @@
  * of the runner's trace records (scripts/game_check.sh --host).
  *   host <route.txt> <seed> <level> <money> <enemies> <tail> <gen dir> <out dir> [rec,rec,... | all] [nohud|hud]
  *        [dark a8]
+ * HOST_REPLAY=1 (scripts/replay.sh): <route.txt> is a game capture's text (tools/capture.py decode): its header
+ * lines give the settings (# flags: RUN BUTTON TOGGLE, INVINCIBLE in -DSHELL_DEV builds), the steps and the
+ * checkpoint hashes; the keys are the cabinet's controls (HOST_CABINET). At the end: "replay ..." lines, the end
+ * state and each checkpoint against the capture's. HOST_STEPLOG=<file>: after each step "T <steps> <game_probe>"
+ * (scripts/lua/capture.lua logs the same in MAME).
  * Output: <out dir>/v_<rec>.bin, 320 x 240 little-endian u16 per pixel: colour code << 8 | colour index (0: nothing
  * drawn); out dir "-": the frames on stdout, each a little-endian s32 record number, s32 alpha byte a8 of colour
  * code DRAW_PAL's fade (tools/darkfade.py; 0 but on dark levels), then the 320 x 240 words (for
@@ -248,6 +253,55 @@ static uint8_t *slurp(const char *dir, const char *name)
 }
 
 static int cabinet, cab_step;
+/* HOST_REPLAY: the capture's header lines */
+static struct { uint32_t flags, steps, every, nchk, end[6]; uint16_t chk[CAP_CHK_MAX]; int have_end; } rp;
+static void replay_header(const char *line)
+{
+    const char *p;
+    if (sscanf(line, "# flags %x", &rp.flags) == 1) return;
+    if (sscanf(line, "# steps %u", &rp.steps) == 1) return;
+    if (sscanf(line, "# end level %d plife %d money %d room %d dead %d end_room %d", (int *)&rp.end[0],
+               (int *)&rp.end[1], (int *)&rp.end[2], (int *)&rp.end[3], (int *)&rp.end[4], (int *)&rp.end[5]) == 6) {
+        rp.have_end = 1;
+        return;
+    }
+    if (sscanf(line, "# chk %u", &rp.every) == 1) {
+        int n;
+        unsigned v;
+        p = line + 6;
+        while (*p == ' ') p++;
+        while (*p && *p != ' ') p++;              /* past the interval */
+        while (rp.nchk < CAP_CHK_MAX && sscanf(p, " %x%n", &v, &n) == 1) {
+            rp.chk[rp.nchk++] = (uint16_t)v;
+            p += n;
+        }
+    }
+}
+static void replay_report(void)
+{
+    uint32_t k, first = 0xffffffffu, nh = capture.h[CAP_W_NCHK];
+    int32_t e[6] = { G.currLevel, PG.plife, PG.money, PW.room, PL.idx != NOONE ? PL.dead : -1,
+                     (int32_t)capture.h[CAP_W_END_ROOM] };
+    for (k = 0; k < rp.nchk && k < nh; k++)
+        if (capture.chk[k] != rp.chk[k] && first == 0xffffffffu) first = k;
+    fprintf(stderr, "replay steps %u of %u, checkpoints %u of %u", (unsigned)capture.h[CAP_W_STEPS],
+            (unsigned)rp.steps, (unsigned)(first == 0xffffffffu ? (rp.nchk < nh ? rp.nchk : nh) : first),
+            (unsigned)rp.nchk);
+    if (first != 0xffffffffu)
+        fprintf(stderr, " equal, first differing checkpoint %u (after step %u): host %04x capture %04x\n",
+                (unsigned)first, (unsigned)((first + 1) * CAP_CHK_EVERY), capture.chk[first], rp.chk[first]);
+    else
+        fprintf(stderr, " equal%s\n", rp.nchk == nh ? "" : " (counts differ)");
+    fprintf(stderr, "replay end host    level %d plife %d money %d room %d dead %d end_room %d\n", e[0], e[1], e[2],
+            e[3], e[4], e[5]);
+    if (rp.have_end)
+        fprintf(stderr, "replay end capture level %d plife %d money %d room %d dead %d end_room %d -> %s\n",
+                (int)rp.end[0], (int)rp.end[1], (int)rp.end[2], (int)rp.end[3], (int)rp.end[4], (int)rp.end[5],
+                (uint32_t)e[0] == rp.end[0] && (uint32_t)e[1] == rp.end[1] && (uint32_t)e[2] == rp.end[2] &&
+                (uint32_t)e[3] == rp.end[3] && (uint32_t)e[4] == rp.end[4] && (uint32_t)e[5] == rp.end[5]
+                    ? "equal" : "DIFFERENT");
+}
+static FILE *steplog;
 static int game2_on;                             /* HOST_GAME2: 1 the first game, 2 the second */
 static int32_t hlast = -1;
 
@@ -309,6 +363,7 @@ int main(int argc, char **argv)
     if (!f) { perror(argv[1]); return 2; }
     while (fgets(line, sizeof line, f)) {
         char *h = strchr(line, '#'), keys[64] = "-";
+        if (h == line && getenv("HOST_REPLAY")) replay_header(line);
         int c;
         uint16_t m = 0;
         if (h) *h = 0;
@@ -343,13 +398,22 @@ int main(int argc, char **argv)
     game_cfg.tail = atoi(argv[6]);
     game_cfg.scores = getenv("HOST_SCORES") != 0;   /* the route stores its scores (scrUpdateHighscores) */
     game2_on = getenv("HOST_GAME2") && atoi(getenv("HOST_GAME2"));
-    if ((cabinet = getenv("HOST_CABINET") != 0)) game_cfg.route = 0;   /* HOST_CABINET: the route's keys as the
-                                                                          cabinet's controls (src/main's own paths) */
+    if ((cabinet = getenv("HOST_CABINET") != 0 || getenv("HOST_REPLAY") != 0)) game_cfg.route = 0;
+                                                  /* HOST_CABINET: the route's keys as the cabinet's controls (src/main's
+                                                     own paths) */
     hs_boot(&SH.hs, &SH.st, &SH.g);               /* a blank EEPROM: HD's first start */
 #ifdef SHELL_DEV
     SH.st.invincible = getenv("HOST_GOD") != 0;   /* HOST_GOD (built with -DSHELL_DEV, with HOST_CABINET): the
                                                      developer option INVINCIBLE */
 #endif
+    if (getenv("HOST_REPLAY")) {                  /* the capture's settings */
+        SH.st.toggle_run = (rp.flags & CAP_F_TOGGLE_RUN) != 0;
+#ifdef SHELL_DEV
+        SH.st.invincible = (rp.flags & CAP_F_GOD) != 0;
+#else
+        if (rp.flags & CAP_F_GOD) fprintf(stderr, "replay: the capture is INVINCIBLE: build the host with -DSHELL_DEV\n");
+#endif
+    }
     draw_boot();
     snd_init(15, 15);
     snd_log_open();
@@ -357,6 +421,7 @@ int main(int argc, char **argv)
     game_cfg.globals = getenv("HOST_GLOBALS");    /* "name=value,..." (src/main game.c set_global's names) */
     if (getenv("HOST_ROOM")) game_cfg.room = atoi(getenv("HOST_ROOM"));   /* a route's "# room" (mkroute.py: 3 rOlmec,
                                                      23 rEnd) */
+    if (getenv("HOST_STEPLOG")) steplog = fopen(getenv("HOST_STEPLOG"), "w");
     game_begin();
 again:
     for (;;) {
@@ -366,7 +431,14 @@ again:
         if (getenv("HOST_XEND") && game_steps == atoi(getenv("HOST_XEND")) && PL.idx != NOONE)
             pin_create(PX(PL.idx).x - PI(8), PX(PL.idx).y - PI(8), OBJ_oXEnd);   /* HOST_XEND=<step>: rOlmec's door
                                                      (oFinalBoss makes it once Olmec is in the lava) on the player */
+        if (getenv("HOST_REPLAY") && game_steps >= (int32_t)rp.steps) break;   /* the capture's last step */
         over = game_step(&in);
+        if (steplog) {
+            uint32_t o[6];
+            game_probe(o);
+            fprintf(steplog, "T %d %d %d %d %08x %08x %08x\n", (int)game_steps, (int)o[0], (int)o[1], (int)o[2], o[3],
+                    o[4], o[5]);
+        }
         cps3v_begin();
         game_draw();
         cps3v_end();
@@ -405,6 +477,8 @@ again:
     }
     fprintf(stderr, "end steps %d plife %d dead %d\n", (int)game_steps, (int)PG.plife,
             PL.idx != NOONE ? PL.dead : -1);
+    if (steplog) fclose(steplog);
+    if (getenv("HOST_REPLAY")) replay_report();
     if (play_untranslated) fprintf(stderr, "untranslated %d (object %d)\n", play_untranslated, play_untr_obj);
     if (getenv("HOST_AFTER") && strcmp(argv[8], "-")) {   /* HOST_AFTER=<steps>: the shell's attract after the game
                                                            (rHighscores after a game over); v_a<step>.bin each 30 */

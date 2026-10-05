@@ -7,6 +7,9 @@ v0.1.0 is on GitHub (tag build green, spelunky.zip + MRA) and on .81 (/media/fat
 1. **Hardware bug capture.** The user's death on .81 is unexplained (no host repro in ~200 K runs). Add a way to get
    a cabinet session back to the host (input history from the start of the game, readable after the fact), so a
    .81 report replays in playhost. Then triage whatever the v0.1.0 playthrough turns up.
+   **Done in MAME 2026-10-05 (docs/ARCADE.md section 7):** settings GAME CAPTURE pages -> screenshots ->
+   tools/capture.py decode -> scripts/replay.sh; scripts/capture_check.sh. Open: the jtcps3 check (section 7's
+   steps) and a release with it on .81 (v0.1.0 has no capture: the death seen there cannot be read back).
 2. **Fresh untranslated survey on main.** docs/CONTENT.md's survey is from 2026-10-04 07:57, before the content
    packages; 85 PUNTR sites remain in src/game. Re-run the random-input survey (levels 1-16, 30 seeds) and fix the
    codes normal play reaches. Tunnel man (4005 / 4011 / 4020) stays untranslated (GAMELOOP section 3).

@@ -35,6 +35,177 @@ static void hs_store(int type)
     front_new = (uint8_t)hs_update(&SH.hs, &SH.st, &r, (enum hs_type)type);
 }
 
+/* ---- the game capture (game.h): read-only on the play state ---- */
+#ifndef CAPTURE_SECTION
+#define CAPTURE_SECTION
+#endif
+#ifndef CAPTURE_REV
+#define CAPTURE_REV 0u                            /* the build's git commit (32 bits; tests/game REV=) */
+#endif
+#ifndef CAPTURE_DIRTY
+#define CAPTURE_DIRTY 0
+#endif
+struct capture capture CAPTURE_SECTION;
+static uint8_t cap_on;                            /* this game is recorded (a cabinet game) */
+static uint32_t cap_crc;
+
+/* FNV-1a over 32-bit values, folded to 16 bits; the position's bits as stored (float, or the fixed-point int) */
+static uint32_t cap_h;
+static void cap_w(uint32_t v)
+{
+    int k;
+    for (k = 0; k < 4; k++) {
+        cap_h ^= (v >> (8 * k)) & 0xff;
+        cap_h *= 16777619u;
+    }
+}
+uint16_t capture_hash(void)
+{
+    int k;
+    cap_h = 2166136261u;
+    cap_w((uint32_t)PW.n); cap_w((uint32_t)PW.next_id); cap_w((uint32_t)PW.room);
+    cap_w((uint32_t)PW.xview); cap_w((uint32_t)PW.yview);
+    cap_w((uint32_t)PG.plife); cap_w((uint32_t)PG.bombs); cap_w((uint32_t)PG.rope); cap_w((uint32_t)PG.money);
+    cap_w((uint32_t)G.currLevel);
+    for (k = 0; k < 16; k++) cap_w(g_rng.s[k]);
+    cap_w(g_rng.i);
+    if (PL.idx != NOONE) {
+        union { pos p; uint32_t u; } x, y;
+        x.p = PX(PL.idx).x;
+        y.p = PX(PL.idx).y;
+        cap_w(x.u); cap_w(y.u); cap_w(PL.dead);
+    }
+    return (uint16_t)(cap_h ^ cap_h >> 16);
+}
+
+/* tests: the state compared step by step between a cabinet run and its host replay (tests/game main.c's marker
+   block for MAME, host.c HOST_STEPLOG): life, money, level, the player's x / y bits (0 without a player), the RNG's
+   hash */
+void game_probe(uint32_t *o)
+{
+    int k;
+    o[0] = (uint32_t)PG.plife;
+    o[1] = (uint32_t)PG.money;
+    o[2] = (uint32_t)G.currLevel;
+    o[3] = o[4] = 0;
+    if (PL.idx != NOONE) {
+        union { pos p; uint32_t u; } x, y;
+        x.p = PX(PL.idx).x;
+        y.p = PX(PL.idx).y;
+        o[3] = x.u;
+        o[4] = y.u;
+    }
+    cap_h = 2166136261u;
+    for (k = 0; k < 16; k++) cap_w(g_rng.s[k]);
+    cap_w(g_rng.i);
+    o[5] = cap_h;
+}
+
+static void cap_begin(uint32_t seed)
+{
+    uint32_t *h = capture.h;
+    cap_on = !game_cfg.route;
+    if (!cap_on) return;
+    h[CAP_W_MAGIC] = 0;                           /* invalid while it is rewritten */
+    h[CAP_W_VERSION] = CAP_VERSION;
+    h[CAP_W_FLAGS] = (play_toggle_run_on ? CAP_F_TOGGLE_RUN : 0) | (draw_smooth ? CAP_F_SMOOTH : 0) |
+                     (play_god ? CAP_F_GOD : 0) | (CAPTURE_DIRTY ? CAP_F_DIRTY : 0)
+#ifdef SHELL_DEV
+                     | CAP_F_DEV
+#endif
+        ;
+    h[CAP_W_REV] = CAPTURE_REV;
+    h[CAP_W_SEED] = seed;
+    h[CAP_W_STEPS] = h[CAP_W_NENT] = h[CAP_W_NCHK] = 0;
+    h[CAP_W_LEVEL] = (uint32_t)G.currLevel;
+    h[CAP_W_PLIFE] = (uint32_t)PG.plife;
+    h[CAP_W_MONEY] = (uint32_t)PG.money;
+    h[CAP_W_ROOM] = (uint32_t)PW.room;
+    h[CAP_W_DEAD] = 0;
+    h[CAP_W_END_ROOM] = (uint32_t)-1;
+    h[CAP_W_MAGIC] = CAP_MAGIC;
+}
+
+/* a step's controls, before play_step */
+static void cap_keys(uint16_t down)
+{
+    uint32_t *h = capture.h, n = h[CAP_W_NENT];
+    uint16_t m = (uint16_t)((down & 0x3ffu) | (down & KEY_PAY ? 0x400u : 0));
+    if (h[CAP_W_FLAGS] & CAP_F_TRUNC) return;
+    if (down & ~(0x3ffu | KEY_PAY)) h[CAP_W_FLAGS] |= CAP_F_LOSSY;
+    if (n && (capture.ent[n - 1] & 0x7ffu) == m && capture.ent[n - 1] < 0xf800u)
+        capture.ent[n - 1] += 0x800u;
+    else if (n < CAP_ENT_MAX) {
+        capture.ent[n] = m;
+        h[CAP_W_NENT] = n + 1;
+    } else {
+        h[CAP_W_FLAGS] |= CAP_F_TRUNC;
+        return;
+    }
+    h[CAP_W_STEPS]++;
+}
+
+/* after the step: the checkpoint hash and the state at the end */
+static void cap_after(int r)
+{
+    uint32_t *h = capture.h;
+    if (!(h[CAP_W_FLAGS] & CAP_F_TRUNC) && h[CAP_W_STEPS] % CAP_CHK_EVERY == 0) {
+        if (h[CAP_W_NCHK] < CAP_CHK_MAX) capture.chk[h[CAP_W_NCHK]++] = capture_hash();
+        else h[CAP_W_FLAGS] |= CAP_F_TRUNC;
+    }
+    h[CAP_W_LEVEL] = (uint32_t)G.currLevel;
+    h[CAP_W_PLIFE] = (uint32_t)PG.plife;
+    h[CAP_W_MONEY] = (uint32_t)PG.money;
+    h[CAP_W_ROOM] = (uint32_t)PW.room;
+    h[CAP_W_DEAD] = PL.idx != NOONE ? PL.dead : (uint32_t)-1;
+    if (r) {
+        h[CAP_W_FLAGS] |= CAP_F_OVER;
+        h[CAP_W_END_ROOM] = (uint32_t)r;
+    }
+}
+
+static uint32_t cap_size(void)                    /* without the CRC */
+{
+    const uint32_t *h = capture.h;
+    if (h[CAP_W_MAGIC] != CAP_MAGIC || h[CAP_W_VERSION] != CAP_VERSION || h[CAP_W_NENT] > CAP_ENT_MAX ||
+        h[CAP_W_NCHK] > CAP_CHK_MAX)
+        return 0;
+    return 4 * CAP_HDR + 2 * (h[CAP_W_NENT] + h[CAP_W_NCHK]);
+}
+static uint8_t cap_byte(uint32_t k)
+{
+    const uint32_t *h = capture.h;
+    uint16_t v;
+    if (k < 4 * CAP_HDR) return (uint8_t)(h[k >> 2] >> (24 - 8 * (k & 3)));
+    k -= 4 * CAP_HDR;
+    if (k < 2 * h[CAP_W_NENT]) v = capture.ent[k >> 1];
+    else {
+        k -= 2 * h[CAP_W_NENT];
+        if (k >= 2 * h[CAP_W_NCHK]) return 0;
+        v = capture.chk[k >> 1];
+    }
+    return (uint8_t)(k & 1 ? v : v >> 8);
+}
+uint32_t game_capture_size(void)
+{
+    uint32_t n = cap_size(), k, c = 0xffffffffu;
+    int b;
+    if (!n) return 0;
+    for (k = 0; k < n; k++) {                     /* CRC-32 (zlib's) */
+        c ^= cap_byte(k);
+        for (b = 0; b < 8; b++) c = c >> 1 ^ (0xedb88320u & -(c & 1));
+    }
+    cap_crc = ~c;
+    return n + 4;
+}
+uint8_t game_capture_byte(uint32_t k)
+{
+    uint32_t n = cap_size();
+    if (k < n) return cap_byte(k);
+    k -= n;
+    return k < 4 ? (uint8_t)(cap_crc >> (24 - 8 * k)) : 0;
+}
+
 /* tools/tracer.py's record points: the tracer (and test/host/playhost.c) reads the view there, which the play
    state depends on (view_read: the follow is applied when the view was set this frame) */
 static void rec_cb(int phase)
@@ -128,7 +299,11 @@ void game_begin(void)
         }
     }
     play_god_life = PG.plife;
-    rng_seed(&g_rng, game_cfg.seed ? game_cfg.seed : shell_seed());
+    {
+        uint32_t seed = game_cfg.seed ? game_cfg.seed : shell_seed();
+        cap_begin(seed);                          /* a cabinet game: its capture starts (game.h) */
+        rng_seed(&g_rng, seed);
+    }
     gen_room_force = game_cfg.room <= 3 ? game_cfg.room : -1;
     play_level_start(110325);                     /* the runner's instance id counter at rLevel (playhost) */
     gen_room_force = -1;
@@ -163,6 +338,7 @@ int game_step(const struct shell_input *in)
         keys = game_steps < game_cfg.nroute ? game_cfg.route[game_steps] : 0;
     } else {
         keys = in->down;
+        if (cap_on) cap_keys(keys);
         /* an unattended game-over panel (HD waits for a press): after GAME_OVER_WAIT steps on it the cabinet presses
            attack itself, every other step (the first press shows the final score, the next goes to rHighscores) */
         if (PL.idx != NOONE && PL.dead && PGAME.drawStatus > 0) {
@@ -175,6 +351,7 @@ int game_step(const struct shell_input *in)
     while (r == PLAY_ROOM_EARLY);
     if (play_god) play_god_hold();                /* the life the step's collisions took, before the HUD */
     game_steps++;
+    if (cap_on) cap_after(r);
     if (r != 0) {                                 /* a room the play loop does not model */
         game_over = 1;
         game_end_room = r;

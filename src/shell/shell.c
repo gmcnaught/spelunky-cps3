@@ -11,6 +11,8 @@ __attribute__((weak)) void game_begin(void) {}
 __attribute__((weak)) int game_step(const struct shell_input *in) { (void)in; return 1; }
 __attribute__((weak)) void game_draw(void) {}
 __attribute__((weak)) void shell_video_stop(void) {}
+__attribute__((weak)) uint32_t game_capture_size(void) { return 0; }
+__attribute__((weak)) uint8_t game_capture_byte(uint32_t k) { (void)k; return 0; }
 
 uint32_t shell_ee_read(int word) { return cps3_ee_read(word); }
 void shell_ee_write(int word, uint32_t v) { cps3_ee_write(word, v); }
@@ -52,20 +54,165 @@ static void credit_line(void)
     }
 }
 
+static void put_hex(int col, int row, uint32_t v, int digits)
+{
+    char s[9];
+    for (int k = 0; k < digits && k < 8; k++)
+        s[k] = "0123456789ABCDEF"[(v >> (4 * (digits - 1 - k))) & 15];
+    s[digits < 8 ? digits : 8] = 0;
+    cps3v_text(col, row, s);
+}
+
+static void clear_text(void)
+{
+    for (int r = 0; r < 28; r++)
+        cps3v_text(0, r, "                                                ");
+}
+
+/* ---- the game capture (src/main game.h) as pages of code cells, for screenshots (docs/ARCADE.md section 7) ----
+   A page is CAP_PAGE bytes: page index, page count, the capture's size (16 bits), CRC-16 (CCITT, 0xffff) of the
+   page's other bytes, then CAP_PDATA bytes of the capture (zeros after its end). Its bits, first byte's high bit
+   first, 7 to a cell, fill CAP_COLS x CAP_ROWS text cells row by row from cell (CAP_COL0, CAP_ROW0). A cell shows
+   SS tile CAP_TILE + value: 4 x 2 pixel blocks in 2 columns and 4 rows, block b (row b / 2, column b % 2) white
+   (colour 1) for value bit 6 - b set, black (colour 2) if not, block 7 red (colour 3: the decoder's alignment
+   mark). tools/capture.py decodes the screenshots. */
+#define CAP_ROW0  2
+#define CAP_ROWS  24
+#define CAP_COL0  1
+#define CAP_COLS  46
+#define CAP_CELLS (CAP_ROWS * CAP_COLS)
+#define CAP_PAGE  (CAP_CELLS * 7 / 8)
+#define CAP_PDATA (CAP_PAGE - 6)
+#define CAP_TILE  128
+#define CAP_AUTO  150                            /* frames a page shows before the next (2.5 s) */
+#define SSW(n, a, b) (*(volatile uint32_t *)(0x05040000u + 4u * (n)) = ((uint32_t)(a) << 16) | (b))
+
+static void cap_glyphs(void)
+{
+    static const uint16_t col[2] = { 0x0000, 0x001f };   /* colours 2 black, 3 red (BGR555) */
+    for (int v = 0; v < 128; v++)
+        for (int y = 0; y < 8; y++)
+            for (int x = 0; x < 8; x += 4) {     /* 4 pixels: 2 SS bytes, the left pixel in the low nibble */
+                uint8_t px[4];
+                int b = (y / 2) * 2 + x / 4;
+                px[0] = px[1] = px[2] = px[3] = (uint8_t)(b == 7 ? 3 : (v >> (6 - b)) & 1 ? 1 : 2);
+                SSW((0x4000 + (CAP_TILE + v) * 32 + y * 4 + x / 2) / 2, px[0] | px[1] << 4, px[2] | px[3] << 4);
+            }
+    cps3v_colours(0x1fe02, col, 2);
+}
+
+static uint16_t crc16(uint16_t c, const uint8_t *p, int n)
+{
+    while (n--) {
+        c ^= (uint16_t)(*p++ << 8);
+        for (int b = 0; b < 8; b++)
+            c = (uint16_t)(c & 0x8000 ? c << 1 ^ 0x1021 : c << 1);
+    }
+    return c;
+}
+
+static void cap_make_page(uint8_t *pg, uint32_t size, int p, int np)
+{
+    pg[0] = (uint8_t)p;
+    pg[1] = (uint8_t)np;
+    pg[2] = (uint8_t)(size >> 8);
+    pg[3] = (uint8_t)size;
+    for (int k = 0; k < CAP_PDATA; k++) {
+        uint32_t i = (uint32_t)p * CAP_PDATA + k;
+        pg[6 + k] = i < size ? game_capture_byte(i) : 0;
+    }
+    uint16_t c = crc16(crc16(0xffff, pg, 4), pg + 6, CAP_PDATA);
+    pg[4] = (uint8_t)(c >> 8);
+    pg[5] = (uint8_t)c;
+    pg[CAP_PAGE] = 0;
+}
+
+static void cap_show_page(const uint8_t *pg, int p, int np)
+{
+    for (int j = 0; j < CAP_CELLS; j++) {
+        int b = 7 * j;
+        int v = ((pg[b >> 3] << 8 | pg[(b >> 3) + 1]) >> (9 - (b & 7))) & 0x7f;
+        SSW((CAP_ROW0 + j / CAP_COLS) * 64 + CAP_COL0 + j % CAP_COLS, CAP_TILE + v, 0);
+    }
+    put_num(30, 0, (uint32_t)p + 1, 2);
+    put_num(36, 0, (uint32_t)np, 2);
+}
+
+/* the capture's pages until B2 or the test switch; B1 / right the next page, left the one before, and every
+   CAP_AUTO frames the next by itself */
+static void capture_view(void)
+{
+    uint8_t pg[CAP_PAGE + 1];                    /* on the stack: main RAM .bss is short (tests/ramcheck.ld) */
+    uint32_t prev = 0xffffffffu, prev_sys = 0xffffffffu;
+    uint32_t size = game_capture_size();
+    int np = (int)((size + CAP_PDATA - 1) / CAP_PDATA), p = 0, shown = -1, t = 0;
+    clear_text();
+    if (size) {
+        cap_glyphs();
+        cps3v_text(2, 0, "SPELUNKY GAME CAPTURE  PAGE    OF");
+        uint32_t w[6];                           /* header words 0-5 (src/main game.h CAP_W_*) for the text */
+        for (int k = 0; k < 24; k++)
+            w[k / 4] = w[k / 4] << 8 | game_capture_byte((uint32_t)k);
+        cps3v_text(2, 26, "BUILD          STEPS        BYTES");
+        put_hex(8, 26, w[3], 8);
+        put_num(23, 26, w[5], 6);
+        put_num(36, 26, size, 5);
+        cps3v_text(2, 27, "B1 NEXT   LEFT BACK   B2 MENU");
+    } else {
+        cps3v_text(8, 11, "NO GAME CAPTURE");
+        cps3v_text(8, 13, "PLAY A GAME FIRST");
+        cps3v_text(8, 17, "B2 MENU");
+    }
+    for (;;) {
+        if (size && p != shown) {                /* the page's bytes before the VBlank, its cells after */
+            cap_make_page(pg, size, p, np);
+            cps3v_wait_vblank();
+            cap_show_page(pg, p, np);
+            shown = p;
+            t = 0;
+        }
+        cps3v_wait_vblank();
+        cps3v_vblank();
+        uint32_t q = cps3_pad(0) | cps3_pad(1), sys = cps3_system();
+        uint32_t press = q & ~prev, spress = sys & ~prev_sys;
+        prev = q;
+        prev_sys = sys;
+        if ((press & CPS3_B2) || (spress & CPS3_TEST))
+            break;
+        if (!size)
+            continue;
+        if ((press & (CPS3_B1 | CPS3_RIGHT)) || ++t >= CAP_AUTO)
+            p = (p + 1) % np;
+        else if (press & CPS3_LEFT)
+            p = (p + np - 1) % np;
+    }
+    clear_text();
+}
+
 /* ---- settings screen (test switch) ---- */
-/* DEV=1 builds (SHELL_DEV) add the developer option INVINCIBLE before SAVE AND EXIT */
+/* DEV=1 builds (SHELL_DEV) add the developer option INVINCIBLE before GAME CAPTURE */
 #ifdef SHELL_DEV
 #define SEL_GOD  5
+#define SEL_CAP  6
+#define SEL_LAST 7
+#define HELP_ROW 23
+#else
+#define SEL_CAP  5
 #define SEL_LAST 6
 #define HELP_ROW 22
-#else
-#define SEL_LAST 5
-#define HELP_ROW 20
 #endif
 static void line(int row, int sel, const char *label)
 {
     cps3v_text(8, row, sel ? "+" : " ");          /* the SDK font has no ">" */
     cps3v_text(10, row, label);
+}
+
+static void settings_text(void)
+{
+    cps3v_text(16, 3, "SPELUNKY SETTINGS");
+    cps3v_text(8, HELP_ROW, "UP / DOWN    CHOOSE");
+    cps3v_text(8, HELP_ROW + 2, "B1 / RIGHT   CHANGE");
+    cps3v_text(8, HELP_ROW + 4, "TEST         SAVE AND EXIT");
 }
 
 static void settings_run(void)
@@ -76,8 +223,7 @@ static void settings_run(void)
     cps3v_end();
     for (int t = 0; t < 4; t++)
         cps3v_tilemap(t, 0, 0, CPS3V_MAP_UNIT(0), 0);
-    for (int r = 0; r < 28; r++)
-        cps3v_text(0, r, "                                                ");
+    clear_text();
     struct settings st;
     st.free_play = SH.st.free_play;
     st.coins_per_credit = SH.st.coins_per_credit;
@@ -86,10 +232,7 @@ static void settings_run(void)
     st.invincible = SH.st.invincible;
     int sel = 0, clear = 0;
     uint32_t prev = 0xffffffffu, prev_sys = 0xffffffffu;
-    cps3v_text(16, 3, "SPELUNKY SETTINGS");
-    cps3v_text(8, HELP_ROW, "UP / DOWN    CHOOSE");
-    cps3v_text(8, HELP_ROW + 2, "B1 / RIGHT   CHANGE");
-    cps3v_text(8, HELP_ROW + 4, "TEST         SAVE AND EXIT");
+    settings_text();
     for (;;) {
         line(7, sel == 0, "FREE PLAY");
         cps3v_text(32, 7, st.free_play ? "ON " : "OFF");
@@ -104,9 +247,11 @@ static void settings_run(void)
 #ifdef SHELL_DEV
         line(17, sel == SEL_GOD, "INVINCIBLE (DEV)");
         cps3v_text(32, 17, st.invincible ? "ON " : "OFF");
-        line(19, sel == SEL_LAST, "SAVE AND EXIT");
+        line(19, sel == SEL_CAP, "GAME CAPTURE");
+        line(21, sel == SEL_LAST, "SAVE AND EXIT");
 #else
-        line(18, sel == SEL_LAST, "SAVE AND EXIT");
+        line(17, sel == SEL_CAP, "GAME CAPTURE");
+        line(19, sel == SEL_LAST, "SAVE AND EXIT");
 #endif
         cps3v_wait_vblank();
         cps3v_vblank();
@@ -135,7 +280,14 @@ static void settings_run(void)
             else if (sel == SEL_GOD)
                 st.invincible = !st.invincible;
 #endif
-            else if (press & CPS3_B1)
+            else if (sel == SEL_CAP) {
+                if (step > 0) {
+                    capture_view();
+                    settings_text();
+                    prev = cps3_pad(0) | cps3_pad(1);   /* the buttons that left the view are no press */
+                    prev_sys = cps3_system();
+                }
+            } else if (press & CPS3_B1)
                 leave = 1;
         }
         if (leave)

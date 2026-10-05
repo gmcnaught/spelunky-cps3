@@ -104,13 +104,14 @@ Checks:
 
 The test switch (MAME: Service Mode; jtcps3: F2), or Coin + B2 on either panel held together for 60 frames (the
 stock jtcps3 has no OSD test switch), opens the settings screen: FREE PLAY, COINS PER CREDIT, RUN BUTTON (HOLD /
-TOGGLE: HD's `global.toggleRunEnabled`, X10), SMOOTH MOTION (ON / OFF, section 2), CLEAR HIGH SCORES, SAVE AND EXIT (up / down choose, B1 or right change,
+TOGGLE: HD's `global.toggleRunEnabled`, X10), SMOOTH MOTION (ON / OFF, section 2), CLEAR HIGH SCORES, GAME CAPTURE
+(the last game's capture, section 7), SAVE AND EXIT (up / down choose, B1 or right change,
 left back, test or B1 on SAVE AND EXIT leave). Leaving stores the settings and restarts the program (the combo's coin
 credit is cleared with the rest). RUN BUTTON TOGGLE applies to cabinet games only (routes keep HD's default) and each
 game starts walking (HD resets `toggleRun` once, in `scrInit`).
 
 Developer options (testing only, not in HD): `tests/game DEV=1` builds (`-DSHELL_DEV`; set `spelunkydev`, "Spelunky
-Classic Arcade (Dev)") add INVINCIBLE (DEV) before SAVE AND EXIT. With it on, a cabinet game's player loses no life
+Classic Arcade (Dev)") add INVINCIBLE (DEV) before GAME CAPTURE. With it on, a cabinet game's player loses no life
 (src/game `play_god_hold` puts back what a step took) and the branches that kill outright do not run (crushed, the
 pit, spikes, lava, oGhost, oManTrap); hits still knock back and stun. Such a game stores no high scores. Routes never
 set it. scripts/release.sh builds without DEV: no menu row, and the EEPROM bit is not read.
@@ -171,3 +172,88 @@ Not checked: jtcps3 (the HUD uses only the sprite path already exact in tests/vi
 
 - The compass's bottom arrows (view y 224-239) lose their lower 8 lines to the crop (screen ends at view line 231).
 - Attract mode content (HD's intro / title / scores rooms without controls, or a demo) is the play runtime's.
+
+## 7. Game capture: a cabinet game replayed on the host
+
+A bug seen on the cabinet is reported as the game's capture, read off the screen and replayed step for step by the
+host build (`tests/game/host.c`).
+
+**Why the screen.** jtcps3 writes no `.nvm` to the SD card: Maldita C6 goal 4 (jtcps3 .rbf 2026-09-24), where the
+OSD save wrote nothing, and jtcps3's own MRAs have none. The 93C46 holds only 128 bytes, used by the scores. A MiSTer
+screenshot of jtcps3 is a lossless 384 x 224 PNG (`tools/jtshot.py` compares them in 5-bit colour). So the capture
+is shown as pages of code cells and decoded from screenshots.
+
+**What is recorded** (src/main `game.c`, `game.h` `struct capture`), for cabinet games only (routes record nothing):
+- At `game_begin`: the seed given to `rng_seed`; the settings that change play (RUN BUTTON TOGGLE, INVINCIBLE; SMOOTH
+  MOTION only for the record); the build's commit and whether its tree was dirty (`REV` / `DIRTY` from
+  `scripts/release.sh`).
+- Every step: `struct shell_input` `down`, the only control `game_step` reads (the game over panel's own press
+  comes from the state, and the replay makes it again). It is stored as runs of 16 bits each: 11 key bits and up to
+  32 steps.
+- Every 64 steps: a 16-bit hash of the state. It covers the RNG's words, the player's x / y bits and `dead`, life,
+  bombs, ropes, money, level, room, view and the instance count.
+- After the last step: level, life, money, room, `dead`, and the room the game left for.
+
+The capture takes 16,440 bytes of sprite RAM after area B (`tests/game/sprbss.ld` `.capture`). Main RAM grows by 12
+bytes (.bss ends at 0x02076318: 39.7 KB of stack). Capacity:
+- 7,168 runs and 1,024 checkpoints (65,536 steps, 36 minutes). The MAME test games used 7-9 steps a run, which is
+  about 30 minutes of play.
+- When the buffer is full, the header is marked truncated and later steps are not stored.
+
+Nothing in play reads the capture: routes are record-equal and the playsh2 checksums are unchanged.
+- At boot the capture is not cleared. It survives the settings screen's restart (checked in MAME) and probably a
+  JTFRAME reset (not checked).
+- The next `game_begin` replaces it.
+
+**On the cabinet:**
+1. After the game to report, do not start another game. A capture can also be taken during a game; the settings
+   screen ends that game.
+2. Hold Coin + B2 for a second (or press the test switch, F2). Choose GAME CAPTURE (5 presses of down; 6 in a DEV
+   build), then press B1.
+3. Each page shows "SPELUNKY GAME CAPTURE PAGE n OF m" at the top, and the build, steps and size at the bottom.
+   - Pages change by themselves every 2.5 s. B1 or right goes to the next page, left goes back, and B2 returns to
+     the menu.
+   - About 960 bytes fit on a page: the 12,062-step test game took 4 pages.
+4. Take screenshots of the pages, either way:
+   - on the MiSTer keyboard, Win + PrtScr on each page;
+   - over ssh while the pages cycle: `for i in $(seq 1 40); do echo screenshot > /dev/MiSTer_cmd; sleep 1; done`.
+   The files are in `/media/fat/screenshots/<set name>/`. Extra shots and shots of other screens are skipped.
+5. On the host:
+   - `tools/capture.py decode <shots> -o cap.txt` writes the header lines and the controls in the route format.
+   - `scripts/replay.sh cap.txt [recs|all [dir]]` builds the host from the capture's commit, or from the working
+     tree when the build was dirty. It prints the end state and the checkpoints against the capture's, and writes
+     the listed records' frames as PNG.
+
+**Page format** (src/shell `capture_view`, `tools/capture.py`). Each page holds 966 bytes:
+- page index, page count, the capture's size, a CRC-16, then 960 bytes of the capture;
+- the bits go 7 to a text cell, in cells (1-46, 2-25);
+- a cell is SS tile 128 + value, with 4 x 2 pixel blocks: white for a 1 bit, black for a 0 bit, and a red block 7
+  that serves as the alignment mark.
+
+The decoder tries grid offsets of up to 4 pixels and reads each block 1-2 pixels from its left edge, because jtcps3
+shots have single pixels with their right neighbour's colour. If a page fails its CRC, the cell-wise majority of all
+shots of that page is tried. The whole capture has a CRC-32.
+
+**Check:** `scripts/capture_check.sh` runs the PLAY=1 build in MAME. `scripts/lua/capture.lua` plays random controls
+and logs `game_probe` after each step: life, money, level, the player's x / y bits and the RNG hash. The script then
+snapshots the pages twice, before and after the settings restart, decodes both, replays them on the host and
+compares the host's per-step log.
+
+| Run (2026-10-05) | Capture | Result |
+|---|---|---|
+| CAP_PLAY=1500, monkey 1 (working tree) | 979 steps, 109 runs, 1 page (308 bytes), dead | 979 of 979 steps equal; life 0 at step 853 in both; 15 of 15 checkpoints; end state equal; same capture after the restart |
+| monkey 5, Start 401; build 0885bc53 (replayed from its commit) | 513 steps, 61 runs, dead | 513 of 513 equal; life 0 at step 448 in both; 8 of 8 checkpoints; end state equal; same capture after the restart |
+| CAP_GOD=1 CAP_TOGGLE=1 (DEV build: INVINCIBLE, RUN BUTTON TOGGLE), CAP_PLAY=24000, monkey 3; build 6548ef5d | 12,062 steps, 1,387 runs, 4 pages (3,036 bytes), taken mid-game | 12,062 of 12,062 equal; 188 of 188 checkpoints; end state equal; same capture after the restart |
+
+The same 12,062-step capture replayed without its RUN BUTTON TOGGLE flag differs from checkpoint 1 (step 128) on: the
+checkpoints catch a replay that is not the cabinet's game.
+
+**Not checked:** jtcps3. To check it, the lead runs these steps on the MiSTer:
+1. Install a release built from this code (`scripts/release.sh`). v0.1.0 has no capture.
+2. Play a game and die. Open GAME CAPTURE and take screenshots: `echo screenshot > /dev/MiSTer_cmd` once a second
+   for 2-3 cycles of the pages.
+3. Copy the screenshots back and run `tools/capture.py decode`. Expect "marks 1104/1104" and "CRC ok" on each page,
+   and the capture's CRC-32.
+4. Run `scripts/replay.sh`. Expect the checkpoints equal and "replay end capture ... -> equal".
+5. Leave the settings screen and open GAME CAPTURE again. Expect the same capture.
+6. Optionally, reset (F3) and look again.
