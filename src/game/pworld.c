@@ -694,6 +694,7 @@ void pin_set_sprite(int i, int spr)
 #define BB_INT 1
 #define BB_DBL 2
 #define BB_NOSPR 3
+#define BB_INTS 4    /* the box is bl, bt, br, bb exactly, a box-only sprite at whole scales (bbox_ints); pin_ibox: 0 */
 
 /* pos_int: play.h */
 
@@ -751,6 +752,51 @@ static int funit(float f)
     return 0;
 }
 
+/* a sprite whose one mask has every bit of its mask box set (l, t >= 0): its precise test is its box's */
+static int mask_full(const struct gsprcol *c, const struct psprite *ps)
+{
+    int32_t w = c->r - c->l + 1, h = c->b - c->t + 1, bpr = (w + 7) >> 3, y, k;
+    const uint8_t *m = pmaskdata + ps->maskoff;
+    uint8_t last = (uint8_t)(0xff00u >> (((w - 1) & 7) + 1));
+    if (ps->nmasks != 1 || c->l < 0 || c->t < 0 || w <= 0 || h <= 0) return 0;
+    for (y = 0; y < h; y++, m += bpr) {
+        for (k = 0; k < bpr - 1; k++)
+            if (m[k] != 0xff) return 0;
+        if ((m[bpr - 1] & last) != last) return 0;
+    }
+    return 1;
+}
+
+/* BB_INTS: whole scales sx, sy (1 <= |s| <= 8, not both +-1), whole x, y, angle 0, a sprite with no mask or one full
+   mask (mask_full), whose mask box and origin keep |l|, |r + 1|, |l - xo|, |r + 1 - xo| (rows the same) <= 127:
+   bbox_dbl's products and sums are of integers (exact), so the box is the integers below. overlap_at takes such an
+   instance as its box alone (pci_of): the runner's float loop forms its sprite column lx = (c + 0.5 - x) * fl(1 / s)
+   + xo and steps it by fl(1 / s) over the box overlap, at most |s| (r - l + 1) <= 1024 steps; the exact values lie in
+   [l + 0.5 / |s|, r + 1 - 0.5 / |s|] (the overlap is inside the box), and with |lx| < 129 each rounding is at most
+   2^-17, so lx stays within 0.009 of them, inside [l, r + 1) by the margin 0.5 / 8: the range test passes for every
+   column, and trunc(lx) is in [l, r] (l >= 0) where a full mask's bit is set (rows: ly is formed afresh each row, one
+   product and one sum). Checked (host, temporary): every such overlap_at against the float path, the P5 routes and
+   ctall: 0 differ */
+static __attribute__((noinline)) int bbox_ints(struct pin *p, const struct gsprcol *c)
+{
+    int32_t sx, sy, ax, ay, l, t, x, y;
+    int k = spr_of(p);
+    if (!fzero(p->angle) || !pos_int(p->x, &x) || !pos_int(p->y, &y)) return 0;
+    if (c->kind == 1 && psprite[k].nmasks > 0 && !mask_full(c, &psprite[k])) return 0;
+    if (!fwhole(p->xscale, &sx) || !fwhole(p->yscale, &sy)) return 0;
+    ax = sx < 0 ? -sx : sx; ay = sy < 0 ? -sy : sy;
+    if (ax < 1 || ax > 8 || ay < 1 || ay > 8) return 0;
+    if (c->l < -127 || c->r > 126 || c->l - c->xo < -127 || c->l - c->xo > 127 || c->r + 1 - c->xo < -127 ||
+        c->r + 1 - c->xo > 127 || c->t < -127 || c->b > 126 || c->t - c->yo < -127 || c->t - c->yo > 127 ||
+        c->b + 1 - c->yo < -127 || c->b + 1 - c->yo > 127 || x < -16000 || x > 16000 || y < -16000 || y > 16000)
+        return 0;
+    l = sx >= 0 ? x + sx * (c->l - c->xo) : x + sx * (c->r + 1 - c->xo);
+    t = sy >= 0 ? y + sy * (c->t - c->yo) : y + sy * (c->b + 1 - c->yo);
+    p->bl = (int16_t)l; p->bt = (int16_t)t;
+    p->br = (int16_t)(l + ax * (c->r - c->l + 1)); p->bb = (int16_t)(t + ay * (c->b - c->t + 1));
+    return 1;
+}
+
 /* the cache kind of instance i's box (computed when a setter cleared it): with scales of exactly +-1 and whole x, y
    the double formula's results are the integers below */
 static __attribute__((noinline)) int bbkind_set(int i)
@@ -774,7 +820,7 @@ static __attribute__((noinline)) int bbkind_set(int i)
                 p->bb = (int16_t)(t + (c->b - c->t + 1));
                 p->bbk = BB_INT;
             } else
-                p->bbk = BB_DBL;
+                p->bbk = !(xs && ys) && bbox_ints(p, c) ? BB_INTS : BB_DBL;
         }
     }
     return p->bbk;
@@ -791,7 +837,7 @@ int pin_bbox(int i, double *l, double *t, double *r, double *b)
     switch (bbkind(i)) {
     case BB_NOSPR:
         return 0;
-    case BB_INT:
+    case BB_INT: case BB_INTS:
         *l = p->bl; *t = p->bt; *r = p->br; *b = p->bb;
         return 1;
     default:
@@ -805,6 +851,16 @@ __attribute__((always_inline)) inline int pin_ibox(int i, int32_t *b)
 {
     const struct pin *p = &PW.in[i];
     if (bbkind(i) != BB_INT) return 0;
+    b[0] = p->bl; b[1] = p->bt; b[2] = p->br; b[3] = p->bb;
+    return 1;
+}
+
+/* pin_ibox, BB_INTS too (overlap_at) */
+static inline int pin_ibox_s(int i, int32_t *b)
+{
+    const struct pin *p = &PW.in[i];
+    int k = bbkind(i);
+    if (k != BB_INT && k != BB_INTS) return 0;
     b[0] = p->bl; b[1] = p->bt; b[2] = p->br; b[3] = p->bb;
     return 1;
 }
@@ -1930,6 +1986,12 @@ static void pci_of(int i, int32_t dx, int32_t dy, struct pci *q)
     int s = spr_of(p);
     const struct gsprcol *c = &gsprcol[s];
     const struct psprite *ps = &psprite[s];
+    if (p->bbk == BB_INTS) {                        /* its box alone (bbox_ints): every column and row passes */
+        q->x = q->y = 0; q->sx = q->sy = 1; q->xo = q->yo = 0;
+        q->ml = q->mt = -(1 << 28); q->mr = q->mb = 1 << 28;
+        q->bpr = 0; q->mask = 0;
+        return;
+    }
     pos_int(p->x, &q->x);
     pos_int(p->y, &q->y);
     q->x += dx; q->y += dy;
@@ -1998,7 +2060,7 @@ static int overlap_at(int a, double dx, double dy, int b)
 {
     double l, t, r, bb, l2, t2, r2, b2;
     int32_t ia[4], ib[4], idx, idy;
-    if (pin_ibox(a, ia) && pin_ibox(b, ib) && whole(dx, &idx) && whole(dy, &idy)) {
+    if (pin_ibox_s(a, ia) && pin_ibox_s(b, ib) && whole(dx, &idx) && whole(dy, &idy)) {
         if (!(ia[0] + idx < ib[2] && ib[0] < ia[2] + idx && ia[1] + idy < ib[3] && ib[1] < ia[3] + idy))
             return 0;
         if (!precise(a) && !precise(b))

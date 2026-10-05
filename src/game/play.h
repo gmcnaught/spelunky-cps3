@@ -113,7 +113,7 @@ struct pin {
     uint8_t alive, persistent;
     PIN_RO uint8_t visible;
     /* the bounding box cache (pworld.c pin_bbox): bbk 0 not computed since the last change of x / y / sprite /
-       mask / scale (the setters clear it), BB_INT the box is bl, bt, br, bb exactly, BB_DBL computed in double
+       mask / scale (the setters clear it), BB_INT the box is bl, bt, br, bb exactly (BB_INTS too, pworld.c), BB_DBL computed in double
        each time, BB_NOSPR no sprite */
     uint8_t bbk;
     uint8_t invincible, cleanDeath, shopWall, treasure;
