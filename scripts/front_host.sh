@@ -10,10 +10,10 @@ cd "$(dirname "$0")/.."
 S=$1; N=$2; T=$3
 G=tests/game/build/g; F=build/front/g
 [ -f "$G/stamp" ] || { echo "no src/game snapshot: run scripts/game_check.sh first"; exit 1; }
-rm -rf "$F"; mkdir -p "$F"; cp "$G"/*.c "$G"/*.h "$F/"
+rm -rf "$F"; mkdir -p "$F"; cp "$G"/*.c "$G"/*.h "$G"/*.inc "$F/"
 SDK=../cps3-testgame/sdk/include
 cc -std=gnu99 -O2 -ffp-contract=off -w -DDRAW_HOST -DSND_LOG -Ibuild/snd -I$SDK -I$F -Ibuild/gen -Isrc/draw -Isrc/main -Isrc/hud -Isrc/shell \
   -Isrc/snd -Isrc/front -o build/front/host tests/game/host.c src/main/game.c src/draw/draw.c src/hud/hud.c \
-  src/front/front.c build/gen/sprites.c build/gen/drawtab.c build/gen/fronttables.c src/snd/snd.c $F/*.c -lm
+  src/front/front.c build/gen/sprites.c build/gen/drawtab.c build/gen/fronttables.c src/snd/snd.c src/shell/hiscore.c $F/*.c -lm
 HOST_SND=build/front/snd.txt build/front/host attract $S $N build/gen - $4 2>build/front/host.log | \
   python3 tools/drawmodel.py hostcmp build/trace/$T.bin build/trace/$T.names build/gen - ${HUD:+--hud} ${SAVE:+--save $SAVE}

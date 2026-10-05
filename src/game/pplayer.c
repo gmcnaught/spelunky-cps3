@@ -177,6 +177,18 @@ static void set_hang(struct pin *p, int i)
     PE(p)->grav = 0;
 }
 
+/* Not in HD: a push block (oMoveableSolid) moves 1 px per push (moveTo.gml :58 / :86), so one pushed off the grid
+   under a solid shows a sliver of its top and the hang test's (x +- 9, y - 9) point misses the solid above. The
+   ledge grab is refused when a solid covers the top of the push block at (px, py) or (px, py - 1). */
+static int pushblock_covered(double px, double py)
+{
+    int b = collision_point_p(px, py, OBJ_oMoveableSolid, 0, NOONE);
+    if (b == NOONE) b = collision_point_p(px, py - 1, OBJ_oMoveableSolid, 0, NOONE);
+    if (b == NOONE) return 0;
+    return collision_rect_any(PTOD(PX(b).x) + 1, PTOD(PX(b).y) - 3, PTOD(PX(b).x) + 14, PTOD(PX(b).y) - 1,
+                              OBJ_oSolid, 0, NOONE);
+}
+
 /* scripts/characterStepEvent */
 static void characterStepEvent(int i)
 {
@@ -435,13 +447,13 @@ static void characterStepEvent(int i)
                  (collision_point_any(x + 9, y - 5, OBJ_oSolid, 0, NOONE) ||
                   collision_point_any(x + 9, y - 6, OBJ_oSolid, 0, NOONE)) &&
                  !collision_point_any(x + 9, y - 9, OBJ_oSolid, 0, NOONE) &&
-                 !collision_point_any(x, y + 9, OBJ_oSolid, 0, NOONE))
+                 !collision_point_any(x, y + 9, OBJ_oSolid, 0, NOONE) && !pushblock_covered(x + 9, y - 5))
             set_hang(p, i);
         else if (PL.hangCount == 0 && y > 16 && !platformCharacterIs(ON_GROUND) && PL.kLeft && PL.colLeft &&
                  (collision_point_any(x - 9, y - 5, OBJ_oSolid, 0, NOONE) ||
                   collision_point_any(x - 9, y - 6, OBJ_oSolid, 0, NOONE)) &&
                  !collision_point_any(x - 9, y - 9, OBJ_oSolid, 0, NOONE) &&
-                 !collision_point_any(x, y + 9, OBJ_oSolid, 0, NOONE))
+                 !collision_point_any(x, y + 9, OBJ_oSolid, 0, NOONE) && !pushblock_covered(x - 9, y - 5))
             set_hang(p, i);
         x = PTOD(p->x);
         y = PTOD(p->y);

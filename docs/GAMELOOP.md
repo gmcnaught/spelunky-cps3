@@ -115,8 +115,17 @@ Open:
 - Ending: no route beats Olmec (the door path is tested with HOST_XEND injecting oXEnd on the player); a
   playthrough on .81 is the check. tools/drawmodel.py does not model the ending's clouds and text (game_check
   differs at records 1150 and 2300 for that reason). Text under a fade rectangle is hidden from half alpha
-  instead of fading (the text palettes have no fade). scripts/front_host.sh does not link since 4d20eda
-  (src/shell/hiscore.c missing from its link line).
+  instead of fading (the text palettes have no fade).
+- **Title flare (fixed 2026-10-05):** the intro's flare stopped mid-shaft in rTitle (host boot trace g_p8_boot_s7
+  differed from record 1050). The play collision table (gentables.c, from game.unx) kept HD's manual sTitle_HD box
+  (columns 14..192) while tools/fronttables.py moves the logo right by titlelogo.DX = 40: the solid logo reached
+  x 608 across the shaft (x 592..608). tools/hdgentables.py now gives sTitle_HD the port logo's box (0..127 x
+  0..47, as sprites.c). scripts/front_host.sh links again (src/shell/hiscore.c, the snapshot's .inc files):
+  1298/1298 records equal.
+- **Push-block ledge grab (not in HD, 2026-10-05):** a push block moves 1 px per push, so one under a solid can show
+  a sliver of its top and HD's (x +- 9, y - 9) test grabs it. pplayer.c pushblock_covered refuses the non-glove
+  solid grab when a solid covers the push block's top (columns 1..14); ledge flips are unchanged. No death was
+  reproduced from these hangs (hermetic harness, about 200 K runs); the user's death on .81 is unexplained.
 - MAME frame check of the panel: scripts/game_check.sh over_giant 253 g_over_giant_s253 200,260,300,330 differs only
   in the panel text, because tools/tracer.py's TRACE_GUI draws scrDrawHUD and showMessages but not showEndMessage,
   and tools/drawmodel.py does not model the panel. Both need the panel added for an exact gate.

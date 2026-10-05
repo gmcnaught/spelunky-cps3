@@ -717,7 +717,7 @@ const struct gsprcol gsprcol[GSPR_COUNT] = {
     { 0, 0, 0, 1, 15, 15, 0 },  /* sThwompTrap */
     { 0, 0, 5, 0, 10, 31, 0 },  /* sTikiTorch */
     { 0, 0, 1, 1, 14, 14, 1 },  /* sTimerIcon */
-    { 0, 0, 14, 0, 192, 31, 0 },  /* sTitle_HD */
+    { 0, 0, 0, 0, 127, 47, 0 },  /* sTitle_HD */
     { 0, 0, 0, 0, 127, 15, 1 },  /* sTitle */
     { 0, 0, 0, 0, 190, 79, 1 },  /* sTitleBG_HD */
     { 0, 0, 0, 0, 190, 79, 1 },  /* sTitleBG */
