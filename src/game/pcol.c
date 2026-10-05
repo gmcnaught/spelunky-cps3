@@ -822,6 +822,31 @@ static int f08_of(int o)
     return 0;
 }
 
+/* pcol_handle's searcher test (can_pair): for each object d, the objects whose collision events (pobj's lists, with
+   the inherited ones) have a target that d is or descends from (has_col(o, d) for an instance of o and one of d), as
+   lists rv_obj[rv_off[d] .. rv_off[d + 1]); built by obj_init. RV_MAX: the HD tables need 1,939 (rv_ok 2: too few,
+   no test) */
+#define RV_MAX 2304
+static int16_t rv_off[OBJ_COUNT + 1], rv_obj[RV_MAX];
+static uint8_t rv_ok;
+
+static void rv_build(void)
+{
+    int d, o, k, n = 0;
+    for (d = 0; d < OBJ_COUNT; d++) {
+        rv_off[d] = (int16_t)n;
+        for (o = 0; o < OBJ_COUNT; o++)
+            for (k = 0; k < pobj[o].ncol; k++)
+                if (obj_is(d, pcol[pobj[o].col0 + k])) {
+                    if (n == RV_MAX) { rv_ok = 2; return; }
+                    rv_obj[n++] = (int16_t)o;
+                    break;
+                }
+    }
+    rv_off[OBJ_COUNT] = (int16_t)n;
+    rv_ok = 1;
+}
+
 static void obj_init(void)
 {
     int o, k;
@@ -843,6 +868,7 @@ static void obj_init(void)
     for (o = 0; o < OBJ_COUNT; o++)
         for (k = 0; k < pobj[o].ncol; k++) otarget[pcol[pobj[o].col0 + k]] = 1;
     for (o = 0; o < OBJ_COUNT; o++) oinfo[o] = (uint8_t)(OI_DONE | (f08_of(o) ? OI_F08 : 0));
+    rv_build();
     for (o = 0; o < OBJ_COUNT; o++) {
         int a;
         for (a = o; a >= 0; a = objdefs[a].parent)
@@ -1623,6 +1649,21 @@ static int keeps_testing(int i)
     return s >= 0 && gsprcol[s].kind == 1 && psprite[s].frames >= 2;
 }
 
+/* whether searcher s can make a pair: collision_result keeps a hit e only when has_col(s, e) (e's object is or
+   descends from a target t of s's: ocnt[t] counts e) or has_col(e, s) (e's object is in s's rv list: its ocnt counts
+   e). ocnt counts an entry from pcol_added to remove_marked, so every entry a search can meet. With all those counts
+   0 the search records nothing and has no other effect, so pcol_handle skips it (the explosion's rubble: no target,
+   oWeb the only object with an event on it) */
+static int can_pair(int s)
+{
+    int os = PW.in[s].obj, k, n;
+    const struct pobj *q = &pobj[os];
+    if (rv_ok != 1) return 1;
+    for (k = 0; k < q->ncol; k++) if (ocnt[pcol[q->col0 + k]]) return 1;
+    for (k = rv_off[os], n = rv_off[os + 1]; k < n; k++) if (ocnt[rv_obj[k]]) return 1;
+    return 0;
+}
+
 void pcol_handle(void)
 {
     int k, nkeep = 0;
@@ -1633,6 +1674,11 @@ void pcol_handle(void)
         int s = tchead;
         tlist_remove(s);
         if (edead(s) || !PW.in[s].alive) continue;
+#ifndef PLAY_STATS
+        if (!can_pair(s)) goto searched;
+#else
+        int skip = !can_pair(s), np0 = npairs;    /* the host builds search anyway and check that nothing was kept */
+#endif
         /* the search rectangle of its box: as pcol_search with ebbox's floats (rset_f takes whole ones as ints). A
            tree member that is not stale has it as its tree rectangle (cupdate_at put ebbox_rect(s, 0, 0) there, and
            every change of its box since would have marked it stale; flush ran above, and nothing moves in this loop) */
@@ -1659,6 +1705,14 @@ void pcol_handle(void)
         PCST(pcol_st.searches++);
         search_run();                             /* the tree, or pcolgrid.h in play */
         rlock = 0;
+#ifdef PLAY_STATS
+        if (skip && npairs != np0) {
+            fprintf(stderr, "pcol_handle: entry %d (object %d) paired though can_pair said no\n", s, PW.in[s].obj);
+            abort();
+        }
+#else
+    searched:
+#endif
         if (keeps_testing(s)) {                   /* pushed on the front of a local list */
             for (k = nkeep; k > 0; k--) keep[k] = keep[k - 1];
             keep[0] = (int16_t)s;
