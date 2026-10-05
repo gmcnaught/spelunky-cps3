@@ -933,6 +933,67 @@ static void exit_level(int i)
     if (instance_exists_p(OBJ_oMonkey)) pjungle_player(2016, i, 0);
 }
 
+/* objects/oPlayer1/Step_0.gml :676-760: up at a door of the oXStart family (the title / scores rooms' doors; in a
+   game only rOlmec's oXEnd, the way to the ending). pExit: xSTART 0, xTUTORIAL 1, xSCORES 2, xTITLE 3, xEND 4,
+   xSHORTCUT5 5, xSHORTCUT9 6, xSUN 7, xMOON 8, xSTARS 9, xCHANGE 10, xSHORTCUT13 11, xCHANGE2 12 (Create_0.gml :87) */
+static void enter_door(int i)
+{
+    struct pin *p = &PX(i);
+    double x, y;
+    int door;
+    if (isRoomIs(R_rOlmec) && PL.holdItem != NOONE) {                          /* :686 oXEnd is oXStart's child */
+        int h = PL.holdItem;
+        if (PE(&PX(h))->heavy) {
+            PE(&PX(h))->held = 0;
+            PL.holdItem = NOONE;
+            PL.pickupItemType = T_NONE;
+        } else if (PX(h).type == T_BOMB) {
+            if (PE(&PX(h))->armed) PE(&PX(h))->held = 0;
+            else {
+                PG.bombs += 1;
+                pin_destroy(h);
+            }
+            G.pickupItem = (uint8_t)pickup_of_ptype(PL.pickupItemType);
+        } else if (PX(h).type == T_ROPE) {
+            PG.rope += 1;
+            pin_destroy(h);
+            G.pickupItem = (uint8_t)pickup_of_ptype(PL.pickupItemType);
+        } else {
+            G.pickupItem = (uint8_t)pickup_of_ptype(PX(h).type);
+            PE(&PX(h))->breakPieces = 0;
+            pin_destroy(h);
+        }
+    } else if (isRoomIs(R_rOlmec)) G.pickupItem = PICK_NONE;                   /* :724 */
+    else if (PL.holdItem != NOONE) PE(&PX(PL.holdItem))->held = 0;
+    PL.holdItem = NOONE;
+    PL.pickupItemType = T_NONE;
+    x = PTOD(p->x);
+    y = PTOD(p->y);
+    door = instance_place_p(i, x, y, OBJ_oXStart);                             /* :730 */
+    if (door != NOONE) pin_setx(p, PX(door).x + PI(8));
+    pin_set_sprite(i, G.isDamsel ? GSPR_sDamselExit : G.isTunnelMan ? GSPR_sTunnelExit : GSPR_sPExit);
+    p->ispd = (img_t)0.5;
+    PL.active = 0;
+    pin_setdepth(p, 999);
+    PL.invincible = 999;
+    x = PTOD(p->x);
+    PL.pExit = 0;                                                              /* :741 xSTART */
+    if (collision_point_p(x, y, OBJ_oXScores, 0, NOONE) != NOONE) PL.pExit = 2;
+    else if (collision_point_p(x, y, OBJ_oXTutorial, 0, NOONE) != NOONE) PL.pExit = 1;
+    else if (collision_point_p(x, y, OBJ_oXTitle, 0, NOONE) != NOONE) PL.pExit = 3;
+    else if (collision_point_p(x, y, OBJ_oXEnd, 0, NOONE) != NOONE) PL.pExit = 4;
+    else if (collision_point_p(x, y, OBJ_oXShortcut5, 0, NOONE) != NOONE) PL.pExit = 5;
+    else if (collision_point_p(x, y, OBJ_oXShortcut9, 0, NOONE) != NOONE) PL.pExit = 6;
+    else if (collision_point_p(x, y, OBJ_oXShortcut13, 0, NOONE) != NOONE) PL.pExit = 11;
+    else if (collision_point_p(x, y, OBJ_oXSun, 0, NOONE) != NOONE) PL.pExit = 7;
+    else if (collision_point_p(x, y, OBJ_oXMoon, 0, NOONE) != NOONE) PL.pExit = 8;
+    else if (collision_point_p(x, y, OBJ_oXStars, 0, NOONE) != NOONE) PL.pExit = 9;
+    else if (collision_point_p(x, y, OBJ_oXChange, 0, NOONE) != NOONE) PL.pExit = 10;
+    else if (collision_point_p(x, y, OBJ_oXChange2, 0, NOONE) != NOONE) PL.pExit = 12;
+    if (PL.pExit != 12) snd_stop_music();                                      /* :757 */
+    snd_play(SND_xsteps);
+}
+
 static void hurt_logic(int i)
 {
     struct pin *p = &PX(i);
@@ -1234,7 +1295,7 @@ void pl_step(int i)
             pitems_player(2042, i, 0);
         if (!PL.dead && !PL.stunned && !PL.whipping && collision_point_p(x, y, OBJ_oXStart, 0, NOONE) != NOONE &&
             PL.kUp && platformCharacterIs(ON_GROUND) && !spr_is_exit(p->spr))
-            PUNTR(2043);
+            enter_door(i);                                                     /* :676 */
         if (!PL.dead && !PL.stunned && !PL.whipping && collision_point_p(x, y, OBJ_oExit, 0, NOONE) != NOONE &&   /* :762 */
             PL.kUp && platformCharacterIs(ON_GROUND) && !spr_is_exit(p->spr))
             exit_level(i);

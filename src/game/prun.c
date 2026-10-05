@@ -409,15 +409,15 @@ static int room_change(void)
         play_transition_start(r);
     else if (r == R_rLevel || r == R_rLevel2 || r == R_rLevel3 || r == R_rOlmec)
         play_level_start(PW.next_id);
-    else if (!(front_on && front_room(r)))                                     /* P8 hook */
-        return r;
+    else if (!((front_on || r == R_rEnd) && front_room(r)))                    /* P8 hook (rEnd: the ending, */
+        return r;                                                              /* src/front, from rOlmec) */
     PW.room_new = 1;
     return 0;
 }
 
 int play_step(uint16_t keys, void (*record_cb)(int phase))
 {
-    int k, n, a, seq0;
+    int k, n, a, seq0, gp_skip = 0;
     play_dops = 0;
     view_in_step = 0;
     animate();                                                                 /* 1 */
@@ -471,14 +471,22 @@ int play_step(uint16_t keys, void (*record_cb)(int phase))
         int i = order[k];
         if (!PX(i).alive) continue;
         play_cur_obj = PX(i).obj;
-        if (PX(i).obj == OBJ_oGamepad) gamepad_step(keys);
-        else {
+        if (PX(i).obj == OBJ_oGamepad) {
+            /* the ending's rooms (src/front): the runner changes the room once the event that called room_goto
+               ends, the rest of the Step dispatch does not run (build/trace/g_end_win_s7 record 1274: oEnd3, before
+               oGamepad, leaves rEnd3 with the route step unused); src/front skips the other instances' Steps */
+            if (play_goto_room >= 0 && (PW.room == R_rEnd || PW.room == R_rEnd2 || PW.room == R_rEnd3 ||
+                                        PW.room == R_rCredits2)) gp_skip = 1;
+            else gamepad_step(keys);
+        } else {
             ev_step(i);
             pcol_event_done(i);
         }
     }
-    if (play_goto_room >= 0)
-        return room_change();
+    if (play_goto_room >= 0) {
+        int r = room_change();
+        return r ? r : gp_skip ? PLAY_ROOM_EARLY : 0;
+    }
     pen_motion();                                                              /* P5 hook: speed / direction */
     n = snapshot(EVK_OUTSIDE);                                               /* Outside Room */
     for (k = 0; k < n; k++) {

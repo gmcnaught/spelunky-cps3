@@ -1576,7 +1576,8 @@ static int create_ev(int i, int fromgen)
     case OBJ_oLava: lava_create(i, fromgen); return 1;
     case OBJ_oMagma: magma_create(i); return 1;
     case OBJ_oMagmaTrail: PX(i).ispd = (img_t)0.4; return 1;
-    case OBJ_oLavaDrip:                                                /* oRubblePiece Create, then its own */
+    case OBJ_oXEnd: PX(i).type = T_NONE; return 1;                     /* oDrawnSprite Create: type = "" */
+    case OBJ_oLavaDrip:                                               /* oRubblePiece Create, then its own */
         PX(i).type = T_NONE;
         PE(&PX(i))->xVel = 0;
         PE(&PX(i))->yVel = 0;
@@ -1830,6 +1831,13 @@ int ptemple_player(int site, int i, int arg)
         return 0;
     case 2033: player_lava(i); return 0;
     case 2046: player_idoltrap(i); return 0;
+    case 2061:                                                         /* oPlayer1 Other_7 :133 (rOlmec's oXEnd) */
+        if (PL.pExit == 4) {                                           /* xEND (Step_0 :746) */
+            G.gameStart = 0;
+            play_goto_room = R_rEnd;                                   /* the ending: src/front */
+            return 0;
+        }
+        break;                                                         /* the front rooms' doors */
     }
     PUNTR(site);
     return 0;

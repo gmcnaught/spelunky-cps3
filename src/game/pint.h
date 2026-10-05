@@ -90,10 +90,10 @@ void enemy_hit_player(int i, int c);          /* objects/oEnemy/Collision_oChara
 void enemy_whipped(int i, int w);             /* objects/oEnemy/Collision_oWhip.gml (and oWhipPre) */                    /* pobj.c: objects/oSolid/Destroy_0.gml (P7 packages' oSolid children) */                     /* x, y inside the view +/- m (the GML's view checks) */
 
 /* room indices (names file R lines) */
-enum { R_rTitle = 4, R_rHighscores = 5, R_rSun = 6, R_rMoon = 7, R_rStars = 8, R_rTutorial = 9, R_rLevelEditor = 10,
+enum { R_rCredits2 = 3, R_rTitle = 4, R_rHighscores = 5, R_rSun = 6, R_rMoon = 7, R_rStars = 8, R_rTutorial = 9, R_rLevelEditor = 10,
        R_rLoadLevel = 11, R_rLevel = 12, R_rLevel2 = 13, R_rLevel3 = 14, R_rOlmec = 15, R_rTransition1 = 16,
        R_rTransition1x = 17, R_rTransition2 = 18, R_rTransition2x = 19, R_rTransition3 = 20, R_rTransition3x = 21,
-       R_rTransition4 = 22 };
+       R_rTransition4 = 22, R_rEnd = 23, R_rEnd2 = 24, R_rEnd3 = 25 };
 extern int play_goto_room;                    /* room_goto() target (-1 none), taken at the end of the step */
 
 /* oGame / oLevel instance variables */
