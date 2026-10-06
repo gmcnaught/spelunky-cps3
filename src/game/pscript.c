@@ -380,6 +380,24 @@ void moveTo(int i, num a0, num a1, int32_t *xio, int32_t *yio)
     if (yio) *yio = yVelInteger;
 }
 
+/* moveTo(i, N(dir), 0) for dir = +-1 (the fish's idle swim): for a mover outside the character, oSolid and oPlatform
+   families with whole bounds it is moveTo's PLAY_WALK x walk of one pixel (vel_parts gives xVelInteger = dir, 0 in y;
+   one solid_vline_any of the column ahead; the setter once), with its NOPS; otherwise moveTo itself */
+void moveTo_x1(int i, int dir)
+{
+#if PLAY_WALK
+    struct pin *p = &PX(i);
+    int32_t il, it, ir, ib;
+    if (!is_character(i) && !obj_is(p->obj, OBJ_oSolid) && !obj_is(p->obj, OBJ_oPlatform) &&
+        ibounds(i, &il, &it, &ir, &ib)) {
+        NOPS(10);
+        if (!solid_vline_any(dir > 0 ? ir : il - 1, it + 5, ib - 1, i)) pin_setx(p, p->x + PI(dir));
+        return;
+    }
+#endif
+    moveTo(i, N(dir), 0, 0, 0);
+}
+
 /* scripts/scrCreateBlood */
 void scrCreateBlood(int self, pos x, pos y, int n)
 {
