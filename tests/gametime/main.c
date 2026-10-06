@@ -3,7 +3,8 @@
  * and Start. src/main/main.c's frame loop is compiled here (included below)
  * with its calls wrapped, so each part of every frame is timed with the FRT (phi / 32, wraps counted at each read:
  * the frame loop reads it many times a frame):
- *   vbl   draw_vblank() + cps3v_vblank()      (the VBlank work: tilemap registers, scrolls, sprite-list DMA)
+ *   vbl   draw_vblank() + draw_list_send() + draw_list_sync()   (the VBlank work: tilemap registers, scrolls,
+ *         the sprite-list DMA and the check that it ended)
  *   snd   snd_frame()
  *   step  shell_frame() of a step frame minus its draw (the game step, input, credits)
  *   draw  game_draw() (src/draw: the display list)
@@ -39,7 +40,8 @@ static void t_draw_vblank(void)
     draw_vblank();
     fr_vbl = (now() - t) * 32;
 }
-static void t_cps3v_vblank(void) { uint32_t t = now(); cps3v_vblank(); fr_vbl += (now() - t) * 32; }
+static void t_draw_list_send(void) { uint32_t t = now(); draw_list_send(); fr_vbl += (now() - t) * 32; }
+static void t_draw_list_sync(void) { uint32_t t = now(); draw_list_sync(); fr_vbl += (now() - t) * 32; }
 static void t_snd_frame(void) { uint32_t t = now(); snd_frame(); fr_snd = (now() - t) * 32; }
 static uint8_t seen0[NSEC];
 static int t_shell_frame(uint32_t p0, uint32_t p1, uint32_t lines)
@@ -103,12 +105,14 @@ static int t_shell_frame(uint32_t p0, uint32_t p1, uint32_t lines)
 
 /* src/main/main.c with the calls above in place of the real ones (its headers are already included) */
 #define draw_vblank() t_draw_vblank()
-#define cps3v_vblank() t_cps3v_vblank()
+#define draw_list_send() t_draw_list_send()
+#define draw_list_sync() t_draw_list_sync()
 #define snd_frame() t_snd_frame()
 #define shell_frame(a, b, c) t_shell_frame(a, b, c)
 #include "../../src/main/main.c"
 #undef draw_vblank
-#undef cps3v_vblank
+#undef draw_list_send
+#undef draw_list_sync
 #undef snd_frame
 #undef shell_frame
 
