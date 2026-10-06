@@ -1,12 +1,13 @@
 # PERF3: fitting the play step on jtcps3
 
-Status 2026-10-05: **batch 23 on branch worktree-agent-adf10525aca9ad59f** (on main 3249c51, not merged; section 5,
-batch 23). Lush (levels 5-8) was the cabinet's slowdown and is now measured (p5_lush_* routes): MAME SOFTFP route
-means 172-202 K, down from 374-674 K on main, still over the 125 K proxy for 0.525 M. **Open:** lush means (spear
-traps' remaining nearest / double compares, eview, the step loop); p99 (MAME SOFTFP steps over 838,940 at x4.2,
-non-lush routes: 197 -> 117; l14s16 22, l2s10 / l3s10 16, l9s5 21, l4s10 11, l12s13 9, bomb_drop 8, idol 7); no
-jtcps3 run of batch 23; the four p5_reg_* routes and the lush routes are not in the jtcps3 set (mkjobs.py
-JT_ROUTES); Phase 5 (level start, draw). Section 5 lists what was measured and not kept. Builds on docs/REVIEW-SH2.md (the cost model and findings P1-P7) and docs/HANDOFF.md (branch
+Status 2026-10-05: **batch 24 on branch worktree-agent-acd14d6b30ea5482d** (on main a2fed51, not merged; section 5,
+batch 24). Lush on jtcps3 (.62, route step means with step 1): p5_lush_l5s11 823.0 -> 675.4 K, l5s37 715.0 -> 628.8 K,
+l6s23 735.7 -> 647.4 K: still 20-29 % over 0.525 M. The jtcps3 / MAME ratio on these routes rose from ~4.05 to ~4.5
+as instructions went (MAME SOFTFP means 146.8 / 138.1 / 141.6 K): the 125 K MAME proxy understates what is left;
+misses are now about three quarters of a lush step (jtcost). **Open:** lush (the per-instance passes' pin-line misses,
+the player 16 % and the enemies 17 % of a step in jtcost, the remaining jungle / treasure Steps); p5_lush_l5s37's grid
+build fails the EQUIV route check against the exact build (section 5, batch 24: collision event order, present since
+before batch 23); p99 (non-lush routes); Phase 5 (level start, draw). Section 5 lists what was measured and not kept. Builds on docs/REVIEW-SH2.md (the cost model and findings P1-P7) and docs/HANDOFF.md (branch
 state). It runs alongside, not instead of, PERF2's remaining items.
 
 ## 1. Goal and how it is measured
@@ -440,4 +441,52 @@ Load-use stall (from spelunky-cps3-a6, low priority): jtcps3 stalls 1 cycle on a
     byte-identical to main's builds.
   - Not kept: none dropped after measurement; p5_reg_l9s5 (main's new route) rose 3.8 % with direct_pairs until its
     candidate count bound (2682d0e: 143.5 -> 142.6 K).
+- Batch 24 (branch worktree-agent-acd14d6b30ea5482d on main a2fed51; gated on cf7d06f): lush, round 2.
+  - The 359 K / 674 K question: not a regression and not a trajectory change. playhost and playhost_grid output for
+    p5_lush_l5s11 is byte-identical at cd3bc01 and 3249c51 (records and PW / PCOL stats); MAME SOFTFP (the same
+    harness, GAME_REV) gives 676,740 at cd3bc01, 676,742 at 3249c51 and 361,191 at 5213f99 (3249c51 plus batch 23's
+    first five commits): the 359 K was a build that already had them.
+  - tests/playsh2 ran every route with global.downToRun 0 (core.c called gen_new_game, not scrClearGlobals; 26ef68d
+    set it there): 7aa53d3 starts a route from scrClearGlobals as playhost and game_begin do. Checksums re-based;
+    records changed only on p5_reg_l9s5 / p5_reg_l12s13 (l9s5 MAME mean 142.6 -> 123.6 K).
+  - HD traces for the three lush routes (build/trace/p5_lush_*, scripts/hd_trace.sh from the main checkout): the exact
+    build is record-equal on all three (637 / 641 / 631), so P5 regress and EQUIV now check them. EQUIV: the grid
+    build fails the route check on p5_lush_l5s37 (deaths + damage from record 418): an oEnemySight that meets the
+    player and a solid in one step runs Collision_oCharacter first in the exact build (the cavemen within 100 px
+    attack: 111013 status 2) and Collision_oSolid first (destroyed, no alert) in the grid build. The grid build's
+    output is identical at cd3bc01, 3249c51, a2fed51 and cf7d06f: the collision-order design (EQUIV.md section 2),
+    not this batch. Not accepted (tests/equiv_accept.txt needs route=PASS); make check stops at EQUIV 87/88.
+  - Commits: speartrap_step's nearest only when an instance of the family lies in the box its tests need (8f3d48a,
+    instance_box_maybe on nc's floors; MAME l5s11 201.8 -> 159.3 K), its y / x tests on the float bits (10a8418),
+    the bottom trap's ceil setters skipped at whole x, y (5be0fe7), evnz: the alarm passes and snapshots walk only
+    objects with instances (66ad79c; all routes -3 to -6 % MAME), oTree / oTreeBranch out of view without the
+    dispatch chain (0a3b571), a treasure out of view without ev_step (57632e2), evobj / evnz sized for RAM (dbd8db1),
+    piranha IDLE's prey() only when a prey family swims (cf7d06f); playsh2_jt.sh JT_ROUTES (f92fdb7).
+  - MAME SOFTFP, full playsh2 (steps 2+; a2fed51 with 7aa53d3's harness -> cf7d06f): l5s11 201.8 -> 146.8 K (p99
+    222.6 -> 170.4 K), l5s37 171.5 -> 138.1 K (190.8 -> 158.9 K), l6s23 178.0 -> 141.6 K (204.5 -> 171.3 K); all
+    routes 111.7 -> 99.6 K, p99 218.9 -> 205.2 K, steps over 838,940 at x4.2 476 -> 119 (exit559 96.4 -> 91.4 K,
+    caveman 108.2 -> 103.8 K, snakes 89.5 -> 84.6 K).
+  - jtcost (fit): p5_lush_l5s11 201 744.8 -> 602.2 K (instructions 211.8 -> 150.7 K; I-miss 10.5 -> 9.0 K lines);
+    p4_exit559 301 394.7 -> 387.9 K; p5_snakes 956 370.1 -> 360.1 K.
+  - jtcps3 (.62, JT_ROUTES=p4_exit559,p5_caveman,p5_snakes and the three lush routes; PASS 11/11 each; route step
+    means with step 1):
 
+    | Build | l5s11 | l5s37 | l6s23 | caveman | snakes | exit559 |
+    |---|---|---|---|---|---|---|
+    | a2fed51 + 7aa53d3 harness | 823.0 K | 715.0 K | 735.7 K | 512.6 K | 415.0 K | 378.9 K |
+    | 66ad79c (evnz) | 675.0 K | 623.4 K | 657.3 K | 500.9 K | 398.3 K | 368.8 K |
+    | 0a3b571 (trees) | 672.4 K | 611.7 K | 647.7 K | 494.6 K | 390.9 K | 364.6 K |
+    | 57632e2 (treasures) | 674.7 K | 614.3 K | 652.0 K | 494.6 K | 392.7 K | 364.8 K |
+    | dbd8db1 (RAM sizes) | 683.6 K | 623.5 K | 657.0 K | 501.4 K | 398.5 K | 366.3 K |
+    | cf7d06f (prey; gated) | 675.4 K | 628.8 K | 647.4 K | 498.9 K | 395.6 K | 367.1 K |
+
+    The jtcps3 / MAME ratio on the lush routes went from 4.03-4.11 to 4.4-4.5. Layout moves the lush means by 1-1.5 %
+    (dbd8db1 only resizes two arrays: +0.8 to +1.5 %), as much as the last four commits' own effects.
+  - Gates on cf7d06f: make check's parts (host builds, constcheck, P5 regress 24/24 with the lush routes, EQUIV 87/88:
+    p5_lush_l5s37 above, snd 19/19 0 differ), ctall 59/59, playsh2 9,701/9,701 (grid) and 9,701/9,701 (SOFTFP), shell
+    26/26 + 49/49, game_check p4_exit559 0 px at 30/150/300 (tests/game stack room 34,168 B), capture_check 430/430
+    steps and 6/6 checkpoints equal; SH-2 0 warnings.
+  - Measured and not kept: the jungle's terrain points as collision_point_any_at's integer query (MAME 0, jtcost
+    +1.9 %); a y-band mask before instance_box_maybe's scan (MAME +0.6 %); a creation-ordered list of the Draw
+    instances for draw_and_view (MAME -1.7 to -2.1 %, jtcost +0.4 to +1.8 %, jtcps3 +0.5 to +1.4 %, and 7 KB of main
+    RAM the tests/game link does not have).
