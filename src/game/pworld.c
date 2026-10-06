@@ -1378,7 +1378,7 @@ static int precise_point(int i, float px, float py)
 }
 
 /* a point query: px >= l && px < r with l, r whole is floor(px) >= l && floor(px) < r */
-struct pq { double px, py; int32_t ix, iy; int iok; };
+struct pq { double px, py; int32_t ix, iy; int iok, nodbl; };   /* nodbl: px, py not set; they are ix, iy (whole) */
 
 static void pq_init(struct pq *q, double px, double py)
 {
@@ -1386,12 +1386,14 @@ static void pq_init(struct pq *q, double px, double py)
         q->px = px;
         q->py = py;
         q->iok = 1;
+        q->nodbl = 0;
         return;
     }
     px = (float)px;                                  /* CInstance::Collision_Point takes floats */
     py = (float)py;
     q->px = px;
     q->py = py;
+    q->nodbl = 0;
     q->iok = dfloor_int(px, &q->ix) && dfloor_int(py, &q->iy);
 }
 
@@ -1403,12 +1405,14 @@ static int point_hit(int k, const struct pq *q, int prec)
         if (!(q->ix >= ib[0] && q->ix < ib[2] && q->iy >= ib[1] && q->iy < ib[3]))
             return 0;
     } else {
+        double px = q->nodbl ? (double)q->ix : q->px, py = q->nodbl ? (double)q->iy : q->py;
         if (!pin_bbox(k, &l, &t, &r, &b))
             return 0;
-        if (!(q->px >= l && q->px < r && q->py >= t && q->py < b))
+        if (!(px >= l && px < r && py >= t && py < b))
             return 0;
     }
-    return !prec || !precise(k) || precise_point(k, (float)q->px, (float)q->py);
+    if (!prec || !precise(k)) return 1;
+    return q->nodbl ? precise_point(k, (float)q->ix, (float)q->iy) : precise_point(k, (float)q->px, (float)q->py);
 }
 
 /* ---- the solid grid: every alive instance of the oSolid family with a sprite, in the 16 px cell of its box's
@@ -1886,12 +1890,13 @@ int (collision_point_any_at)(int i, int32_t dx, int32_t dy, int obj)
         if (obj >= 0 && xf_of[obj] >= 0 && !pcol_quiet()) {
             if (xy_int_near(i, &x, &y)) {
                 q.iok = 1; q.ix = x + dx; q.iy = y + dy;
-                q.px = q.ix; q.py = q.iy;
+                q.nodbl = 1;                                  /* (px, py: the whole ix, iy, converted only if read) */
                 ok = 1;
             }
 #if !defined(PLAY_FIXED)
             else if (dx == 0 && dy == 0) {
                 q.px = PW.in[i].x; q.py = PW.in[i].y;
+                q.nodbl = 0;
                 q.iok = pfloor_int(PW.in[i].x, &q.ix) && pfloor_int(PW.in[i].y, &q.iy);
                 ok = 1;
             }
@@ -1903,7 +1908,8 @@ int (collision_point_any_at)(int i, int32_t dx, int32_t dy, int obj)
             {
                 struct pq c;
                 pq_init(&c, PTOD(PW.in[i].x) + dx, PTOD(PW.in[i].y) + dy);
-                if (c.iok != q.iok || (c.iok && (c.ix != q.ix || c.iy != q.iy)) || c.px != q.px || c.py != q.py) {
+                if (c.iok != q.iok || (c.iok && (c.ix != q.ix || c.iy != q.iy)) || c.px != (q.nodbl ? (double)q.ix : q.px) ||
+                    c.py != (q.nodbl ? (double)q.iy : q.py)) {
                     fprintf(stderr, "collision_point_any_at: query differs (%d %d %d)\n", i, (int)dx, (int)dy);
                     abort();
                 }
