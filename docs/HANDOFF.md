@@ -1,5 +1,11 @@
 # Handoff
 
+## 2026-10-06 12:30: sgapply merged to main (424f654); on .81
+
+ast-grep rules (docs/AST-GREP.md) applied: pdist2_lt (distance compares without psqrt), oGrave through the
+vegetation memo, collision_point_any_at at 27 static-index sites. .81 runs 424f654 (previous zips kept as
+*.zip.bak-4c4c27e). Open: the float-compare rule's 49 sites; the player and walking enemies (LUSH.md section 7).
+
 ## 2026-10-06 11:25: swim merged to main (4c4c27e); on .81
 
 The swimming slowdown (docs/LUSH.md section 8: the piranhas' correctly rounded trig) is on main and .81
