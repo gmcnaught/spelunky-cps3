@@ -1,5 +1,12 @@
 # Handoff
 
+## 2026-10-06 14:45: nc-default (f1d5950, branch, not merged); on .81
+
+The game program links docs/ICACHE.md's nc_robust.txt past the SH-2 cache by default (tests/nc.mk; jtcps3 route
+steps -9.1 % in the playsh2 A/B, ICACHE.md 4.7). .81 runs f1d5950 (spelunky.zip and spelunkydev.zip; previous kept
+as *.zip.bak-424f654); the release boots into the attract mode there. Pre-existing on main, not from this change:
+game_check p5_shop recs 242 / 300 (2,146 / 2,754 px) and gametime's RAM check fail with NC= too.
+
 ## 2026-10-06 12:30: sgapply merged to main (424f654); on .81
 
 ast-grep rules (docs/AST-GREP.md) applied: pdist2_lt (distance compares without psqrt), oGrave through the
