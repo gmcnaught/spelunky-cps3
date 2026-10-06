@@ -355,6 +355,6 @@ if BYOBJ:
     NO = int(os.getenv('JTC_BYOBJ_N', '8'))
     top = [k for k, _ in sorted(byobj.items(), key=lambda t: -t[1]['cost'])[:NO]]
     for k in top:
-        print('\nJTC_BYOBJ: %s, self cost by function (top 15)' % (on[k] if 0 <= k < len(on) else str(k)))
-        for (k2, f2), o in sorted(((kf, o) for kf, o in byof.items() if kf[0] == k), key=lambda t: -t[1]['cost'])[:15]:
+        print('\nJTC_BYOBJ: %s, self cost by function (top %s)' % (on[k] if 0 <= k < len(on) else str(k), os.getenv('JTC_BYOBJ_F', '15')))
+        for (k2, f2), o in sorted(((kf, o) for kf, o in byof.items() if kf[0] == k), key=lambda t: -t[1]['cost'])[:int(os.getenv('JTC_BYOBJ_F', '15'))]:
             print('  %-26s %8.0f ins %6d imiss %5d dmiss %5d calls %4d' % (f2, o['cost'], o['ins'], o['imiss'], o['dmiss'], o['entries']))
