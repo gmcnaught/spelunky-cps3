@@ -275,3 +275,77 @@ piranhas (idle: moveTo, water tests, bubbles), frogs, man traps, a monkey and th
 (about 10 K jtcps3 each) is the PLAY_WALK path already: its cost is the move's own bookkeeping (pw_changed's marks,
 the box cache, one solid line). The player's swimming Step (characterStepEvent 115 K incl. on drain 161) is shared
 code; it is the next candidate.
+
+## 11. Spear traps near instances (2026-10-06, branch totem on 041d709)
+
+User report (MiSTer): jungle levels slow down whenever something is near a totem trap (oSpearTrapBottom / Top /
+Lit).
+
+### 11.1 What happens near a trap
+
+Host survey (a temporary print in speartrap_step, not committed): the three box tests (instance_box_maybe) run only
+on a step with fired == 0, so instance_nearest runs at most once per trap per 50 steps when something is in line.
+An instance that stays in line (an item, a man trap) makes the trap fire every 50 steps, for the whole route.
+Fires: p5_lush_l5s11 13 (trap 698, an item), l6s23 14, c_jungle_mantrap 18 (2 traps), c_jungle_monkey 9,
+l5s37 0. Each oSpearsLeft lives 31 steps (sSpearsLeft has 31 frames; the animation end destroys it). So the trap
+itself is not the cost. The cost is the spear, about 60 % of the steps while something stays in line.
+
+MAME SOFTFP step means (playsh2 ROUTES="p5_lush_l5s11 p5_lush_l6s23 c_jungle_mantrap c_jungle_monkey", steps 2+,
+grouped by step mod 50: 2 = the fire step, 3-32 = a spear alive, 33-49 and 0-1 = none):
+
+| Route | 041d709 fire / alive / none | totem fire / alive / none | route mean |
+|---|---|---|---|
+| p5_lush_l5s11 | 144.2 / 121.6 / 114.4 K | 129.5 / 117.5 / 114.3 K | 119.4 -> 116.6 K (-2.3 %) |
+| p5_lush_l6s23 | 122.7 / 113.6 / 110.2 K | 119.9 / 111.2 / 109.8 K | 112.5 -> 110.9 K (-1.4 %) |
+| c_jungle_mantrap | 108.0 / 97.1 / 87.1 K | 101.7 / 91.4 / 86.6 K | 93.6 -> 89.8 K (-4.1 %) |
+| c_jungle_monkey | 126.3 / 116.7 / 109.0 K | 121.9 / 114.6 / 108.7 K | 114.0 -> 112.5 K (-1.3 %) |
+
+(The monkey route's alive / none gap is partly the monkey's own activity, which follows the same timing.)
+
+jtcost fit, JTC_BYOBJ=1 (arguments are jtcost.sh's record counts: c_jungle_mantrap 203 / 212 / 242 = the fire step,
+a spear alive, none):
+
+| Step | 041d709 | totem (f217aaf) |
+|---|---|---|
+| c_jungle_mantrap 203 / 212 / 242 | 438.5 / 425.4 / 376.1 K | 429.5 / 407.5 / 380.4 K |
+| p5_lush_l5s11 303 / 312 / 342 | 617.5 / 500.4 / 478.9 K | 595.2 / 491.5 / 485.6 K |
+
+On 041d709, a step with a spear alive cost +49 K (mantrap 212, 2 spears) over one without. The spear-alive extra:
+- **The spear's Step** (oSpearsLeft: collision_point(x +- 16, y) for oSpearTrapTop and oSpearTrapBottom). Both are oSolid
+  children, so each test went through collision_point_p: grid_point, then touch_stale / stk_compact. About 10 K a
+  spear a step (mantrap 212: collision_point_p from collision_point_any 15.7 K incl., touch_stale 4.0 K).
+- **The rectangle tests against oSpearsLeft** once the family is non-empty: each enemy (pen_parent_step, Step :76),
+  the player (hurt_logic, :1599) and the damsel run rq_init on the doubles, then rect_run's walk with touches. About
+  3 K a call, 26 K on mantrap 212.
+
+The fire step's extra (l5s11 303, +96 K): stk_compact 27.5 K (the stale stack held every mark since its last read)
+and evnz_sync 13.8 K (the first oSpearsLeft rebuilt every key's event list; the step after the last spear dies does
+the same), plus the creation and the first point tests.
+
+Not the cost: instance_nearest_p. On l6s23 one trap has an item in its box every step (the tests then fail): one
+instance_nearest_p 4.5 K, and instance_box_maybe 8.5 K for 21 calls (the idle traps' flat cost: jl6, step 242).
+
+### 11.2 Fixes (branch totem)
+
+| Commit | Change | Exactness |
+|---|---|---|
+| 131ce3c | the spear's point tests through the vegetation memo: noted with pw_rest_clock, skipped while pw_rest_still holds at the trap's cell and the spear's x, y and sprite are unchanged | as the trap support test (every oSolid-family entry holding the point covers its cell); veg_acts re-runs the tests on every skip |
+| 09d2bd4, f217aaf | pcol.c flush_run drops the stale stack's entries that are no longer stale (when it holds more than 32) | stk_compact keeps only stale entries; an entry that becomes stale again is pushed again (membership does not end within a room) |
+| e02c249 | evnz_sync per key: an object's list going empty <-> non-empty invalidates only the keys it has (prun_onz, evobj_init's test) | only an object in key k's evobj range changes k's list; the host builds compare every kept list with a rebuild |
+| 874ebbb | collision_rect_p: a family of at most 4 instances whose integer boxes all lie off the query's floors gives NOONE without rq_init or the walk | rect_hit's integer and float tests both take corners in [floor(min), floor(max) + 1]; the host builds test every instance with rect_hit |
+
+131ce3c alone made the fire steps worse (l5s11 144 -> 161 K MAME): without the spear's reads, the stale stack grew
+until the next read. 09d2bd4 fixes that and bounds stk_compact everywhere.
+
+Every commit: 91 routes through playhost, playhost_grid and a playhost_grid built without PLAY_STATS / PLAY_RNGLOG
+(the SH-2 build's paths: the host checks re-run skipped queries, so the PLAY_STATS builds alone would not show a
+skipped touch), 273 outputs byte-identical to 041d709. playsh2 (the four routes) 2,086 / 2,086 checksums on each.
+
+Steps without a spear: instructions -0.4 % (mantrap 242: 95,357 -> 94,933) and the MAME means unchanged. jtcost
+moves by +1.1 % (mantrap 242) and +1.4 % (l5s11 342), with the fully associative bound +0.1 / +0.3 %. That is
+layout (131ce3c alone: same instructions, +4.9 K). PERF3's default steps: p4_exit559 301 +1.4 % (same instructions),
+p5_snakes 956 +0.3 % (-554 instructions). A jtcps3 run decides.
+
+What is left on a spear-alive step (mantrap 212 vs 242, about 27 K): the rectangle tests' call-site double sums
+(X(i) + 2, ...: about 280 instructions a call), veg_quiet, the spears' animation and dispatch. A trap that sees
+something keeps firing every 50 steps, as in HD.
