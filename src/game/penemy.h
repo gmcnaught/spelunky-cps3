@@ -5,6 +5,8 @@
 
 int pen_create(int i, int fromgen);           /* Create (fromgen: the generator ran it; only its variables) */
 int pen_step(int i);                            /* 0 not claimed, 1 run, 2 run through pcontent_ev */
+extern const uint8_t pen_offview_obj[];         /* 1: o's Step starts with pen_parent_step and its view test */
+int pen_offview(int i);                         /* such an enemy out of view: its Step is active = 0 (pobj.c) */
 int pen_alarm(int i, int a);
 int pen_animend(int i);
 int pen_collision(int self, int other);
