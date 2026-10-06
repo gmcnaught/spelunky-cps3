@@ -30,7 +30,7 @@ SRCS   := main.c hooks.c frt.S ../playsh2/bigtext.c $(ROOT)/src/main/game.c $(RO
           $(ROOT)/src/sh2/softfp.c $(ROOT)/src/sh2/softfp_sh2.S $(ROOT)/src/sh2/fma.c
 CFLAGS := $(OPT) -std=gnu99 -fno-bit-tests -Wno-unused-parameter -Wno-sign-compare -Wno-missing-field-initializers \
           -Ibuild/g -Ibuild -I. -I$(GEN) -I$(ROOT)/src/draw -I$(ROOT)/src/main -I$(ROOT)/src/hud -I$(ROOT)/src/shell \
-          -I$(ROOT)/src/snd -I$(ROOT)/src/front -DSOFTFP_ASM -fdata-sections -Wl,-T,../game/sprbss.ld -Wl,-T,../ramcheck.ld \
+          -I$(ROOT)/src/snd -I$(ROOT)/src/front -DSOFTFP_ASM -fdata-sections -Wl,-T,../game/sprbss.ld -Wl,-T,marker.ld -Wl,-T,../ramcheck.ld \
           '-DDRAW_MAPS_SECTION=__attribute__((section(".bss.drawmaps")))' \
           '-DDRAW_CACHE_SECTION=__attribute__((section(".bss.drawcache")))' '-DCAPTURE_SECTION=__attribute__((section(".bss.capture")))' -DCAPTURE_REV=0x$(REV)u -DCAPTURE_DIRTY=$(DIRTY) '-DROUTE_NAME="$(shell echo $(ROUTE) | tr a-z A-Z)"' '-DROUTE2_NAME="$(shell echo $(ROUTE2) | tr a-z A-Z)"' -DATTRACT_FRAMES=$(ATTRACT_FRAMES) $(if $(filter 1,$(SMOOTH)),-DGAME_SMOOTH)
 FLASH  := build/flash.bin
@@ -49,7 +49,7 @@ build/route2.h:                                   # route 2: route.h's names wit
 	python3 ../game/mkroute.py $@.tmp $(ROOT)/tests/routes/$(ROUTE2).txt $(SEED2) $(LEVEL2) $(MONEY2) $(ENEMIES2) $(TAIL) ""
 	sed -e 's/ROUTE_/ROUTE2_/g' -e 's/route_keys/route2_keys/g' -e 's/NSNAPS/NSNAPS2/g' -e 's/snaps\[/snaps2[/g' $@.tmp > $@
 	rm -f $@.tmp
-$(OUT)/main.elf: build/g/stamp build/route.h build/route2.h ../game/sprbss.ld $(GEN)/drawtab.h $(ROOT)/src/main/main.c
+$(OUT)/main.elf: build/g/stamp build/route.h build/route2.h ../game/sprbss.ld marker.ld $(GEN)/drawtab.h $(ROOT)/src/main/main.c
 
 $(FLASH): ../game/assets.py $(GEN)/gfx.bin $(GEN)/gfx.json $(GEN)/hud.bin $(GEN)/hud.json $(ROOT)/build/snd/snd.bin $(GEN)/fade.bin
 	@mkdir -p build

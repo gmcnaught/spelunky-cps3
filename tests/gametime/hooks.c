@@ -10,7 +10,7 @@
 #include "front.h"
 extern uint32_t front_seed;
 
-volatile struct marker M __attribute__((section(".trace"), used));
+volatile struct marker M __attribute__((section(".gtmark"), used));   /* sprite RAM 0x0402e000: marker.ld */
 
 /* FRC ticks since boot, 32 bits: the wrap count kept by the output-compare interrupt (frt.S, every 4,096 ticks) and
    the FRC at that interrupt; an FRC below that value has wrapped once since */
@@ -34,9 +34,10 @@ uint32_t now(void)
 }
 
 /* the vector table moved to RAM (VBR) with the FRT output compare (vector 72) added: the SDK's table (BIOS ROM at 0)
-   has no FRT entry */
+   has no FRT entry. In .trace, first in main RAM (0x02000000, VBR's 1 KB alignment without a fill in .bss: main RAM
+   has no room for one above the stack reserve); frt_start writes all 128 entries */
 void frt_isr(void);
-static void (*vtab[128])(void) __attribute__((aligned(1024)));
+static void (*vtab[128])(void) __attribute__((section(".trace"), aligned(1024), used));
 static void frt_start(void)
 {
     int k;

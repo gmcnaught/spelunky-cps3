@@ -11,7 +11,7 @@
  * A step pair is the frames from one game step to the next (two at 30 Hz): its busy clocks = vbl + snd + shell
  * of both frames. The frames before the first step (attract, and game_begin's level start: start_clk, the
  * largest of them) are left out of the frame figures. The route (tests/game's mkroute.py, build/route.h) plays from the cabinet's coin and Start.
- * Results, when the route has ended (marker state 1), in main RAM at 0x02000000 (.trace) for
+ * Results, when the route has ended (marker state 1), in sprite RAM at 0x0402e000 (marker.ld) for
  * scripts/lua/gametime.lua, and on screen as large text (jtcps3: ../playsh2/bigtext.c). */
 #include "cps3.h"
 #include "sprites.h"

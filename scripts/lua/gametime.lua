@@ -1,8 +1,8 @@
--- MAME: tests/gametime's results (marker 'GTM2' at main RAM 0x02000000, tests/gametime/gametime.h). When the last
+-- MAME: tests/gametime's results (marker 'GTM2' at sprite RAM 0x0402e000: tests/gametime/marker.ld, gametime.h). When the last
 -- section has ended (state 1) and the results screen is up, a snapshot; each section's words to $GT_OUT as
 -- "S <sec> <name> <value>" lines and its step pairs as "S <sec> pair <clocks> ..."; then MAME exits.
 local mem = manager.machine.devices[":maincpu"].spaces["program"]
-local A = 0x02000000
+local A = 0x0402e000
 local names = {"frames", "steps", "pairs", "vbl_sum", "vbl_max", "snd_sum", "snd_max", "step_sum", "step_max",
   "draw_sum", "draw_max", "shl_sum", "shl_max", "pair_sum_lo", "pair_sum_hi", "pair_max", "pair_max_at", "start_clk",
   "over"}
