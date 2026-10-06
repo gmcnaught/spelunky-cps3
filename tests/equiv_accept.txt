@@ -1,7 +1,10 @@
 # scripts/equiv_check.sh: accepted state-gate differences (docs/EQUIV.md §4). One per line:
 #   <route>_s<seed> <first gbag record> <reason>
-# Accepted only while the route check passes and the first gbag difference is at exactly this record.
+# Accepted only while the route check passes and the first gbag difference is at exactly this record. A reason
+# starting with "gameplay:" is a known gameplay difference (the user's decision): accepted also when the route check
+# fails, still only at exactly this first gbag record.
 p4_bomb_throw_s3 172 explosion debris visited in another order: gold chunk / nugget resting positions a few px apart, money equal
 c_temple_olmec_s1 768 explosion debris visited in another order: gold chunk resting positions a few px apart, money equal
 c_swamp_lakejaws_s279 186 piranhas hitting the swimming player in one step visited in another order: oBlood / oBloodTrail made at his position 7 px apart, life sequence equal
 c_ice_yetimachete_s16 121 explosion visits the dark blocks and the yeti in another order: debris positions and the yeti's knock-back rand(4, 6) (xVel -6 / -4) differ, the yeti within 1 px after; rooms, life and items equal
+p5_lush_l5s37_s37 419 gameplay: oEnemySight 111170 overlaps oPlayer1 and oTree 110823 in one step (record 418); the exact build (HD's R-tree order) runs Collision_oCharacter first (caveman 111013 alerted), the grid build Collision_oSolid first (the sight destroyed, the alert lost); deaths and damage differ after. HD's order is its R-tree's state: the grid's newest-first order matches it in 12 of the 14 such sight passes in the routes; exact order costs about +48 % a lush step. Accepted by the user 2026-10-06

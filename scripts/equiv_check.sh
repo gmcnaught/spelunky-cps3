@@ -4,7 +4,9 @@
 #   - the exact build must be record-equal to the trace (tools/playcmp.py RESULT n/n). The P4 / P1 / bomb /
 #     darkexit and P5 routes are required to be; a c_* route that is not (untranslated content) is skipped;
 #   - the grid build must pass tools/equivcheck.py's route check and state gate against the exact build; a state-gate
-#     difference listed in tests/equiv_accept.txt (route, its first gbag record, the reason) is accepted.
+#     difference listed in tests/equiv_accept.txt (route, its first gbag record, the reason) is accepted; a line whose
+#     reason starts with "gameplay:" is a known gameplay difference the user accepted, accepted also when the route
+#     check fails (docs/EQUIV.md §4).
 # Works in any checkout (worktrees too): the binaries are built in this checkout's build/host, traces read from its
 # build/trace. Outputs in build/equiv, deleted at the end (KEEP=1 keeps them).
 #   scripts/equiv_check.sh [route-regex]
@@ -46,6 +48,7 @@ while read r s k; do
   acc=$(awk -v n=$N -v g="$gb" '$1 == n && $2 == g' tests/equiv_accept.txt)
   if echo "$res" | grep -q 'route=PASS' && echo "$res" | grep -q 'state=PASS'; then ok=$((ok + 1)); v=pass
   elif echo "$res" | grep -q 'route=PASS' && [ -n "$acc" ]; then ok=$((ok + 1)); v=accepted
+  elif echo "$acc" | awk '$3 == "gameplay:" { f = 1 } END { exit !f }'; then ok=$((ok + 1)); v=known
   else bad=$((bad + 1)); v=FAIL; fi
   printf '%-24s %s exact %s | %s\n' $N $v "$ex" "$(echo "$res" | sed 's/ rooms=.*//')"
   [ -n "$KEEP" ] || rm -f $O/$N.*

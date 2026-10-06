@@ -470,6 +470,19 @@ The gate:
 | s7.24 and Q32-Q48 | 2 | |
 | deactivation | 0 | 20 when gate 2 is read over the view only |
 
+### Known gameplay differences (accepted by the user)
+
+tests/equiv_accept.txt lines whose reason starts with `gameplay:` are differences in play, not only in cosmetic
+state, that the user accepted; scripts/equiv_check.sh reports them as `known`, still only at the listed first gbag
+record.
+
+- **p5_lush_l5s37 (2026-10-06):** one oEnemySight search overlaps oPlayer1 and an oTree in one step. HD's R-tree visits
+  the player first (Collision_oCharacter alerts the caveman), the grid visits the tree first (Collision_oSolid destroys
+  the sight; the alert is lost). HD's order follows its R-tree's state, which changes as instances are reinserted (the
+  same pair comes in the opposite order 7 steps later); the grid's newest-first order matches it in 12 of the 14 such
+  passes found in the routes. Matching it in every case means the exact build: about +48 % a lush step (MAME SOFTFP
+  144.6 K -> 213.4 K) on levels already over budget.
+
 ## Files
 
 - **src/game/pnum.h:** PLAY_FX2 (FX_NFB, FX_PFB, FX_T64, FX_NUMDBL, FX_EPS168). PLAY_FIXED's conversions now
