@@ -457,6 +457,7 @@ void scrUpdateHighscores(int type);
 void ev_create(int i);
 void ev_destroy(int i);
 void ev_step(int i);
+int ev_step_idle(int i);                          /* pobj.c: 1 when ev_step(i) would do nothing (front_on 0) */
 void ev_end_step(int i);
 void ev_alarm(int i, int a);
 void ev_animend(int i);
