@@ -696,8 +696,12 @@ static void scarab_step(int i)                                       /* objects/
         if (PE(p)->counter == 0 && NLT(PE(p)->xVel, N(1)) && NLT(PE(p)->yVel, N(1))) {
             if (DLT(dist, 64)) dir = point_direction_d(X(i) + 8, Y(i) + 8, X(c), Y(c)) + 180;
             else dir = RAND(0, 360);
-            PE(p)->xVel = ND(4 * pcos_cr(degtorad_d(dir)));
-            PE(p)->yVel = ND(-4 * psin_cr(degtorad_d(dir)));
+            {
+                double si, co;                                 /* (psincos_cr: pcos_cr's, psin_cr's bits) */
+                psincos_cr(degtorad_d(dir), &si, &co);
+                PE(p)->xVel = ND(4 * co);
+                PE(p)->yVel = ND(-4 * si);
+            }
             PE(p)->counter = (int16_t)RAND(10, 30);
         }
         if (isCollisionRight(i, 1) && NGT(PE(p)->xVel, N(0))) PE(p)->xVel = -PE(p)->xVel;

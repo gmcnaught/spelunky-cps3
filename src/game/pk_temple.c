@@ -1655,9 +1655,10 @@ static int step_ev(int i)
     case OBJ_oYellowBall: yellowball_step(i); return 1;
     case OBJ_oPsychicCreate2: {                                        /* objects/oPsychicCreate2/Step_0.gml */
         struct pin *p = &PX(i);
-        double d = degtorad_d(PE(p)->direction);
-        pin_setx(p, (pos)(PTOD(p->x) + 2 * pcos_cr(d)));
-        pin_sety(p, (pos)(PTOD(p->y) + -2 * psin_cr(d)));
+        double d = degtorad_d(PE(p)->direction), si, co;
+        psincos_cr(d, &si, &co);                                       /* (pcos_cr's, psin_cr's bits) */
+        pin_setx(p, (pos)(PTOD(p->x) + 2 * co));
+        pin_sety(p, (pos)(PTOD(p->y) + -2 * si));
         return 1;
     }
     case OBJ_oFinalBoss: finalboss_step(i); return 1;

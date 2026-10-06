@@ -1353,8 +1353,12 @@ static void psywave_step(int i)
                 obj = instance_nearest_p(x, y, OBJ_oDamsel);
             PE(p)->direction = point_direction_d(x, y, X(obj) + 8, Y(obj) + 8);
         }
-        pin_setx(p, P(X(i) + 2 * pcos_cr(degtorad_d(PE(p)->direction))));
-        pin_sety(p, P(Y(i) + -2 * psin_cr(degtorad_d(PE(p)->direction))));
+        {
+            double si, co;                                     /* (psincos_cr: pcos_cr's, psin_cr's bits) */
+            psincos_cr(degtorad_d(PE(p)->direction), &si, &co);
+            pin_setx(p, P(X(i) + 2 * co));
+            pin_sety(p, P(Y(i) + -2 * si));
+        }
     }
 }
 

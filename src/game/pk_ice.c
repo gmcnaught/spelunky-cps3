@@ -918,8 +918,10 @@ static void ray_hurt(int o)
 static void psychic_dir_step(int i, double dir)
 {
     struct pin *p = &PX(i);
-    pin_setx(p, (pos)((double)p->x + 2 * pcos_cr(degtorad_d(dir))));
-    pin_sety(p, (pos)((double)p->y + -2 * psin_cr(degtorad_d(dir))));
+    double si, co;                                             /* (psincos_cr: pcos_cr's, psin_cr's bits) */
+    psincos_cr(degtorad_d(dir), &si, &co);
+    pin_setx(p, (pos)((double)p->x + 2 * co));
+    pin_sety(p, (pos)((double)p->y + -2 * si));
 }
 
 /* oPlayer1 Step :1537 (the laser) and :1564 (the psychic wave) */

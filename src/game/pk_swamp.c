@@ -62,10 +62,11 @@ static double distance_to_point_p(int i, double px, double py)
 static void make_active(struct pin *p) { PE(p)->xVel = PE(p)->yVel = PE(p)->xAcc = PE(p)->yAcc = 0; }
 
 /* moveTo(c * cos(degtorad(d)), -c * sin(degtorad(d))) */
-static void move_dir(int i, double c, double d)
+/* GML move toward direction d at speed c: moveTo by c * cos, -c * sin of degtorad_d(d), given as co, si (psincos_cr:
+   pcos_cr's and psin_cr's bits; the callers' water test uses the same angle) */
+static void move_cs(int i, double c, double co, double si)
 {
-    double r = degtorad_d(d);
-    moveTo(i, ND(c * pcos_cr(r)), ND(-c * psin_cr(r)), 0, 0);
+    moveTo(i, ND(c * co), ND(-c * si), 0, 0);
 }
 
 static void kill_count(int i, int16_t *kind)
@@ -308,10 +309,11 @@ static void piranha_step(int i)                                /* objects/oPiran
         if (DLT(dist, 90) && PL.swimming && !PL.dead) {
             double d = point_direction_d(X(i) + 4, Y(i) + 4, X(c), Y(c));
             int a = RAND(0, 1), b = RAND(0, 1);
-            double r;
+            double r, si, co;
             DIR(p) = d + a - b;
             r = degtorad_d(DIR(p));
-            if (CP(X(i) + pcos_cr(r), Y(i) - psin_cr(r), OBJ_oWater)) move_dir(i, 1, DIR(p));
+            psincos_cr(r, &si, &co);                           /* (move_dir's angle too: DIR unchanged) */
+            if (CP(X(i) + co, Y(i) - si, OBJ_oWater)) move_cs(i, 1, co, si);
         } else {
             PE(p)->status = 2;
             PE(p)->counter = (int16_t)RAND(20, 40);
@@ -325,10 +327,11 @@ static void piranha_step(int i)                                /* objects/oPiran
         if (PE(p)->status != 2) {
             double d = point_direction_d(X(i) + 4, Y(i) + 4, X(obj) + 8, Y(obj) + 8);
             int a = RAND(0, 1), b = RAND(0, 1);
-            double r;
+            double r, si, co;
             DIR(p) = d + a - b;
             r = degtorad_d(DIR(p));
-            if (CP(X(i) + pcos_cr(r), Y(i) - psin_cr(r), OBJ_oWater)) move_dir(i, 1, DIR(p));
+            psincos_cr(r, &si, &co);                           /* (move_dir's angle too: DIR unchanged) */
+            if (CP(X(i) + co, Y(i) - si, OBJ_oWater)) move_cs(i, 1, co, si);
             else {
                 PE(p)->status = 2;
                 PE(p)->counter = (int16_t)RAND(20, 40);
@@ -383,10 +386,11 @@ static void deadfish_step(int i)                               /* objects/oDeadF
         if (DLT(dist, 90) && PL.swimming && !PL.dead) {
             double d = point_direction_d(X(i), Y(i), X(c), Y(c));
             int a = RAND(0, 1), b = RAND(0, 1);
-            double r;
+            double r, si, co;
             DIR(p) = d + a - b;
             r = degtorad_d(DIR(p));
-            if (CP(X(i) + pcos_cr(r), Y(i) - psin_cr(r), OBJ_oWater)) move_dir(i, 1, DIR(p));
+            psincos_cr(r, &si, &co);                           /* (move_dir's angle too: DIR unchanged) */
+            if (CP(X(i) + co, Y(i) - si, OBJ_oWater)) move_cs(i, 1, co, si);
         } else {
             PE(p)->status = 2;
             PE(p)->counter = (int16_t)RAND(20, 40);
@@ -506,9 +510,11 @@ static void jaws_step(int i)
             }
             p = &PX(i);
             if (!turn) {                                       /* :117 */
-                double r = degtorad_d(DIR(p));
-                double cx = X(i) + pcos_cr(r), cy = Y(i) - psin_cr(r);
-                if (CP(cx, cy, OBJ_oWater) && !CP(cx, cy, OBJ_oSolid)) move_dir(i, 3, DIR(p));
+                double r = degtorad_d(DIR(p)), si, co, cx, cy;
+                psincos_cr(r, &si, &co);                       /* (move_dir's angle too: DIR unchanged) */
+                cx = X(i) + co;
+                cy = Y(i) - si;
+                if (CP(cx, cy, OBJ_oWater) && !CP(cx, cy, OBJ_oSolid)) move_cs(i, 3, co, si);
             }
         } else {
             PE(p)->status = J_IDLE;
@@ -590,7 +596,7 @@ static void zombie_step(int i)
 
 /* ---- oVampire: objects/oVampire/Step_0.gml ----------------------------------------------------------------- */
 /* d is a float's value in [0, 360] (point_direction_d's float, or 0 / 90 / 180 / 270): psincos_cr gives pcos_cr's
-   and psin_cr's bits for every such d (tests/sincos, as bat_fly), without cr_trig's double-double series. The host
+   and psin_cr's bits for every such d (tests/sincos, as bat_fly), without cr_trig_dd's double-double series. The host
    builds check the premise */
 static void vampire_fly(struct pin *p, double c, double d)
 {
@@ -888,11 +894,12 @@ static void ghost_step(int i)                                  /* objects/oGhost
     DIR(p) = 0;
     c = instance_first_p(OBJ_oCharacter);
     if (PE(p)->status == 1) {                                  /* ATTACK :15 */
-        double r;
+        double r, si, co;
         DIR(p) = point_direction_d(X(i) + 8, Y(i) + 8, X(c), Y(c));
         r = degtorad_d(DIR(p));
-        pin_setx(p, PADDV(p->x, ND(1 * pcos_cr(r))));
-        pin_sety(p, PADDV(p->y, ND(-1 * psin_cr(r))));
+        psincos_cr(r, &si, &co);                               /* (pcos_cr's, psin_cr's bits) */
+        pin_setx(p, PADDV(p->x, ND(1 * co)));
+        pin_sety(p, PADDV(p->y, ND(-1 * si)));
         if (DLT(X(c), X(i) + 8)) {
             if (p->spr == GSPR_sGhostRight) pin_set_sprite(i, GSPR_sGhostTurnLeft);
         } else {
