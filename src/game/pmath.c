@@ -2,6 +2,10 @@
  * sin / cos / atan are fdlibm's (s_sin.c, s_cos.c, k_sin.c, k_cos.c, e_rem_pio2.c medium path, e_atan2.c); the
  * runner calls its C library's, so a last-bit difference shows as an xVel / yVel difference in tools/playcmp.py. */
 #include "pmath.h"
+#ifdef PLAY_STATS
+#include <stdio.h>
+#include <stdlib.h>
+#endif
 #ifdef __clang__
 #pragma STDC FP_CONTRACT OFF   /* Dekker's products below need separate multiply and add (GCC -std=c99: off) */
 #endif
@@ -625,6 +629,54 @@ static int sc_fast(double a, int need, double *s, double *c)
     return 1;
 }
 
+/* sin and cos of a by the slow path (cr_reduce, sincos_r): psincos_cr's own */
+static void sc_slow(double a, double *s, double *c)
+{
+    double sr, cr;
+    int q;
+    ddbl r = cr_reduce(a, &q);
+    sr = sincos_r(r, 1);
+    cr = sincos_r(r, 0);
+    switch (q) {
+    case 0: *s = sr; *c = cr; break;
+    case 1: *s = cr; *c = -sr; break;
+    case 2: *s = -sr; *c = -cr; break;
+    default: *s = -cr; *c = sr; break;
+    }
+}
+
+/* the arguments sc_fast leaves to the slow path most (host count over the routes, 632 of 683 calls): +-0 (below its
+   2^-6) and degtorad of 90, 180, 270 (pi / 2, pi, 3 pi / 2 as doubles: tiny results, Ziv's test fails). Their slow-path
+   sin and cos are kept the first time they are computed (the functions read only their argument); psin_cr / pcos_cr
+   give the bits psincos_cr gives (its comment). The host builds compute them again on every use and compare */
+static const uint64_t sc_kbits[5] = { 0x0000000000000000ull, 0x8000000000000000ull, 0x3ff921fb54442d18ull,
+                                      0x400921fb54442d18ull, 0x4012d97c7f3321d2ull };
+static double sc_ks[5], sc_kc[5];
+static uint8_t sc_kok[5];
+static int sc_kept(double a, double *s, double *c)
+{
+    union { double d; uint64_t u; } v;
+    int k;
+    v.d = a;
+    for (k = 0; k < 5; k++)
+        if (v.u == sc_kbits[k]) {
+            if (!sc_kok[k]) { sc_slow(a, &sc_ks[k], &sc_kc[k]); sc_kok[k] = 1; }
+#ifdef PLAY_STATS
+            {
+                double ts, tc;
+                union { double d; uint64_t u; } a1, a2, b1, b2;
+                sc_slow(a, &ts, &tc);
+                a1.d = ts; a2.d = sc_ks[k]; b1.d = tc; b2.d = sc_kc[k];
+                if (a1.u != a2.u || b1.u != b2.u) { fprintf(stderr, "sc_kept: %d differs\n", k); abort(); }
+            }
+#endif
+            *s = sc_ks[k];
+            *c = sc_kc[k];
+            return 1;
+        }
+    return 0;
+}
+
 /* sin / cos correctly rounded: cr_trig_dd's bits (its quadrant signs negate the rounded result exactly). sincos_r
    keeps its fast sums only when Ziv's test shows they round as the series does (tests/sincos: every float direction
    in degrees, and random double directions as the piranhas' and move_dir's, against cr_trig_dd) */
@@ -633,7 +685,7 @@ double psin_cr(double x)
     int q;
     ddbl r;
     double fs, fc;
-    if (sc_fast(x, 1, &fs, &fc)) return fs;
+    if (sc_fast(x, 1, &fs, &fc) || sc_kept(x, &fs, &fc)) return fs;
     r = cr_reduce(x, &q);
     switch (q) {
     case 0: return sincos_r(r, 1);
@@ -648,7 +700,7 @@ double pcos_cr(double x)
     int q;
     ddbl r;
     double fs, fc;
-    if (sc_fast(x, 2, &fs, &fc)) return fc;
+    if (sc_fast(x, 2, &fs, &fc) || sc_kept(x, &fs, &fc)) return fc;
     r = cr_reduce(x, &q);
     switch (q) {
     case 0: return sincos_r(r, 0);
@@ -661,19 +713,8 @@ double pcos_cr(double x)
 /* sin and cos of a with one reduction (bat_fly): the same bits as psin_cr(a), pcos_cr(a) */
 void psincos_cr(double a, double *s, double *c)
 {
-    double sr, cr;
-    int q;
-    ddbl r;
-    if (sc_fast(a, 3, s, c)) return;
-    r = cr_reduce(a, &q);
-    sr = sincos_r(r, 1);
-    cr = sincos_r(r, 0);
-    switch (q) {
-    case 0: *s = sr; *c = cr; break;
-    case 1: *s = cr; *c = -sr; break;
-    case 2: *s = -sr; *c = -cr; break;
-    default: *s = -cr; *c = sr; break;
-    }
+    if (sc_fast(a, 3, s, c) || sc_kept(a, s, c)) return;
+    sc_slow(a, s, c);
 }
 
 /* ---- fdlibm's float atan2f (e_atan2f.c, s_atanf.c: glibc's flt-32 versions, in float arithmetic): the runner's
