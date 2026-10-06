@@ -422,6 +422,8 @@ int pw_test_line(int k, double x1, double y1, double x2, double y2, int prec);
 int pw_test_pair(int a, int b);                    /* Collision_Instance(a, b): bboxes and precise masks */
 /* with (obj): the matching instances when it starts, newest first except exactly two: oldest first */
 int pw_with(int obj, int16_t *out, int max);
+/* pdist2_lt(pdist2(PTOD(x1) + ox, PTOD(y1) + oy, PTOD(x2), PTOD(y2)), c), mostly without the doubles */
+int pdist_lt_at(pos x1, pos y1, int32_t ox, int32_t oy, pos x2, pos y2, double c);
 
 /* ---- prun.c: the step loop -------------------------------------------------------------------------------- */
 /* inputs: the route's key mask for the step (tools/tracer.py KEYS bits) */

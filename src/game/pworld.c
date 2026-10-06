@@ -3251,10 +3251,10 @@ static struct { uint64_t cb, t; } dthr[DTHR_N];
 static uint8_t ndthr, dthr_next;
 static uint64_t dthr_bits(double d) { union { double d; uint64_t u; } v; v.d = d; return v.u; }
 static double dthr_dbl(uint64_t u) { union { double d; uint64_t u; } v; v.u = u; return v.d; }
-int pdist2_lt(double d2, double c)
+static uint64_t dthr_get(double c)                /* T(c)'s bits (found and kept at the first use of c) */
 {
     uint64_t cb = dthr_bits(c), lo, hi;
-    int k, r;
+    int k;
     for (k = 0; k < ndthr && dthr[k].cb != cb; k++) {}
     if (k == ndthr) {
         /* bounds that keep psqrt on its fast range: below lo every d2 compares true (lo's does), at hi false */
@@ -3272,7 +3272,12 @@ int pdist2_lt(double d2, double c)
         dthr[k].cb = cb;
         dthr[k].t = lo;
     }
-    r = dthr_bits(d2) < dthr[k].t;
+    return dthr[k].t;
+}
+
+int pdist2_lt(double d2, double c)
+{
+    int r = dthr_bits(d2) < dthr_get(c);
 #ifdef PLAY_STATS
     if (dthr_bits(d2) >> 63 || d2 != d2 || r != DLT(psqrt(d2), c)) {
         fprintf(stderr, "pdist2_lt: %.17g against %.17g: %d\n", d2, c, r);
@@ -3280,6 +3285,67 @@ int pdist2_lt(double d2, double c)
     }
 #endif
     return r;
+}
+
+#ifndef PLAY_FIXED
+/* a float as an int in units of 2^-16 when it is one exactly and |f| < 2^14 */
+static int pfix16(float f, int64_t *o)
+{
+    union { float f; uint32_t u; } v;
+    uint32_t e, m, sh;
+    int32_t a;
+    v.f = f;
+    if ((v.u & 0x7fffffffu) == 0) { *o = 0; return 1; }
+    e = (v.u >> 23) & 0xffu;
+    if (e == 0 || e > 140) return 0;
+    m = (v.u & 0x7fffffu) | 0x800000u;
+    if (e >= 134) a = (int32_t)(m << (e - 134));
+    else {
+        sh = 134 - e;
+        if (sh > 23 || (m & ((1u << sh) - 1))) return 0;
+        a = (int32_t)(m >> sh);
+    }
+    *o = (v.u >> 31) ? -a : a;
+    return 1;
+}
+#endif
+
+/* pdist2_lt(pdist2(PTOD(x1) + ox, PTOD(y1) + oy, PTOD(x2), PTOD(y2)), c) (point_distance from a position plus whole
+   offsets to a position, against c). With the four floats exact in 2^-16 units (|v| < 2^14), dx, dy are exact ints
+   (|.| < 2^31) and S = dx^2 + dy^2 exact (units 2^-32); pdist2's d2 = fl(fl(dx^2) + fl(dy^2)) is within a relative
+   2^-51.9 of S, so below m = (S >> 50) + 2 units of it. d2 < T(c) (pdist2_lt's threshold, Tf = floor(T 2^32)) is then
+   true when S + m <= Tf, false when S >= Tf + 1 + m; between them, and in every other case, the doubles. The host
+   builds compare every integer answer with the double one */
+int pdist_lt_at(pos x1, pos y1, int32_t ox, int32_t oy, pos x2, pos y2, double c)
+{
+#ifndef PLAY_FIXED
+    int64_t a, b, u, w;
+    if (pfix16(x1, &a) && pfix16(y1, &b) && pfix16(x2, &u) && pfix16(y2, &w)) {
+        int64_t dx = u - (a + ((int64_t)ox << 16)), dy = w - (b + ((int64_t)oy << 16));
+        uint64_t t = dthr_get(c), e = t >> 52, tf, S, m;
+        int r = -1;
+        if (dx > -0x7fffffffLL && dx < 0x7fffffffLL && dy > -0x7fffffffLL && dy < 0x7fffffffLL && e >= 1 &&
+            e <= 1052) {
+            uint64_t mt = (t & 0xfffffffffffffull) | (1ull << 52);
+            tf = e >= 1043 ? mt << (e - 1043) : (1043 - e >= 64 ? 0 : mt >> (1043 - e));
+            S = (uint64_t)((int64_t)(int32_t)dx * (int32_t)dx) + (uint64_t)((int64_t)(int32_t)dy * (int32_t)dy);
+            m = (S >> 50) + 2;
+            if (S + m <= tf) r = 1;
+            else if (S >= tf + 1 + m) r = 0;
+        }
+        if (r >= 0) {
+#ifdef PLAY_STATS
+            if (r != pdist2_lt(pdist2(PTOD(x1) + ox, PTOD(y1) + oy, PTOD(x2), PTOD(y2)), c)) {
+                fprintf(stderr, "pdist_lt_at: %d differs (%.9g %.9g %d %d %.9g %.9g %g)\n", r, x1, y1, (int)ox, (int)oy,
+                        x2, y2, c);
+                abort();
+            }
+#endif
+            return r;
+        }
+    }
+#endif
+    return pdist2_lt(pdist2(PTOD(x1) + ox, PTOD(y1) + oy, PTOD(x2), PTOD(y2)), c);
 }
 
 /* the thresholds of the constants the Steps compare with (a first use mid-step would bisect there: about 63 psqrt
