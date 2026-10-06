@@ -619,7 +619,7 @@ static int rest_skip(int i, uint8_t *out)
     rest_get(p, &c);
     if (!rest_is(&c, r) || !rest_region(p, b) || !pw_rest_still(b[0], b[1], b[2], b[3], r->clk))
         return 0;
-    if (r->chg) pin_changed_(p);
+    if (r->chg) pw_replayed(i);                       /* (the run's marks; no field changes here) */
     *out = r->out;
     return 1;
 }

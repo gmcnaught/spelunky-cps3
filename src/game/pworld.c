@@ -158,6 +158,7 @@ static int16_t olive[OBJ_COUNT];
 #ifndef PLAY_FIXED
 static uint8_t nc_any;                           /* instance_nearest_p's cache (nc) is in use */
 static void nc_inval(int obj);
+static void nc_moved(int i);
 static void nc_reset(void);
 #endif
 
@@ -359,10 +360,21 @@ void pw_changed(int i)
 {
     if (i == watch_i) watch_n++;
 #ifndef PLAY_FIXED
-    if (nc_any) nc_inval(PW.in[i].obj);
+    if (nc_any) nc_moved(i);
 #endif
     pw_draw_mark(i);
     PW.in[i].bbk = 0;
+    grid_dirty(i);
+    pcol_changed(i);
+}
+
+/* pw_changed where no field changed (pobj.c rest_skip's replay of a fixed point's changes): the marks and the grid's
+   re-placement as pw_changed. The box cache (bbk) and the nearest cache (nc) are kept: each is cleared or updated by
+   every change of the fields it is computed from, so with none since, each still holds the current fields' values */
+void pw_replayed(int i)
+{
+    if (i == watch_i) watch_n++;
+    pw_draw_mark(i);
     grid_dirty(i);
     pcol_changed(i);
 }
@@ -2804,8 +2816,9 @@ static int dfloor14(double v, int32_t *o)
 /* instance_nearest_p's integer pass reads, per family, the alive instances and floor(x), floor(y) (|.| < 2^14). They
    are kept for up to NC_N families between calls (a lush level's spear traps ask for the nearest oEnemy,
    oMoveableSolid and oItem one after another): an entry is dropped when an instance of its family is linked or
-   unlinked (olive_add) or changes position, sprite, mask, scale or angle (pw_changed: every x / y setter with a
-   change; moveTo's raw pixel walks and the rest replay end in one), and at a level start (olists_reset).
+   unlinked (olive_add) and at a level start (olists_reset); when one changes position, sprite, mask, scale or angle
+   (pw_changed: every x / y setter with a change; moveTo's raw pixel walks and the rest replay end in one) its floors
+   are updated in place (nc_moved).
    ok 2: the family does not fit (more than NEAR_MAX, or a coordinate out of range): the double loop */
 #define NEAR_MAX 64
 #define NC_N 4
@@ -2818,6 +2831,28 @@ static void nc_inval(int obj)
     int e;
     for (e = 0; e < NC_N; e++)
         if (nc[e].ok && obj_is(obj, nc[e].obj)) nc[e].ok = 0;
+}
+
+/* instance i (alive and linked, or not) may have changed position: a kept entry of a family holding it takes its
+   new floors in place (k[]'s order is the lists' walk, which a move does not change); one where it is not found,
+   whose floors do not fit, or that did not fit (ok 2) is dropped as nc_inval drops it */
+static void nc_moved(int i)
+{
+    int e, j, obj = PW.in[i].obj;
+    for (e = 0; e < NC_N; e++) {
+        struct ncache *c = &nc[e];
+        int32_t xk, yk;
+        if (!c->ok || !obj_is(obj, c->obj)) continue;
+        if (c->ok != 1) { c->ok = 0; continue; }
+        for (j = 0; j < c->n && c->k[j] != i; j++) {}
+        if (j == c->n || !pl_floor(PW.in[i].x, &xk) || !pl_floor(PW.in[i].y, &yk) ||
+            xk < -16384 || xk >= 16384 || yk < -16384 || yk >= 16384) {
+            c->ok = 0;
+            continue;
+        }
+        c->x[j] = (int16_t)xk;
+        c->y[j] = (int16_t)yk;
+    }
 }
 
 static void nc_reset(void)

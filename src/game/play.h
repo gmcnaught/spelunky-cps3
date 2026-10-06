@@ -215,6 +215,7 @@ static inline int pin_is(int i, int obj) { return i >= 0 && PW.in[i].alive && ob
 /* the setters of the collision-relevant fields: store, and on a real change (!=; the scales and the angle as the
    runner's floats) tell the collision tree (pcol.c: CollisionMarkDirty) */
 void pw_changed(int i);                           /* pworld.c: the box cache, the solid grid, pcol_changed */
+void pw_replayed(int i);                          /* pworld.c: pw_changed at bit-equal fields (rest_skip) */
 #define PIN_WR(T, f) (*(T *)&(f))
 /* p's slot index: its byte offset in PW.in / 64 as an unsigned shift (a signed pointer difference by 64 is a libgcc
    __ashiftrt_r4_6 call on the SH-2, which has no multi-bit arithmetic shift) */
