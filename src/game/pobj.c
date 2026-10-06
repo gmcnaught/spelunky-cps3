@@ -1305,7 +1305,11 @@ void ev_step(int i)
     }
 #else
     switch (stepk[p->obj]) {                                                   /* P5 hook */
-    case SK_PEN: pen_step(i); return;
+    case SK_PEN: {
+        int o = p->obj;
+        if (pen_step(i) == 2) step_pkg(o);       /* pen_step's path for o ends in pcontent_ev: call the package */
+        return;
+    }
     case SK_PDAM: pdam_step(i); return;
     case SK_PSHOP: pshop_step(i); return;
     case SK_PITEM: pitem_step(i); return;

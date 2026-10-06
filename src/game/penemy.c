@@ -1055,7 +1055,7 @@ int pen_step(int i)
     }
     if (obj_is(p->obj, OBJ_oEnemy) && p->obj != OBJ_oShopkeeper) {
         if (!pcontent_ev(FEV_STEP, i, 0)) PUNTR(5003);                                       /* P7 hook */
-        return 1;
+        return 2;                                          /* (handed to pcontent_ev: pobj.c ev_step) */
     }
     return 0;
 }
