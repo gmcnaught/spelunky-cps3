@@ -72,6 +72,12 @@ def fn(pc):
     return syms[i][1] if i >= 0 else '?'
 PLAY = [a for a, n in syms if n == '_play_step'][0]
 PCHIST = os.getenv('JTC_PCHIST'); pch = collections.Counter()   # JTC_PCHIST=<symbol>: its instructions by address
+pcc = collections.Counter()                      # JTC_PCHIST: model cost by address
+BYOBJ = os.getenv('JTC_BYOBJ') == '1'            # JTC_BYOBJ=1: cost by play_cur_obj (the object whose event runs)
+CUROBJ = [a for a, n in dsy if n == '_play_cur_obj']; CUROBJ = CUROBJ[0] if CUROBJ else None
+cur_obj = -1; byobj = collections.defaultdict(collections.Counter); phase = '_play_step'
+byph = collections.defaultdict(collections.Counter)   # (play_step's callee, object)
+byof = collections.defaultdict(collections.Counter)   # (object, function): self cost
 callers = collections.Counter()
 WATCH = set(x for x in os.getenv('JTC_CALLERS', '').split(',') if x)   # JTC_CALLERS=<sym>,...: calls by caller, inclusive
 wcalls = collections.Counter(); wcost = collections.Counter(); wstk = []   # (sym, caller, return PR, SP, cost at entry)
@@ -149,6 +155,9 @@ for line in open(tr):
         c['entries'] += 1
         if f.startswith('___'): callers[(f, fn(R[16]))] += 1     # libgcc helper: who called it (PR)
     if f == PCHIST: pch[pc] += 1
+    if BYOBJ:
+        if f == '_play_step': phase = '_play_step'
+        elif pc in STARTS and fn(R[16]) == '_play_step': phase = f
     dis = dis.strip(); op = dis.split()[0] if dis else ''
     args_ = dis[len(op):].strip()
     ev = collections.Counter()          # this instruction's events (keys of CONSTS)
@@ -210,6 +219,9 @@ for line in open(tr):
             if (a & 0xf0000000) == 0xc0000000:
                 ev['cram'] += 1; continue
             if is_store:
+                if BYOBJ and (a & 0x1fffffff) == CUROBJ and parts[0].startswith('R'):
+                    cur_obj = R[int(parts[0][1:])]
+                    if cur_obj >= 0x80000000: cur_obj -= 1 << 32
                 ev['store'] += 1
                 if a in (0xffffff04, 0xffffff14): ev['divu'] += 1; st['divu'] += 1
                 dsto['stack' if stack else dname(a)] += 1
@@ -236,7 +248,15 @@ for line in open(tr):
         cost = (1.0 if s == 0 else mame) + sum(CONSTS[k][s] * n for k, n in ev.items())
         tot[s] += cost
         tot_fa[s] += cost + sum(CONSTS[k][s] * n for k, n in evf.items())
-        if s == SI: c['cost'] += cost
+        if s == SI:
+            c['cost'] += cost
+            if f == PCHIST: pcc[pc] += cost
+            if BYOBJ:
+                o = byobj[cur_obj]; o['cost'] += cost; o['ins'] += 1
+                o['imiss'] += ev['imiss']; o['dmiss'] += ev['dmiss_ram'] + ev['dmiss_simm']; o['st'] += ev['store']
+                byph[(phase, cur_obj)]['cost'] += cost; byph[(phase, cur_obj)]['ins'] += 1
+                bo = byof[(cur_obj, f)]; bo['cost'] += cost; bo['ins'] += 1; bo['imiss'] += ev['imiss']
+                bo['dmiss'] += ev['dmiss_ram'] + ev['dmiss_simm']; bo['entries'] += pc in STARTS
 if not inside: sys.exit('jtcost.py: play_step (%08X) not entered in the trace' % PLAY)
 
 ins = st['ins']; cost = tot[SI]
@@ -314,4 +334,27 @@ if SIMM1:
 
 if PCHIST:
     print('\n%s: executions by address (JTC_PCHIST)' % PCHIST)
-    for a in sorted(pch): print('  %08x %7d' % (a, pch[a]))
+    for a in sorted(pch): print('  %08x %7d %9.0f' % (a, pch[a], pcc[a]))
+
+if BYOBJ:
+    on = []
+    for l in open(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'build', 'gen', 'objects.h')):
+        m = re.match(r'\s+OBJ_(\w+),', l)
+        if m and m.group(1) != 'COUNT': on.append(m.group(1))
+    print('\nJTC_BYOBJ: cost by play_cur_obj (%s constants; -1 = before any event)' % SETS[SI])
+    for k, o in sorted(byobj.items(), key=lambda t: -t[1]['cost']):
+        print('  %-22s %8.0f %5.1f%% ins %7d imiss %5d dmiss %5d st %5d' % (on[k] if 0 <= k < len(on) else str(k),
+              o['cost'], 100 * o['cost'] / cost, o['ins'], o['imiss'], o['dmiss'], o['st']))
+    print('\nJTC_BYOBJ: by play_step callee (the pass) and object, top 60')
+    PH = collections.Counter()
+    for (ph, k), o in byph.items(): PH[ph] += o['cost']
+    for ph, v in PH.most_common(): print('  pass %-24s %8.0f %5.1f%%' % (ph, v, 100 * v / cost))
+    for (ph, k), o in sorted(byph.items(), key=lambda t: -t[1]['cost'])[:60]:
+        print('  %-24s %-22s %8.0f %5.1f%% ins %7d' % (ph, on[k] if 0 <= k < len(on) else str(k), o['cost'],
+              100 * o['cost'] / cost, o['ins']))
+    NO = int(os.getenv('JTC_BYOBJ_N', '8'))
+    top = [k for k, _ in sorted(byobj.items(), key=lambda t: -t[1]['cost'])[:NO]]
+    for k in top:
+        print('\nJTC_BYOBJ: %s, self cost by function (top 15)' % (on[k] if 0 <= k < len(on) else str(k)))
+        for (k2, f2), o in sorted(((kf, o) for kf, o in byof.items() if kf[0] == k), key=lambda t: -t[1]['cost'])[:15]:
+            print('  %-26s %8.0f ins %6d imiss %5d dmiss %5d calls %4d' % (f2, o['cost'], o['ins'], o['imiss'], o['dmiss'], o['entries']))
