@@ -176,11 +176,19 @@ static int ofam_next(int root, int o)
     return -1;
 }
 
+/* instance_first_p's last answers (4 objects), each kept while olive_gen holds: olive_gen is bumped on every change of
+   any object's alive count (olive_add: every link / unlink) and at every level start, and the oldest alive instance
+   of a family depends only on its alive set (creation numbers keep their order when renumbered). Tags are gen + 1 */
+static uint32_t olive_gen, ifc_tag[4];
+static int16_t ifc_obj[4], ifc_val[4];
+static uint8_t ifc_next;
+
 static void pdist_warm(void);
 static void olists_reset(void)
 {
     pdist_warm();
     int o;
+    olive_gen++;
     obj_desc_init();
     pcol_obj_tree();
 #ifndef PLAY_FIXED
@@ -207,6 +215,7 @@ static void olive_add(int obj, int d)
 #ifndef PLAY_FIXED
     if (nc_any) nc_inval(obj);
 #endif
+    olive_gen++;
     for (a = obj; a >= 0; a = objdefs[a].parent) olive[a] = (int16_t)(olive[a] + d);
 }
 
@@ -3159,10 +3168,27 @@ int instance_box_maybe(int obj, int32_t x0, int32_t x1, int32_t y0, int32_t y1)
 int instance_first_p(int obj)
 {
     struct fam it;
+    int e, k;
     PWST(exists, 1);
     if (fam_none(obj)) return NOONE;
+    for (e = 0; e < 4; e++)
+        if (ifc_obj[e] == obj && ifc_tag[e] == olive_gen + 1) {
+#ifdef PLAY_STATS
+            fam_begin(&it, obj);
+            if (fam_get(&it) != ifc_val[e]) {
+                fprintf(stderr, "instance_first_p: cached %d differs (%d)\n", ifc_val[e], obj);
+                abort();
+            }
+#endif
+            return ifc_val[e];
+        }
     fam_begin(&it, obj);
-    return fam_get(&it);
+    k = fam_get(&it);
+    e = ifc_next++ & 3;
+    ifc_obj[e] = (int16_t)obj;
+    ifc_val[e] = (int16_t)k;
+    ifc_tag[e] = olive_gen + 1;
+    return k;
 }
 
 int instance_exists_p(int obj)
