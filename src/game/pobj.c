@@ -1247,7 +1247,9 @@ static void level_step(int i)
  * first Step of an object tries the hooks in order and keeps the claimant; later ones call it directly. The same
  * holds one level down for treasure (ptrans_step's switch, then obj_is(oTreasure)). -DPLAY_DCHECK (host check):
  * every Step tries the chain and aborts if the claimant differs from the kept one. */
-enum { SK_NONE, SK_PEN, SK_PDAM, SK_PSHOP, SK_PITEM, SK_OWN, SK_TREASURE };
+/* SK_PKG + k (k 1-5): ev_step's own path for the object is ptrans_step's 0, then the oTreasure / oItem tests, then
+   pcontent_ev's Step with claimant k (all decided by the object alone): ev_step calls package k's ev directly */
+enum { SK_NONE, SK_PEN, SK_PDAM, SK_PSHOP, SK_PITEM, SK_OWN, SK_TREASURE, SK_PKG };
 static uint8_t stepk[OBJ_COUNT];
 
 static int step_hooks(int i)
@@ -1279,6 +1281,18 @@ int ev_step_idle(int i)
     return stepk[PX(i).obj] == SK_TREASURE && !inview(i, 16);
 }
 
+/* a package ran the object's Step at the end of ev_step's own path (whose every test depends on the object only):
+   later Steps call the package directly (SK_PKG). PLAY_DCHECK keeps the whole path */
+static void step_pkg(int o)
+{
+#ifndef PLAY_DCHECK
+    int k = pcontent_step_claimant(o);
+    if (k >= 1 && k <= 5) stepk[o] = (uint8_t)(SK_PKG + k);
+#else
+    (void)o;
+#endif
+}
+
 void ev_step(int i)
 {
     if (front_on && front_ev(FEV_STEP, i, 0)) return;                                 /* P8 hook */
@@ -1297,9 +1311,10 @@ void ev_step(int i)
     case SK_PITEM: pitem_step(i); return;
     case SK_TREASURE: treasure_step(i); return;
     case SK_OWN: break;
-    default:
+    case SK_NONE:
         if ((stepk[p->obj] = (uint8_t)step_hooks(i)) != SK_OWN) return;
         break;
+    default: pcontent_pkg_ev[stepk[p->obj] - SK_PKG](FEV_STEP, i, 0); return;     /* SK_PKG + 1-5 */
     }
 #endif
     switch (p->obj) {
@@ -1399,10 +1414,14 @@ void ev_step(int i)
             } else if (p->obj == OBJ_oDamsel || p->obj == OBJ_oFlare || p->obj == OBJ_oFlareCrate ||
                 p->obj == OBJ_oLockedChest || p->obj == OBJ_oMattock || p->obj == OBJ_oWebCannon)
                 pitems_world(1060, i, 0);
-            else if (!pcontent_ev(FEV_STEP, i, 0))                            /* P7 hook (calls item_step
+            else if (pcontent_ev(FEV_STEP, i, 0))                             /* P7 hook (calls item_step
                                                                                   itself when it inherits) */
+                step_pkg(p->obj);
+            else
                 item_step(i);
-        } else if (!pcontent_ev(FEV_STEP, i, 0))                                       /* P7 hook */
+        } else if (pcontent_ev(FEV_STEP, i, 0))                                        /* P7 hook */
+            step_pkg(p->obj);
+        else
             PUNTR(1061);
         break;
     }

@@ -57,4 +57,6 @@ int pice_enemy(int site, int e, int arg);
 int ptemple_enemy(int site, int e, int arg);
 int pitems_enemy(int site, int e, int arg);
 int pcontent_enemy(int site, int e, int arg);          /* bones, jars, sticky bombs, shop bombs / idol, udjat, dice, flare / chest / mattock / web cannon, bomb arrows, locked chest, Kali */
+extern int (*const pcontent_pkg_ev[6])(int ev, int i, int arg);   /* the packages' ev by Step claimant 1-5 */
+int pcontent_step_claimant(int obj);              /* pcontent.c: an object's Step claimant (0 unknown, 6 none) */
 #endif

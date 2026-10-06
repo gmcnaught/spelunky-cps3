@@ -55,6 +55,11 @@ static int pcontent_step(int i)
 #endif
 }
 
+/* the packages by claimant number (pcstep 1-5), and an object's kept Step claimant (0 not known yet, 6 none): pobj.c
+   ev_step calls a package's Step directly once an object's whole dispatch is known to end there */
+int (*const pcontent_pkg_ev[6])(int ev, int i, int arg) = { 0, pjungle_ev, pswamp_ev, pice_ev, ptemple_ev, pitems_ev };
+int pcontent_step_claimant(int obj) { return pcstep[obj]; }
+
 int pcontent_ev(int ev, int i, int arg)
 {
     if (ev == FEV_STEP) return pcontent_step(i);
