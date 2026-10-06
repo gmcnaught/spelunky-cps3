@@ -1962,6 +1962,93 @@ int (collision_point_any_at)(int i, int32_t dx, int32_t dy, int obj)
     return (collision_point_any)(PTOD(PW.in[i].x) + dx, PTOD(PW.in[i].y) + dy, obj, 0, NOONE);
 }
 
+/* ---- the idle fish's tests (pk_swamp.c piranha_idle): the common answers of three queries in a few lines, -1 where
+   the caller must ask the general function. Each reads what the general one reads first and changes nothing it would
+   not (grid_flush only where collision_point_any would run it) ---------------------------------------------- */
+
+/* collision_point_any_at(i, dx, dy, obj) for a static family, at the query x, y it makes for whole x(i), y(i) (|.| <
+   29900) and |dx|, |dy| <= 16: x(i) + dx, y(i) + dy. 0 when no entry of the family reaches the point's cell
+   (xpoint_none), 1 when the cell's hint has a cached whole box holding the point (xhint_hit, prec 0); -1 otherwise
+   (pending index updates, out of the grid, a hint without a whole box) */
+int pw_static_xy(int obj, int32_t x, int32_t y)
+{
+#ifndef PCOL_EXACT
+    int f, cx, cy, k;
+    const struct pin *h;
+    if (obj < 0 || (f = xf_of[obj]) < 0 || xdhead >= 0 || pcol_quiet()) return -1;
+    if (fam_none(obj)) return 0;
+    if (x < 0 || y < 0 || (cx = x >> 4) >= GRID_W || (cy = y >> 4) >= GRID_H) return -1;
+    if (xfar[f] == 0 && !xsat[f] && xcnt[f][cy][cx] == 0) return 0;
+    k = xhint[cy][cx];
+    if (k < 0) return -1;
+    h = &PW.in[k];
+    if (!h->alive || h->bbk != BB_INT || !obj_is(h->obj, obj)) return -1;
+    return x >= h->bl && x < h->br && y >= h->bt && y < h->bb ? 1 : -1;
+#else
+    (void)obj; (void)x; (void)y;
+    return -1;
+#endif
+}
+
+/* collision_point_any(x, y, oSolid, 0, noone) for whole x, y (|.| < 30000): the solid summary's answers (a block in
+   the cell: 1; no block and no other entry reaching it: 0), -1 otherwise */
+int pw_solid_pt(int32_t x, int32_t y)
+{
+#ifndef PCOL_EXACT
+    int cx, cy;
+    if (gfar || pcol_quiet()) return -1;
+    if (fam_none(OBJ_oSolid)) return 0;
+    if (x < 0 || y < 0 || (cx = x >> 4) >= GRID_W || (cy = y >> 4) >= GRID_H) return -1;
+    grid_flush();
+    if (gfull[cy][cx] > 0) return 1;
+    return gother[cy][cx] == 0 ? 0 : -1;
+#else
+    (void)x; (void)y;
+    return -1;
+#endif
+}
+
+/* pin_setx(p, PI(x + d)) for i's whole x (|x| < 29900) and d = +-1. A box cached whole (BB_INT) before stays cached:
+   bbkind_set's box at x + d is the old one moved by d (the sprite, the scales and the angle are unchanged, x + d is
+   whole), and the setter's marks (pw_changed) do not read the box */
+void pw_xstep(int i, int32_t x, int d)
+{
+    struct pin *p = &PW.in[i];
+    int k = p->bbk == BB_INT;
+    pin_setx(p, PI(x + d));
+    if (k) {
+        p->bl = (int16_t)(p->bl + d);
+        p->br = (int16_t)(p->br + d);
+        p->bbk = BB_INT;
+#ifdef PLAY_STATS
+        {
+            int16_t b[4] = { p->bl, p->bt, p->br, p->bb };
+            p->bbk = 0;
+            if (bbkind_set(i) != BB_INT || b[0] != p->bl || b[1] != p->bt || b[2] != p->br || b[3] != p->bb) {
+                fprintf(stderr, "pw_xstep: box differs (%d)\n", i);
+                abort();
+            }
+        }
+#endif
+    }
+}
+
+/* some alive instance of one of the n families objs[] has its enemy record's swimming set */
+int pw_fam_swims(const int16_t *objs, int n)
+{
+    int a, j, k;
+    for (a = 0; a < n; a++) {
+        int obj = objs[a];
+        if (olive[obj] == 0) continue;
+        for (j = obj; j >= 0; j = ofam_next(obj, j)) {
+            if (olive[j] == 0) continue;
+            for (k = pw_ohead[j]; k >= 0; k = pw_inext[k])
+                if (PEN(&PW.in[k])->swimming) return 1;
+        }
+    }
+    return 0;
+}
+
 /* a line query with whole-number ends: their bounding box, and whether the line is axis-aligned */
 struct lq { int iok, axis; int32_t lx, ly, hx, hy; };
 

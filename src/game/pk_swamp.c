@@ -222,7 +222,7 @@ static int create(int i, int fromgen)
 
 /* ---- oPiranha / oDeadFish Step ----------------------------------------------------------------------------- */
 /* obj = instance_nearest(x, y, oCaveman), then oShopkeeper, oHawkman, oYeti: the first alive (hp > 0) one */
-static int prey(int i)
+static __attribute__((noinline)) int prey(int i)
 {
     static const int16_t objs[4] = { OBJ_oCaveman, OBJ_oShopkeeper, OBJ_oHawkman, OBJ_oYeti };
     int k, obj = NOONE;
@@ -287,11 +287,111 @@ static void fish_end(int i, int left, int right)
     }
 }
 
+/* piranha_step for an IDLE piranha in its common case, in a few cache lines (docs/LUSH.md 12): active, hp >= 1, status
+   IDLE, dir exactly 0 or 180, the bubble timer above 0 and x, y whole (|.| < 29900). The statements are
+   piranha_step's for status 0, in their order:
+   - the point tests take pw_static_xy / pw_solid_pt's answer at the general function's own query (x + dx, y + dy
+     whole: collision_point_any_at's ints, and X(i) + 10 a whole double, so CP's pq_init takes the ints), the
+     general function where they give -1;
+   - the move is moveTo_x1's PLAY_WALK path (oPiranha is outside the oCharacter, oSolid and oPlatform families;
+     ibounds' ints from the whole x, y), where that path exists; x + PI(d) of a whole float x is (pos)(x + d);
+   - dist only when it is read (PL.swimming && !PL.dead), from the position before the move as piranha_step's;
+     pdist_lt_at and instance_first_p have no side effect;
+   - prey() only when some instance of its four families swims (prey_swims' note: otherwise the test fails);
+   - DIR's compares on its bits: 0 is DEQ 0 and right; 180 is not DEQ 0 and left (90 < 180 < 270).
+   Returns 0 without doing anything when the case does not apply (piranha_step then runs) */
+#if !defined(PCOL_EXACT) && !defined(PLAY_FIXED) && !defined(NUM_IS_CLASS) && !defined(PLAY_NOREST)
+#define FISH_WALK 1                                            /* pscript.c's PLAY_WALK */
+#else
+#define FISH_WALK 0
+#endif
+#ifdef PLAY_STATS                                              /* the host builds compare every quick answer */
+#define FISH_CHECK(r, g, what) \
+    do { if ((r) >= 0 && (r) != ((g) != 0)) { fprintf(stderr, "piranha_idle: %s %d differs (%d)\n", what, r, i); abort(); } } while (0)
+#else
+#define FISH_CHECK(r, g, what) ((void)0)
+#endif
+static __attribute__((noinline)) int piranha_idle(int i)
+{
+#if !defined(PLAY_FIXED) && !defined(NUM_IS_CLASS)
+    static const int16_t prey_objs[4] = { OBJ_oCaveman, OBJ_oShopkeeper, OBJ_oHawkman, OBJ_oYeti };
+    struct pin *p = &PX(i);
+    struct pin_ext *e = PE(p);
+    union { double d; uint64_t u; } v;
+    int32_t x, y, ax;
+    int d, r, near = 0, xk = 1;
+    if (!e->active || e->hp < 1 || e->status != 0 || BUBBLETIMER(p) <= 0 || !pin_xy_int(i, &x, &y) ||
+        x <= -29900 || x >= 29900 || y <= -29900 || y >= 29900)
+        return 0;
+    v.d = e->direction;
+    if (v.u == 0) d = 1;
+    else if (v.u == 0x4066800000000000ull) d = -1;             /* 180.0 */
+    else return 0;
+    if (PL.swimming && !PL.dead) {
+        int c = instance_first_p(OBJ_oCharacter);
+        near = pdist_lt_at(p->x, p->y, 4, 4, PX(c).x, PX(c).y, 90);
+    }
+    /* fish_idle_swim */
+    ax = d > 0 ? x + 10 : x - 2;                               /* (x + 8 + 2: the water test's and CP's) */
+    r = pw_static_xy(OBJ_oWater, ax, y);
+    FISH_CHECK(r, collision_point_any_at(i, ax - x, 0, OBJ_oWater), "water ahead");
+    if (r < 0) r = collision_point_any_at(i, ax - x, 0, OBJ_oWater);
+    if (r) {
+        r = pw_solid_pt(ax, y);
+        FISH_CHECK(r, CP(X(i) + (ax - x), Y(i), OBJ_oSolid), "solid ahead");
+        if (r < 0) r = CP(X(i) + (ax - x), Y(i), OBJ_oSolid);
+    } else
+        r = 1;                                                 /* (no water ahead: turn) */
+    if (!r) {
+#if FISH_WALK
+        NOPS(10);
+        if (!solid_vline_any(d > 0 ? x + e->rbo : x + e->lbo - 1, y + e->tbo + 5, y + e->bbo - 1, i)) {
+            pw_xstep(i, x, d);
+            x += d;
+        }
+#else
+        moveTo_x1(i, d);
+        xk = 0;
+#endif
+    } else {
+        e->direction = d > 0 ? 180 : 0;
+        d = -d;
+    }
+    if (near) e->status = 1;
+    if (pw_fam_swims(prey_objs, 4)) {
+        int obj = prey(i);
+        if (obj != NOONE && PEN(&PX(obj))->swimming && PE(&PX(obj))->hp > 0) e->status = 3;
+    }
+#ifdef PLAY_STATS
+    else {                                                     /* the host builds: the skipped prey() fails the test */
+        int t = prey(i);
+        if (t != NOONE && PEN(&PX(t))->swimming && PE(&PX(t))->hp > 0) { fprintf(stderr, "pw_fam_swims\n"); abort(); }
+    }
+#endif
+    BUBBLETIMER(p) -= 1;
+    /* fish_end */
+    r = d > 0 ? GSPR_sPiranhaRight : GSPR_sPiranhaLeft;
+    if (p->spr != r) pin_set_sprite(i, r);
+    r = xk ? pw_static_xy(OBJ_oWater, x + 4, y + 4) : -1;
+    FISH_CHECK(r, collision_point_any_at(i, 4, 4, OBJ_oWater), "water");
+    if (r < 0) r = collision_point_any_at(i, 4, 4, OBJ_oWater);
+    if (!r) {
+        pin_create(PX(i).x, PX(i).y, OBJ_oFishBone);
+        pin_destroy(i);
+    }
+    return 1;
+#else
+    (void)i;
+    return 0;
+#endif
+}
+
 static void piranha_step(int i)                                /* objects/oPiranha/Step_0.gml */
 {
     struct pin *p = &PX(i);
     int c, obj, near;
     double dist;                                               /* (the squared distance: pdist2) */
+    if (piranha_idle(i)) return;
     if (!PE(p)->active) return;
     if (PE(p)->hp < 1) {                                       /* :3 */
         scrCreateBlood(i, p->x + PI(4), p->y + PI(4), 3);
