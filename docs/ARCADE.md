@@ -255,12 +255,16 @@ compares the host's per-step log.
 The same 12,062-step capture replayed without its RUN BUTTON TOGGLE flag differs from checkpoint 1 (step 128) on: the
 checkpoints catch a replay that is not the cabinet's game.
 
-**Not checked:** jtcps3. To check it, the lead runs these steps on the MiSTer:
-1. Install a release built from this code (`scripts/release.sh`). v0.1.0 has no capture.
-2. Play a game and die. Open GAME CAPTURE and take screenshots: `echo screenshot > /dev/MiSTer_cmd` once a second
-   for 2-3 cycles of the pages.
-3. Copy the screenshots back and run `tools/capture.py decode`. Expect "marks 1104/1104" and "CRC ok" on each page,
-   and the capture's CRC-32.
-4. Run `scripts/replay.sh`. Expect the checkpoints equal and "replay end capture ... -> equal".
-5. Leave the settings screen and open GAME CAPTURE again. Expect the same capture.
-6. Optionally, reset (F3) and look again.
+**jtcps3 (2026-10-06, MiSTer .62, jtcps3.rbf 2026-10-02):** the release from main 2e1c921 (`scripts/release.sh`,
+DIRTY 0), installed as `games/mame/spelunky.zip` and an MRA in `_Arcade/_CPS3Test`. No human: the inputs came from
+`scripts/mister_keys.py`, a uinput virtual keyboard on the MiSTer that Main_MiSTer passes to the core (5 coin, 1
+Start, Down + Z (B5) bomb at the feet, F2 test, arrows, LCtrl B1, LAlt B2).
+
+| Step | Result |
+|---|---|
+| Coin, Start, one bomb dropped at the player's feet | dead (life 4 -> GAME OVER, final score $0) |
+| F2, GAME CAPTURE; 25 shots 1 s apart | page 1 of 1: build 2E1C9219, 1,006 steps, 160 bytes; all 25 shots marks 1104/1104, unsure cells 0, CRC ok; capture CRC-32 ok; seed 172323775, 35 runs, 15 checkpoints, end level 1 room 12 dead 1 |
+| `scripts/replay.sh` | 1,006 of 1,006 steps, checkpoints 15 of 15 equal; "replay end capture level 1 plife -50 money 0 room 12 dead 1 end_room -1 -> equal" |
+| B2, test (leave: the program restarts to attract, CREDIT 0); F2, GAME CAPTURE again; 10 shots | 10 of 10 marks 1104/1104, CRC ok; the decoded capture equal to the first (header, checkpoints, controls) |
+
+Not checked on jtcps3: a capture of more than one page, and a JTFRAME reset (F3) between game and capture.
