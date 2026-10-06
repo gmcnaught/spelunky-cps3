@@ -1,5 +1,21 @@
 # Handoff
 
+## 2026-10-06 00:20: main 75f3a2f (70 commits ahead of origin, not pushed)
+
+Since v0.1.0, merged and gated (make check incl. EQUIV 88/88, ctall 59, playsh2 9,701/9,701, shell, hud, view,
+game_check, end_host, olmec_host, capture_check):
+- INVINCIBLE dev option (DEV=1 builds); GAME CAPTURE (docs/ARCADE.md section 7; not yet decoded from jtcps3 screenshots).
+- Fixes: global.downToRun = 1 (crawl at run speed), pw_release hang, transition-room Creates (4008; RNG from level 5),
+  6 translations (docs/CONTENT.md), oSolid 1020 flag; game-over panel / ending in tracer + drawmodel, wide-sprite view
+  fix, ending text fade, compass rows, end_olmec route.
+- Speed: PERF3 batches 23-24. jtcps3 (.62) lush route means: l5s11 675 K, l5s37 629 K, l6s23 647 K (budget 525 K);
+  about 3/4 of a lush step is now cache misses (PERF3).
+- Known gameplay difference accepted by the user: p5_lush_l5s37 (docs/EQUIV.md section 4).
+
+.81 runs this code (spelunky.zip and spelunkydev.zip built from 23859c1's src/game; the user reports no new bugs, only
+lush slowdown). Next: lush speed (memory layout / cache misses), the GAME CAPTURE hardware decode check, then the list
+below.
+
 ## 2026-10-05 14:05: v0.1.0 released; next session
 
 v0.1.0 is on GitHub (tag build green, spelunky.zip + MRA) and on .81 (/media/fat/_Arcade/). Next, in order:
