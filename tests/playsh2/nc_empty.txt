@@ -1,0 +1,1 @@
+# empty: the -ffunction-sections link of mknc.py with nothing moved (the baseline for NC builds)

@@ -60,6 +60,17 @@ ifeq ($(JT),1)
 SRCS   += bigtext.c
 CFLAGS := -Ibuild/jt $(if $(JTNAME),'-DJT_NAME="$(JTNAME)"') $(filter-out -Wl$(comma)-T$(comma)sprbss.ld,$(CFLAGS)) -Wl,-T,jtcold.ld -DJT=1   # build/jt: jobs.h, jt_expect.h
 endif
+# NC=<nc.txt>: functions, const tables and .bss arrays linked at the cache-through mirrors, read past the SH-2 cache
+# (tests/playsh2/mknc.py, docs/ICACHE.md); the build then uses LAYOUT's -ffunction-sections link with mknc.py's script.
+# NCSHADOW=1: the same layout at the cached addresses (MAME traces: mknc.py --shadow)
+NC ?=
+ifneq ($(NC),)
+LAYOUT := $(OUT)/nc.ld
+.DEFAULT_GOAL := all
+$(OUT)/nc.ld: $(NC) mknc.py
+	@mkdir -p $(OUT)
+	python3 mknc.py $(NC) $@ $(if $(filter 1,$(NCSHADOW)),--shadow)
+endif
 # OSFILES="a.c b.c": those files of the snapshot compiled -Os (the rest -O2); LAYOUT=<linker script>: code built with
 # -ffunction-sections and linked with that script (mklayout.py: hot functions first in SIMM 1)
 OSFILES ?=
@@ -87,3 +98,10 @@ build/jobs.h: mkjobs.py $(wildcard ../routes/p*.txt)
 	@mkdir -p build
 	python3 mkjobs.py $@ ../routes
 $(OUT)/main.elf: build/g/stamp build/jobs.h core.h sprbss.ld wrap.S attr.c $(ROOT)/src/sh2/softfp.c $(ROOT)/src/sh2/softfp_sh2.S
+# NC builds: SIMM 1 holds .nctext (loaded at 0x06000000, run at 0x26000000) before .text
+ifneq ($(NC),)
+$(OUT)/mame/sfiii3na: $(OUT)/main.elf $(FLASH)
+	sh-elf-objcopy -O binary -j .boot $< $(OUT)/main.bin
+	sh-elf-objcopy -O binary -j .nctext -j .text -j .data $< $(OUT)/simm1.bin
+	python3 $(CPS3_ROOT)/tools/mkcps3.py $(OUT)/main.bin $(OUT)/mame $(OUT)/simm1.bin $(FLASH)
+endif

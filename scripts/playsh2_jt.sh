@@ -47,13 +47,17 @@ done
 { echo "};"
   echo "#define JT_LABEL \"\""; } >> "$J/jt_expect.h"
 # JTV=<name>: a code-layout variant (build/jt/elf<name>, out<name>): OSFILES (-Os files), LAYOUT=1 (mklayout.py
-# from tests/playsh2/hot.txt)
+# from tests/playsh2/hot.txt), NC=<list>
 LO=; [ "${LAYOUT:-0}" = 1 ] && { python3 $T/mklayout.py $T/hot.txt $J/link$V.ld; LO=LAYOUT=build/jt/link$V.ld; }
+# NC=<list> (relative to tests/playsh2, e.g. NC=nc_robust.txt): code and arrays read past the SH-2 cache
+# (tests/playsh2/mknc.py, docs/ICACHE.md); MAME then runs the set with -nodrc (MAME 0.264's SH-2 recompiler does not
+# run code from SIMM 1's cache-through mirror)
+ND=; [ -n "${NC:-}" ] && { LO="NC=$NC"; ND=-nodrc; }
 VN=$(echo "${V:-BASE}" | tr a-z_ A-Z-)
 scripts/dmake.sh $T OUT=build/jt/elf$V JT=1 SOFTFP=1 OPT="${OPT:--O2}" OSFILES="${OSFILES:-}" $LO JTNAME=$VN >/dev/null
 scripts/dmake.sh $T OUT=build/jt/elf$V JT=1 SOFTFP=1 OPT="${OPT:--O2}" OSFILES="${OSFILES:-}" $LO JTNAME=$VN PROG=pjt$V \
   TITLE="Spelunky SH-2 timing $VN" mister >/dev/null
-PSH2_OUT="$O/jt.txt" PSH2_NJOBS=$NJ scripts/mame.sh sfiii3na -rompath "$J/elf$V/mame" -skip_gameinfo -nothrottle -sound none \
+PSH2_OUT="$O/jt.txt" PSH2_NJOBS=$NJ scripts/mame.sh sfiii3na $ND -rompath "$J/elf$V/mame" -skip_gameinfo -nothrottle -sound none \
   -video none -seconds_to_run 3000 -cfg_directory "$O/w/cfg" -nvram_directory "$O/w/nvram" -snapshot_directory "$O/snap" \
   -diff_directory "$O/w/diff" -state_directory "$O/w/sta" -inipath "$O/w" -autoboot_script scripts/lua/playsh2_jt.lua \
   >"$O/mame.log" 2>&1 || true
