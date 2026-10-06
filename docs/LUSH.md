@@ -275,3 +275,129 @@ piranhas (idle: moveTo, water tests, bubbles), frogs, man traps, a monkey and th
 (about 10 K jtcps3 each) is the PLAY_WALK path already: its cost is the move's own bookkeeping (pw_changed's marks,
 the box cache, one solid line). The player's swimming Step (characterStepEvent 115 K incl. on drain 161) is shared
 code; it is the next candidate.
+
+## 11. Why the swamp rooms cost more: cache capacity, not instructions (2026-10-06, main 041d709)
+
+### 11.1 The gap in numbers
+
+jtcost fit (JTC_BYOBJ=1), main 041d709. Steps by jtcost.sh's record count. The comparison steps are a
+representative step of each route: caveman 138 is the route's median MAME step (96 K); l5s37 201 as in section 2.
+
+| Step | model | instructions | fetch misses (cold / capacity) | data misses (cold / capacity; literal pools) | stores |
+|---|---|---|---|---|---|
+| c_swamp_drain 61 (walking) | **552 K** | 131.8 K | 9,391 (2,718 / 6,047) | 5,714 (1,967 / 3,224; 2,184) | 9,940 |
+| p5_lush_l5s37 201 | 455 K | 125.0 K | 6,488 (2,637 / 2,888) | 4,562 (2,060 / 1,877; 1,593) | 8,290 |
+| p5_caveman 138 | 420 K | 109.4 K | 6,332 (2,707 / 2,963) | 4,206 (1,876 / 1,942; 1,484) | 8,276 |
+
+Drain 61 runs 5 % more instructions than l5s37 201 and touches about as much distinct code and data (the cold
+misses are about equal). It is 97 K dearer, and 92 K of that is capacity misses: +3,159 fetch lines (41 K) and
++1,347 data lines (51 K). That is code and data evicted and fetched again within the step. The model's
+fully associative bound is -2.4 %, so these are capacity misses, not conflicts: placement cannot fix them (section 4).
+
+By object (the share of the step whose events run while play_cur_obj is that object):
+
+| | drain 61 | caveman 138 | l5s37 201 |
+|---|---|---|---|
+| player | 104.5 K (18.9 %) | 165.5 K (39.4 %) | 143.8 K (31.6 %) |
+| enemies and their detritus | **305 K (55 %)**: oPiranha 176.3 K (6), oFrog 53.5 K (7), oManTrap 44.4 K (3), oBubble 30.9 K (5) | ~118 K: oWebCannon 54.6 K, oCaveman 28.5 K, oSpiderHang 22.5 K, oSnake 11.6 K | ~129 K: oCaveman 60.3 K, oBat 28.7 K, oEnemySight 24.9 K, oManTrap 15.6 K |
+
+Per instance (a segment per store to play_cur_obj, from a kept trace; code / data footprint = distinct 16-byte lines
+touched):
+
+| Instance (drain 61 unless named) | cost | instructions | fetch misses | data misses (literal) | stores | code / data touched |
+|---|---|---|---|---|---|---|
+| each of the 6 idle piranhas (consecutive in the Step loop) | 26.3-29.4 K, mean 28.5 K | 5.3 K | 623 (8.1 K) | 308 (126) (11.6 K) | 440 (2.2 K) | 9.0 KB / 4.5 KB |
+| the frog in view | 38.5 K | 8.3 K | 824 | 371 | 637 | 12.1 KB / 4.8 KB |
+| a frog out of view (5) | 1.5 K | 562 | 4-9 | 10 | 62 | 1.5 KB / 0.9 KB |
+| the man trap in view | 35.5 K | 8.5 K | 694 | 320 | 753 | 10.8 KB / 4.8 KB |
+| a man trap out of view (2) | 3.1-3.3 K | 546-569 | 64-82 | 33-35 | 61 | 1.5 KB / 0.9 KB |
+| a bubble (5) | 4.8-7.4 K | 1.17 K | 77-160 | 52-93 | 83 | 2.6 KB / 1.6 KB |
+| an animated instance, animation pass (about 25) | 0.65-1.0 K | 380-640 | 0-2 | 3-12 | 16-21 | ~1 KB / 0.5 KB |
+| caveman 138: a snake / hanging spider out of view | 0.9 K | 430 | 0-5 | 3-5 | 52 | |
+| caveman 138: the caveman in view | 27.7 K | 5.2 K | 627 | 296 | 382 | 9.8 KB / 4.4 KB |
+
+So one idle piranha's Step is a long generic path: 9 KB of code and 4.5 KB of data, against a 4 KB unified cache.
+The second piranha finds none of the first one's lines, so each of the six pays the full miss bill: 77 % of a
+piranha's cost is misses and stores. Caveman's enemies are mostly out of view and leave at the view test (0.9 K).
+HD's oPiranha has no view test and does not inherit oEnemy's Step (refs/hd/src/objects/oPiranha/Step_0.gml: `if
+(active)`, and `active` stays as oEnemy's Create set it), so all six piranhas run every step wherever they are.
+
+### 11.2 Per object: what HD's Step requires, and what the port runs
+
+**oPiranha, IDLE** (6 a step on drain and swim). HD: `dist = point_distance(x+4, y+4, oCharacter.x, oCharacter.y)`;
+a water point test and a solid point test ahead; `moveTo(±1, 0)`; `dist < 90 and oCharacter.swimming`; four
+`instance_nearest` for prey; the bubble timer; `sprite_index` by `dir`; a water point test at (x+4, y+4). That is
+three point tests, one 1-pixel move and a few compares. The port (JTC_CALLERS, inclusive, per piranha):
+
+| Part | port path | cost | what is avoidable |
+|---|---|---|---|
+| Step dispatch | ev_step -> pen_step (switch, obj_is) -> pcontent_ev -> pcontent_step -> pswamp_ev (switch) -> piranha_step | ~1.3 K | everything but the call (stepk could hold the final handler) |
+| moveTo(±1, 0) | vel_parts x2 (precip_parts), play_time %, is_character / obj_is x3, ibounds, solid_vline_any -> line_any (3.8 K), pin_setx -> pw_changed (nc_moved, pw_draw_mark, bbk, grid_dirty, pcol_changed -> mark_e, cupdate_at: 3.1 K), pin_sety (no change) | 10.6 K | vel_parts, the modulo, the obj_is tests, the y half: ~1.5-2 K. pw_changed and the line test are the move's own work |
+| water ahead | collision_point_any_at -> xstatic_any -> xpoint_none (fails: the point is in water) -> xhint_hit -> point_hit | ~3.7 K | the wrapper chain's code lines |
+| solid ahead | `CP(X(i) + 10, Y(i), oSolid)`: extendsfdf2 x2, adddf3, collision_point_any -> pq_init on doubles -> the solid summary | ~1.3 K | the doubles: the position is whole, so the summary can be read on ints |
+| dist | instance_first_p (fam_begin over oCharacter's subtree) and pdist2 on doubles (4 extendsfdf2, 3 adddf3, 2 subdf3, 2 muldf3), computed every step | ~3.5 K | it is read only when the player is swimming (IDLE, ATTACK) |
+| prey | prey_swims: 4 pw_with copying into a 32-entry stack array | 1.5 K | the copy and 4 calls: walk the lists |
+| sprite | fish_end: `DGT(DIR, 90) && DLT(DIR, 270)`: gcmp_dd(a - b), a subdf3 each | ~0.7 K | a compare with a constant on the bits (pcmpc.h) |
+| water at (x+4, y+4) | as water ahead | ~3 K | |
+| outside the Step | the animation pass (image_speed 0.5: __mulsf3, __addsf3, the compares), the collision pass entry | ~1 K + pass share | |
+
+**oPiranha, ATTACK** (swimming steps): + point_direction_d, RAND x2, psincos_cr (fast path since 2b12a68), a water
+test at a fractional point on doubles, moveTo with fractional velocities. About 42 K a piranha on drain 161.
+
+**oBubble** (about 5 alive). HD: `y += yVel; if (!collision_point(x, y, oWater)) instance_destroy()`. Port: ev_step ->
+SK_PKG -> pswamp_ev -> PADDV (extendsfdf2, adddf3, truncdfsf2) -> pin_sety -> pw_changed (0.6 K) -> collision_point_any_at
+on the float position (pfloor_int x2, xpoint_none fails, xhint_hit, point_hit). 4.8-7.4 K for one float add and one
+point test, plus the animation pass (image_speed 0.2: not dyadic, the float add rounds).
+
+**oFrog, oManTrap** (HD: `action_inherited()` first, then the view test). Out of view, HD runs oEnemy's view test
+(active = false) and its own: two compares. The port runs ev_step -> pen_step -> pcontent_ev -> pcontent_step ->
+pjungle_ev -> frog_step -> pen_parent_step -> eview, then eview again: 1.5 K a frog and 3.1 K a man trap (5 frogs and
+2 man traps on drain 61). In view: moveTo with gravity, isCollision* x4-5, distance_to_object_p, the solid point
+tests (35-38 K each, one of each in view at step 61).
+
+**Generic per-instance overhead** paid by every active enemy whatever it does: the dispatch chain (1-1.3 K), the
+animation pass (0.65-1.0 K: soft-float multiply and add, and the frame compares, even for image_speed 0.5 on a
+1-speed sprite), the alarm pass walk (evnz lists: cheap), pcol_event_done after the Step, its collision-pass entry
+(the pass is 21 K on drain 61), and pw_changed's marks on every move (nc_moved, the draw mark, the box cache reset,
+grid_dirty, pcol_changed: 0.6-3.1 K by how cold it is).
+
+### 11.3 Fixes, ranked (expected jtcps3 saving, jtcost fit)
+
+Estimates are the cost billed now to the code each fix stops running. Because the per-instance footprint is the
+problem, shortening the path should also cut misses in what remains; the estimates do not count that.
+
+| # | Fix | walking (drain 61) | swimming (drain 161, swim 522) | byte-identical? |
+|---|---|---|---|---|
+| 1 | **Lean idle piranha path.** dist and c only when they are read (`PL.swimming && !PL.dead` first: pdist2 has no side effect); the solid test ahead on the whole position's ints (the solid summary, as collision_point_any's int path); fish_end's DIR compares on the bits (CGT / CLT with H(90), L(270)); prey_swims walking the families' lists without the copy | ~25-35 K | ~10 K (fish_end, prey) | yes: the same queries and compares, pure computations reordered or skipped when their results are not read |
+| 2 | **moveTo(±1, 0) without the generic walk** for a non-character, non-solid, non-platform mover with ibounds: the one solid_vline_any, then pin_setx. That is what moveTo's PLAY_WALK branch does for these values (vel_parts(±1) = r 0, fl 1; y velocity 0: no y walk, pin_sety unchanged) | ~10 K | idle piranhas only | yes (PLAY_WALK builds only; the exact build keeps moveTo) |
+| 3 | **Direct Step for P7 enemies claimed by pen_step** (oPiranha, oFrog, oManTrap, oMonkey, ...): pen_step's oEnemy fallback goes to pcontent_ev, and pcontent_step's claimant depends on the object only (as step_pkg, section 6 fix 4), so stepk can keep SK_PKG + claimant | ~10-18 K (about 18 instances) | the same | yes (PLAY_DCHECK keeps the whole path) |
+| 4 | **Off-view enemy pre-check at the Step loop**, for objects whose Step is exactly `pen_parent_step(i); if (!eview(i, 20, 4)) return; ...` (frog, fire frog, man trap, ...): out of view, the Step is `active = 0`; pen_parent_step's first test and the caller's are the same eview, and nothing between them changes the view or the instance | ~10 K | ~5 K | yes |
+| 5 | **Animation without soft-float in the common cases**: image_index + image_speed x speed with speed 1.0f (the product is image_speed exactly), and with both operands dyadic and small (0.5 steps) the float sum is exact in fixed point; the frame compares on the bits. Else the float path | ~10 K (about 25 animated instances) | ~10 K | yes, with an exactness argument per case (tests over all relevant floats, as tests/sincos) |
+| 6 | **Bubble Step from the Step loop** with the float add on the bits when exact | ~5 K | ~10 K (more bubbles) | yes, by the same kind of argument as 5 |
+
+Expected after 1-4 on drain 61: about 55-75 K (10-14 %), or 552 -> ~485 K. The walking steps would then be near the
+0.525 M budget. The swimming steps would not (drain 161 ~886 K): the player's swimming Step (150-187 K) and the
+attacking piranhas (42 K each) remain.
+
+### 11.4 Structural options
+
+- **A compact idle piranha path under 4 KB of code and data.** If one idle piranha's path fitted the cache, piranhas
+  2-6 would cost about their instructions (~7 K) instead of 28.5 K: up to ~100 K on every walking swamp step. Fixes
+  1-2 take soft-double and the generic moveTo off the path. The rest is the shared collision code (line_any, the
+  static-family point test, pw_changed -> pcol_changed's tree marks), which a dedicated integer routine (water /
+  solid counts read directly, the move's marks inlined) could replace for this case. Byte-identical in principle
+  (the same values), but it duplicates collision code that the PLAY_STATS checks would have to cover. Only worth it
+  if 1-4 leave the walking steps over budget.
+- **Batching the six piranhas' Steps phase by phase** (all water tests, then all moves, ...), so each phase's code
+  stays hot. The Steps are already consecutive (object order), so the batching that is free has already happened.
+  Splitting phases across instances reorders side effects: RAND draws (the bubble timer), pin_create ids (bubbles),
+  and collision marks. A piranha's tests read only static families and the prey lists, which other piranhas do not
+  change, so an order-preserving split looks possible. The argument is long and fragile. Not proposed before the
+  compact path.
+- **Data layout.** Of a piranha's 308 data misses, 126 are literal pools. Most of the rest are the stack (88 % of the
+  step's stores are stack stores), the index tables and other instances' records. The instance's own pin / pin_ext /
+  pin_en lines are about 10. Packing piranha records together would gain little. Cutting literal-pool misses (RAM
+  addresses through GBR, PERF3 1.4) is the data-side lever, and it is shared with every route.
+- **Not byte-identical (gameplay-visible), not to implement:** a view test for piranhas (HD runs them everywhere:
+  positions, bubbles and their RAND draws would differ off screen; on drain 61 all six are in view anyway, so
+  little gain there); stepping idle piranhas every other frame (~85 K on walking steps, visibly different motion).
