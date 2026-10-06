@@ -277,7 +277,7 @@ static void piranha_step(int i)                                /* objects/oPiran
 {
     struct pin *p = &PX(i);
     int c, obj;
-    double dist;
+    double dist;                                               /* (the squared distance: pdist2) */
     if (!PE(p)->active) return;
     if (PE(p)->hp < 1) {                                       /* :3 */
         scrCreateBlood(i, p->x + PI(4), p->y + PI(4), 3);
@@ -286,10 +286,10 @@ static void piranha_step(int i)                                /* objects/oPiran
     }
     p = &PX(i);
     c = instance_first_p(OBJ_oCharacter);
-    dist = point_distance_d(X(i) + 4, Y(i) + 4, X(c), Y(c));
+    dist = pdist2(X(i) + 4, Y(i) + 4, X(c), Y(c));
     if (PE(p)->status == 0) {                                  /* IDLE :17 */
         fish_idle_swim(i);
-        if (DLT(dist, 90) && PL.swimming && !PL.dead) PE(p)->status = 1;
+        if (pdist2_lt(dist, 90) && PL.swimming && !PL.dead) PE(p)->status = 1;
         obj = prey_swims() ? prey(i) : NOONE;
 #ifdef PLAY_STATS
         if (obj == NOONE) {                                    /* the host builds: the skipped prey() fails the test */
@@ -306,7 +306,7 @@ static void piranha_step(int i)                                /* objects/oPiran
             DIR(p) = RAND(0, 1) * 180;
         }
     } else if (PE(p)->status == 1 && c != NOONE) {             /* ATTACK :63 */
-        if (DLT(dist, 90) && PL.swimming && !PL.dead) {
+        if (pdist2_lt(dist, 90) && PL.swimming && !PL.dead) {
             double d = point_direction_d(X(i) + 4, Y(i) + 4, X(c), Y(c));
             int a = RAND(0, 1), b = RAND(0, 1);
             double r, si, co;
@@ -336,8 +336,8 @@ static void piranha_step(int i)                                /* objects/oPiran
                 PE(p)->status = 2;
                 PE(p)->counter = (int16_t)RAND(20, 40);
             }
-            dist = point_distance_d(X(i) + 4, Y(i) + 4, X(obj) + 8, Y(obj) + 8);
-            if (DLT(dist, 4)) {
+            dist = pdist2(X(i) + 4, Y(i) + 4, X(obj) + 8, Y(obj) + 8);
+            if (pdist2_lt(dist, 4)) {
                 PE(&PX(obj))->status = 2;
                 if (CANBITE(p)) {
                     PE(&PX(obj))->hp -= 1;
@@ -362,7 +362,7 @@ static void deadfish_step(int i)                               /* objects/oDeadF
 {
     struct pin *p = &PX(i);
     int c;
-    double dist;
+    double dist;                                               /* (the squared distance: pdist2) */
     if (!eview(i, 16, 0)) return;
     if (PE(p)->hp < 1) {                                       /* :4 */
         int k;
@@ -372,10 +372,10 @@ static void deadfish_step(int i)                               /* objects/oDeadF
     }
     p = &PX(i);
     c = instance_first_p(OBJ_oCharacter);
-    dist = point_distance_d(X(i), Y(i), X(c), Y(c));
+    dist = pdist2(X(i), Y(i), X(c), Y(c));
     if (PE(p)->status == 0) {                                  /* IDLE :21 */
         fish_idle_swim(i);
-        if (DLT(dist, 90) && PL.swimming) PE(p)->status = 1;
+        if (pdist2_lt(dist, 90) && PL.swimming) PE(p)->status = 1;
     } else if (PE(p)->status == 2) {                           /* PAUSE :41 */
         if (PE(p)->counter > 0) PE(p)->counter -= 1;
         else {
@@ -383,7 +383,7 @@ static void deadfish_step(int i)                               /* objects/oDeadF
             DIR(p) = RAND(0, 1) * 180;
         }
     } else if (c != NOONE) {                                   /* :50 */
-        if (DLT(dist, 90) && PL.swimming && !PL.dead) {
+        if (pdist2_lt(dist, 90) && PL.swimming && !PL.dead) {
             double d = point_direction_d(X(i), Y(i), X(c), Y(c));
             int a = RAND(0, 1), b = RAND(0, 1);
             double r, si, co;

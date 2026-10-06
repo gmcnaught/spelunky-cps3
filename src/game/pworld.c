@@ -8,6 +8,7 @@
 #endif
 #include "pcol.h"
 #include "inst.h"                 /* GRID_W, GRID_H: the solid grid covers the generator's level grid */
+#include "pmath.h"                /* psqrt, pdist2_lt */
 
 /* the runner's float arithmetic as written (the precise collision code below follows its instruction order) */
 #ifdef __clang__
@@ -174,8 +175,10 @@ static int ofam_next(int root, int o)
     return -1;
 }
 
+static void pdist_warm(void);
 static void olists_reset(void)
 {
+    pdist_warm();
     int o;
     obj_desc_init();
     pcol_obj_tree();
@@ -3079,6 +3082,61 @@ static double dist_newton_i(uint32_t n)
     s = (double)r + 0.5;
     for (it = 0; it < 64 && s != prev; it++) { prev = s; s = 0.5 * (s + d / s); }
     return s;
+}
+
+/* DLT(psqrt(d2), c) for d2 = dx * dx + dy * dy >= 0 (point_distance_d's sum: +0 or above, never NaN for finite
+   positions). psqrt is correctly rounded, so non-decreasing in d2, and gcmp_dd(s, c) < 0 (s - c rounded, below
+   -eps) is non-decreasing in s's falseness: the compare is true exactly for d2 below a threshold T(c). T is the
+   least d2 (as bits: a non-negative double's bits order as its value) where the compare is false, found once per c
+   by bisection with psqrt itself (between 1 and 4 (c + 1)^2 when the compare is true and false there), and kept
+   (dthr). The host builds compare every answer with
+   DLT(psqrt(d2), c) */
+#define DTHR_N 16
+static struct { uint64_t cb, t; } dthr[DTHR_N];
+static uint8_t ndthr, dthr_next;
+static uint64_t dthr_bits(double d) { union { double d; uint64_t u; } v; v.d = d; return v.u; }
+static double dthr_dbl(uint64_t u) { union { double d; uint64_t u; } v; v.u = u; return v.d; }
+int pdist2_lt(double d2, double c)
+{
+    uint64_t cb = dthr_bits(c), lo, hi;
+    int k, r;
+    for (k = 0; k < ndthr && dthr[k].cb != cb; k++) {}
+    if (k == ndthr) {
+        /* bounds that keep psqrt on its fast range: below lo every d2 compares true (lo's does), at hi false */
+        double h = 4 * (c + 1) * (c + 1);
+        lo = DLT(psqrt(1.0), c) ? dthr_bits(1.0) : 0;
+        hi = !DLT(psqrt(h), c) ? dthr_bits(h) : 0x7ff0000000000000ull;   /* (+inf: false) */
+        if (lo == 0 && !DLT(psqrt(0), c)) hi = 0;   /* DLT(0, c) false: c <= eps */
+        while (lo < hi) {                        /* the least u in [lo, hi] with the compare false (hi is one) */
+            uint64_t mid = lo + (hi - lo) / 2;
+            if (DLT(psqrt(dthr_dbl(mid)), c)) lo = mid + 1;
+            else hi = mid;
+        }
+        if (ndthr < DTHR_N) k = ndthr++;
+        else { k = dthr_next; dthr_next = (uint8_t)((dthr_next + 1) & (DTHR_N - 1)); }
+        dthr[k].cb = cb;
+        dthr[k].t = lo;
+    }
+    r = dthr_bits(d2) < dthr[k].t;
+#ifdef PLAY_STATS
+    if (dthr_bits(d2) >> 63 || d2 != d2 || r != DLT(psqrt(d2), c)) {
+        fprintf(stderr, "pdist2_lt: %.17g against %.17g: %d\n", d2, c, r);
+        abort();
+    }
+#endif
+    return r;
+}
+
+/* the thresholds of the constants the Steps compare with (a first use mid-step would bisect there: about 63 psqrt
+   calls): taken at the first level start */
+static void pdist_warm(void)
+{
+    static const double c[] = { 4, 64, 90, 96, 160, 240 };
+    static uint8_t done;
+    unsigned k;
+    if (done) return;
+    done = 1;
+    for (k = 0; k < sizeof c / sizeof c[0]; k++) (void)pdist2_lt(0, c[k]);
 }
 
 double distance_to_instance_p(int self, int k)

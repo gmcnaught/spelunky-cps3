@@ -684,7 +684,7 @@ static void scarab_step(int i)                                       /* objects/
     p = &PX(i);
     dir = 0;
     c = instance_first_p(OBJ_oCharacter);
-    dist = point_distance_d(X(i) + 8, Y(i) + 8, X(c), Y(c));
+    dist = pdist2(X(i) + 8, Y(i) + 8, X(c), Y(c));             /* (squared: pdist2_lt) */
     if (PE(p)->status == 0) {
         if (NGT(PE(p)->xVel, N(0))) PE(p)->xVel -= N(0.5);
         if (NGT(PE(p)->yVel, N(0))) PE(p)->yVel -= N(0.5);
@@ -694,7 +694,7 @@ static void scarab_step(int i)                                       /* objects/
         if (NLT(NABS(PE(p)->yVel), N(1))) PE(p)->yVel = 0;
         if (NEQ(PE(p)->xVel, N(0)) && NEQ(PE(p)->yVel, N(0)) && PE(p)->counter > 0) PE(p)->counter -= 1;
         if (PE(p)->counter == 0 && NLT(PE(p)->xVel, N(1)) && NLT(PE(p)->yVel, N(1))) {
-            if (DLT(dist, 64)) dir = point_direction_d(X(i) + 8, Y(i) + 8, X(c), Y(c)) + 180;
+            if (pdist2_lt(dist, 64)) dir = point_direction_d(X(i) + 8, Y(i) + 8, X(c), Y(c)) + 180;
             else dir = RAND(0, 360);
             {
                 double si, co;                                 /* (psincos_cr: pcos_cr's, psin_cr's bits) */
@@ -912,7 +912,7 @@ static void speartrap_step(int i)                                    /* objects/
     for (side = 0; side < 2; side++) {
         /* oPlayer1 */
         if (PE(&PX(i))->fired == 0 && st_y(fast, q, y, iy, 8) && st_x(fast, q, x, ix, side ? 8 : 0, side) &&
-            DLT(point_distance_d(x + 8, y + 8, X(q), Y(q)), range))
+            pdist2_lt(pdist2(x + 8, y + 8, X(q), Y(q)), range))
             spears(i, side);
         if (PE(&PX(i))->fired != 0) continue;
         if (!have) {
@@ -944,15 +944,15 @@ static void speartrap_step(int i)                                    /* objects/
         }
         obj = ne;
         if (obj != NOONE && PE(&PX(i))->fired == 0 && st_y(fast, obj, y, iy, 0) && st_x(fast, obj, x, ix, 0, side) &&
-            DLT(point_distance_d(x, y, X(obj), Y(obj)), range))
+            pdist2_lt(pdist2(x, y, X(obj), Y(obj)), range))
             spears(i, side);
         obj = nm;
         if (obj != NOONE && PE(&PX(i))->fired == 0 && st_y(fast, obj, y, iy, 0) && st_x(fast, obj, x, ix, 0, side) &&
-            DLT(point_distance_d(x, y, X(obj), Y(obj)), range))
+            pdist2_lt(pdist2(x, y, X(obj), Y(obj)), range))
             spears(i, side);
         obj = ni;
         if (obj != NOONE && PE(&PX(i))->fired == 0 && st_y(fast, obj, y, iy, 8) && st_x(fast, obj, x, ix, 8, side) &&
-            DLT(point_distance_d(x + 8, y + 8, X(obj), Y(obj)), range))
+            pdist2_lt(pdist2(x + 8, y + 8, X(obj), Y(obj)), range))
             spears(i, side);
     }
     p = &PX(i);

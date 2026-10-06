@@ -320,10 +320,10 @@ static void lava_create(int i, int fromgen)
 static void lava_step(int i)
 {
     struct pin *p = &PX(i);
-    double dist = 0;
-    if (!PE(p)->spurt) return;                   /* (dist is read only with spurt: point_distance_d has no side effect) */
-    if (isLevel()) dist = point_distance_d(X(i), Y(i), X(pl()), Y(pl()));
-    if (DLT(dist, 240)) {
+    double dist = 0;                             /* (squared: pdist2; 0 either way when not a level) */
+    if (!PE(p)->spurt) return;                   /* (dist is read only with spurt: pdist2 has no side effect) */
+    if (isLevel()) dist = pdist2(X(i), Y(i), X(pl()), Y(pl()));
+    if (pdist2_lt(dist, 240)) {
         if (PE(p)->spurtCounter > 0) PE(p)->spurtCounter -= 1;
         else {
             int f;
@@ -865,9 +865,9 @@ static void smashtrap_step(int i)
     if (PE(p)->status == 0) {                                              /* IDLE */
         int c = instance_first_p(OBJ_oCharacter);
         double cx = X(c), cy = Y(c), x = X(i), y = Y(i);
-        double dist = point_distance_d(x, y, cx, cy);
+        double dist = pdist2(x, y, cx, cy);              /* (squared: pdist2_lt) */
         if (PE(p)->counter > 0) PE(p)->counter -= 1;
-        if (DLT(dist, 90) && PE(p)->counter < 1) {
+        if (pdist2_lt(dist, 90) && PE(p)->counter < 1) {
             if (DLT(dabs(cy - (y + 8)), 8) && DGT(cx, x + 8) && !isCollisionRight(i, 2)) {
                 PE(p)->status = 1;
                 PE(p)->sdir = SM_RIGHT;

@@ -454,7 +454,7 @@ static void yetiking_step(int i)                                   /* objects/oY
                 yk = instance_first_p(OBJ_oYetiKing);
                 if (yk != NOONE) {
                     if (RAND(1, 60) == 1 && DGT(gabs((X(yk) + 16) - (X(c) + 8)), 16) &&
-                        DLT(point_distance_d(X(c), Y(c), X(yk), Y(yk)), 96)) {
+                        pdist2_lt(pdist2(X(c), Y(c), X(yk), Y(yk)), 96)) {
                         pin_create(PX(c).x, PX(c).y, OBJ_oIceBlock);
                         pin_destroy(c);
                     }
@@ -537,8 +537,8 @@ static void ufo_step(int i)                                        /* objects/oU
     }
     p = &PX(i);
     c = instance_first_p(OBJ_oCharacter);
-    dist = point_distance_d(X(i), Y(i), X(c), Y(c));
-    if (DLT(dist, 160) && !PEN(p)->startled) {
+    dist = pdist2(X(i), Y(i), X(c), Y(c));                     /* (squared: pdist2_lt) */
+    if (pdist2_lt(dist, 160) && !PEN(p)->startled) {
         PEN(p)->startled = 1;
         snd_play(SND_xalien);                                                  /* :23 */
     }
