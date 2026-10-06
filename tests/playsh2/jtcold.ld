@@ -11,7 +11,7 @@ SECTIONS
         *(.bss.gw_otail) *(.bss.gw_live)
         /* the static-family index (pworld.c; read by a few queries a step, written when an indexed entry changes) */
         *(.bss.xcnt) *(.bss.xmask) *(.bss.xisfar) *(.bss.xond) *(.bss.xx0) *(.bss.xy0) *(.bss.xx1) *(.bss.xy1)
-        *(.bss.xdnext) *(.bss.xhint)
+        *(.bss.xdnext) *(.bss.xhint) *(.bss.vm)
         . = ALIGN(4);
         __sprbss_end = .;
     }

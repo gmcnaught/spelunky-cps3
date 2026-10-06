@@ -762,8 +762,10 @@ static int tree_or_leaves(double x, double y) { return CP(x, y, OBJ_oTree) || CP
    again, in view or not (out of view it runs less of the same tests), and pjungle_idle skips it. An oLeaves Step
    out of view runs only its sprite test: noted as such, it is skipped only while the instance stays out of view. The skipped
    queries' only other effects are caches and the stale touches the grid build's searches do not depend on
-   (pobj.c PLAY_REST). The host builds check each skip against the Step's own tests (veg_acts) */
-#define VM_N 64                  /* vm[] entries (a power of 2): instance p's is vm[p->ext & (VM_N - 1)] */
+   (pobj.c PLAY_REST). The host builds check each skip against the Step's own tests (veg_acts). The spear traps'
+   support test (oSpearTrapBottom / Top Step :79, oSolid at (x, y + 16)) uses the same notes as oTree's */
+#define VM_N 128                 /* vm[] entries (a power of 2): instance p's is vm[p->ext & (VM_N - 1)]; sprite RAM in
+                                    tests/game and the JT build (one or two reads an instance a step) */
 struct vmemo { int32_t id; uint32_t clk; int16_t x, y, spr; uint8_t ok; };
 static struct vmemo vm[VM_N];
 
@@ -794,7 +796,8 @@ static int veg_acts(int i, int inview)
     double x = X(i), y = Y(i);
     int a, b;
     switch (p->obj) {
-    case OBJ_oTree: return !CP(x, y + 16, OBJ_oSolid);
+    case OBJ_oTree: case OBJ_oSpearTrapBottom: case OBJ_oSpearTrapTop: case OBJ_oSpearTrapLit:
+        return !CP(x, y + 16, OBJ_oSolid);
     case OBJ_oTreeBranch: return !CP(x - 16, y, OBJ_oTree) && !CP(x + 16, y, OBJ_oTree);
     default:
         a = tree_or_leaves(x - 16, y); b = tree_or_leaves(x + 16, y);
@@ -817,7 +820,8 @@ static int veg_quiet(int i)
     if (!m->ok || m->id != p->id || m->spr != p->spr || !veg_xy(i, &ix, &iy) || ix != m->x || iy != m->y ||
         (m->ok == 1 && eview(i, 16, 16)))
         return 0;
-    r = p->obj == OBJ_oTree ? pw_rest_still(ix, iy + 16, ix, iy + 16, m->clk) : m->clk == pw_static_clock();
+    r = p->obj != OBJ_oTreeBranch && p->obj != OBJ_oLeaves ? pw_rest_still(ix, iy + 16, ix, iy + 16, m->clk) :
+        m->clk == pw_static_clock();
 #ifdef PLAY_STATS
     if (r && (m->ok == 2 || !eview(i, 16, 16)) && veg_acts(i, m->ok == 2)) {
         fprintf(stderr, "veg_quiet: instance %d (%s) would act\n", i, objdefs[p->obj].name);
@@ -827,8 +831,10 @@ static int veg_quiet(int i)
     return r;
 }
 #define VEG_NOTE(i, clk, full) veg_note(i, clk, full)
+#define VEG_QUIET(i) veg_quiet(i)
 #else
 #define VEG_NOTE(i, clk, full) ((void)0)
+#define VEG_QUIET(i) 0
 #endif
 
 static void leaves_step(int i)                                       /* objects/oLeaves/Step_0.gml */
@@ -946,7 +952,11 @@ static void speartrap_step(int i)                                    /* objects/
             spears(i, side);
     }
     p = &PX(i);
-    if (eview(i, 8, 8) && !CP(X(i), Y(i) + 16, OBJ_oSolid)) pin_destroy(i);   /* :79 */
+    if (eview(i, 8, 8) && !VEG_QUIET(i)) {                                /* :79 */
+        /* (the memo of the support as oTree's: the solid grid's clock at the point's cell) */
+        if (!CP(X(i), Y(i) + 16, OBJ_oSolid)) pin_destroy(i);
+        else VEG_NOTE(i, pw_rest_clock(), 1);
+    }
     if (p->obj == OBJ_oSpearTrapBottom && !pin_xy_int(i, &ix, &iy)) {     /* :87 (Bottom only) */
         /* (at whole x, y: ceil gives the same bits, -0 included, and the setters change nothing) */
         pin_setx(p, PI(PCEIL(p->x)));
