@@ -144,8 +144,8 @@ static int16_t otail[OBJ_COUNT], iprev[PIN_MAX];
 /* the instances to animate (prun.c animate): alive instances in creation order, pw_tahead then pw_tanext[i], except
    those animate found doing nothing (anim_one left image_index's bits as they were and ran no Animation End event:
    it is a function of image_index, image_speed, the sprite and the object, so it does nothing again until one of
-   them changes). One goes back on the list at any change of image_index, sprite, visible, depth or position
-   (pw_draw_mark), at a write of image_speed (pin_setispd; the field is PIN_RO) and when created. PLAY_STATS builds
+   them changes). One goes back on the list at a change of image_index's bits (pin_setimg) or of the sprite
+   (pin_set_sprite), at a write of image_speed (pin_setispd; the three fields are PIN_RO) and when created. PLAY_STATS builds
    check every one off the list after animate. An instance taken off keeps its pw_tanext, so a walk at it
    continues */
 int16_t pw_tahead, pw_tanext[PIN_MAX];
@@ -337,7 +337,6 @@ int pw_last_with_sprite(int16_t s0)
 
 void pw_draw_mark(int i)
 {
-    ta_on(i);
     if (ddmark[i]) return;
     ddmark[i] = 1;
     ddlist[nddlist++] = (int16_t)i;
@@ -755,6 +754,7 @@ int pin_add(int obj, pos x, pos y, int32_t id)
     if (obj == OBJ_oPlayer1 && p->ext) PE(p)->xprev = x;
     if (p->ext && pin_needs_en(obj)) pin_ext[p->ext].en = (int16_t)en_alloc();
     pw_ta_off(i);                                    /* (a reused slot is placed again by its creation number) */
+    ta_on(i);
     pw_draw_mark(i);                                 /* (a reused slot may still be on the list: marked once) */
     (void)k;
     olink(i);
@@ -806,6 +806,7 @@ void pin_set_sprite(int i, int spr)
     struct pin *p = &PW.in[i];
     if (p->spr != spr) {
         PIN_WR(int16_t, p->spr) = (int16_t)spr;
+        ta_on(i);
         p->bbk = 0;
         pw_draw_mark(i);
         grid_dirty(i);

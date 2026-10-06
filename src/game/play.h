@@ -256,17 +256,22 @@ static inline void pin_setmask(struct pin *p, int v)
     PIN_WR(int16_t, p->mask) = (int16_t)v;
     if (o != v) pin_changed_(p);
 }
-/* image_index, visible, depth: no collision effect; the drawing's dirty mark (pw_draw_mark) on a change */
+/* image_index, visible, depth: no collision effect; the drawing's dirty mark (pw_draw_mark) on a change. A change
+   of image_index's bits (+0 / -0 included), of image_speed (pin_setispd) or of the sprite (pin_set_sprite) puts the
+   instance back on the animation list (pworld.c pw_tahead) */
 void pw_draw_mark(int i);
+void pw_ta_on(int i);
 static inline void pin_setimg(struct pin *p, img_t v)
 {
-    img_t o = p->img;
+    union { img_t f; uint32_t u; } a, b;
+    a.f = p->img;
+    b.f = v;
     PIN_WR(img_t, p->img) = v;
-    if (fne(o, v)) pw_draw_mark(PIN_IDX(p));
+    if (a.u != b.u) {
+        pw_ta_on(PIN_IDX(p));
+        if (fne(a.f, v)) pw_draw_mark(PIN_IDX(p));
+    }
 }
-/* image_speed: the instance goes back on the animation list (pworld.c pw_tahead), which a change of image_index,
-   sprite or position (pw_draw_mark) does too */
-void pw_ta_on(int i);
 static inline void pin_setispd(struct pin *p, img_t v)
 {
     PIN_WR(img_t, p->ispd) = v;
