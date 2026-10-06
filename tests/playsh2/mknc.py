@@ -13,8 +13,27 @@ scripts/jtcost_native.sh traces the shadow build and tools/jtbypass.py charges t
 uncached (--nc / --ncd from this file).
 nc.txt: one entry a line, "f <function>" (an nm name without the leading underscore, clones included: foo.part.0),
 "r <object>" (a const table, .rodata.<object>), "b <object>" (a .bss array, .bss.<object>); # starts a comment.
-Empty: the same layout as LAYOUT's plain link (a baseline with -ffunction-sections)."""
+Empty: the same layout as LAYOUT's plain link (a baseline with -ffunction-sections).
+   mknc.py --check <nc.txt> <nm.txt>
+names each entry of nc.txt that the linked program (sh-elf-nm's output) does not have at its mirror: a function
+renamed, inlined or removed in src/game drops out of the link silently (a warning, not an error: the program is the
+same, only slower)."""
 import sys
+
+if sys.argv[1] == '--check':
+    have = {}
+    for l in open(sys.argv[3]):
+        l = l.split()
+        if len(l) == 3: have.setdefault(l[2].lstrip('_'), []).append(int(l[0], 16))
+    lost = []
+    for l in open(sys.argv[2]):
+        l = l.split('#')[0].split()
+        if len(l) != 2: continue
+        lo = 0x22000000 if l[0] == 'b' else 0x26000000
+        if not any(lo <= a < lo + 0x800000 for a in have.get(l[1], [])): lost.append(' '.join(l))
+    print('mknc: %s: %s' % (sys.argv[2], 'every entry at its mirror' if not lost else
+          'WARNING: %d not at a mirror (renamed, inlined or gone; docs/ICACHE.md section 5): %s' % (len(lost), ', '.join(lost))))
+    sys.exit(0)
 
 src, out = sys.argv[1], sys.argv[2]
 U = 0 if '--shadow' in sys.argv[3:] else 0x20000000

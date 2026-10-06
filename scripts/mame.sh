@@ -4,10 +4,13 @@
 # absolute and relative paths (and worktree symlinks into the main checkout) resolve as on the host.
 # MAME_NATIVE=1 runs the host's mame instead (to watch: with -video other than none).
 # Environment passed through: the variables the Lua scripts read (scripts/lua/*.lua).
-if [ "${MAME_NATIVE:-0}" = 1 ]; then exec mame "$@"; fi
+# A set built with tests/nc.mk's link (<rompath>/nodrc: code at SIMM 1's cache-through mirror, docs/ICACHE.md) runs
+# with -nodrc: MAME's SH-2 recompiler does not run it.
+ND=; R=; for a in "$@"; do [ "$R" = -rompath ] && [ -f "$a/nodrc" ] && ND=-nodrc; [ "$a" = -nodrc ] && { ND=; break; }; R=$a; done
+if [ "${MAME_NATIVE:-0}" = 1 ]; then exec mame $ND "$@"; fi
 P=/Users/gmcnaught/MisterFPGA-Projects
 D=$(cd "$(dirname "$0")/.." && pwd)
 docker image inspect spelunky-mame:latest >/dev/null 2>&1 || docker build -q -t spelunky-mame:latest "$D/docker/mame" >/dev/null
 exec docker run --rm -v "$P":"$P" -w "$PWD" \
   -e CAP_ADDR -e CAP_GOD -e CAP_LOG -e CAP_MONKEY -e CAP_PLAY -e CAP_SHOTS -e CAP_START -e CAP_TOGGLE -e GAME_MIDSNAP -e GAME_NSNAPS -e GAME_OUT -e GT_OUT -e JTC_STEP -e JTC_WIN -e PSH2_ATTR -e PSH2_NJOBS -e PSH2_OUT -e SHLOG -e SNAP_FRAMES -e SNDLOG -e SOFTFP_OUT \
-  spelunky-mame:latest /usr/games/mame "$@"
+  spelunky-mame:latest /usr/games/mame $ND "$@"

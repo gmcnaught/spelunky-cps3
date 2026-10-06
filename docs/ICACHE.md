@@ -254,8 +254,16 @@ in about 19 minutes. Clocks were read from the results screen (`mister_run.sh` s
   0.264's `-nodrc` runs here (wrapped values); MAME does not model the cache anyway.
 - **Real board:** a CPS3 board's decryption of fetches at 0x26xxxxxx is untested (cps3-testgame ttest has not run
   on one). jtcps3 and MAME run it.
-- **The game build:** `tests/game` / `scripts/release.sh` don't use this yet. They need the same link (mknc.py's
-  sections next to tests/game/sprbss.ld's) and the `.nctext` objcopy.
+- **The game build (the default since branch nc-default):** `tests/nc.mk` links tests/game (so
+  `scripts/release.sh`) and tests/gametime with `mknc.py`'s script and `nc_robust.txt`; `NC=` on the make line
+  gives the SDK's plain link. Details:
+  - sprbss.ld's sections are inserted after `.ncbss`, so ld warns "dot moved backwards before `.sprbss_a'": every
+    section there has its own address, the layout is as intended;
+  - after the link, `mknc.py --check` names any list entry not at its mirror (a warning: the program is the same,
+    only slower), so a renamed or inlined function shows in the build log;
+  - an NC set carries `<OUT>/mame/nodrc` (outside `sfiii3na/`, so not in the MiSTer zip) and `scripts/mame.sh`
+    adds `-nodrc` for it: MAME 0.289's SH-2 recompiler does not run the code at 0x26000000 either (no output in
+    2 minutes on the playsh2 JT set; `-nodrc` runs it). MAME game checks run slower for it.
 
 ## 6. Next steps
 
@@ -289,7 +297,7 @@ in about 19 minutes. Clocks were read from the results screen (`mister_run.sh` s
    - With the board's values: `JTB_IMISS=.. JTB_DMISS_RAM=.. JTB_DMISS_SIMM=.. JTB_UWORD=.. JTB_UNC_RAM=..
      JTB_UNC_SIMM=.. python3 tools/jtbypass.py greedy ...` re-chooses the list (the pickles: section 7).
 3. **If 1 holds:**
-   - put the NC link into tests/game and the release (section 5);
+   - ~~put the NC link into tests/game and the release (section 5)~~ done: `tests/nc.mk`, the default;
    - consider `PW.in` through the mirror in place of the `inst_mem` symbol;
    - re-run `greedy` / `gready` with the calibrated constants on more steps (the four p5_reg_* routes and the p99
      steps: explosions, the boulder).

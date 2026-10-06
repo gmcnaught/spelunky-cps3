@@ -2,7 +2,7 @@
 # Reuses tests/game's route tool, flash assets and sprite-RAM layout (read-only), and src/game snapshotted into
 # build/g by the script (PIN_MAX 1792).
 #   scripts/dmake.sh tests/gametime [ROUTE=p4_push_rope SEED=365 LEVEL=1 MONEY=0 ENEMIES=0] [ROUTE2=p5_snakes SEED2=101
-#   LEVEL2=1 MONEY2=0 ENEMIES2=1] [ATTRACT_FRAMES=3600]
+#   LEVEL2=1 MONEY2=0 ENEMIES2=1] [ATTRACT_FRAMES=3600] [NC=: the SDK's plain link; default tests/nc.mk's, as tests/game]
 PROG   := gametime
 TITLE  := Spelunky CPS3 frame budget
 ROOT   := ../..
@@ -35,6 +35,7 @@ CFLAGS := $(OPT) -std=gnu99 -fno-bit-tests -Wno-unused-parameter -Wno-sign-compa
           '-DDRAW_CACHE_SECTION=__attribute__((section(".bss.drawcache")))' '-DCAPTURE_SECTION=__attribute__((section(".bss.capture")))' -DCAPTURE_REV=0x$(REV)u -DCAPTURE_DIRTY=$(DIRTY) '-DROUTE_NAME="$(shell echo $(ROUTE) | tr a-z A-Z)"' '-DROUTE2_NAME="$(shell echo $(ROUTE2) | tr a-z A-Z)"' -DATTRACT_FRAMES=$(ATTRACT_FRAMES) $(if $(filter 1,$(SMOOTH)),-DGAME_SMOOTH)
 FLASH  := build/flash.bin
 include ../../../cps3-testgame/sdk/sdk.mk
+include ../nc.mk
 
 build/g/stamp:
 	@echo "build/g missing: scripts/gametime_check.sh snapshots src/game and build/gen there"; false

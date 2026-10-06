@@ -104,4 +104,5 @@ $(OUT)/mame/sfiii3na: $(OUT)/main.elf $(FLASH)
 	sh-elf-objcopy -O binary -j .boot $< $(OUT)/main.bin
 	sh-elf-objcopy -O binary -j .nctext -j .text -j .data $< $(OUT)/simm1.bin
 	python3 $(CPS3_ROOT)/tools/mkcps3.py $(OUT)/main.bin $(OUT)/mame $(OUT)/simm1.bin $(FLASH)
+	touch $(OUT)/mame/nodrc
 endif
