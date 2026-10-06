@@ -1,6 +1,11 @@
 # Handoff
 
-## 2026-10-06 09:45: branch lush (lush speed, docs/LUSH.md), gated, not merged
+## 2026-10-06 09:56: lush merged to main (003e6f8); on .81
+
+.81 runs main 003e6f8: spelunky.zip (scripts/release.sh) and spelunkydev.zip (tests/game PLAY=1 DEV=1), MRAs in
+/media/fat/_Arcade/; the previous zips are kept as *.zip.bak-20261005 in /media/fat/games/mame/.
+
+### 09:45: branch lush (lush speed, docs/LUSH.md), gated
 
 Fixes 1-5 of docs/LUSH.md on branch lush (from main 9968174): static-index cell hints, vegetation / spear-trap
 support memo, nearest cache updated in place, direct content-package Steps, animation list for every instance
