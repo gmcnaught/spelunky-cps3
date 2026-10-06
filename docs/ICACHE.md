@@ -57,6 +57,7 @@ PERF3's batch-2 calibration found both sets read low against the hardware (fit b
 | `tests/playsh2/Makefile` `NC=<list>` [`NCSHADOW=1`] | the build with `-ffunction-sections` and mknc.py's script; SIMM 1's image includes `.nctext` |
 | `scripts/playsh2_jt.sh` `NC=<list>` | the jtcps3 variant with that layout (MAME run with `-nodrc`) |
 | `tests/playsh2/nc_robust.txt` | the list measured here; `nc_empty.txt` the baseline with the same `-ffunction-sections` link |
+| `tests/cachebench`, `scripts/cachebench.sh` | the board's cache costs (section 6 step 2) |
 
 ## 4. Results
 
@@ -228,9 +229,27 @@ after B.
    - Expect PASS 23/23 on both, and the route step means lower by about 9-15 % if the model holds.
    - The per-route ratio against the model recalibrates the fetch- and data-miss penalties (PERF3 0.3).
    - Also compare the generation jobs and the routes' level starts.
-2. **Pin the constants on the board.** A ttest-style row: one function's body run once per call from 0x06 and from
-   0x26, with the cache pre-filled by a 4 KB sweep. That gives the real dead-fill cost against the uncached word
-   cost.
+2. **Pin the constants on the board: `tests/cachebench`.**
+   - cps3-testgame's ttest (`.rbf` 2026-10-02, its newest jtcps3 data) gives the uncached costs but no cached
+     line miss. tests/cachebench measures both on the same board, plus the two cases the strategy relies on.
+   - Run it: `scripts/cachebench.sh` (MAME: checks only that every row runs), then
+     `../cps3-testgame/scripts/mister_run.sh tests/cachebench/build/mame cachebench "Cache bench" 3 5` on the
+     MiSTer, and read the screen (pass 2 or later).
+   - Expected rows if the model's constants hold (clocks; the = rows are tools/jtbypass.py's constants x100):
+
+   | Row | fit | review | What it pins |
+   |---|---|---|---|
+   | LIN C /INS (8 KB straight-line, cached: every line misses) | 2.62 | 2.50 | `=IMISS` = 8 x (LIN C - HOT C): 12.98 / 12 |
+   | LIN U /INS (the same past the cache) | 2.50 | 2.50 | `=UWORD` = 2 x (LIN U - HOT C): 3.0 |
+   | SPARSE C / U /LINE (2 instructions a line) | about 16 / 9 | 15 / 9 | the sparse-code case: U < C |
+   | HOT+LIN C / U /IT (2 KB hot code + 8 KB stream) | about 13,800 / 11,300 | 13,300 / 11,300 | the strategy itself: U < C |
+   | LD16 C / HIT / U /LD (one load a line, 64 KB of main RAM) | 39.8 / 2.5 / 8.5 | 29.5 / 2.5 / 8.5 | `=DMISS RAM`, `=UNC RAM` |
+   | SIMM16 C / U /LD (8 KB of SIMM 1) | 39.8 / 5.5 | 17.5 / 5.5 | `=DMISS SIMM`, `=UNC SIMM` |
+   | HOTD+ST C / U /IT (2 KB hot data + 8 KB streamed) | | | the data case: U < C |
+
+   (The /LD rows include the loop: about 1 clock a load. MAME gives 1.00 / 3.01 / 2.00 and equal C and U values.)
+   - With the board's values: `JTB_IMISS=.. JTB_DMISS_RAM=.. JTB_DMISS_SIMM=.. JTB_UWORD=.. JTB_UNC_RAM=..
+     JTB_UNC_SIMM=.. python3 tools/jtbypass.py greedy ...` re-chooses the list (the pickles: section 7).
 3. **If 1 holds:**
    - put the NC link into tests/game and the release (section 5);
    - consider `PW.in` through the mirror in place of the `inst_mem` symbol;
