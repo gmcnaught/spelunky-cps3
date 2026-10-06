@@ -759,7 +759,8 @@ static int tree_or_leaves(double x, double y) { return CP(x, y, OBJ_oTree) || CP
    went in or out of the point's cell since, rest_skip's argument) or the static-family index's (pw_static_clock:
    bumped by every create, destroy or box change of an indexed object, oTree and oLeaves included). While the
    instance's x, y (whole) and sprite and that clock hold, every answer is the same, so the Step changes nothing
-   again, in view or not (out of view it runs less of the same tests), and pjungle_idle skips it. The skipped
+   again, in view or not (out of view it runs less of the same tests), and pjungle_idle skips it. An oLeaves Step
+   out of view runs only its sprite test: noted as such, it is skipped only while the instance stays out of view. The skipped
    queries' only other effects are caches and the stale touches the grid build's searches do not depend on
    (pobj.c PLAY_REST). The host builds check each skip against the Step's own tests (veg_acts) */
 #define VM_N 64                  /* vm[] entries (a power of 2): instance p's is vm[p->ext & (VM_N - 1)] */
@@ -771,7 +772,9 @@ static int veg_xy(int i, int32_t *ix, int32_t *iy)
     return pin_xy_int(i, ix, iy) && *ix >= 0 && *ix < GRID_W * 16 && *iy >= 0 && *iy + 16 < GRID_H * 16;
 }
 
-static void veg_note(int i, uint32_t clk)
+/* full 1: the Step ran its in-view tests; 0 (oLeaves out of view): only the sprite test, so the note holds only while
+   the instance stays out of view */
+static void veg_note(int i, uint32_t clk, int full)
 {
     struct pin *p = &PX(i);
     struct vmemo *m = &vm[p->ext & (VM_N - 1)];
@@ -780,12 +783,12 @@ static void veg_note(int i, uint32_t clk)
         if (m->id == p->id) m->ok = 0;
         return;
     }
-    m->id = p->id; m->clk = clk; m->x = (int16_t)ix; m->y = (int16_t)iy; m->spr = p->spr; m->ok = 1;
+    m->id = p->id; m->clk = clk; m->x = (int16_t)ix; m->y = (int16_t)iy; m->spr = p->spr; m->ok = (uint8_t)(full ? 2 : 1);
 }
 
 #ifdef PLAY_STATS
-/* the Step's tests: 1 when it would destroy the instance or set its sprite (eview: as in view) */
-static int veg_acts(int i)
+/* the Step's tests: 1 when it would destroy the instance or set its sprite (inview: the in-view tests too) */
+static int veg_acts(int i, int inview)
 {
     struct pin *p = &PX(i);
     double x = X(i), y = Y(i);
@@ -796,6 +799,7 @@ static int veg_acts(int i)
     default:
         a = tree_or_leaves(x - 16, y); b = tree_or_leaves(x + 16, y);
         if (a && b && p->spr != GSPR_sLeavesTop) return 1;
+        if (!inview) return 0;
         if (p->spr == GSPR_sLeavesTop) return !a || !b;
         if (p->spr == GSPR_sLeaves || p->spr == GSPR_sLeavesDead) return !b;
         if (p->spr == GSPR_sLeavesRight || p->spr == GSPR_sLeavesDeadR) return !a;
@@ -810,19 +814,21 @@ static int veg_quiet(int i)
     const struct vmemo *m = &vm[p->ext & (VM_N - 1)];
     int32_t ix, iy;
     int r;
-    if (!m->ok || m->id != p->id || m->spr != p->spr || !veg_xy(i, &ix, &iy) || ix != m->x || iy != m->y) return 0;
+    if (!m->ok || m->id != p->id || m->spr != p->spr || !veg_xy(i, &ix, &iy) || ix != m->x || iy != m->y ||
+        (m->ok == 1 && eview(i, 16, 16)))
+        return 0;
     r = p->obj == OBJ_oTree ? pw_rest_still(ix, iy + 16, ix, iy + 16, m->clk) : m->clk == pw_static_clock();
 #ifdef PLAY_STATS
-    if (r && veg_acts(i)) {
+    if (r && (m->ok == 2 || !eview(i, 16, 16)) && veg_acts(i, m->ok == 2)) {
         fprintf(stderr, "veg_quiet: instance %d (%s) would act\n", i, objdefs[p->obj].name);
         abort();
     }
 #endif
     return r;
 }
-#define VEG_NOTE(i, clk) veg_note(i, clk)
+#define VEG_NOTE(i, clk, full) veg_note(i, clk, full)
 #else
-#define VEG_NOTE(i, clk) ((void)0)
+#define VEG_NOTE(i, clk, full) ((void)0)
 #endif
 
 static void leaves_step(int i)                                       /* objects/oLeaves/Step_0.gml */
@@ -832,7 +838,10 @@ static void leaves_step(int i)                                       /* objects/
     int16_t s0 = p->spr;
     /* spriteSet stays false */
     if (tree_or_leaves(x - 16, y) && tree_or_leaves(x + 16, y)) pin_set_sprite(i, GSPR_sLeavesTop);
-    if (!eview(i, 16, 16)) return;
+    if (!eview(i, 16, 16)) {
+        if (p->spr == s0) VEG_NOTE(i, pw_static_clock(), 0);
+        return;
+    }
     if (p->spr == GSPR_sLeavesTop) {
         if (!tree_or_leaves(x - 16, y) || !tree_or_leaves(x + 16, y)) pin_destroy(i);
     } else if (p->spr == GSPR_sLeaves || p->spr == GSPR_sLeavesDead) {
@@ -840,7 +849,7 @@ static void leaves_step(int i)                                       /* objects/
     } else if (p->spr == GSPR_sLeavesRight || p->spr == GSPR_sLeavesDeadR) {
         if (!tree_or_leaves(x - 16, y)) pin_destroy(i);
     }
-    if (p->alive && p->spr == s0) VEG_NOTE(i, pw_static_clock());
+    if (p->alive && p->spr == s0) VEG_NOTE(i, pw_static_clock(), 1);
 }
 
 /* the spear traps' tests (oSpearTrapBottom / Top Step :5-77): fire when the instance is in line */
@@ -973,13 +982,13 @@ static int jungle_step(int i)
     case OBJ_oTree:                                                  /* objects/oTree/Step_0.gml */
         if (eview(i, 16, 16)) {
             if (!CP(X(i), Y(i) + 16, OBJ_oSolid)) pin_destroy(i);
-            else VEG_NOTE(i, pw_rest_clock());
+            else VEG_NOTE(i, pw_rest_clock(), 1);
         }
         return 1;
     case OBJ_oTreeBranch:                                            /* objects/oTreeBranch/Step_0.gml */
         if (eview(i, 16, 16)) {
             if (!CP(X(i) - 16, Y(i), OBJ_oTree) && !CP(X(i) + 16, Y(i), OBJ_oTree)) pin_destroy(i);
-            else VEG_NOTE(i, pw_static_clock());
+            else VEG_NOTE(i, pw_static_clock(), 1);
         }
         return 1;
     case OBJ_oSpearTrapBottom: case OBJ_oSpearTrapTop: case OBJ_oSpearTrapLit: speartrap_step(i); return 1;
