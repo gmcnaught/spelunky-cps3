@@ -1,5 +1,11 @@
 # Handoff
 
+## 2026-10-06 11:25: swim merged to main (4c4c27e); on .81
+
+The swimming slowdown (docs/LUSH.md section 8: the piranhas' correctly rounded trig) is on main and .81
+(spelunky.zip, spelunkydev.zip from 4c4c27e; the previous ones kept as *.zip.bak-003e6f8). Still over budget while
+swimming in a crowded room (c_swamp_drain); next: point_distance_d compared with constants, the walking enemies.
+
 ## 2026-10-06 09:56: lush merged to main (003e6f8); on .81
 
 .81 runs main 003e6f8: spelunky.zip (scripts/release.sh) and spelunkydev.zip (tests/game PLAY=1 DEV=1), MRAs in
