@@ -122,6 +122,32 @@ convention".
 | 3.2 | **Hot / cold split of the big events:** pl_step (3.7 KB touched a step), characterStepEvent, item_step, jar_step, gameStepEvent. Move rare branches (damage, death, shop, pick-up, explosions) into `__attribute__((cold, noinline))` helpers; `__builtin_expect` on the common tests | codegen-only |
 | 3.3 | **Not to repeat:** whole-program hot-first layout (+0.5 % on jtcps3), CCR.OD (worse), -Os everywhere (+2.4 %), the stack in cache RAM (−1 % net in the model, unverifiable in MAME), cache-set-aware code / data placement (jtcost's fully associative bound at 03b4638, fit: p4 301 511.2 -> 510.7 K, −0.1 %; p5 956 434.4 -> 406.1 K, −6.5 %: misses are mostly capacity), -falign-functions=16 (p4 +3.9 %, p5 +1.5 %; with -falign-loops / -falign-jumps=16 +2.4 / +1.5 %: fewer fetch misses, more literal-pool misses) | measured already |
 
+**Literal pools: measured, not kept (2026-10-06, main 16ab24f).** Literal-pool line misses are 36-40 % of the data-line
+misses and 13.7-15.6 % of the modelled step on every route (jtcost fit; 9 steps over 6 routes: p4_exit559, p5_snakes,
+lush l5s11 / l6s23, c_jungle_monkey / mantrap, c_swamp_drain / swim). What they hold (p4_exit559 301): RAM addresses 582
+lines, constants 541 (most: the float / double masks 0x7FFFFFFF, 0x007FFFFF, 0x80000000, 0x000FFFFF, 0x00800000,
+0x7F800000 from pnum.h's inline helpers and soft-float, and the range check's 29999), function addresses 284. jtcost.py's
+what-ifs (NOLIT_KIND / NOLIT_SYMS / NOLIT_FREE / NOLIT_VALS, 53c449c), fit:
+
+| What-if | p4_exit559 301 (360.8 K) | p5_snakes 956 (338.3 K) |
+|---|---|---|
+| every literal load removed (bound) | −17.4 % | −16.2 % |
+| RAM-address literals removed (bound of any GBR block) | −4.2 % | −3.6 % |
+| constant literals removed | −5.0 % | −5.6 % |
+| function-address literals removed | −2.5 % | −2.2 % |
+| ~30 hot scalars into the GBR block (gmode, dhead, quiet_any, play_cur_obj, ...) | −0.40 % | −0.27 % |
+| + hot arrays and PL / PG / PGAME as pointers in the block | −0.77 % | −0.78 % |
+| the 8 masks made in registers (+3 instructions each) | +0.16 % | +0.26 % |
+| all three | −0.66 % | −0.53 % |
+| array pointers as block loads, scalars counted twice (first model) | +1.6 % | +1.4 % |
+
+A missed pool line sits next to code that is itself cold, and it holds other literals that are still loaded: taking one
+class of literal out removes few lines (the masks: 1,513 loads a step gone, 79 lines). The literal misses are a share
+of the code footprint, reached by the NC link and by shorter paths, not by the literals. Not proposed:
+-fsection-anchors (not supported on SH: gcc warns, output unchanged), -mrelax (bsr reaches +-4 KB only), grouping a
+file's statics into one struct (gcc reloads the address from the pool after every call: pplayer.c holds 169 pool copies
+of _PL in 13 functions).
+
 ### Phase 4: RAM structure (decision needed before work starts)
 
 | # | Work | Decision |
