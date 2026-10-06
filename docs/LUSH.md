@@ -87,3 +87,52 @@ instructions without cutting the code and data touched gains little; every fix a
 tools/jtcost.py: `JTC_BYOBJ=1` (cost by object, by pass and object, per-object function tables; `JTC_BYOBJ_N`), and
 `JTC_PCHIST` now prints the model cost per address too (map to lines with a `OPT="-O2 -g"` build and
 `sh-elf-addr2line` in the cps3-dev container; -g leaves simm1.bin byte-identical).
+
+## 6. Implemented (branch lush, 2026-10-06)
+
+| Commit | Fix | jtcost fit, step 201: l5s11 / l5s37 / l6s23 |
+|---|---|---|
+| main 9968174 | baseline | 602.2 / 616.6 / 659.4 K |
+| static-family hint (xhint_hit) | 1 | 612.4 / 611.8 / 632.4 K (l5s11: same object-code instructions, +10.5 K of misses: layout) |
+| vegetation memo, + oLeaves out of view | 2 | 575.3 / 531.5 / 629.1 K |
+| nc_moved, pw_replayed; spear-trap support memo | 3 | 538.0 / 515.1 / 610.0 K |
+| SK_PKG direct package Steps | 4 | 518.3 / 504.3 / 583.5 K |
+| animation list for every instance (pin_setispd), on only at image_index / image_speed / sprite changes | 5 | **487.6 / 469.1 / 549.8 K** (-19.0 / -23.9 / -16.6 %) |
+
+Fix 6 (rest skip from the Step loop) was not done: after fix 4 a treasure's Step is already ev_step -> treasure_step,
+and what remains is rest_skip's own checks and the replayed collision marks, which the event order needs (estimate
+under 1 %).
+
+Found on the way: pin_kill cleared `alive` after pw_draw_mark, so a killed instance went back on the animation list
+and a reused slot kept its old place (harmless while the list held terrain only; fixed in the fix-5 commit).
+
+Every commit: 182 host route runs (playhost exact and grid, every P1 / P4 / P5 / P7 / P8 / content route)
+byte-identical to 9968174, with the PLAY_STATS checks (veg_quiet re-runs the Step's tests on every skip; anim_check
+the list's order and every instance off it; nc_get a fresh fill).
+
+## 7. Measured (2026-10-06, branch lush at the fix-5 refinement)
+
+Gates: make check (host builds, constcheck, P5 regress all route-equal, EQUIV 88/88 with p5_lush_l5s37's accepted
+line, snd 0 differ), ctall 59/59, playsh2 9,701/9,701 (grid) and 9,701/9,701 (SOFTFP), shell 26/26 + 49/49,
+game_check p4_exit559 0 px at 30/150/300, capture_check 430/430 steps and 6/6 checkpoints, SH-2 0 warnings,
+tests/game stack room 34,164 B (xhint and vm in sprite RAM).
+
+MAME SOFTFP step means (steps 2+), batch 24 -> lush: l5s11 146.8 -> 122.1 K, l5s37 138.1 -> 104.3 K, l6s23 141.6 ->
+118.4 K, caveman 103.8 -> 96.8 K, snakes 84.6 -> 78.0 K, exit559 91.4 -> 84.0 K.
+
+jtcps3 (.62, JT_ROUTES as batch 24, PASS 11/11; route step means with step 1):
+
+| Route | batch 24 (cf7d06f) | lush | change | vs 0.525 M |
+|---|---|---|---|---|
+| p5_lush_l5s11 | 675.4 K | 564.4 K | -16.4 % | +7.5 % |
+| p5_lush_l5s37 | 628.8 K | 473.8 K | -24.6 % | met |
+| p5_lush_l6s23 | 647.4 K | 552.8 K | -14.6 % | +5.3 % |
+| p5_caveman | 498.9 K | 477.8 K | -4.2 % | met |
+| p5_snakes | 395.6 K | 378.7 K | -4.3 % | met |
+| p4_exit559 | 367.1 K | 344.5 K | -6.2 % | met |
+
+What is left (jtcost fit, step 201 on this build): l5s11 488 K: player 127 K, man traps 53 K (walking enemies in
+view: moveTo and isCollision*), the collision pass 36 K, piranha 30 K, spear traps 53 K (the Top's animation and the
+box tests), bubble 25 K, jars 24 K. l6s23 550 K: player 156 K, 3 piranhas 105 K (spread: point tests 8 K, moveTo 7 K,
+soft-float 10 K, psqrt 5 K), bubbles 47 K, spear traps 50 K. Next candidates: the player's Step (every level), the
+walking enemies' moveTo / isCollision* chain (man traps, piranhas), the bubbles' point test per step.

@@ -1,5 +1,13 @@
 # Handoff
 
+## 2026-10-06 09:45: branch lush (lush speed, docs/LUSH.md), gated, not merged
+
+Fixes 1-5 of docs/LUSH.md on branch lush (from main 9968174): static-index cell hints, vegetation / spear-trap
+support memo, nearest cache updated in place, direct content-package Steps, animation list for every instance
+(image_speed through pin_setispd). Host output byte-identical on every route; full gates pass (LUSH.md section 7).
+jtcps3 (.62): l5s11 564 K, l5s37 474 K, l6s23 553 K (batch 24: 675 / 629 / 647 K): l5s37 meets 0.525 M, l5s11 and
+l6s23 are 7.5 % / 5.3 % over. Next: merge lush; then the player's Step and the walking enemies (LUSH.md section 7).
+
 ## 2026-10-06 00:20: main 75f3a2f (70 commits ahead of origin, not pushed)
 
 Since v0.1.0, merged and gated (make check incl. EQUIV 88/88, ctall 59, playsh2 9,701/9,701, shell, hud, view,
