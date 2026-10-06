@@ -1313,7 +1313,7 @@ static __attribute__((noinline)) void flush_run(void)
             cupdate(e);
         }
     }
-    stk_clean();
+    if (nstk > 32) stk_clean();                   /* (a short stack is left for stk_compact) */
 }
 
 static inline void flush(void)
