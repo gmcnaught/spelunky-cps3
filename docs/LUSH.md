@@ -335,7 +335,18 @@ instance_nearest_p 4.5 K, and instance_box_maybe 8.5 K for 21 calls (the idle tr
 | 874ebbb | collision_rect_p: a family of at most 4 instances whose integer boxes all lie off the query's floors gives NOONE without rq_init or the walk | rect_hit's integer and float tests both take corners in [floor(min), floor(max) + 1]; the host builds test every instance with rect_hit |
 
 131ce3c alone made the fire steps worse (l5s11 144 -> 161 K MAME): without the spear's reads, the stale stack grew
-until the next read. 09d2bd4 fixes that and bounds stk_compact everywhere.
+until the next read. 09d2bd4 fixes that and bounds stk_compact everywhere. 4109f25 adds its host check: PLAY_STATS
+builds keep the uncleaned stack beside it and compare the two compacted stacks at every read (checked to fire: a
+stack that drops pushes aborts).
+
+The stack fix and the per-key event lists also help routes without spears. Full playsh2 SOFTFP, 041d709 -> 4109f25
+(9,598 route steps): 360 steps cheaper by more than 5 K MAME, 1 dearer (p4_exit559 595, the 21 M transition step, +7.7 K);
+the all-route mean is 90.9 -> 90.3 K, the median 78.0 -> 77.5 K. The largest drops are the stack-full compactions (a
+whole ENT_MAX stack sorted when mark_e found it full): p1_walk 198 160 -> 67 K MAME, where jtcost (p1_walk 199)
+shows stk_compact at 176 K of 475 K, and the step at 298 K after. Other large drops: l5s37 158 151 -> 104 K, p5_l4 170
+120 -> 77 K, p4_exit559 375 110 -> 74 K. Per route, the most steps improved are l5s37 (157), p5_reg_l14s16 (53), l5s11
+(33) and p5_l4 (32). An object type appearing or disappearing no longer rebuilds every event list: jtcost l5s37 559
+evnz_sync 13.5 K -> 0. p5_caveman: mean 96.5 -> 95.9 K, p99 124.4 K both (its large steps are not the stack).
 
 Every commit: 91 routes through playhost, playhost_grid and a playhost_grid built without PLAY_STATS / PLAY_RNGLOG
 (the SH-2 build's paths: the host checks re-run skipped queries, so the PLAY_STATS builds alone would not show a
@@ -353,6 +364,5 @@ something keeps firing every 50 steps, as in HD.
 Gates on f217aaf: playsh2 9,701 / 9,701 grid and SOFTFP, shell 26/26 + 49/49, capture_check 428/428 steps and 6/6
 checkpoints, host builds and constcheck, SH-2 0 compiler warnings (playsh2, tests/game, capture; the make recipe and
 ld `.sprbss_a` notices are as on 041d709), tests/game stack room 33,740 B (041d709: 33,868; evnzk / evkn are
-128 B), ctall 53 of 53 routes run equal. Not run: the six c_temple routes of ctall, make check's P5 regress, EQUIV and
-snd, and game_check. The reference traces in the main checkout's build/trace were overwritten by self-referencing
-symlinks at 19:18 during the run (not by this branch's scripts), and these gates read them.
+128 B), ctall 53 of 53 routes run equal. Held until the reference traces are regenerated (main's build/trace was lost
+during the run): ctall's six c_temple routes, make check's P5 regress, EQUIV and snd, and game_check.
