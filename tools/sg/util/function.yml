@@ -1,0 +1,6 @@
+id: function
+severity: info
+message: "a function definition (tools/sgdup.py: the enclosing function of each query)"
+language: c
+rule:
+  kind: function_definition

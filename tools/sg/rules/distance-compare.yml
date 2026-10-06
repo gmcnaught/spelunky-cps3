@@ -1,0 +1,12 @@
+id: distance-compare
+severity: hint
+message: "point_distance_d compared with a constant: an exact squared-distance compare against a precomputed threshold avoids psqrt (about 1.6 K jtcps3 clocks a call)"
+note: "sqrt rounds monotonically: sqrt_rn(d2) < c exactly when d2 < T(c), T the least double whose rounded root is >= c (not yet done; docs/AST-GREP.md)"
+language: c
+files: ["src/**"]
+rule:
+  any:
+    - pattern: DLT(point_distance_d($$$A), $C)
+    - pattern: DGT(point_distance_d($$$A), $C)
+    - pattern: DLE(point_distance_d($$$A), $C)
+    - pattern: DGE(point_distance_d($$$A), $C)

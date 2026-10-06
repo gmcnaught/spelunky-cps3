@@ -1,0 +1,12 @@
+id: float-compare
+severity: hint
+message: "an instance's float x / y compared through doubles: PLTI / PGTI compare the float's bits with the int (no soft-float widening)"
+note: "PERF3 batch 7 (view tests on the float bits, all 2^32 floats checked)"
+language: c
+files: ["src/**"]
+rule:
+  any:
+    - pattern: DLT(X($I), $C)
+    - pattern: DGT(X($I), $C)
+    - pattern: DLT(Y($I), $C)
+    - pattern: DGT(Y($I), $C)

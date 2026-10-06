@@ -1,0 +1,14 @@
+id: cp-at
+severity: hint
+message: "collision_point at an instance's x / y plus constants: collision_point_any_at(i, dx, dy, obj) takes the integer path at whole x, y (no double sums)"
+note: "PERF3 batches 21-22 (the lava tests at an instance's whole x, y); only where the query is collision_point_any(.., 0, NOONE) (CP)"
+language: c
+files: ["src/**"]
+rule:
+  any:
+    - pattern: collision_point_any(PTOD($P->x) + $DX, PTOD($P->y) + $DY, $O, 0, NOONE)
+    - pattern: collision_point_any(X($I) + $DX, Y($I) + $DY, $O, 0, NOONE)
+    - pattern: CP(X($I) + $DX, Y($I) + $DY, $O)
+    - pattern: CP(X($I), Y($I) + $DY, $O)
+    - pattern: CP(X($I) + $DX, Y($I), $O)
+    - pattern: CP(X($I), Y($I), $O)

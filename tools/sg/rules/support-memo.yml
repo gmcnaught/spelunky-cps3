@@ -1,0 +1,10 @@
+id: support-memo
+severity: hint
+message: "eview && !collision_point(x, y + 16, oSolid) -> destroy: oTree's Step test; the vegetation memo (pk_jungle.c veg_note / veg_quiet) applies"
+note: "docs/LUSH.md section 3 fix 2 and section 6: skip the query while x, y, sprite and the solid grid's cell clock hold (pw_rest_still)"
+language: c
+files: ["src/**"]
+rule:
+  any:
+    - pattern: if (eview($I, $A, $B) && !CP($X, $Y, OBJ_oSolid)) pin_destroy($I);
+    - pattern: if (eview($I, $A, $B) && !collision_point_any($X, $Y, OBJ_oSolid, 0, NOONE)) pin_destroy($I);

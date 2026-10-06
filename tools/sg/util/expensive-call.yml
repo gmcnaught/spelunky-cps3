@@ -1,0 +1,9 @@
+id: expensive-call
+severity: info
+message: "a collision / distance / nearest query (tools/sgdup.py groups repeats)"
+language: c
+rule:
+  kind: call_expression
+  has:
+    field: function
+    regex: '^(isCollision\w+|CP|CPn|collision_\w+|instance_nearest_p|instance_place_p|place_meeting\w*|point_distance_d|point_direction_d|psqrt|pw_with)$'

@@ -1,0 +1,4 @@
+# ast-grep project config (ast-grep scan from the repo root): rules that find the shapes of optimizations already
+# proven in this repo (docs/AST-GREP.md). tools/sg/util/: helper rules for scripts (not run by scan).
+ruleDirs:
+  - tools/sg/rules

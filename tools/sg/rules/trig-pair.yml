@@ -1,0 +1,19 @@
+id: trig-pair
+severity: warning
+message: "pcos_cr and psin_cr of the same argument in one function: psincos_cr gives both bits with one reduction"
+note: "docs/LUSH.md section 8 (tests/sincos: psincos_cr equals psin_cr / pcos_cr bit for bit)"
+language: c
+files: ["src/**"]
+utils:
+  cos-call:
+    pattern: { context: "x = pcos_cr($A);", selector: call_expression }
+  sin-call:
+    pattern: { context: "x = psin_cr($A);", selector: call_expression }
+rule:
+  matches: cos-call
+  inside:
+    kind: function_definition
+    stopBy: end
+    has:
+      matches: sin-call
+      stopBy: end
