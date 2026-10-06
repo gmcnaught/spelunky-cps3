@@ -12,6 +12,7 @@
 #include "pcol.h"
 #include "pmath.h"
 #include "pcontent.h"
+#include "pcmpc.h"
 #include "../snd/sndgame.h"                     /* the GML sound calls (src/snd) */
 #ifdef PLAY_STATS
 #include <stdio.h>
@@ -266,7 +267,7 @@ static void fish_idle_swim(int i)
 static void fish_end(int i, int left, int right)
 {
     struct pin *p = &PX(i);
-    if (DGT(DIR(p), 90) && DLT(DIR(p), 270)) pin_set_sprite(i, left);
+    if (CGT(DIR(p), 90, CMPC_H_90) && CLT(DIR(p), 270, CMPC_L_270)) pin_set_sprite(i, left);   /* (pcmpc.h) */
     else pin_set_sprite(i, right);
     if (!collision_point_any_at(i, 4, 4, OBJ_oWater)) {
         pin_create(PX(i).x, PX(i).y, OBJ_oFishBone);
