@@ -242,7 +242,7 @@ after B.
    | LIN C /INS (8 KB straight-line, cached: every line misses) | 2.62 | 2.50 | `=IMISS` = 8 x (LIN C - HOT C): 12.98 / 12 |
    | LIN U /INS (the same past the cache) | 2.50 | 2.50 | `=UWORD` = 2 x (LIN U - HOT C): 3.0 |
    | SPARSE C / U /LINE (2 instructions a line) | about 16 / 9 | 15 / 9 | the sparse-code case: U < C |
-   | HOT+LIN C / U /IT (2 KB hot code + 8 KB stream) | about 13,800 / 11,300 | 13,300 / 11,300 | the strategy itself: U < C |
+   | HOT+LIN C / U /IT (2 KB hot code + 8 KB stream) | about 13,400 / 11,300 | 12,800 / 11,300 | the strategy itself: U < C |
    | LD16 C / HIT / U /LD (one load a line, 64 KB of main RAM) | 39.8 / 2.5 / 8.5 | 29.5 / 2.5 / 8.5 | `=DMISS RAM`, `=UNC RAM` |
    | SIMM16 C / U /LD (8 KB of SIMM 1) | 39.8 / 5.5 | 17.5 / 5.5 | `=DMISS SIMM`, `=UNC SIMM` |
    | HOTD+ST C / U /IT (2 KB hot data + 8 KB streamed) | | | the data case: U < C |
