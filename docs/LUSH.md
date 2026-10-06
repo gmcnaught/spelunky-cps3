@@ -186,3 +186,59 @@ Step means with step 1 (as section 7); max is the largest step, mostly the level
 All three lush routes now meet 0.525 M on the route mean. The routes that swim do not: c_swamp_drain (264 of 370
 steps swimming, 6 piranhas in the room) and c_swamp_swim (312 of 418) are over on the mean; per section 8 (MAME),
 their swimming steps cost more than the others (swim 154 vs 130 K, drain 215 vs 130 K).
+
+## 10. Swimming, second pass (2026-10-06, branch swim2 on fddd5a7)
+
+Goal: c_swamp_drain / c_swamp_swim (section 9: 841 / 671 K jtcps3, +60 / +28 % over 0.525 M).
+
+### 10.1 Where the swamp routes' steps go
+
+MAME SOFTFP per-step clocks (playsh2 ROUTES="c_swamp_drain c_swamp_swim", fddd5a7): route means (steps 2+)
+drain 187.0 K, swim 144.2 K. Steps before the player swims (2-106, both routes) already average 126.6 K (about
+550 K jtcps3 at the routes' ratio 4.4-4.5): the room is over budget before any swimming.
+
+| Step range (drain) | MAME mean | What runs |
+|---|---|---|
+| 2-106 (walking) | 127 K | 6 piranhas active and in view, frogs, man traps, monkey, the player |
+| 107-260 (swimming) | 160-210 K | + piranha attacks (psincos_cr), the player's swimming Step, bubbles, blood |
+| 269-274 (the blast drains the pool) | 1.40-1.52 M | oGame checkWater over 88 waters each step |
+| 275-296 (after) | 190-580 K | drips, rubble, fish bones (the drained piranhas) |
+
+The drain event (269-296) is about 33 K of drain's 187 K mean; c_swamp_swim has no drain.
+
+jtcost fit (JTC_BYOBJ=1, `JTC_BYOBJ_F` rows per object, new), traced steps (record count as jtcost.sh takes it):
+
+| Step | model | by object |
+|---|---|---|
+| drain 61 (walking) | 576 K | oPiranha 186 K (6, all IDLE), oPlayer1 104 K, oFrog 53 K, oManTrap 44 K, oBubble 44 K |
+| drain 161 (swimming) | 955 K | oPiranha 250 K, oPlayer1 187 K, collision pass 61 K, oBlood 64 K, oBubble 62 K, oMonkey 57 K |
+| swim 522 (swimming) | 820 K | oPiranha 265 K, oPlayer1 149 K, oBubble 69 K, collision pass 69 K |
+| drain 273 (draining) | 5.79 M | oGame 3.82 M (checkWater), oDrip 664 K |
+| drain 279 (after) | 2.33 M | oDrip 790 K, oFishBone 248 K, collision pass 242 K, oBlood 191 K |
+
+Per object and function (inclusive where marked):
+- **Idle piranha, about 31 K a step each:** `moveTo(±1, 0)` 10.4 K incl. (pw_changed 2.4 K, solid_vline_any,
+  bbkind_set, vel_parts); water point tests 8 K: fish_end's `collision_point_any_at(4, 4, oWater)` and the bubble's
+  at a point inside the water missed the index (xpoint_none) and went back through collision_point_any's doubles
+  (4.4 K a call); prey_swims' four pw_with 1.5 K; instance_first_p(oCharacter) 0.9 K; pdist2 on doubles about 5 K.
+- **Attacking piranha:** + psincos_cr 48-50 K incl. (cr_reduce's 3 dd_add, sincos_r twice: about 140 soft-double
+  calls) and point_direction_d 8 K. 95 psincos_cr calls on the drain route (370 steps), 97 on swim.
+- **checkWater (drain 273):** for each water, instance_place(x -+ 16, y, oWater) twice (pgrid_search 592 K,
+  instance_place_p 273 K, overlap_at 270 K) and up to ten collision_point_any.
+- **Drips (drain 279):** their oWaterSwim test walked the family's list (3,192 loop iterations in
+  collision_point_any, JTC_PCHIST): destroyed water kept its index counts, so drained cells failed xpoint_none.
+- **The player while swimming:** 104 K walking, 150-187 K swimming (characterStepEvent 115 K incl., its moveTo 38 K,
+  pgrid_search through collision_rect / line 27 K): shared code with every level, not analysed further here.
+
+### 10.2 Fixes, ranked by expected saving (drain mean, MAME)
+
+| # | Fix | Expected | Exactness |
+|---|---|---|---|
+| 1 | collision_point_any_at answers static-family tests on its own query (whole x, y; or the float position at dx = dy = 0) with the index (xstatic_any), no double re-entry; water / lava tests at the position moved to _at | 3-5 % | the query equals pq_init's on the doubles (PLAY_STATS compares query and answer) |
+| 2 | a destroyed static-family entry leaves the index counts at the next query | 1-2 % (drain event) | counts stay a superset of the alive entries |
+| 3 | instance_place_p on a static family from the index when no entry, or exactly one, can overlap (checkWater) | 2-3 % (drain event) | the search's result is fixed when at most one entry can pass place_cb |
+| 4 | psincos_cr: integer fast path (fixed-point reduction and series, Ziv test) before sincos_r | 3-5 % (attack steps 5-8 %) | a correctly rounded result whenever the test passes; else the old path |
+| 5 | instance_first_p memo per object (until the family's alive set changes) | ~1 % | the oldest alive instance changes only with the alive set |
+| - | not proposed: idle moveTo / pw_changed (already the PLAY_WALK path: the cost is the move's bookkeeping), pdist2 in ints (the player's position is fractional while swimming) | | |
+
+Even with all of them the route means stay over 0.525 M: the non-swimming swamp steps are about 550 K jtcps3.
