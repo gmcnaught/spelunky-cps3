@@ -19,7 +19,11 @@ Two constant sets, both computed on every run (one JTCOST line each); the tables
     store +5.06; load hit +0.5; fetch line miss +12.98; data line miss (main RAM or SIMM) +37.78;
     MUL.L / DMULx.L +4.37; MULx.W +0.96; DIVU (store to 0xFFFFFF04 / 0xFFFFFF14) +37; uncached loads +0.
 What-ifs (both sets): WAYS=2 (two-way mode), CRAM_STACK=1 (stack accesses at cache-RAM cost), NOLIT=1 (literal-pool
-loads removed).
+loads removed); with JTC_SIMM1, NOLIT_KIND=<kind>,... (ram, const, func, table, video: the literal loads holding such a
+value removed) and NOLIT_SYMS=<symbol>,... (those holding a listed RAM symbol's address, as a GBR block would: each
+becomes a load of the symbol's word in a block at 0x0207F000, so the block's own lines are billed); NOLIT_FREE=<symbol>,...
+(those literal loads removed: a scalar moved into the GBR block, its access kept where it was); NOLIT_VALS=<hex>,...
+(literal loads of these values removed, each billed NOLIT_VALS_INS instructions instead: constants made in registers).
 Fully associative bound (every run, model_fa): the same costs with the misses of a fully associative LRU cache of the
 same size (WAYS x 64 lines); placement of code and data cannot remove more than model - model_fa (LRU, not optimal
 replacement, so an estimate of that bound).
@@ -46,7 +50,7 @@ WAYS = int(os.getenv('WAYS', '4')); CRAM_STACK = os.getenv('CRAM_STACK') == '1';
 CONSTS = dict(
     store=(5.06, 5.06), ld_hit=(0.5, 0.5), imiss=(12.0, 12.98), dmiss_ram=(27.5, 37.78), dmiss_simm=(15.5, 37.78),
     ld_unc_simm=(3.5, 0.0), ld_unc_other=(6.5, 0.0), cram=(0.5, 0.5), mull=(7.0, 4.37), mulw=(0.0, 0.96),
-    divu=(0.0, 37.0), jump=(2.0, 0.0), ufetch=(9.0, 0.0))
+    divu=(0.0, 37.0), jump=(2.0, 0.0), ufetch=(9.0, 0.0), xins=(1.0, 1.0))
 SETS = ('review', 'fit'); SI = SETS.index(SEL)
 # MAME's SH-2 interpreter: extra cycles over 1 by mnemonic (the opcode table of scripts/lua/jtmodel.lua); taken
 # BT / BF +2, taken BT/S / BF/S +1
@@ -105,6 +109,24 @@ class FACache:                                   # fully associative, LRU, WAYS 
             if len(s.lines) == s.n: s.lines.popitem(last=False)
             s.lines[t] = True
         return False
+SIMM1 = os.getenv('JTC_SIMM1')                   # simm1.bin (.text at 0x06000000): what the missed literals hold
+IMG = open(SIMM1, 'rb').read() if SIMM1 else b''
+NOLIT_KIND = set(x for x in os.getenv('NOLIT_KIND', '').split(',') if x)
+NOLIT_SYMS = [x for x in os.getenv('NOLIT_SYMS', '').split(',') if x]
+NOLIT_FREE = set(x for x in os.getenv('NOLIT_FREE', '').split(',') if x)
+NOLIT_VALS = set(int(x, 16) for x in os.getenv('NOLIT_VALS', '').split(',') if x)
+NOLIT_VALS_INS = int(os.getenv('NOLIT_VALS_INS', '2'))
+litfn = collections.Counter()                    # literal-pool line misses by (running function, size, value)
+def litval(a, sz):
+    o = (a & 0x1fffffff) - 0x06000000
+    return int.from_bytes(IMG[o:o + sz], 'big') if 0 <= o and o + sz <= len(IMG) else -1
+def litkind(w):
+    if 0x02000000 <= w < 0x02080000: return 'ram'
+    if 0x04000000 <= w < 0x05000000: return 'video'
+    if 0x06000000 <= w < 0x06100000 and w in STARTS: return 'func'
+    if 0x06000000 <= w < 0x07000000 or 0x26000000 <= w < 0x26100000: return 'func' if (w & 0x1fffffff) in STARTS or w in STARTS else 'table'
+    return 'const'
+litval_miss = collections.Counter()              # literal-pool line misses by (size, value)
 SA_C = Cache(); FA_C = FACache(); seen = set()   # the model bills SA_C's misses; model_fa FA_C's
 mc = collections.Counter()                       # miss classes: i_ / d_ + cold / cap / conf
 def access(a, kind, alloc=True):
@@ -216,6 +238,16 @@ for line in open(tr):
             if CRAM_STACK and stack: a = 0xc0000000
             if NOLIT and reg == 'simm' and m.group(3) == 'PC':
                 continue
+            if (NOLIT_KIND or NOLIT_SYMS or NOLIT_FREE or NOLIT_VALS) and reg == 'simm' and m.group(3) == 'PC' and IMG:
+                w = litval(a, sz)
+                if sz == 4 and litkind(w) == 'ram' and dname(w).lstrip('_') in NOLIT_FREE:
+                    st['lit_removed'] += 1; continue
+                if (w if sz == 4 else w | 0x10000) in NOLIT_VALS or (sz == 2 and w in NOLIT_VALS):
+                    st['lit_removed'] += 1; ev['xins'] += NOLIT_VALS_INS; continue
+                if sz == 4 and litkind(w) == 'ram' and NOLIT_SYMS and dname(w).lstrip('_') in NOLIT_SYMS:
+                    a = 0x0207F000 + 4 * NOLIT_SYMS.index(dname(w).lstrip('_')); reg = 'ram'; st['lit_gbr'] += 1
+                elif (litkind(w) if sz == 4 else 'const') in NOLIT_KIND:
+                    st['lit_removed'] += 1; continue
             if (a & 0xf0000000) == 0xc0000000:
                 ev['cram'] += 1; continue
             if is_store:
@@ -239,7 +271,9 @@ for line in open(tr):
                     ev[dk] += 1
                     st['dmiss_' + reg] += 1; c['dmiss'] += 1
                     dm[('lit:' + fn(a)) if (reg == 'simm' and fn(a) == f) else dname(a)] += 1
-                    if reg == 'simm' and m.group(3) == 'PC': litmiss[a] += 1
+                    if reg == 'simm' and m.group(3) == 'PC':
+                        litmiss[a] += 1
+                        if IMG: litval_miss[(sz, litval(a, sz))] += 1; litfn[(f, sz, litval(a, sz))] += 1
     if op in ('MUL.L', 'DMULS.L', 'DMULU.L'): ev['mull'] += 1; st['mul'] += 1
     if op in ('MULS.W', 'MULU.W', 'MULS', 'MULU'): ev['mulw'] += 1; st['mulw'] += 1
     if op in JUMPS: ev['jump'] += 1; st['jump'] += 1
@@ -316,8 +350,16 @@ if WATCH:
 print('\nsoft-float / libgcc calls by caller')
 for (h, cf), v in callers.most_common(30): print('  %-16s <- %-24s %6d' % (h, cf, v))
 
-SIMM1 = os.getenv('JTC_SIMM1')                   # simm1.bin (.text at 0x06000000): what the missed literals hold
 if SIMM1:
+    print('\nliteral-pool line misses of constants by function and value (top 50)')
+    for (fn_, sz, w), v in litfn.most_common(400):
+        if (litkind(w) if sz == 4 else 'const') != 'const': continue
+        print('  %-26s %s %08X %5d' % (fn_[:26], 'L' if sz == 4 else 'W', w & 0xffffffff, v))
+    print('\nliteral-pool line misses by value (top 60; L long, W word)')
+    for (sz, w), v in litval_miss.most_common(60):
+        k = litkind(w) if sz == 4 else 'const'
+        nm = dname(w) if k == 'ram' else fn(w if w < 0x20000000 else w - 0x20000000) if k == 'func' else ''
+        print('  %s %08X %-6s %-28s %5d' % ('L' if sz == 4 else 'W', w & 0xffffffff, k, nm, v))
     img = open(SIMM1, 'rb').read(); kinds = collections.Counter(); litsym = collections.Counter()
     for a, v in litmiss.items():
         o = (a & 0x1fffffff) - 0x06000000
