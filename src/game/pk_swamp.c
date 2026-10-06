@@ -241,6 +241,7 @@ static int prey_swims(void)
     int16_t w[32];
     int k, j, n;
     for (k = 0; k < 4; k++) {
+        if (pw_count(objs[k]) == 0) continue;                  /* (pw_with: none) */
         n = pw_with(objs[k], w, 32);
         if (n >= 32) return 1;
         for (j = 0; j < n; j++)
