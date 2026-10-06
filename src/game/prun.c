@@ -189,24 +189,29 @@ static uint32_t fbits(float f) { union { float f; uint32_t u; } v; v.f = f; retu
 
 /* image_index += image_speed x the sprite's speed (pspr_anim: speed / 30.0f for type 0, the frame count, as the
    expressions computed them); a one-frame sprite at image_index +0 advancing exactly 1 (image_speed 1, speed 1)
-   goes 0 -> 1 -> 0 with an Animation End: the same without the float arithmetic. 1: an Animation End event ran */
+   goes 0 -> 1 -> 0 with an Animation End: the same without the float arithmetic. 1: an Animation End event ran.
+   An instance left with image_index's bits as they were and no event goes off the animation list (pworld.c
+   pw_tahead): the same run gives the same result until image_index, image_speed or the sprite changes, and each of
+   those puts it back */
 static int anim_one(int k)
 {
     struct pin *p = &PW.in[k];
+    uint32_t b0;
     PWST(anim, 1);
     if (!p->alive) return 0;
+    b0 = fbits(p->img);
     if (p->spr < 0) {
         pin_setimg(p, p->img + p->ispd);
+        if (fbits(p->img) == b0) pw_ta_off(k);
         return 0;
     }
     {
         const float *an = pspr_anim[p->spr];
         img_t sp = an[0], fr = an[1];
         play_cur_obj = p->obj;
-        if (fbits(p->img) == 0 && fbits(p->ispd) == 0x3f800000u && fbits(sp) == 0x3f800000u &&
-            fbits(fr) == 0x3f800000u) {
+        if (b0 == 0 && fbits(p->ispd) == 0x3f800000u && fbits(sp) == 0x3f800000u && fbits(fr) == 0x3f800000u) {
             if (pobj[p->obj].ev & EV_ANIMEND) { ev_animend(k); pcol_event_done(k); return 1; }
-            if (pw_ta_is_on(k)) pw_ta_off(k);            /* terrain: nothing to do until a field changes */
+            pw_ta_off(k);                                /* nothing to do until a field changes */
             return 0;
         }
         pin_setimg(p, p->img + p->ispd * sp);
@@ -217,6 +222,7 @@ static int anim_one(int k)
             pin_setimg(p, p->img + fr);
             if (pobj[p->obj].ev & EV_ANIMEND) { ev_animend(k); pcol_event_done(k); return 1; }
         }
+        if (fbits(p->img) == b0) pw_ta_off(k);
     }
     return 0;
 }
@@ -224,18 +230,40 @@ static int anim_one(int k)
 #ifdef PLAY_STATS
 #include <stdio.h>
 #include <stdlib.h>
-/* every terrain instance animate skips does nothing there */
+/* every alive instance off the animation list: anim_one's arithmetic on it would leave image_index's bits and run
+   no event */
 static void anim_check(void)
 {
-    int k;
+    int k, last = -1;
+    for (k = pw_tahead; k >= 0; k = pw_tanext[k]) {          /* the list: alive, in creation order */
+        if (!PW.in[k].alive || pw_seq[k] <= last) {
+            fprintf(stderr, "animate: list entry %d (%s) dead or out of order\n", k, objdefs[PW.in[k].obj].name);
+            abort();
+        }
+        last = pw_seq[k];
+    }
     for (k = pw_ahead; k >= 0; k = pw_anext[k]) {
         const struct pin *p = &PW.in[k];
-        const float *an;
-        if (pin_needs_ext(p->obj) || pw_ta_is_on(k)) continue;
-        an = p->spr >= 0 ? pspr_anim[p->spr] : 0;
-        if (!an || fbits(p->img) != 0 || fbits(p->ispd) != 0x3f800000u || fbits(an[0]) != 0x3f800000u ||
-            fbits(an[1]) != 0x3f800000u || (pobj[p->obj].ev & EV_ANIMEND)) {
-            fprintf(stderr, "animate: quiet terrain %d (%s) changed\n", k, objdefs[p->obj].name);
+        int act;
+        if (!p->alive || pw_ta_is_on(k)) continue;
+        if (p->spr < 0) act = fbits(p->img + p->ispd) != fbits(p->img);
+        else {
+            const float *an = pspr_anim[p->spr];
+            img_t sp = an[0], fr = an[1], v;
+            int ev = (pobj[p->obj].ev & EV_ANIMEND) != 0;
+            if (fbits(p->img) == 0 && fbits(p->ispd) == 0x3f800000u && fbits(sp) == 0x3f800000u &&
+                fbits(fr) == 0x3f800000u)
+                act = ev;
+            else {
+                v = p->img + p->ispd * sp;
+                act = 0;
+                if (v >= fr) { v = v - fr; act = ev; }
+                else if (v < 0) { v = v + fr; act = ev; }
+                act = act || fbits(v) != fbits(p->img);
+            }
+        }
+        if (act) {
+            fprintf(stderr, "animate: instance %d (%s) off the list would change\n", k, objdefs[p->obj].name);
             abort();
         }
     }
@@ -244,19 +272,17 @@ static void anim_check(void)
 
 /* the instances in creation order (GameMaker's animation pass), those an Animation End event creates (appended)
    included: they are animated in the same pass (Observed: c_ice_barrier_s111 record 102, the oSkeleton that
-   oFakeBones' Animation End creates has image_index 0.5 in that step's record). The terrain off the list
-   pw_tahead does nothing there, so the walk is the non-terrain list merged with the terrain list by creation
-   number. Only an Animation End event creates instances or puts terrain back on the list, so the terrain position
-   is found again after one ran. play_cur_obj ends as the full walk leaves it: the object of the last instance with
-   a sprite it looked at */
+   oFakeBones' Animation End creates has image_index 0.5 in that step's record). The instances off the list
+   pw_tahead do nothing there, so the walk is that list. Only an Animation End event creates instances or puts one
+   back on the list, so the position is found again after one ran. play_cur_obj ends as the full walk leaves it: the
+   object of the last instance with a sprite (pw_last_with_sprite for those older than the walk, which the walk
+   skips when they are off the list; the ones created during it are on it) */
 static void animate(void)
 {
-    int k, a = pw_nthead, t = pw_tahead;
+    int k, t = pw_tahead;
     int16_t s0 = PW.seq, lastseq = -1;
-    for (;;) {
-        if (a >= 0 && (t < 0 || pw_seq[a] < pw_seq[t])) { k = a; a = pw_ntnext[k]; }
-        else if (t >= 0) { k = t; t = pw_tanext[k]; }
-        else break;
+    while ((k = t) >= 0) {
+        t = pw_tanext[k];
         if (PW.in[k].alive && PW.in[k].spr >= 0) lastseq = pw_seq[k];
         if (anim_one(k))
             for (t = pw_tahead; t >= 0 && pw_seq[t] <= pw_seq[k]; t = pw_tanext[t]) {}

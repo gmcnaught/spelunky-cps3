@@ -24,7 +24,7 @@ int pdam_create(int i, int fromgen)
         p->type = T_DAMSEL;
         PE(p)->xVel = PE(p)->yVel = PE(p)->xAcc = PE(p)->yAcc = 0;
         setCollisionBounds(i, -4, -4, 4, 8);
-        p->ispd = (img_t)0.5;
+        pin_setispd(p, (img_t)0.5);
         PE(p)->trigger = 1;
         PEN(p)->startled = 0;
         p->invincible = 0;
@@ -49,7 +49,7 @@ int pdam_create(int i, int fromgen)
     }
     case OBJ_oDamselKiss:                                              /* objects/oDamselKiss/Create_0.gml */
         p->type = T_NONE;
-        p->ispd = (img_t)0.5;
+        pin_setispd(p, (img_t)0.5);
         PE(p)->trigger = 0;                                                /* kissed */
         PE(p)->status = D_IDLE;
         return 1;
@@ -166,7 +166,7 @@ static void damsel_step(int i)
     } else if (PE(p)->status == D_YELL) {
         if (DEQ(p->img, 4)) pin_create(p->x, p->y - PI(16), OBJ_oYellHelp);
     } else if (PE(p)->status == D_RUN) {
-        p->ispd = (img_t)0.8;
+        pin_setispd(p, (img_t)0.8);
         pin_set_sprite(i, GSPR_sDamselRunL);
         if (PE(p)->facing == LEFT && isCollisionLeft(i, 2)) PE(p)->facing = RIGHT;
         if (PE(p)->facing == RIGHT && isCollisionRight(i, 2)) PE(p)->facing = LEFT;

@@ -130,7 +130,7 @@ static void characterSprite(int i)
     if (!PL.stunned && !PL.whipping) {
         if (PL.state == STANDING) {
             if (!collision_point_any(PTOD(p->x) - 2, PTOD(p->y) + 9, OBJ_oSolid, 0, NOONE)) {
-                p->ispd = (img_t)0.6;
+                pin_setispd(p, (img_t)0.6);
                 pin_set_sprite(i, GSPR_sWhoaLeft);
             } else
                 pin_set_sprite(i, GSPR_sStandLeft);
@@ -585,7 +585,7 @@ static void characterStepEvent(int i)
             if (NLT(PE(p)->xVel, N(2)) && NGT(PE(p)->xVel, N(-2))) {
                 PL.xFric = N(0.2);
                 PL.xVelLimit = N(3);
-                p->ispd = (img_t)0.8;
+                pin_setispd(p, (img_t)0.8);
             } else if ((PL.kLeft || PL.kRight) && PG.downToRun) {
                 pitems_player(2008, i, 0);
             } else {
@@ -593,7 +593,7 @@ static void characterStepEvent(int i)
                 if (NLT(PE(p)->xVel, N(0.5))) PE(p)->xVel = 0;
                 PL.xFric = N(0.2);
                 PL.xVelLimit = N(3);
-                p->ispd = (img_t)0.8;
+                pin_setispd(p, (img_t)0.8);
             }
         } else {
             if (platformCharacterIs(IN_AIR)) {
@@ -735,26 +735,26 @@ static void characterStepEvent(int i)
     PL.statePrev = PL.state;
     if (PL.state == RUNNING || PL.state == DUCKING || PL.state == LOOKING_UP) {   /* :1025 */
         if (PL.state == RUNNING || PL.state == LOOKING_UP)
-            p->ispd = (img_t)(NTOD(NABS(PE(p)->xVel)) * NTOD(PL.runAnimSpeed) + 0.1);
+            pin_setispd(p, (img_t)(NTOD(NABS(PE(p)->xVel)) * NTOD(PL.runAnimSpeed) + 0.1));
     }
     if (PL.state == CLIMBING) {                                                /* :1030 */
         double ax = NTOD(NABS(PE(p)->xVel)), ay = NTOD(NABS(PE(p)->yVel)), s2 = ax * ax + ay * ay, s = s2, prev = 0;
         int it;
         for (it = 0; it < 64 && s != prev && s2 > 0; it++) { prev = s; s = 0.5 * (s + s2 / s); }
-        p->ispd = (img_t)((s2 > 0 ? s : 0) * NTOD(PL.climbAnimSpeed));
+        pin_setispd(p, (img_t)((s2 > 0 ? s : 0) * NTOD(PL.climbAnimSpeed)));
     }
     if (NGE(PE(p)->xVel, N(4)) || NLE(PE(p)->xVel, N(-4))) {
-        p->ispd = 1;
+        pin_setispd(p, 1);
         if (platformCharacterIs(ON_GROUND)) setCollisionBounds(i, -8, -8, 8, 8);
         else setCollisionBounds(i, -5, -8, 5, 8);
     } else
         setCollisionBounds(i, -5, -8, 5, 8);
-    if (PL.whipping) p->ispd = 1;
+    if (PL.whipping) pin_setispd(p, 1);
     if (PL.state == DUCKTOHANG) {
         pin_setimg(p, 0);
-        p->ispd = (img_t)0.8;
+        pin_setispd(p, (img_t)0.8);
     }
-    if (DGT(p->ispd, 1)) p->ispd = 1;
+    if (DGT(p->ispd, 1)) pin_setispd(p, 1);
 }
 
 /* the hold-item hand-off used by the whoa, dead / stunned and hurt blocks */
@@ -933,7 +933,7 @@ static void exit_level(int i)
     PG.xmoney += PG.collect;
     PG.collect = 0;
     pin_set_sprite(i, GSPR_sPExit);
-    p->ispd = (img_t)0.5;
+    pin_setispd(p, (img_t)0.5);
     PL.active = 0;
     PL.invincible = 999;
     pin_setdepth(p, 999);
@@ -986,7 +986,7 @@ static void enter_door(int i)
     door = instance_place_p(i, x, y, OBJ_oXStart);                             /* :730 */
     if (door != NOONE) pin_setx(p, PX(door).x + PI(8));
     pin_set_sprite(i, G.isDamsel ? GSPR_sDamselExit : G.isTunnelMan ? GSPR_sTunnelExit : GSPR_sPExit);
-    p->ispd = (img_t)0.5;
+    pin_setispd(p, (img_t)0.5);
     PL.active = 0;
     pin_setdepth(p, 999);
     PL.invincible = 999;
@@ -1198,7 +1198,7 @@ void pl_step(int i)
     }
     if (PL.active) {                                                           /* :241 */
         if (PL.stunTimer > 0 && (p->spr == GSPR_sStunL || p->spr == GSPR_sDamselStunL || p->spr == GSPR_sTunnelStunL)) {
-            p->ispd = (img_t)0.4;
+            pin_setispd(p, (img_t)0.4);
             PL.stunTimer -= 1;
         }
         if (PL.stunTimer < 1 && (p->spr == GSPR_sStunL || p->spr == GSPR_sDamselStunL || p->spr == GSPR_sTunnelStunL))
@@ -1466,7 +1466,7 @@ void pl_step(int i)
         pin_set_sprite(obj, GSPR_sBombArmed);
         PE(o)->armed = 1;
         PE(o)->alarm[0] = 80;
-        o->ispd = (img_t)0.2;
+        pin_setispd(o, (img_t)0.2);
         PE(o)->safe = 1;
         PE(o)->alarm[2] = 10;
         if (PL.facing == LEFT) PE(o)->xVel = N(-8) + PE(p)->xVel;
@@ -1482,7 +1482,7 @@ void pl_step(int i)
     } else if (PL.holdItem == NOONE) {                                         /* :1180 */
         if (PL.kAttackPressed && PL.state != DUCKING && PL.state != DUCKTOHANG && !PL.whipping &&
             p->spr != GSPR_sPExit && p->spr != GSPR_sDamselExit) {
-            p->ispd = (img_t)0.6;
+            pin_setispd(p, (img_t)0.6);
             if (G.isTunnelMan || G.isDamsel) PUNTR(2045);
             else {
                 pin_set_sprite(i, GSPR_sAttackLeft);
@@ -1904,7 +1904,7 @@ void scrUseItem(void)
         pin_set_sprite(h, GSPR_sBombArmed);
         PE(o)->armed = 1;
         PE(o)->alarm[0] = 80;
-        o->ispd = (img_t)0.2;
+        pin_setispd(o, (img_t)0.2);
     } else if (o->spr == GSPR_sRopeEnd) {                                      /* :31 */
         if (!PL.kDown && PL.colTop) {
         } else {

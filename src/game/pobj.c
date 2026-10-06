@@ -188,7 +188,7 @@ void ev_create(int i)
     case OBJ_oMachete: item(i, T_MACHETE, -4, -4, 4, 4, 7000); break;
     case OBJ_oPistol: item(i, T_PISTOL, -4, -4, 4, 4, 5000); break;
     case OBJ_oShotgun: item(i, T_SHOTGUN, -4, -4, 4, 4, 15000); break;
-    case OBJ_oBow: item(i, T_BOW, -4, -4, 4, 4, 1000); p->ispd = 0; break;
+    case OBJ_oBow: item(i, T_BOW, -4, -4, 4, 4, 1000); pin_setispd(p, 0); break;
     case OBJ_oWebCannon: item(i, T_WEBCANNON, -4, -4, 4, 4, 2000); break;
     case OBJ_oTeleporter: item(i, T_TELEPORTER, -4, -4, 4, 4, 10000); break;
     case OBJ_oMitt: item(i, T_MITT, -6, -6, 6, 8, 4000); break;
@@ -250,13 +250,13 @@ void ev_create(int i)
     case OBJ_oArrowTrapTest: PE(p)->trapID = NOONE; break;
     /* effects */
     case OBJ_oExplosion:
-        p->ispd = (img_t)0.8;
+        pin_setispd(p, (img_t)0.8);
         snd_play(SND_xexplosion);                                              /* objects/oExplosion/Create_0.gml :3 */
         scrShake(5);
         break;
     case OBJ_oBlood:
         if (!create_detritus(i)) break;
-        p->ispd = (img_t)0.3;
+        pin_setispd(p, (img_t)0.3);
         {
             double a = prandom(4);
             double b = prandom(4);
@@ -273,7 +273,7 @@ void ev_create(int i)
         break;
     case OBJ_oFlame:
         if (!create_detritus(i)) break;
-        p->ispd = (img_t)0.3;
+        pin_setispd(p, (img_t)0.3);
         {
             double a = prandom(4);
             double b = prandom(4);
@@ -284,12 +284,12 @@ void ev_create(int i)
         PE(p)->alarm[0] = 2;
         PE(p)->alarm[1] = 50;
         break;
-    case OBJ_oBloodTrail: p->ispd = (img_t)0.8; break;
-    case OBJ_oFlameTrail: p->ispd = (img_t)0.4; break;
-    case OBJ_oSmokePuff: PE(p)->yVel = N(0.1); PE(p)->yAcc = N(0.1); p->ispd = (img_t)0.4; break;
-    case OBJ_oBurn: PE(p)->yVel = N(-0.1); PE(p)->yAcc = N(0.1); p->ispd = (img_t)0.4; break;
-    case OBJ_oPoof: PE(p)->xVel = 0; PE(p)->yVel = 0; p->ispd = (img_t)0.4; break;
-    case OBJ_oItemsGet: PE(p)->yVel = N(0.1); PE(p)->yAcc = N(0.1); p->ispd = (img_t)0.8; PE(p)->alarm[0] = 40; break;
+    case OBJ_oBloodTrail: pin_setispd(p, (img_t)0.8); break;
+    case OBJ_oFlameTrail: pin_setispd(p, (img_t)0.4); break;
+    case OBJ_oSmokePuff: PE(p)->yVel = N(0.1); PE(p)->yAcc = N(0.1); pin_setispd(p, (img_t)0.4); break;
+    case OBJ_oBurn: PE(p)->yVel = N(-0.1); PE(p)->yAcc = N(0.1); pin_setispd(p, (img_t)0.4); break;
+    case OBJ_oPoof: PE(p)->xVel = 0; PE(p)->yVel = 0; pin_setispd(p, (img_t)0.4); break;
+    case OBJ_oItemsGet: PE(p)->yVel = N(0.1); PE(p)->yAcc = N(0.1); pin_setispd(p, (img_t)0.8); PE(p)->alarm[0] = 40; break;
     case OBJ_oBigCollect: PE(p)->alarm[0] = 30; pin_set_sprite(i, GSPR_sBigCollect); break;
     case OBJ_oRubble: case OBJ_oRubbleSmall: case OBJ_oRubbleDarkSmall:
         p->type = T_NONE;
@@ -337,7 +337,7 @@ void pobj_init_from_gen(int i)
         PE(p)->yAcc = N(0.2);
         break;
     case OBJ_oLamp: case OBJ_oLampRed:
-        p->ispd = (img_t)0.5;
+        pin_setispd(p, (img_t)0.5);
         break;
     case OBJ_oDamsel:
         break;                                                                 /* removed (TRACE_NOENEMY) */
@@ -1454,7 +1454,7 @@ void ev_alarm(int i, int a)
     switch (o) {
     case OBJ_oBomb:
         if (a == 0) {                                                          /* objects/oBomb/Alarm_0.gml */
-            p->ispd = 1;
+            pin_setispd(p, 1);
             PE(p)->alarm[1] = 40;
         } else if (a == 1) {                                                   /* Alarm_1 */
             pin_create(p->x, p->y, OBJ_oExplosion);
@@ -1617,7 +1617,7 @@ static void explosion_item(int self, int other)
         pin_destroy(other);
     } else if (o->type == T_BOMB) {
         pin_set_sprite(other, GSPR_sBombArmed);
-        o->ispd = 1;
+        pin_setispd(o, 1);
         PE(o)->alarm[1] = RAND(4, 8);
         PE(o)->enemyID = NOONE;
         if (o->y < e->y) PE(o)->yVel = NI(-RAND(2, 4));
@@ -1709,7 +1709,7 @@ void ev_collision(int self, int other)
         } else if (obj_is(oo, OBJ_oRubblePiece)) {
             PE(&PX(other))->xVel = 0;
             PE(&PX(other))->yVel = 0;
-            PX(other).ispd = 0;
+            pin_setispd(&PX(other), 0);
         } else if (obj_is(oo, OBJ_oTreasure)) {
             PE(&PX(other))->xVel = 0;
             PE(&PX(other))->yVel = 0;

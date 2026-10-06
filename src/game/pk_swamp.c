@@ -96,7 +96,7 @@ static int create(int i, int fromgen)
     switch (p->obj) {
     case OBJ_oPiranha: case OBJ_oDeadFish:                     /* objects/oPiranha|oDeadFish/Create_0.gml */
         if (p->obj == OBJ_oPiranha) p->type = T_PIRANHA;       /* type = "Piranha" (oDeadFish keeps "NONE") */
-        p->ispd = (img_t)0.5;
+        pin_setispd(p, (img_t)0.5);
         setCollisionBounds(i, 0, 0, 8, 8);
         PE(p)->xVel = 0;
         PE(p)->yVel = 0;
@@ -121,7 +121,7 @@ static int create(int i, int fromgen)
         PE(p)->yVel = 0;
         PE(p)->myGrav = N(0.2);
         PEN(p)->myGravNorm = N(0.2);
-        p->ispd = (img_t)0.4;
+        pin_setispd(p, (img_t)0.4);
         PE(p)->hp = 1;
         p->invincible = 0;
         if (fromgen) PE(p)->facing = g ? g->facing : 0;        /* :17 rand(0,1): the generator's */
@@ -137,7 +137,7 @@ static int create(int i, int fromgen)
         make_active(p);
         setCollisionBounds(i, 2, 0, sprw(i) - 2, sprh(i));
         PE(p)->xVel = N(2.5);
-        p->ispd = (img_t)0.5;
+        pin_setispd(p, (img_t)0.5);
         p->type = T_VAMPIRE;                                   /* type = "Vampire" */
         PE(p)->hp = 6;
         p->invincible = 0;
@@ -155,7 +155,7 @@ static int create(int i, int fromgen)
         return 1;
     case OBJ_oGhost:                                           /* objects/oGhost/Create_0.gml */
         p->type = T_NONE;
-        p->ispd = (img_t)0.5;
+        pin_setispd(p, (img_t)0.5);
         setCollisionBounds(i, 4, 0, 12, 16);
         PE(p)->xVel = 0;
         PE(p)->yVel = 0;
@@ -171,7 +171,7 @@ static int create(int i, int fromgen)
         p->type = T_NONE;
         PE(p)->yVel = ND(-RAND(1, 3) * 0.1);
         PE(p)->yAcc = N(0.1);
-        p->ispd = (img_t)0.2;
+        pin_setispd(p, (img_t)0.2);
         return 1;
     case OBJ_oCape:                                            /* objects/oCape/Create_0.gml */
         p->type = T_NONE;
@@ -189,7 +189,7 @@ static int create(int i, int fromgen)
     case OBJ_oJaws:                                            /* objects/oJaws/Create_0.gml (oEnemy's first) */
         pen_enemy_create(i);
         p->type = T_MEGAMOUTH;
-        p->ispd = (img_t)0.5;
+        pin_setispd(p, (img_t)0.5);
         setCollisionBounds(i, 0, 0, 48, 32);
         PE(p)->xVel = 0;
         PE(p)->yVel = 0;
@@ -697,7 +697,7 @@ static void vampire_step(int i)
         if (DLT(dist, 96)) PE(p)->status = V_ATTACK;
         break;
     case V_ATTACK:                                             /* :131 */
-        p->ispd = 1;
+        pin_setispd(p, 1);
         if (PE(p)->facing == E_LEFT && isCollisionLeft(i, 4)) {
             if (isCollisionTop(i, 1)) PE(p)->facing = E_RIGHT;
             else PE(p)->status = V_BOUNCE;
@@ -842,7 +842,7 @@ static void vampire_hit_player(int i, int c)
             PE(p)->yVel = N(-6);
             if (DLT(PTOD(o->x), X(i) + 8)) PE(p)->xVel += N(1);
             else PE(p)->xVel -= N(1);
-            p->ispd = (img_t)0.5;
+            pin_setispd(p, (img_t)0.5);
             snd_play(SND_xhit);                                /* :21 */
         }
     } else if (PL.invincible == 0) {
@@ -870,7 +870,7 @@ static void vampire_whipped(int i, int w)
         PE(p)->counter = PEN(p)->stunTime;
         PE(p)->yVel = N(-3);
         PE(p)->xVel = DLT(X(w), X(i) + 8) ? N(2) : N(-2);
-        p->ispd = (img_t)0.5;
+        pin_setispd(p, (img_t)0.5);
         snd_play(SND_xhit);                                    /* :12 */
     }
 }
@@ -921,7 +921,7 @@ static void ghost_hit_player(int i, int c)                     /* objects/oGhost
     }
     p = &PX(i);
     PE(p)->status = 0;                                         /* IDLE */
-    p->ispd = (img_t)0.2;
+    pin_setispd(p, (img_t)0.2);
     pin_set_sprite(i, GSPR_sGhostDisappear);
     snd_play(SND_xghost);                                      /* :32 */
 }

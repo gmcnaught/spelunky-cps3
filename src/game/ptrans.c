@@ -348,7 +348,7 @@ int ptrans_gui(int32_t *v)
 int ptrans_create(int i)
 {
     if (PX(i).obj == OBJ_oSprite) {                                            /* objects/oSprite/Create_0.gml */
-        PX(i).ispd = 0;
+        pin_setispd(&PX(i), 0);
         return 1;
     }
     return 0;

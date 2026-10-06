@@ -113,7 +113,7 @@ int pen_create(int i, int fromgen)
         en_make_active(p);
         setCollisionBounds(i, 2, 0, 14, 16);
         PE(p)->xVel = N(2.5);
-        p->ispd = (img_t)0.4;
+        pin_setispd(p, (img_t)0.4);
         p->type = T_SNAKE;
         PE(p)->hp = 1;
         p->invincible = 0;
@@ -125,7 +125,7 @@ int pen_create(int i, int fromgen)
         return 1;
     case OBJ_oBat:                                                     /* objects/oBat/Create_0.gml */
         pen_enemy_create(i);
-        p->ispd = (img_t)0.5;
+        pin_setispd(p, (img_t)0.5);
         setCollisionBounds(i, 2, 2, 14, 14);
         PE(p)->xVel = 0;
         PE(p)->yVel = 0;
@@ -139,7 +139,7 @@ int pen_create(int i, int fromgen)
         pen_enemy_create(i);
         en_make_active(p);
         setCollisionBounds(i, 4, 0, 12, 12);
-        p->ispd = (img_t)0.4;
+        pin_setispd(p, (img_t)0.4);
         PE(p)->hp = 1;
         p->invincible = 0;
         PE(p)->status = 0;
@@ -151,7 +151,7 @@ int pen_create(int i, int fromgen)
         setCollisionBounds(i, 1, 5, 15, 16);
         PE(p)->myGrav = N(0.2);
         PEN(p)->myGravNorm = N(0.2);
-        p->ispd = (img_t)0.4;
+        pin_setispd(p, (img_t)0.4);
         PE(p)->hp = 1;
         p->invincible = 0;
         PE(p)->status = 0;
@@ -160,7 +160,7 @@ int pen_create(int i, int fromgen)
         pen_enemy_create(i);
         en_make_active(p);
         setCollisionBounds(i, 0, 0, 32, 16);
-        p->ispd = (img_t)0.4;
+        pin_setispd(p, (img_t)0.4);
         PE(p)->hp = 10;
         p->invincible = 0;
         PE(p)->status = 0;
@@ -176,7 +176,7 @@ int pen_create(int i, int fromgen)
         setCollisionBounds(i, 2, 16, 30, 32);
         PE(p)->myGrav = N(0.3);
         PEN(p)->myGravNorm = N(0.3);
-        p->ispd = (img_t)0.8;
+        pin_setispd(p, (img_t)0.8);
         PE(p)->hp = 1;
         p->invincible = 0;
         PEN(p)->whipped = 10;
@@ -189,7 +189,7 @@ int pen_create(int i, int fromgen)
         en_make_active(p);
         setCollisionBounds(i, 2, 0, sprw(i) - 2, sprh(i));
         PE(p)->xVel = N(2.5);
-        p->ispd = (img_t)0.5;
+        pin_setispd(p, (img_t)0.5);
         PE(p)->myGrav = N(0.6);
         p->type = T_CAVEMAN;
         PE(p)->hp = 3;
@@ -207,7 +207,7 @@ int pen_create(int i, int fromgen)
         en_make_active(p);
         setCollisionBounds(i, 2, 0, 14, 16);
         PE(p)->xVel = 0;
-        p->ispd = (img_t)0.5;
+        pin_setispd(p, (img_t)0.5);
         p->type = T_SKELETON;
         PE(p)->hp = 1;
         p->invincible = 0;
@@ -230,7 +230,7 @@ int pen_create(int i, int fromgen)
     case OBJ_oBone:                                                    /* objects/oBone/Create_0.gml */
         create_detritus(i);
         p = &PX(i);
-        p->ispd = (img_t)0.3;
+        pin_setispd(p, (img_t)0.3);
         en_make_active(p);
         setCollisionBounds(i, -4, -4, 4, 4);
         {
@@ -249,7 +249,7 @@ int pen_create(int i, int fromgen)
         PE(p)->life = NI(RAND(20, 100));
         p->invincible = 1;
         return 1;
-    case OBJ_oSplash: p->type = T_NONE; p->ispd = (img_t)0.6; return 1;
+    case OBJ_oSplash: p->type = T_NONE; pin_setispd(p, (img_t)0.6); return 1;
     case OBJ_oYellHelp:                                                /* objects/oYellHelp/Create_0.gml */
         p->type = T_NONE;
         PE(p)->yVel = N(0.1);
@@ -334,7 +334,7 @@ int pen_hit_common(int e, int kind)
             o = &PX(e);
             PE(o)->hp -= 1;
             pin_set_sprite(e, GSPR_sAlienBossHurt);
-            o->ispd = (img_t)0.8;
+            pin_setispd(o, (img_t)0.8);
             snd_play(SND_xhit);                                                /* :304, :240 */
         }
     } else if (t == T_UFO) {
@@ -492,7 +492,7 @@ static void snake_step(int i)
     }
     if (isCollisionSolid(i)) pin_sety(p, p->y - (PI(2)));                            /* :77 */
     if (PE(p)->status != E_STUNNED) {
-        p->ispd = NEQ(PE(p)->xVel, N(0)) ? (img_t)0.2 : (img_t)0.4;
+        pin_setispd(p, NEQ(PE(p)->xVel, N(0)) ? (img_t)0.2 : (img_t)0.4);
         pin_set_sprite(i, GSPR_sSnakeWalkL);
     }
 }
@@ -856,7 +856,7 @@ static void caveman_step(int i)
         }
         caveman_sight(i);
     } else if (PE(p)->status == 2) {                                       /* ATTACK :126 */
-        p->ispd = 1;
+        pin_setispd(p, 1);
         if (PE(p)->colLeft || PE(p)->colRight) PE(p)->facing = PE(p)->facing == E_LEFT ? E_RIGHT : E_LEFT;
         PE(p)->xVel = PE(p)->facing == E_LEFT ? N(-3) : N(3);
     } else if (PE(p)->status == E_STUNNED) {                               /* :137 */
@@ -1000,7 +1000,7 @@ static void boulder_step(int i)
         if (PE(p)->colLeft && !PE(p)->colRight) pin_setx(p, p->x + (PI(1)));
         else if (PE(p)->colRight && !PE(p)->colLeft) pin_setx(p, p->x - (PI(1)));
     }
-    p->ispd = (img_t)(NTOD(NABS(PE(p)->xVel)) / 5);
+    pin_setispd(p, (img_t)(NTOD(NABS(PE(p)->xVel)) / 5));
     if (NLT(PE(p)->xVel, N(0))) pin_set_sprite(i, GSPR_sBoulderRotateL);
     else if (NGT(PE(p)->xVel, N(0))) pin_set_sprite(i, GSPR_sBoulderRotateR);
     else pin_set_sprite(i, GSPR_sBoulder);
@@ -1155,10 +1155,10 @@ int pen_animend(int i)
     case OBJ_oGiantSpider:
         if (p->spr == GSPR_sGiantSpiderFlip) {
             pin_set_sprite(i, GSPR_sGiantSpider);
-            p->ispd = (img_t)0.4;
+            pin_setispd(p, (img_t)0.4);
         } else if (p->spr == GSPR_sGiantSpiderSquirt) {
             PE(p)->status = 0;
-            p->ispd = (img_t)0.4;
+            pin_setispd(p, (img_t)0.4);
         }
         return 1;
     case OBJ_oFakeBones:
@@ -1253,7 +1253,7 @@ static void caveman_hit_player(int i, int c)
             PE(p)->yVel = N(-6);
             if (DLT(PTOD(o->x), X(i) + 8)) PE(p)->xVel += N(1);
             else PE(p)->xVel -= N(1);
-            p->ispd = (img_t)0.5;
+            pin_setispd(p, (img_t)0.5);
             snd_play(SND_xhit);                                                /* :21 */
         }
     } else if (PL.invincible == 0) {
@@ -1285,7 +1285,7 @@ static void caveman_whipped(int i, int w)
         PE(p)->counter = PEN(p)->stunTime;
         PE(p)->yVel = N(-3);
         PE(p)->xVel = DLT(X(w), X(i) + 8) ? N(2) : N(-2);
-        p->ispd = (img_t)0.5;
+        pin_setispd(p, (img_t)0.5);
         snd_play(SND_xhit);                                                    /* :16 */
     }
 }

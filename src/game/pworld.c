@@ -141,13 +141,13 @@ static int16_t pw_atail, aprev[PIN_MAX];
 int16_t pw_nthead, pw_ntnext[PIN_MAX];
 static int16_t pw_nttail, ntprev[PIN_MAX];
 static int16_t otail[OBJ_COUNT], iprev[PIN_MAX];
-/* the terrain to animate (prun.c animate): alive terrain instances (pin_needs_ext 0: no events but Create / Destroy)
-   in creation order, pw_tahead then pw_tanext[i], except those animate found doing nothing (a one-frame sprite at
-   image_index +0, image_speed 1: image_index stays 0, no Animation End event). One goes back on the list at any
-   change of its fields (pw_draw_mark: image_index, sprite, visible, depth; pw_changed: x, y, sprite, mask, scales,
-   angle). image_speed has no setter: no code writes a terrain instance's (checked: every image_speed write is to
-   an instance with events or with pin_ext; PLAY_STATS builds check every quiet one after animate). An instance
-   taken off keeps its pw_tanext, so a walk at it continues */
+/* the instances to animate (prun.c animate): alive instances in creation order, pw_tahead then pw_tanext[i], except
+   those animate found doing nothing (anim_one left image_index's bits as they were and ran no Animation End event:
+   it is a function of image_index, image_speed, the sprite and the object, so it does nothing again until one of
+   them changes). One goes back on the list at any change of image_index, sprite, visible, depth or position
+   (pw_draw_mark), at a write of image_speed (pin_setispd; the field is PIN_RO) and when created. PLAY_STATS builds
+   check every one off the list after animate. An instance taken off keeps its pw_tanext, so a walk at it
+   continues */
 int16_t pw_tahead, pw_tanext[PIN_MAX];
 static int16_t tatail, taprev[PIN_MAX];
 static uint8_t taon[PIN_MAX];
@@ -306,7 +306,7 @@ static int nddlist;
 static void ta_on(int i)
 {
     int p;
-    if (taon[i] || !PW.in[i].alive || pin_needs_ext(PW.in[i].obj)) return;
+    if (taon[i] || !PW.in[i].alive) return;
     for (p = tatail; p >= 0 && pw_seq[p] > pw_seq[i]; p = taprev[p]) {}
     taprev[i] = (int16_t)p;
     pw_tanext[i] = p >= 0 ? pw_tanext[p] : pw_tahead;
@@ -324,6 +324,7 @@ void pw_ta_off(int i)
 }
 
 int pw_ta_is_on(int i) { return taon[i]; }
+void pw_ta_on(int i) { ta_on(i); }
 
 /* the last alive instance older than seq s0 with a sprite (prun.c animate) */
 int pw_last_with_sprite(int16_t s0)
@@ -747,12 +748,13 @@ int pin_add(int obj, pos x, pos y, int32_t id)
     PIN_WR(pos, p->y) = y;
     PIN_WR(float, p->depth) = objdefs[obj].depth;
     PIN_WR(img_t, p->img) = 0;
-    p->ispd = 1;
+    PIN_WR(img_t, p->ispd) = 1;
     PIN_WR(float, p->xscale) = PIN_WR(float, p->yscale) = 1;
     PIN_WR(float, p->angle) = 0;
     pin_set_ext(p, pin_needs_ext(obj) ? ext_alloc() : 0);         /* with pin_add's defaults (ext_defaults) */
     if (obj == OBJ_oPlayer1 && p->ext) PE(p)->xprev = x;
     if (p->ext && pin_needs_en(obj)) pin_ext[p->ext].en = (int16_t)en_alloc();
+    pw_ta_off(i);                                    /* (a reused slot is placed again by its creation number) */
     pw_draw_mark(i);                                 /* (a reused slot may still be on the list: marked once) */
     (void)k;
     olink(i);
@@ -789,7 +791,8 @@ void pin_destroy(int i)
 void pin_kill(int i)
 {
     if (i >= 0) {
-        if (PW.in[i].alive) { ounlink(i); pw_draw_mark(i); }
+        if (PW.in[i].alive) { ounlink(i); PW.in[i].alive = 0; pw_draw_mark(i); }   /* (dead first: not back on the
+                                                                                     animation list) */
         PW.in[i].alive = 0;
         pcol_destroyed(i);
     }

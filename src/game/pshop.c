@@ -32,7 +32,7 @@ int pshop_create(int i, int fromgen)
         PE(p)->xVel = PE(p)->yVel = PE(p)->xAcc = PE(p)->yAcc = 0;
         setCollisionBounds(i, 2, 0, sprw(i) - 2, sprh(i));
         PE(p)->xVel = 0;
-        p->ispd = (img_t)0.5;
+        pin_setispd(p, (img_t)0.5);
         PE(p)->myGrav = N(0.6);
         p->type = T_SHOPKEEPER;
         PE(p)->style = SHOP_GENERAL;
@@ -65,7 +65,7 @@ int pshop_create(int i, int fromgen)
         PE(p)->safe = 0;
         return 1;
     case OBJ_oShotgunBlastLeft: case OBJ_oShotgunBlastRight:
-        p->ispd = (img_t)0.8;
+        pin_setispd(p, (img_t)0.8);
         return 1;
     }
     return 0;
@@ -361,7 +361,7 @@ static void shopkeeper_step(int i)
         }
     } else if (PE(p)->status == S_FOLLOW) {                                /* :262 */
         double iv;
-        p->ispd = (img_t)0.5;
+        pin_setispd(p, (img_t)0.5);
         if (isCollisionLeft(i, 1) || isCollisionRight(i, 1)) PE(p)->facing = PE(p)->facing == E_LEFT ? E_RIGHT : E_LEFT;
         if (PEN(p)->turnTimer > 0) PEN(p)->turnTimer -= 1;
         else if (DLT(dabs(PTOD(q->y) - (Y(i) + 8)), 8) && isCollisionBottom(i, 1) && DGT(dist, 16)) {
@@ -386,7 +386,7 @@ static void shopkeeper_step(int i)
             PE(p)->status = S_WALK;
         }
     } else if (PE(p)->status == S_WALK) {                                  /* :307 */
-        p->ispd = (img_t)0.5;
+        pin_setispd(p, (img_t)0.5);
         if (isCollisionLeft(i, 1) || isCollisionRight(i, 1)) PE(p)->facing = PE(p)->facing == E_LEFT ? E_RIGHT : E_LEFT;
         if (PE(p)->facing == E_LEFT) {
             if (!CPn(X(i) - 1, Y(i), OBJ_oSolid, i)) {
@@ -409,7 +409,7 @@ static void shopkeeper_step(int i)
             PE(p)->xVel = 0;
         }
     } else if (PE(p)->status == S_ATTACK) {                                /* :340 */
-        p->ispd = 1;
+        pin_setispd(p, 1);
         if (!PEN(p)->angered) {
             int16_t w[PIN_MAX];
             int n = pw_with(OBJ_oItem, w, PIN_MAX), k;
@@ -567,7 +567,7 @@ static void shop_hit_player(int i, int c)
             PE(p)->yVel = N(-6);
             if (DLT(PTOD(o->x), X(i) + 8)) PE(p)->xVel += N(1);
             else PE(p)->xVel -= N(1);
-            p->ispd = (img_t)0.5;
+            pin_setispd(p, (img_t)0.5);
             snd_play(SND_xhit);                                                /* :19 */
         }
     } else if (PL.invincible == 0 && PE(p)->status < S_STUNNED) {

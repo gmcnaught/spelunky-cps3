@@ -499,7 +499,7 @@ static int pdummy3_ev(int ev, int i, int a)
     switch (ev) {
     case FEV_CREATE:                                                           /* oDrawnSprite: type, blinkToggle */
         p->type = T_NONE;
-        p->ispd = (img_t)0.6;
+        pin_setispd(p, (img_t)0.6);
         PE(p)->counter = 0;                                                    /* climbSndToggle */
         PE(p)->status = 0;                                                     /* TRANSITION */
         PE(p)->yVel = 0;
@@ -614,7 +614,7 @@ static int flare_ev(int ev, int i, int a)
     switch (ev) {
     case FEV_CREATE:
         create_item(p);                                                        /* action_inherited (oItem) */
-        p->ispd = (img_t)0.3;
+        pin_setispd(p, (img_t)0.3);
         p->type = T_FLARE;
         PE(p)->xVel = PE(p)->yVel = PE(p)->xAcc = PE(p)->yAcc = 0;               /* makeActive */
         setCollisionBounds(i, -4, -4, 4, 4);
@@ -654,7 +654,7 @@ static int flarespark_ev(int ev, int i)
         p->type = T_NONE;                                                      /* oDrawnSprite */
         PE(p)->yVel = N(-0.1);
         PE(p)->yAcc = N(0.1);
-        p->ispd = (img_t)0.4;
+        pin_setispd(p, (img_t)0.4);
         return 1;
     case FEV_STEP:
         pin_sety(p, (pos)(PTOD(p->y) + NTOD(PE(p)->yVel)));
@@ -675,7 +675,7 @@ static int pdummy4_ev(int ev, int i, int a)
     switch (ev) {
     case FEV_CREATE:
         p->type = T_NONE;                                                      /* oDrawnSprite */
-        p->ispd = (img_t)0.6;
+        pin_setispd(p, (img_t)0.6);
         PE(p)->status = 0;
         PE(p)->counter = 0;                                                    /* climbSndToggle */
         PE(p)->xVel = PE(p)->yVel = 0;
@@ -1225,7 +1225,7 @@ static int ending_ev(int ev, int i, int a)
     case OBJ_oVolcanoFlame:
         if (ev == FEV_CREATE) {                                                /* Create_0 */
             double r1, r2;
-            p->ispd = (img_t)0.3;
+            pin_setispd(p, (img_t)0.3);
             r1 = prandom(4);
             r2 = prandom(4);
             PE(p)->xVel = ND(r1 - r2);
@@ -1262,7 +1262,7 @@ static int ending_ev(int ev, int i, int a)
         return 1;
     case OBJ_oCamel:
         if (ev == FEV_CREATE) {                                                /* Create_0 */
-            p->ispd = (img_t)0.5;
+            pin_setispd(p, (img_t)0.5);
             PE(p)->status = 0;
             if (G.isDamsel) pin_set_sprite(i, GSPR_sCamelDamsel);
             else if (G.isTunnelMan) pin_set_sprite(i, GSPR_sCamelTunnel);
@@ -1271,7 +1271,7 @@ static int ending_ev(int ev, int i, int a)
     case OBJ_oCaravan:
         if (ev == FEV_CREATE) {                                                /* Create_0 */
             if (PG.damsels > 0) pin_set_sprite(i, G.isDamsel ? GSPR_sCaravan3 : GSPR_sCaravan2);
-            p->ispd = (img_t)0.5;
+            pin_setispd(p, (img_t)0.5);
             PE(p)->status = 0;
         } else if (ev == FEV_STEP) camel_step(i, 1);
         return 1;

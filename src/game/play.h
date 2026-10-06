@@ -128,7 +128,7 @@ struct pin {
     PIN_RO pos x, y;
     PIN_RO float depth;     /* a float in the runner (-99999991 reads -99999992) */
     PIN_RO img_t img;       /* image_index */
-    img_t ispd;             /* image_speed */
+    PIN_RO img_t ispd;      /* image_speed (pin_setispd) */
     PIN_RO float xscale, yscale, angle;  /* floats in the runner; the values set (+-1, whole numbers, (float) angle) */
 };
 
@@ -263,6 +263,14 @@ static inline void pin_setimg(struct pin *p, img_t v)
     img_t o = p->img;
     PIN_WR(img_t, p->img) = v;
     if (fne(o, v)) pw_draw_mark(PIN_IDX(p));
+}
+/* image_speed: the instance goes back on the animation list (pworld.c pw_tahead), which a change of image_index,
+   sprite or position (pw_draw_mark) does too */
+void pw_ta_on(int i);
+static inline void pin_setispd(struct pin *p, img_t v)
+{
+    PIN_WR(img_t, p->ispd) = v;
+    pw_ta_on(PIN_IDX(p));
 }
 static inline void pin_setvisible(struct pin *p, int v)
 {

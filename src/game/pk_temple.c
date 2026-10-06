@@ -62,7 +62,7 @@ static void hawkman_create(int i)
     PE(p)->xVel = PE(p)->yVel = PE(p)->xAcc = PE(p)->yAcc = 0;           /* makeActive */
     setCollisionBounds(i, 2, 0, sprw(i) - 2, sprh(i));
     PE(p)->xVel = N(2.5);
-    p->ispd = (img_t)0.5;
+    pin_setispd(p, (img_t)0.5);
     PE(p)->myGrav = N(0.6);
     p->type = T_YETI;                                                      /* "Yeti" */
     PE(p)->hp = 4;
@@ -162,7 +162,7 @@ static void hawkman_step(int i)
         }
         hawkman_sight(i);
     } else if (PE(p)->status == 2) {                                       /* ATTACK :125 */
-        p->ispd = 1;
+        pin_setispd(p, 1);
         if (isCollisionLeft(i, 1) || isCollisionRight(i, 1))
             PE(p)->facing = PE(p)->facing == E_LEFT ? E_RIGHT : E_LEFT;
         PE(p)->xVel = PE(p)->facing == E_LEFT ? N(-3) : N(3);
@@ -236,7 +236,7 @@ static void hawkman_hit_player(int i, int c)
         PE(p)->yVel = N(-6);
         if (DLT(PTOD(o->x), X(i) + 8)) PE(p)->xVel += N(1);
         else PE(p)->xVel -= N(1);
-        p->ispd = (img_t)0.5;
+        pin_setispd(p, (img_t)0.5);
         snd_play(SND_xhit);                                                    /* :21 */
     } else if (PL.invincible == 0 && PE(p)->status < E_STUNNED) {
         if (CP(X(i) + 8, Y(i) - 4, OBJ_oSolid)) {                          /* :25 */
@@ -289,7 +289,7 @@ static void hawkman_whipped(int i, int w)
         PE(p)->counter = PEN(p)->stunTime;
         PE(p)->yVel = N(-3);
         PE(p)->xVel = DLT(X(w), X(i) + 8) ? N(2) : N(-2);
-        p->ispd = (img_t)0.5;
+        pin_setispd(p, (img_t)0.5);
         snd_play(SND_xhit);                                                    /* :16 */
     }
 }
@@ -313,7 +313,7 @@ static void lava_create(int i, int fromgen)
         PE(p)->spurtTime = (int16_t)RAND(100, 300);
     }
     PE(p)->spurtCounter = PE(p)->spurtTime;
-    p->ispd = (img_t)0.4;
+    pin_setispd(p, (img_t)0.4);
 }
 
 /* objects/oLava/Step_0.gml */
@@ -373,7 +373,7 @@ static void magma_create(int i)
     struct pin *p;
     create_detritus(i);
     p = &PX(i);
-    p->ispd = (img_t)0.3;
+    pin_setispd(p, (img_t)0.3);
     PE(p)->xVel = PE(p)->yVel = PE(p)->xAcc = PE(p)->yAcc = 0;           /* makeActive */
     setCollisionBounds(i, -8, -8, 8, 8);
     {
@@ -466,7 +466,7 @@ static void magmaman_create(int i)
     PE(p)->xVel = PE(p)->yVel = PE(p)->xAcc = PE(p)->yAcc = 0;
     setCollisionBounds(i, 2, 0, sprw(i) - 2, sprh(i));
     PE(p)->xVel = N(2.5);
-    p->ispd = (img_t)0.5;
+    pin_setispd(p, (img_t)0.5);
     p->type = T_MAGMAMAN;
     PE(p)->hp = 200;
     p->invincible = 0;
@@ -559,7 +559,7 @@ static void magmaman_bomb(int i, int b)
     struct pin *o = &PX(b);
     if (o->spr != GSPR_sBombArmed) {
         pin_set_sprite(b, GSPR_sBombArmed);
-        o->ispd = 1;
+        pin_setispd(o, 1);
         PE(o)->alarm[1] = RAND(8, 12);
     }
     if (DLT(PTOD(o->x), X(i))) PE(o)->xVel = NI(-RAND(2, 4));
@@ -583,7 +583,7 @@ static void tomblord_create(int i)
     PE(p)->xVel = PE(p)->yVel = PE(p)->xAcc = PE(p)->yAcc = 0;
     setCollisionBounds(i, 6, 0, 26, 32);
     PE(p)->xVel = N(2.5);
-    p->ispd = (img_t)0.25;
+    pin_setispd(p, (img_t)0.25);
     p->type = T_TOMBLORD;
     PE(p)->hp = 20;
     p->invincible = 0;
@@ -667,7 +667,7 @@ static void tomblord_step(int i)
         PE(p)->xVel = 0;
     } else if (PE(p)->status == TL_ATTACK) {                               /* :91 */
         PE(p)->xVel = 0;
-        p->ispd = (img_t)0.5;
+        pin_setispd(p, (img_t)0.5);
         PEN(p)->attackTimer = 100;
         if (DGE(p->img, 7) && DLE(p->img, 12)) {
             int f;
@@ -750,7 +750,7 @@ static int tomblord_animend(int i)
     if (p->spr == GSPR_sTombLordAttackL || p->spr == GSPR_sTombLordAttackR) {
         PE(p)->status = E_IDLE;
         PE(p)->counter = 30;
-        p->ispd = (img_t)0.25;
+        pin_setispd(p, (img_t)0.25);
     }
     return 1;
 }
@@ -942,7 +942,7 @@ static void ceiling_create(int i, int door)
     if (door) setCollisionBounds(i, 1, 0, 15, 32);
     else setCollisionBounds(i, 0, 0, 16, 16);
     p->invincible = 0;
-    if (!door) p->ispd = (img_t)0.4;
+    if (!door) pin_setispd(p, (img_t)0.4);
     PE(p)->xVel = 0;
     PE(p)->yVel = 0;
     PE(p)->myGrav = N(1);
@@ -1218,7 +1218,7 @@ static void olmec_create(int i, int fromgen)
     PE(p)->myGrav = N(0.2);
     p->invincible = 1;
     PE(p)->carryPlayer = 0;
-    p->ispd = (img_t)0.4;
+    pin_setispd(p, (img_t)0.4);
     if (!fromgen) PE(p)->facing = (int16_t)RAND(0, 1);
     PE(p)->status = OL_START1;
     PE(p)->counter = 0;
@@ -1415,7 +1415,7 @@ static void olmec_alarm(int i, int a)
         for (k = 0; k < n; k++) {
             if (!PX(w[k]).alive) continue;
             pin_setimg(&PX(w[k]), 0);
-            PX(w[k]).ispd = 0;
+            pin_setispd(&PX(w[k]), 0);
         }
         PE(&PX(i))->alarm[2] = 50;
         break;
@@ -1471,7 +1471,7 @@ static void debris_create(int i)
     struct pin *p = &PX(i);
     int n;
     p->type = T_NONE;                                                      /* oDrawnSprite: "" */
-    p->ispd = (img_t)0.3;
+    pin_setispd(p, (img_t)0.3);
     PE(p)->xVel = PE(p)->yVel = PE(p)->xAcc = PE(p)->yAcc = 0;
     setCollisionBounds(i, -4, -4, 4, 4);
     {
@@ -1575,14 +1575,14 @@ static int create_ev(int i, int fromgen)
     case OBJ_oHawkman: hawkman_create(i); return 1;
     case OBJ_oLava: lava_create(i, fromgen); return 1;
     case OBJ_oMagma: magma_create(i); return 1;
-    case OBJ_oMagmaTrail: PX(i).ispd = (img_t)0.4; return 1;
+    case OBJ_oMagmaTrail: pin_setispd(&PX(i), (img_t)0.4); return 1;
     case OBJ_oXEnd: PX(i).type = T_NONE; return 1;                     /* oDrawnSprite Create: type = "" */
     case OBJ_oLavaDrip:                                               /* oRubblePiece Create, then its own */
         PX(i).type = T_NONE;
         PE(&PX(i))->xVel = 0;
         PE(&PX(i))->yVel = 0;
         PE(&PX(i))->yAcc = N(0.6);
-        PX(i).ispd = (img_t)0.4;
+        pin_setispd(&PX(i), (img_t)0.4);
         return 1;
     case OBJ_oMagmaMan: magmaman_create(i); return 1;
     case OBJ_oTombLord: tomblord_create(i); return 1;
@@ -1601,14 +1601,14 @@ static int create_ev(int i, int fromgen)
         snd_play(SND_xslam);                                                   /* :2 */
         return 1;
     case OBJ_oYellowBall: yellowball_create(i); return 1;
-    case OBJ_oYellowTrail: PX(i).type = T_NONE; PX(i).ispd = 1; return 1;
+    case OBJ_oYellowTrail: PX(i).type = T_NONE; pin_setispd(&PX(i), 1); return 1;
     case OBJ_oPsychicCreate2: {                                        /* objects/oPsychicCreate2/Create_0.gml */
         struct pin *p = &PX(i);
         int o = instance_first_p(OBJ_oOlmec);
         p->type = T_NONE;
         PE(p)->yVel = 0;
         PE(p)->yAcc = N(0.6);
-        p->ispd = (img_t)0.4;
+        pin_setispd(p, (img_t)0.4);
         PE(p)->direction = point_direction_d(X(i), Y(i), X(o) + 32, Y(o) + 16);
         return 1;
     }
@@ -1616,12 +1616,12 @@ static int create_ev(int i, int fromgen)
         G.olmecDead = 0;
         G.doorOpen = 0;
         return 1;
-    case OBJ_oCavemanWorship: PX(i).ispd = (img_t)0.25; return 1;
+    case OBJ_oCavemanWorship: pin_setispd(&PX(i), (img_t)0.25); return 1;
     case OBJ_oLavaSolid: PX(i).invincible = 1; return 1;
     case OBJ_oRopeBurn:                                                /* objects/oRopeBurn/Create_0.gml */
         PX(i).type = T_NONE;
         PE(&PX(i))->yVel = N(-1);
-        PX(i).ispd = (img_t)0.8;
+        pin_setispd(&PX(i), (img_t)0.8);
         return 1;
     }
     return 0;

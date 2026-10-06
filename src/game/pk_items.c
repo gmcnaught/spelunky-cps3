@@ -177,7 +177,7 @@ static void use_weapon(int i)
     case T_MACHETE: case T_MATTOCK:
         if (PL.kDown && !PL.whipping && scrPlayerIsDucking(i)) use_drop(i);
         if (!scrPlayerIsDucking(i) && !PL.whipping && (t == T_MACHETE || platformCharacterIs(ON_GROUND))) {
-            p->ispd = (img_t)(t == T_MACHETE ? 1 : 0.2);
+            pin_setispd(p, (img_t)(t == T_MACHETE ? 1 : 0.2));
             attack_sprite(i);
             pin_setimg(p, 0);
             PL.whipping = 1;
@@ -1106,7 +1106,7 @@ static void dice_body(int i)
                         o = &PX(e);
                         PE(o)->hp -= 1;
                         pin_set_sprite(e, GSPR_sAlienBossHurt);
-                        o->ispd = (img_t)0.8;
+                        pin_setispd(o, (img_t)0.8);
                         snd_play(SND_xhit);
                     }
                 } else {
@@ -1383,7 +1383,7 @@ int pitems_ev(int ev, int i, int arg)
         if (ev == FEV_COLLISION && PX(arg).obj == OBJ_oSlash) { pin_destroy(i); return 1; }   /* Collision_oSlash */
         break;
     case OBJ_oPsychicCreateP:
-        if (ev == FEV_CREATE) { p->type = T_NONE; PE(p)->xVel = 0; PE(p)->yVel = 0; p->ispd = (img_t)0.2; return 1; }
+        if (ev == FEV_CREATE) { p->type = T_NONE; PE(p)->xVel = 0; PE(p)->yVel = 0; pin_setispd(p, (img_t)0.2); return 1; }
         if (ev == FEV_STEP) {
             pin_setx(p, PADDV(p->x, PE(p)->xVel));
             pin_sety(p, PADDV(p->y, PE(p)->yVel));
@@ -1397,7 +1397,7 @@ int pitems_ev(int ev, int i, int arg)
             p->type = T_NONE;
             PE(p)->yVel = 0;
             PE(p)->yAcc = N(0.6);
-            p->ispd = (img_t)0.25;
+            pin_setispd(p, (img_t)0.25);
             PE(p)->counter = 5;
             PE(p)->direction = 0;
             return 1;
@@ -1409,7 +1409,7 @@ int pitems_ev(int ev, int i, int arg)
     case OBJ_oFlare:
         if (ev == FEV_CREATE) {                                                /* objects/oFlare/Create_0.gml */
             create_item(p);
-            p->ispd = (img_t)0.3;
+            pin_setispd(p, (img_t)0.3);
             p->type = T_FLARE;
             PE(p)->xVel = PE(p)->yVel = PE(p)->xAcc = PE(p)->yAcc = 0;
             setCollisionBounds(i, -4, -4, 4, 4);
@@ -1430,7 +1430,7 @@ int pitems_ev(int ev, int i, int arg)
             p->type = T_FLARECRATE;
             PE(p)->xVel = PE(p)->yVel = PE(p)->xAcc = PE(p)->yAcc = 0;
             setCollisionBounds(i, -6, 0, 6, 8);
-            p->ispd = (img_t)0.2;
+            pin_setispd(p, (img_t)0.2);
             PE(p)->alarm[0] = 1;
             PE(p)->heavy = 1;
             PE(p)->yVel = 0;
@@ -1440,12 +1440,12 @@ int pitems_ev(int ev, int i, int arg)
         if (ev == FEV_ALARM && arg == 0) { flare_spark(i, -4); return 1; }
         break;
     case OBJ_oSlash:
-        if (ev == FEV_CREATE) { p->type = T_MACHETE; p->ispd = 1; return 1; }
+        if (ev == FEV_CREATE) { p->type = T_MACHETE; pin_setispd(p, 1); return 1; }
         if (ev == FEV_STEP) { slash_step(i, GSPR_sSlashRight, GSPR_sSlashLeft, 0); return 1; }
         if (ev == FEV_ANIMEND) { pin_destroy(i); return 1; }
         break;
     case OBJ_oMattockHit:
-        if (ev == FEV_CREATE) { p->type = T_MATTOCK; p->ispd = (img_t)0.5; return 1; }
+        if (ev == FEV_CREATE) { p->type = T_MATTOCK; pin_setispd(p, (img_t)0.5); return 1; }
         if (ev == FEV_STEP) { slash_step(i, GSPR_sMattockHitR, GSPR_sMattockHitL, 0); return 1; }
         if (ev == FEV_ANIMEND) { mattock_hit_end(i); return 1; }
         break;
@@ -1546,7 +1546,7 @@ int pitems_ev(int ev, int i, int arg)
             p->type = T_NONE;
             { int r = RAND(1, 3); PE(p)->yVel = ND(-r * 0.2); }
             PE(p)->yAcc = N(0.1);
-            p->ispd = (img_t)0.5;
+            pin_setispd(p, (img_t)0.5);
             return 1;
         }
         if (ev == FEV_STEP) { pin_sety(p, PADDV(p->y, PE(p)->yVel)); return 1; }
@@ -1592,7 +1592,7 @@ int pitems_ev(int ev, int i, int arg)
             p->type = T_NONE;
             PE(p)->yVel = N(-0.1);
             PE(p)->yAcc = N(0.1);
-            p->ispd = (img_t)0.4;
+            pin_setispd(p, (img_t)0.4);
             return 1;
         }
         if (ev == FEV_STEP) {

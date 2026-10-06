@@ -97,7 +97,7 @@ static void yeti_create(int i)        /* objects/oYeti/Create_0.gml (oEnemy's ra
     make_active(p);
     setCollisionBounds(i, 2, 0, sprw(i) - 2, sprh(i));
     PE(p)->xVel = N(2.5);
-    p->ispd = (img_t)0.5;
+    pin_setispd(p, (img_t)0.5);
     p->type = T_YETI;
     PE(p)->hp = 5;
     p->invincible = 0;
@@ -195,7 +195,7 @@ static void yeti_step(int i)                                       /* objects/oY
         }
         yeti_sight(i);
     } else if (PE(p)->status == 2) {                                   /* ATTACK :126 */
-        p->ispd = 1;
+        pin_setispd(p, 1);
         if (isCollisionLeft(i, 1) || isCollisionRight(i, 1))
             PE(p)->facing = PE(p)->facing == E_LEFT ? E_RIGHT : E_LEFT;
         PE(p)->xVel = PE(p)->facing == E_LEFT ? N(-3) : N(3);
@@ -266,7 +266,7 @@ static void yeti_hit_player(int i, int c)
             PE(p)->yVel = N(-6);
             if (DLT(PTOD(o->x), X(i) + 8)) PE(p)->xVel += N(1);
             else PE(p)->xVel -= N(1);
-            p->ispd = (img_t)0.5;
+            pin_setispd(p, (img_t)0.5);
             snd_play(SND_xhit);                                                /* :20 */
         }
     } else if (PL.invincible == 0 && PE(p)->status < E_STUNNED) {
@@ -325,7 +325,7 @@ static void yeti_whipped(int i, int w)
         PE(p)->yVel = N(-3);
         if (pre) PE(p)->xVel = DLT(X(w), X(i) + 8) ? N(2) : N(-2);
         else PE(p)->xVel = DLT(X(pl()) - 8, X(i)) ? N(2) : N(-2);
-        p->ispd = (img_t)0.5;
+        pin_setispd(p, (img_t)0.5);
     } else {
         PE(p)->yVel = N(-2);
         if (pre) PE(p)->xVel = DLT(X(w), X(i)) ? N(1) : N(-1);
@@ -343,7 +343,7 @@ static void yetiking_create(int i)    /* objects/oYetiKing/Create_0.gml (oEnemy'
     make_active(p);
     setCollisionBounds(i, 6, 0, 26, 32);
     PE(p)->xVel = N(2.5);
-    p->ispd = (img_t)0.25;
+    pin_setispd(p, (img_t)0.25);
     p->type = T_YETIKING;
     PE(p)->hp = 30;
     p->invincible = 0;
@@ -442,7 +442,7 @@ static void yetiking_step(int i)                                   /* objects/oY
         PE(p)->xVel = 0;
     } else if (PE(p)->status == 3) {                                   /* ATTACK :107 */
         PE(p)->xVel = 0;
-        p->ispd = (img_t)0.5;
+        pin_setispd(p, (img_t)0.5);
         PEN(p)->hit = 100;
         if (DGE(p->img, 7) && DLE(p->img, 12)) {
             int n;
@@ -509,7 +509,7 @@ static void ufo_create(int i, int shiftToggle)                     /* objects/oU
     struct pin *p = &PX(i);
     pen_enemy_create(i);
     p->type = T_UFO;
-    p->ispd = (img_t)0.5;
+    pin_setispd(p, (img_t)0.5);
     setCollisionBounds(i, 4, 2, 12, 14);
     PE(p)->xVel = 0;
     PE(p)->yVel = 0;
@@ -650,7 +650,7 @@ static void alien_create(int i)                                    /* objects/oA
     make_active(p);
     setCollisionBounds(i, 2, 6, 14, 16);
     PE(p)->xVel = N(2.5);
-    p->ispd = (img_t)0.5;
+    pin_setispd(p, (img_t)0.5);
     p->type = T_ALIEN;
     PE(p)->hp = 1;
     p->invincible = 0;
@@ -714,7 +714,7 @@ static void alieneject_create(int i)
     setCollisionBounds(i, -4, -4, 4, 4);
     PE(p)->xVel = 0;
     PE(p)->yVel = N(-6);
-    p->ispd = (img_t)0.6;
+    pin_setispd(p, (img_t)0.6);
     PE(p)->hp = 1;
     p->invincible = 0;
     PE(p)->status = 0;
@@ -787,7 +787,7 @@ static void alienboss_create(int i)                                /* objects/oA
     make_active(p);
     setCollisionBounds(i, 0, 0, 32, 32);
     PE(p)->xVel = N(2.5);
-    p->ispd = (img_t)0.25;
+    pin_setispd(p, (img_t)0.25);
     p->type = T_ALIENBOSS;
     PE(p)->hp = 10;
     p->invincible = 0;
@@ -854,7 +854,7 @@ static void alienboss_step(int i)                                  /* objects/oA
         snd_play(SND_xpsychic);                                                /* :74 */
     }
     p = &PX(i);
-    if (p->spr != GSPR_sAlienBossHurt) p->ispd = (img_t)0.25;
+    if (p->spr != GSPR_sAlienBossHurt) pin_setispd(p, (img_t)0.25);
     if (PE(p)->status != E_DEAD && p->spr != GSPR_sAlienBossHurt) pin_set_sprite(i, GSPR_sAlienBoss);   /* :79-86 */
 }
 
@@ -1170,7 +1170,7 @@ static void barrier_collision(int i, int o)
     } else if (obj_is(q->obj, OBJ_oItem)) {                            /* Collision_oItem */
         if (q->type == T_BOMB) {
             pin_set_sprite(o, GSPR_sBombArmed);
-            q->ispd = 1;
+            pin_setispd(q, 1);
             PE(q)->alarm[1] = (int16_t)RAND(4, 8);
         }
         PE(q)->xVel = NI(-RAND(4, 6));
@@ -1205,22 +1205,22 @@ static int ev_create_ice(int i, int fromgen)
         return 1;
     case OBJ_oLaserExplode:
         p->type = T_NONE;
-        p->ispd = (img_t)0.8;
+        pin_setispd(p, (img_t)0.8);
         snd_play(SND_xsmallexplode);                                           /* :3 */
         return 1;
-    case OBJ_oLaserTrail: p->type = T_NONE; p->ispd = (img_t)0.8; return 1;
+    case OBJ_oLaserTrail: p->type = T_NONE; pin_setispd(p, (img_t)0.8); return 1;
     case OBJ_oPsychicWave:
         p->type = T_NONE;
         PE(p)->yVel = 0;
         PE(p)->yAcc = N(0.6);
-        p->ispd = (img_t)0.25;
+        pin_setispd(p, (img_t)0.25);
         return 1;
     case OBJ_oPsychicCreate: {
         int b = instance_first_p(OBJ_oAlienBoss);
         p->type = T_NONE;
         PE(p)->yVel = 0;
         PE(p)->yAcc = N(0.6);
-        p->ispd = (img_t)0.4;
+        pin_setispd(p, (img_t)0.4);
         PE(p)->grav = 0;
         PE(p)->direction = point_direction_d(X(i), Y(i), X(b) + 16, Y(b) + 16);
         return 1;
@@ -1274,7 +1274,7 @@ static int ev_create_ice(int i, int fromgen)
         PE(p)->cost = 999999;
         return 1;
     case OBJ_oBarrierEmitter:
-        p->ispd = (img_t)0.5;
+        pin_setispd(p, (img_t)0.5);
         if (!fromgen && !instance_exists_p(OBJ_oBarrier)) pin_create(p->x, p->y + PI(16), OBJ_oBarrier);
         return 1;
     case OBJ_oDark: case OBJ_oIce: case OBJ_oAlienShip: case OBJ_oAlienShipFloor:
@@ -1379,7 +1379,7 @@ static int ev_animend_ice(int i)
         if (p->spr == GSPR_sYetiKingYellL || p->spr == GSPR_sYetiKingYellR) {
             PE(p)->status = 0;
             PE(p)->counter = 30;
-            p->ispd = (img_t)0.25;
+            pin_setispd(p, (img_t)0.25);
         }
         return 1;
     case OBJ_oUFO:

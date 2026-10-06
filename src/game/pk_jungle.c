@@ -119,7 +119,7 @@ static void frog_create(int i, int fromgen)
     PE(p)->yVel = 0;
     PE(p)->myGrav = N(0.2);
     PEN(p)->myGravNorm = N(0.2);
-    p->ispd = (img_t)0.4;
+    pin_setispd(p, (img_t)0.4);
     p->type = p->obj == OBJ_oFireFrog ? T_FIREFROG : T_FROG;         /* "Frog" / "Fire Frog" */
     PE(p)->hp = 1;
     p->invincible = 0;
@@ -136,7 +136,7 @@ static void mantrap_create(int i)                                    /* objects/
     make_active(p);
     setCollisionBounds(i, 2, 0, sprw(i) - 2, sprh(i));
     PE(p)->xVel = N(2.5);
-    p->ispd = (img_t)0.5;
+    pin_setispd(p, (img_t)0.5);
     p->type = T_MANTRAP;                                              /* "ManTrap" */
     PE(p)->hp = 3;
     p->invincible = 0;
@@ -160,7 +160,7 @@ static void monkey_create(int i, int fromgen)                        /* objects/
     PE(p)->xVel = 0;
     PE(p)->yVel = 0;
     PE(p)->myGrav = N(0.2);
-    p->ispd = (img_t)0.4;
+    pin_setispd(p, (img_t)0.4);
     PE(p)->hp = 1;
     p->invincible = 0;
     PE(p)->facing = (int16_t)gen_facing(fromgen);
@@ -180,7 +180,7 @@ static void scarab_create(int i, int fromgen)                        /* objects/
     struct pin *p = &PX(i);
     pen_enemy_create(i);
     p->type = T_ENONE;                                                /* no type: oEnemy's "NONE" */
-    p->ispd = (img_t)0.5;
+    pin_setispd(p, (img_t)0.5);
     setCollisionBounds(i, 4, 4, 12, 12);
     PE(p)->xVel = 0;
     PE(p)->yVel = 0;
@@ -217,15 +217,15 @@ static int jungle_create(int i, int fromgen)
         PE(p)->xVel = 0;
         PE(p)->yVel = N(0.4);
         PE(p)->yAcc = N(0.01);
-        p->ispd = (img_t)0.2;
+        pin_setispd(p, (img_t)0.2);
         return 1;
-    case OBJ_oTikiTorch: p->ispd = (img_t)0.5; return 1;
+    case OBJ_oTikiTorch: pin_setispd(p, (img_t)0.5); return 1;
     case OBJ_oSpearsLeft: p->type = T_NONE; return 1;                /* oDrawnSprite's Create (type = "") */
     case OBJ_oSpearTrapTop: case OBJ_oSpearTrapLit: case OBJ_oSpearTrapBottom:
         if (!fromgen) return 0;                                      /* only generated */
         PE(p)->fired = 0;
         p->invincible = 0;
-        if (p->obj != OBJ_oSpearTrapBottom) p->ispd = (img_t)0.5;
+        if (p->obj != OBJ_oSpearTrapBottom) pin_setispd(p, (img_t)0.5);
         return 1;
     case OBJ_oTrapBlock:
         if (!fromgen) return 0;
@@ -263,7 +263,7 @@ static void enemy_spears(int i)
                 PE(p)->yVel = N(-6);
                 if (DLT(X(trap) + 8, X(i) + 8)) PE(p)->xVel = N(4);
                 else PE(p)->xVel = N(-4);
-                p->ispd = (img_t)0.5;
+                pin_setispd(p, (img_t)0.5);
                 snd_play(SND_xhit);                                                    /* :94 */
                 scrCreateBlood(i, P(X(i) + sprw(i) / 2.0), P(Y(i) + sprh(i) / 2.0), 2);
             }
@@ -488,7 +488,7 @@ static void monkey_throw(int i)
         if (RAND(1, 10) == 1) {
             pin_set_sprite(obj, GSPR_sBombArmed);
             PE(&PX(obj))->armed = 1;
-            PX(obj).ispd = 1;
+            pin_setispd(&PX(obj), 1);
             PE(&PX(obj))->alarm[1] = 40;
         }
         {
@@ -1146,7 +1146,7 @@ static void mantrap_player(int i, int c)
         PE(p)->yVel = N(-6);
         if (DLT(X(c), X(i) + 8)) PE(p)->xVel += N(1);
         else PE(p)->xVel -= N(1);
-        p->ispd = (img_t)0.5;
+        pin_setispd(p, (img_t)0.5);
         snd_play(SND_xhit);                                                           /* :18 */
     } else if (o->visible && PL.invincible == 0 && !play_god) {
         if (PE(p)->status != E_STUNNED && PE(p)->status != MT_EATING) {
@@ -1218,7 +1218,7 @@ static void mantrap_whipped(int i, int w)
     PE(p)->counter = PEN(p)->stunTime;
     PE(p)->yVel = N(-3);
     PE(p)->xVel = DLT(X(w), X(i) + 8) ? N(2) : N(-2);
-    p->ispd = (img_t)0.5;
+    pin_setispd(p, (img_t)0.5);
     leaf_at(i);
     snd_play(SND_xhit);                                                               /* :19 */
 }
