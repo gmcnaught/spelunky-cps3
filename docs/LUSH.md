@@ -242,3 +242,36 @@ Per object and function (inclusive where marked):
 | - | not proposed: idle moveTo / pw_changed (already the PLAY_WALK path: the cost is the move's bookkeeping), pdist2 in ints (the player's position is fractional while swimming) | | |
 
 Even with all of them the route means stay over 0.525 M: the non-swimming swamp steps are about 550 K jtcps3.
+
+### 10.3 Implemented (branch swim2)
+
+MAME SOFTFP route means (steps 2+; "swimming": steps 107+), playsh2 ROUTES="c_swamp_drain c_swamp_swim":
+
+| Commit | Fix | drain (swimming) | swim (swimming) |
+|---|---|---|---|
+| fddd5a7 | baseline | 187.0 K (211.1) | 144.2 K (150.1) |
+| f384b3a | 1: static-family point tests on collision_point_any_at's own query | 180.1 K (203.9) | 137.4 K (143.2) |
+| 3ac8e1a | 2: destroyed entries leave the index counts | 177.5 K (200.3) | 137.4 K (143.2) |
+| 0b57648 | 3: instance_place_p from the index (checkWater; drain steps 270-274 1.37-1.49 M -> 1.02-1.10 M) | 173.4 K (194.5) | 137.4 K (143.2) |
+| 2b12a68 | 4: psincos_cr / psin_cr / pcos_cr integer fast path | **169.1 K (188.6)** | **133.4 K (137.9)** |
+
+-9.6 % (drain) and -7.5 % (swim) on the route means, -10.7 % / -8.1 % on the swimming steps. jtcost fit after fixes
+1-3: drain 61 576 -> 556 K, drain 161 955 -> 926 K.
+
+Measured and not kept: collision_point_any_at taking the solid summary on its integer query, with checkWater's ten
+point tests and the fish's solid tests moved to it (MAME 173.4 -> 173.7 K: no gain); the instance_first_p memo (fix
+5: its per-object arrays, 4.6 KB of .bss, broke the playsh2 link's 32 KB stack reserve, for about 0.6 % of a step).
+Fix 3 first added a per-instance byte for empty boxes and broke the tests/game link the same way; empty boxes now
+use xisfar's value 2 (tests/game stack room 33,868 B).
+
+Gates on 2b12a68: make check (host builds, constcheck, P5 regress, EQUIV 88/88, snd), ctall 59/59, playsh2 9,701/9,701
+grid and SOFTFP, shell 26/26 + 49/49, game_check p4_exit559 / p5_shop / p5_spider 0 px (13 frames), capture_check
+428/428 steps and 6/6 checkpoints, SH-2 0 warnings (playsh2, tests/game, capture builds), tests/game link (stack
+room 33,868 B). test/host's `make sh2` (PLAY_FIXED) stops at pworld.c:22's pin_ext size assert on fddd5a7 too. Every commit: 182 host
+route runs byte-identical to fddd5a7. tests/sincos `fast`: 3,407,609,862 arguments, 0 differ.
+
+What is left: the room itself. Steps before the player swims cost about 120 K MAME (about 530 K jtcps3): six active
+piranhas (idle: moveTo, water tests, bubbles), frogs, man traps, a monkey and the player. The piranhas' idle moveTo
+(about 10 K jtcps3 each) is the PLAY_WALK path already: its cost is the move's own bookkeeping (pw_changed's marks,
+the box cache, one solid line). The player's swimming Step (characterStepEvent 115 K incl. on drain 161) is shared
+code; it is the next candidate.
