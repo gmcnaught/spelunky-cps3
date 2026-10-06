@@ -158,3 +158,31 @@ steps over ~165 K: 98 -> 87, 188 -> 186 (the drain room's remaining load: 6 pira
 point tests, moveTo, psqrt via point_distance_d, sincos_r; the player 124 K; frogs, bubbles, a bomb).
 Gates on 91c9ed9: make check (EQUIV 88/88), ctall 59/59, playsh2 9,701/9,701 grid and SOFTFP, shell 26/26 + 49/49,
 game_check 0 px, capture_check 430/430, SH-2 0 warnings.
+
+## 9. jtcps3 on main (2026-10-06, main 2e1c921: lush, swim, sgapply, NC link)
+
+`JTV=_nc NC=nc_robust.txt JT_ROUTES=p5_lush_l5s11,p5_lush_l5s37,p5_lush_l6s23,c_swamp_drain,c_swamp_swim,
+c_swamp_piranha,p5_caveman,p5_snakes,p4_exit559 scripts/playsh2_jt.sh` (the NC link the game build uses since
+f1d5950, docs/ICACHE.md 4.7 / 6; playsh2_jt.sh links NC only when `NC=` is given), run on .62 (jtcps3.rbf
+2026-10-02) with `mister_run.sh`. **PASS 14/14, SPR OK** (5 generation cases, 9 routes; MAME `-nodrc` 14/14 too).
+c_swamp_lakejaws is not in the set: it is a `# room` route, which mkjobs.py does not take. Before b16120b,
+mkjobs.py `--jt` dropped c_* routes named in JT_ROUTES.
+
+Step means with step 1 (as section 7); max is the largest step, mostly the level start. "Previous" is section 7
+(jtcps3, branch lush, cached link); the swamp routes had no jtcps3 run before.
+
+| Route | previous | now (mean) | change | max | vs 0.525 M |
+|---|---|---|---|---|---|
+| p5_lush_l5s11 | 564.4 K | 516.7 K | -8.4 % | 4.33 M | met (-1.6 %) |
+| p5_lush_l5s37 | 473.8 K | 435.7 K | -8.0 % | 4.31 M | met (-17.0 %) |
+| p5_lush_l6s23 | 552.8 K | 510.1 K | -7.7 % | 5.14 M | met (-2.8 %) |
+| c_swamp_drain | - | 841.1 K | - | 6.85 M | +60.2 % |
+| c_swamp_swim | - | 670.8 K | - | 6.85 M | +27.8 % |
+| c_swamp_piranha | - | 422.4 K | - | 3.75 M | met (-19.5 %) |
+| p5_caveman | 477.8 K | 431.9 K | -9.6 % | 2.83 M | met (-17.7 %) |
+| p5_snakes | 378.7 K | 340.4 K | -10.1 % | 3.12 M | met (-35.2 %) |
+| p4_exit559 | 344.5 K | 317.3 K | -7.9 % | 60.48 M | met (-39.6 %) |
+
+All three lush routes now meet 0.525 M on the route mean. The routes that swim do not: c_swamp_drain (264 of 370
+steps swimming, 6 piranhas in the room) and c_swamp_swim (312 of 418) are over on the mean; per section 8 (MAME),
+their swimming steps cost more than the others (swim 154 vs 130 K, drain 215 vs 130 K).
