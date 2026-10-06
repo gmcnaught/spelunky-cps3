@@ -388,6 +388,7 @@ static inline int pin_xy_int(int i, int32_t *x, int32_t *y)
    clock value, and a count of pw_changed calls on one instance */
 uint32_t pw_rest_clock(void);
 int pw_rest_still(int32_t l, int32_t t, int32_t r, int32_t b, uint32_t since);
+uint32_t pw_static_clock(void);                     /* pworld.c (grid build): static-family index changes */
 void pw_watch(int i);
 uint32_t pw_watch_end(void);
 int instance_place_p(int self, double px, double py, int obj);

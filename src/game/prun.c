@@ -507,7 +507,8 @@ int play_step(uint16_t keys, void (*record_cb)(int phase))
             if (play_goto_room >= 0 && (PW.room == R_rEnd || PW.room == R_rEnd2 || PW.room == R_rEnd3 ||
                                         PW.room == R_rCredits2)) gp_skip = 1;
             else gamepad_step(keys);
-        } else if (!front_on && (((PX(i).obj == OBJ_oTree || PX(i).obj == OBJ_oTreeBranch) && pjungle_idle(i)) ||
+        } else if (!front_on && (((PX(i).obj == OBJ_oTree || PX(i).obj == OBJ_oTreeBranch || PX(i).obj == OBJ_oLeaves) &&
+                                   pjungle_idle(i)) ||
                                  ev_step_idle(i))) {
             /* ev_step would find nothing to do: oTree / oTreeBranch out of view (it reaches pjungle_ev's Step through
                stepk SK_OWN, ptrans_step, the oTreasure / oItem tests and pcontent_step's claimant 1: caches and tests

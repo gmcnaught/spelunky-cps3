@@ -83,6 +83,10 @@ static int16_t xdnext[PIN_MAX], xdhead = NOONE;
    only. collision_point_any's static path tests it with point_hit before walking the family (xhint_hit), so a stale
    hint (destroyed, moved, another object in a reused slot) costs a test and changes no answer */
 static int16_t xhint[GRID_H][GRID_W];
+/* bumped whenever an entry of an indexed object (xbits) is created, destroyed or may have changed its box: no
+   collision_point answer for a static family can change while it holds still (pk_jungle.c's vegetation memo) */
+static uint32_t xchg;
+uint32_t pw_static_clock(void) { return xchg; }
 static void xdirty(int i)
 {
     xond[i] = 1;
@@ -192,6 +196,9 @@ static void olists_reset(void)
 static void olive_add(int obj, int d)
 {
     int a;
+#ifndef PCOL_EXACT
+    if (xbits[obj]) xchg++;                       /* (xbits is set at the first level start, before any instance) */
+#endif
 #ifndef PLAY_FIXED
     if (nc_any) nc_inval(obj);
 #endif
@@ -1499,7 +1506,10 @@ static void grid_unlink(int i)
 static void grid_dirty(int i)
 {
 #ifndef PCOL_EXACT
-    if (xbits[PW.in[i].obj] && !xond[i]) xdirty(i);
+    if (xbits[PW.in[i].obj]) {
+        xchg++;
+        if (!xond[i]) xdirty(i);
+    }
 #endif
     if (gond[i] || !(obj_is(PW.in[i].obj, OBJ_oSolid) || !pin_needs_ext(PW.in[i].obj))) return;
     gond[i] = 1;
