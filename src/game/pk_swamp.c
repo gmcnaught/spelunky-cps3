@@ -235,19 +235,29 @@ static int prey(int i)
 
 /* some instance of prey()'s four families is swimming. prey() has no side effect, and IDLE uses its answer only as
    obj != NOONE && obj's swimming && hp > 0: with no swimming instance in the families that test fails whatever
-   prey() returns */
+   prey() returns. The families' alive instances are the objects' lists (pw_ohead: alive, linked at pin_add,
+   unlinked when alive goes to 0) of every object that is one of the four or descends from one */
 static int prey_swims(void)
 {
     static const int16_t objs[4] = { OBJ_oCaveman, OBJ_oShopkeeper, OBJ_oHawkman, OBJ_oYeti };
-    int16_t w[32];
-    int k, j, n;
-    for (k = 0; k < 4; k++) {
-        if (pw_count(objs[k]) == 0) continue;                  /* (pw_with: none) */
-        n = pw_with(objs[k], w, 32);
-        if (n >= 32) return 1;
-        for (j = 0; j < n; j++)
-            if (PEN(&PX(w[j]))->swimming) return 1;
+    static int16_t po[16];
+    static int npo = -1;
+    int k, j;
+    if (npo < 0) {
+        int n = 0;
+        for (k = 0; k < OBJ_COUNT; k++)
+            for (j = 0; j < 4; j++)
+                if (obj_is(k, objs[j])) {
+                    if (n < 16) po[n] = (int16_t)k;
+                    n++;
+                    break;
+                }
+        npo = n;
     }
+    if (npo > 16) return 1;                                    /* (not the case: then prey() decides) */
+    for (k = 0; k < npo; k++)
+        for (j = pw_ohead[po[k]]; j >= 0; j = pw_inext[j])
+            if (PEN(&PX(j))->swimming) return 1;
     return 0;
 }
 
