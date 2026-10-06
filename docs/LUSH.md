@@ -349,3 +349,10 @@ p5_snakes 956 +0.3 % (-554 instructions). A jtcps3 run decides.
 What is left on a spear-alive step (mantrap 212 vs 242, about 27 K): the rectangle tests' call-site double sums
 (X(i) + 2, ...: about 280 instructions a call), veg_quiet, the spears' animation and dispatch. A trap that sees
 something keeps firing every 50 steps, as in HD.
+
+Gates on f217aaf: playsh2 9,701 / 9,701 grid and SOFTFP, shell 26/26 + 49/49, capture_check 428/428 steps and 6/6
+checkpoints, host builds and constcheck, SH-2 0 compiler warnings (playsh2, tests/game, capture; the make recipe and
+ld `.sprbss_a` notices are as on 041d709), tests/game stack room 33,740 B (041d709: 33,868; evnzk / evkn are
+128 B), ctall 53 of 53 routes run equal. Not run: the six c_temple routes of ctall, make check's P5 regress, EQUIV and
+snd, and game_check. The reference traces in the main checkout's build/trace were overwritten by self-referencing
+symlinks at 19:18 during the run (not by this branch's scripts), and these gates read them.
