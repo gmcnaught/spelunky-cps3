@@ -87,7 +87,7 @@ static void damsel_step(int i)
         p->invincible = 1;
     }
     if (PEN(p)->hit > 0) PEN(p)->hit -= 1;
-    if (collision_point_any(X(i), Y(i), OBJ_oWaterSwim, 0, NOONE)) {   /* :33 (-1, -1: false) */
+    if (collision_point_any_at(i, 0, 0, OBJ_oWaterSwim)) {   /* :33 (-1, -1: false) */
         if (!PEN(p)->swimming) {
             pin_create(p->x, p->y, OBJ_oSplash);
             p = &PX(i);

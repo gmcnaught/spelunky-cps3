@@ -1761,6 +1761,38 @@ static int xpoint_any(int obj, int notme, const struct pq *q, int prec)
 }
 #endif
 
+#if !defined(PCOL_EXACT) && !defined(PLAY_FIXED)
+/* dfloor_int of a float's value from its bits: floor(f) when -30000 < f < 30000 (dfloor_int's range: a whole value
+   within it through dwhole, any other through the compare), else 0 */
+static int pfloor_int(float f, int32_t *o)
+{
+    union { float f; uint32_t u; } v;
+    uint32_t e, m, a, sh;
+    v.f = f;
+    e = (v.u >> 23) & 0xffu;
+    if (e < 127) {                                          /* |f| < 1: 0, or -1 below zero */
+        *o = (v.u & 0x80000000u) && (v.u & 0x7fffffffu) ? -1 : 0;
+        return 1;
+    }
+    if (e > 141) return 0;                                  /* |f| >= 32768, inf, NaN */
+    m = (v.u & 0x7fffffu) | 0x800000u;
+    sh = 150 - e;                                           /* 9 .. 23 fraction bits */
+    a = m >> sh;
+    if (a >= 30000) return 0;
+    *o = (v.u & 0x80000000u) ? -(int32_t)a - ((m & ((1u << sh) - 1)) != 0) : (int32_t)a;
+    return 1;
+}
+#endif
+
+#ifndef PCOL_EXACT
+/* collision_point_any's answer for a static family (xf_of[obj] >= 0, pcol_quiet() 0, obj alive) at the query q */
+static int xstatic_any(int obj, int notme, const struct pq *q, int prec)
+{
+    if (xpoint_none(xf_of[obj], q)) return 0;
+    return xhint_hit(obj, notme, q, prec) || xpoint_any(obj, notme, q, prec);
+}
+#endif
+
 int (collision_point_any)(double px, double py, int obj, int prec, int notme_self)
 {
 #ifndef PCOL_EXACT
@@ -1774,8 +1806,7 @@ int (collision_point_any)(double px, double py, int obj, int prec, int notme_sel
         int r;
         if (fam_none(obj)) return 0;
         pq_init(&q, px, py);
-        if (xpoint_none(xf_of[obj], &q)) r = 0;
-        else r = xhint_hit(obj, notme_self, &q, prec) || xpoint_any(obj, notme_self, &q, prec);
+        r = xstatic_any(obj, notme_self, &q, prec);
 #ifdef PLAY_STATS
         if (r != (collision_point_p(px, py, obj, prec, notme_self) != NOONE)) {
             fprintf(stderr, "collision_point_any: static family %d answer %d differs (%.17g %.17g)\n", obj, r, px, py);
@@ -1832,18 +1863,44 @@ int (collision_point_any_at)(int i, int32_t dx, int32_t dy, int obj)
 #ifndef PCOL_EXACT
     {
         int32_t x, y;
-        if (obj >= 0 && xf_of[obj] >= 0 && !pcol_quiet() && xy_int_near(i, &x, &y)) {
-            struct pq q;
-            q.iok = 1; q.ix = x + dx; q.iy = y + dy;
-            if (xpoint_none(xf_of[obj], &q)) {
+        struct pq q;
+        int ok = 0;
+        /* the query collision_point_any's pq_init makes of PTOD(x) + dx, PTOD(y) + dy, without the doubles: whole x, y
+           (|.| < 29900) give whole sums, which pq_init takes as these ints (px, py the same values); at dx = dy = 0 the
+           point is the position itself, a float: pq_init keeps a whole one, and rounds a fractional one to float,
+           which leaves it unchanged, so px, py are x, y and ix, iy their floors (iok while |v| < 30000, dfloor_int's
+           range) */
+        if (obj >= 0 && xf_of[obj] >= 0 && !pcol_quiet()) {
+            if (xy_int_near(i, &x, &y)) {
+                q.iok = 1; q.ix = x + dx; q.iy = y + dy;
+                q.px = q.ix; q.py = q.iy;
+                ok = 1;
+            }
+#if !defined(PLAY_FIXED)
+            else if (dx == 0 && dy == 0) {
+                q.px = PW.in[i].x; q.py = PW.in[i].y;
+                q.iok = pfloor_int(PW.in[i].x, &q.ix) && pfloor_int(PW.in[i].y, &q.iy);
+                ok = 1;
+            }
+#endif
+        }
+        if (ok) {
+            int r = fam_none(obj) ? 0 : xstatic_any(obj, NOONE, &q, 0);
 #ifdef PLAY_STATS
-                if (collision_point_p(PTOD(PW.in[i].x) + dx, PTOD(PW.in[i].y) + dy, obj, 0, NOONE) != NOONE) {
-                    fprintf(stderr, "collision_point_any_at: index miss differs (%d %d %d)\n", obj, q.ix, q.iy);
+            {
+                struct pq c;
+                pq_init(&c, PTOD(PW.in[i].x) + dx, PTOD(PW.in[i].y) + dy);
+                if (c.iok != q.iok || (c.iok && (c.ix != q.ix || c.iy != q.iy)) || c.px != q.px || c.py != q.py) {
+                    fprintf(stderr, "collision_point_any_at: query differs (%d %d %d)\n", i, (int)dx, (int)dy);
                     abort();
                 }
-#endif
-                return 0;
+                if (r != (collision_point_p(PTOD(PW.in[i].x) + dx, PTOD(PW.in[i].y) + dy, obj, 0, NOONE) != NOONE)) {
+                    fprintf(stderr, "collision_point_any_at: answer %d differs (%d %d %d)\n", r, obj, q.ix, q.iy);
+                    abort();
+                }
             }
+#endif
+            return r;
         }
     }
 #endif

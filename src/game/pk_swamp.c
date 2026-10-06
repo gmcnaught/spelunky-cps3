@@ -254,7 +254,7 @@ static void fish_idle_swim(int i)
 {
     struct pin *p = &PX(i);
     if (DEQ(DIR(p), 0)) {
-        if (CP(X(i) + 8 + 2, Y(i), OBJ_oWater) && !CP(X(i) + 10, Y(i), OBJ_oSolid)) moveTo(i, N(1), 0, 0, 0);
+        if (collision_point_any_at(i, 8 + 2, 0, OBJ_oWater) && !CP(X(i) + 10, Y(i), OBJ_oSolid)) moveTo(i, N(1), 0, 0, 0);
         else DIR(p) = 180;
     } else {
         if (collision_point_any_at(i, -2, 0, OBJ_oWater) && !CP(X(i) - 2, Y(i), OBJ_oSolid)) moveTo(i, N(-1), 0, 0, 0);
@@ -1002,8 +1002,8 @@ static void rubblepiece_step(int i)
     py = p->y;
     x = X(i);
     y = Y(i);
-    if (collision_point_any(x, y, OBJ_oWaterSwim, 0, NOONE)) pswamp_world(1041, i, 0);
-    else if (collision_point_any(x, y, OBJ_oLava, 0, NOONE)) pin_destroy(i);
+    if (collision_point_any_at(i, 0, 0, OBJ_oWaterSwim)) pswamp_world(1041, i, 0);
+    else if (collision_point_any_at(i, 0, 0, OBJ_oLava)) pin_destroy(i);
     if (collision_point_any(x, y, OBJ_oSolid, 0, NOONE)) pin_destroy(i);
     view_read();
     if (PLTI(px, PW.xview - 32) || PGTI(px, PW.xview + 320 + 32) || PLTI(py, PW.yview - 32) || PGTI(py, PW.yview + 240 + 32))
