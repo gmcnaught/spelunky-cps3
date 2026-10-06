@@ -319,7 +319,9 @@ static ddbl dd_sincos(ddbl x, int odd)
     return sum;
 }
 
-static double cr_trig(double a, int want_sin)
+/* the double-double series of the reduced argument, rounded once: the reference (tests/sincos); psin_cr and pcos_cr
+   below give its bits through sincos_r, which reaches this series only when its two error tests both fail */
+static __attribute__((unused)) double cr_trig_dd(double a, int want_sin)
 {
     static const double P1 = 1.57079632673412561417e+00, P2 = 6.07710050630396597660e-11,
                         P3 = 2.02226624871116645580e-21, P4 = 8.47842766036889956997e-32;
@@ -352,8 +354,6 @@ static double cr_trig(double a, int want_sin)
     return t.hi + t.lo;
 }
 
-double psin_cr(double x) { return cr_trig(x, 1); }
-double pcos_cr(double x) { return cr_trig(x, 0); }
 
 /* sincos_r's second test (about 1 call in 8 of the first fails): the Taylor series of sin x = x + x^3 P(x^2) (to
    x^25) or cos x = 1 - x^2 / 2 + x^4 Q(x^2) (to x^26), the leading 6 (sin) or 5 (cos) coefficients of P / Q and
@@ -442,9 +442,9 @@ static int sincos_r2(ddbl r, int odd, double *out)
     return 1;
 }
 
-/* sin (odd 1) or cos (odd 0) of the reduced r, as cr_trig rounds it: the Taylor series with x^2, x^3 and the x^3 / 6
+/* sin (odd 1) or cos (odd 0) of the reduced r, as cr_trig_dd rounds it: the Taylor series with x^2, x^3 and the x^3 / 6
    term in double-double (two_prod) and the rest (to x^21 / x^22) in double, as hi + lo with an error of about 2^-60;
-   kept when hi + (lo + e) and hi + (lo - e) round alike (Ziv's test), else the double-double series, cr_trig's own
+   kept when hi + (lo + e) and hi + (lo - e) round alike (Ziv's test), else the double-double series, cr_trig_dd's own
    result. Checked equal to psin_cr / pcos_cr for every float argument in [0, 360] degrees (bat_fly's directions) */
 static double sincos_r(ddbl r, int odd)
 {
@@ -488,12 +488,12 @@ static double sincos_r(ddbl r, int odd)
     return t.hi + t.lo;
 }
 
-/* sin and cos of a with cr_trig's reduction once (bat_fly): the same bits as psin_cr(a), pcos_cr(a) */
-void psincos_cr(double a, double *s, double *c)
+/* cr_trig_dd's reduction: r = a - k pi / 2 in double-double, quadrant k & 3 */
+static ddbl cr_reduce(double a, int *q)
 {
     static const double P1 = 1.57079632673412561417e+00, P2 = 6.07710050630396597660e-11,
                         P3 = 2.02226624871116645580e-21, P4 = 8.47842766036889956997e-32;
-    double k = (double)(int32_t)(a * invpio2 + (a < 0 ? -0.5 : 0.5)), sr, cr;
+    double k = (double)(int32_t)(a * invpio2 + (a < 0 ? -0.5 : 0.5));
     ddbl r, t;
     r = two_sum(a, -k * P1);
     r = dd_add(r, two_sum(-k * P2, 0));
@@ -502,9 +502,46 @@ void psincos_cr(double a, double *s, double *c)
     t.hi = -k * P4;
     t.lo = 0;
     r = dd_add(r, t);
+    *q = ((int)k) & 3;
+    return r;
+}
+
+/* sin / cos correctly rounded: cr_trig_dd's bits (its quadrant signs negate the rounded result exactly). sincos_r
+   keeps its fast sums only when Ziv's test shows they round as the series does (tests/sincos: every float direction
+   in degrees, and random double directions as the piranhas' and move_dir's, against cr_trig_dd) */
+double psin_cr(double x)
+{
+    int q;
+    ddbl r = cr_reduce(x, &q);
+    switch (q) {
+    case 0: return sincos_r(r, 1);
+    case 1: return sincos_r(r, 0);
+    case 2: return -sincos_r(r, 1);
+    default: return -sincos_r(r, 0);
+    }
+}
+
+double pcos_cr(double x)
+{
+    int q;
+    ddbl r = cr_reduce(x, &q);
+    switch (q) {
+    case 0: return sincos_r(r, 0);
+    case 1: return -sincos_r(r, 1);
+    case 2: return -sincos_r(r, 0);
+    default: return sincos_r(r, 1);
+    }
+}
+
+/* sin and cos of a with one reduction (bat_fly): the same bits as psin_cr(a), pcos_cr(a) */
+void psincos_cr(double a, double *s, double *c)
+{
+    double sr, cr;
+    int q;
+    ddbl r = cr_reduce(a, &q);
     sr = sincos_r(r, 1);
     cr = sincos_r(r, 0);
-    switch (((int)k) & 3) {
+    switch (q) {
     case 0: *s = sr; *c = cr; break;
     case 1: *s = cr; *c = -sr; break;
     case 2: *s = -sr; *c = -cr; break;

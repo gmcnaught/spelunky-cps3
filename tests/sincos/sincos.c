@@ -1,8 +1,11 @@
-/* pmath.c psincos_cr (bat_fly's sin and cos): for every float dir in [+0, 360] and -0 (1,135,869,954 of them),
- * psincos_cr(degtorad_d(dir)) gives the bits of psin_cr and pcos_cr of the same argument (cr_trig: the double-double
- * series, rounded once). Also counts, where sincos_r's first test fails, sincos_r2's answers at its shipping e and at
- * smaller ones (an accepted answer that differs from dd_sincos's at e means stage 2's error reached e there).
- *   make -C tests/sincos && build/host/sincos [nproc [end bits, hex: a partial run]]          (host, -ffp-contract=off: IEEE binary64 as the SH-2) */
+/* pmath.c psin_cr, pcos_cr and psincos_cr against cr_trig_dd (the double-double series of the reduced argument,
+ * rounded once): for every float dir in [+0, 360] and -0 (1,135,869,954 of them) at degtorad_d(dir), or (rand mode)
+ * for random doubles: directions in degrees in [-720, 1080] through degtorad_d (the piranhas' and move_dir's
+ * point_direction + a - b) and radians in [-20, 20], half each. Also counts, where sincos_r's first test fails,
+ * sincos_r2's answers at its shipping e and at smaller ones (an accepted answer that differs from dd_sincos's at e
+ * means stage 2's error reached e there).
+ *   make -C tests/sincos && build/host/sincos [nproc [end bits, hex: a partial run]]
+ *   build/host/sincos nproc rand <count> [seed]      (host, -ffp-contract=off: IEEE binary64 as the SH-2) */
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -77,24 +80,21 @@ static int stage1_ok(ddbl r, int odd)               /* sincos_r's first test, as
     return hi + (lo + e) == hi + (lo - e);
 }
 
-static void run(uint32_t u0, uint32_t u1, struct res *R)
+static void one(double a, struct res *R)
 {
-    uint32_t u;
-    memset(R, 0, sizeof *R);
-    for (u = u0; u < u1; u++) {
-        float f;
-        double a, s, c, s0, c0;
-        ddbl r;
-        int q, odd, k;
-        memcpy(&f, &u, 4);
-        a = degtorad_d((double)f);
-        psincos_cr(a, &s, &c);
-        s0 = psin_cr(a);
-        c0 = pcos_cr(a);
-        R->n++;
-        if (memcmp(&s, &s0, 8) || memcmp(&c, &c0, 8)) {
-            if (R->bad++ < 5) printf("differ: dir bits %08x\n", u);
-        }
+    double s, c, s0, c0, s1, c1;
+    ddbl r;
+    int q, odd, k;
+    psincos_cr(a, &s, &c);
+    s1 = psin_cr(a);
+    c1 = pcos_cr(a);
+    s0 = cr_trig_dd(a, 1);
+    c0 = cr_trig_dd(a, 0);
+    R->n++;
+    if (memcmp(&s, &s0, 8) || memcmp(&c, &c0, 8) || memcmp(&s1, &s0, 8) || memcmp(&c1, &c0, 8)) {
+        if (R->bad++ < 5) printf("differ: a %.17g (bits %016llx)\n", a, (unsigned long long)*(uint64_t *)&a);
+    }
+    {
         r = reduce(a, &q);
         for (odd = 0; odd < 2; odd++) {
             ddbl t;
@@ -115,10 +115,38 @@ static void run(uint32_t u0, uint32_t u1, struct res *R)
     }
 }
 
+static void run(uint32_t u0, uint32_t u1, struct res *R)
+{
+    uint32_t u;
+    memset(R, 0, sizeof *R);
+    for (u = u0; u < u1; u++) {
+        float f;
+        memcpy(&f, &u, 4);
+        one(degtorad_d((double)f), R);
+    }
+}
+
+static void run_rand(uint64_t seed, long n, struct res *R)
+{
+    uint64_t x = seed * 0x9e3779b97f4a7c15ull + 1;
+    long j;
+    memset(R, 0, sizeof *R);
+    for (j = 0; j < n; j++) {
+        double v;
+        x ^= x << 13; x ^= x >> 7; x ^= x << 17;
+        v = (double)(x >> 11) * 0x1p-53;                       /* [0, 1) with 53 random bits */
+        if (j & 1) one(v * 40.0 - 20.0, R);
+        else one(degtorad_d(v * 1800.0 - 720.0), R);
+    }
+}
+
 int main(int argc, char **argv)
 {
     int np = argc > 1 ? atoi(argv[1]) : 8, i, j, k, fd[64][2];
-    const uint32_t hi = argc > 2 ? (uint32_t)strtoul(argv[2], 0, 16) : 0x43b40001u;   /* (float)360 = 0x43b40000, inclusive */
+    int rnd = argc > 3 && !strcmp(argv[2], "rand");
+    long rn = rnd ? atol(argv[3]) : 0;
+    uint64_t rseed = rnd && argc > 4 ? strtoull(argv[4], 0, 10) : 1;
+    const uint32_t hi = argc > 2 && !rnd ? (uint32_t)strtoul(argv[2], 0, 16) : 0x43b40001u;   /* (float)360 = 0x43b40000, inclusive */
     struct res T, R;
     memset(&T, 0, sizeof T);
     if (np < 1 || np > 64) np = 8;
@@ -126,8 +154,9 @@ int main(int argc, char **argv)
         if (pipe(fd[i])) return 2;
         if (fork() == 0) {
             uint32_t a = (uint32_t)((uint64_t)hi * i / np), b = (uint32_t)((uint64_t)hi * (i + 1) / np);
-            run(a, b, &R);
-            if (i == 0) {                           /* -0 */
+            if (rnd) run_rand(rseed * 1000 + (uint64_t)i, rn / np, &R);
+            else run(a, b, &R);
+            if (i == 0 && !rnd) {                   /* -0 */
                 struct res M;
                 run(0x80000000u, 0x80000001u, &M);
                 R.n += M.n; R.bad += M.bad;
@@ -146,7 +175,7 @@ int main(int argc, char **argv)
         }
     }
     while (wait(0) > 0) ;
-    printf("sincos: %ld dirs, %ld differ from psin_cr / pcos_cr\n", T.n, T.bad);
+    printf("sincos: %ld arguments, %ld differ from cr_trig_dd\n", T.n, T.bad);
     for (j = 1; j >= 0; j--) {
         printf("  %s: first test fails %ld;", j ? "sin" : "cos", T.fail1[j]);
         for (k = 0; k < NE; k++) printf(" e 2^%d: kept %ld, of them differ %ld;", k ? -86 - 6 * k : -86, T.acc[k][j], T.accbad[k][j]);
