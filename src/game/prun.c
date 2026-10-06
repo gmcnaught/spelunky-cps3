@@ -556,6 +556,10 @@ int play_step(uint16_t keys, void (*record_cb)(int phase))
         int i = order[k];
         if (!PX(i).alive) continue;
         play_cur_obj = PX(i).obj;
+        if (PX(i).obj == OBJ_oPiranha && (a = pswamp_piranha_run(order + k, n - k)) > 0) {
+            k += a - 1;                                                        /* idle piranhas in a row (pk_swamp.c) */
+            continue;
+        }
         if (PX(i).obj == OBJ_oGamepad) {
             /* the ending's rooms (src/front): the runner changes the room once the event that called room_goto
                ends, the rest of the Step dispatch does not run (build/trace/g_end_win_s7 record 1274: oEnd3, before

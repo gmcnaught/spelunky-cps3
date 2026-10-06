@@ -24,6 +24,7 @@ int pveg_quiet(int i);                          /* pk_jungle.c: the vegetation m
 void pveg_note_solid(int i);
 int pjungle_idle(int i);                         /* prun.c: oTree / oTreeBranch out of view, the vegetation memo */
 int pswamp_ev(int ev, int i, int arg);
+int pswamp_piranha_run(const int16_t *ord, int n);   /* prun.c's Step loop: idle piranhas in a row (0: none run) */
 int pice_ev(int ev, int i, int arg);
 int ptemple_ev(int ev, int i, int arg);
 int pitems_ev(int ev, int i, int arg);

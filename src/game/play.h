@@ -426,7 +426,11 @@ int pw_with(int obj, int16_t *out, int max);
 /* pdist2_lt(pdist2(PTOD(x1) + ox, PTOD(y1) + oy, PTOD(x2), PTOD(y2)), c), mostly without the doubles */
 int pdist_lt_at(pos x1, pos y1, int32_t ox, int32_t oy, pos x2, pos y2, double c);
 int pw_static_xy(int obj, int32_t x, int32_t y);   /* collision_point_any_at's common answers at its whole query, else -1 */
-void pw_xstep(int i, int32_t x, int d);            /* pin_setx(x + d) of a whole x, the whole box cache kept */
+void pw_xstep(int i, int32_t x, int d);
+int pw_solid_vline_q(int32_t x, int32_t y1, int32_t y2, int notme_self);   /* solid_vline_any without its flush, else -1 */
+#ifdef PLAY_STATS
+extern uint32_t pw_muts;                          /* pw_draw_mark calls (every field change marks) */
+#endif            /* pin_setx(x + d) of a whole x, the whole box cache kept */
 int pw_solid_pt(int32_t x, int32_t y);              /* collision_point_any(x, y, oSolid, 0, noone)'s summary, else -1 */
 int pw_fam_swims(const int16_t *objs, int n);       /* an alive instance of the families swims (PEN swimming) */
 
@@ -479,6 +483,7 @@ void scrUpdateHighscores(int type);
 void ev_create(int i);
 void ev_destroy(int i);
 void ev_step(int i);
+int ev_step_pen(int o);                           /* pobj.c: ev_step(i) of o goes straight to pen_step */
 int ev_step_idle(int i);                          /* pobj.c: 1 when ev_step(i) would do nothing (front_on 0) */
 void ev_end_step(int i);
 void ev_alarm(int i, int a);

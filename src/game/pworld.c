@@ -348,8 +348,14 @@ int pw_last_with_sprite(int16_t s0)
     return NOONE;
 }
 
+#ifdef PLAY_STATS
+uint32_t pw_muts;                                /* pw_draw_mark calls: every change of an instance's fields marks */
+#endif
 void pw_draw_mark(int i)
 {
+#ifdef PLAY_STATS
+    pw_muts++;
+#endif
     if (ddmark[i]) return;
     ddmark[i] = 1;
     ddlist[nddlist++] = (int16_t)i;
@@ -2639,6 +2645,26 @@ int (collision_rect_any)(double x1, double y1, double x2, double y2, int obj, in
 int solid_vline_any(int32_t x, int32_t y1, int32_t y2, int notme_self)
 {
     return line_any(x, y1, x, y2, OBJ_oSolid, 1, notme_self);
+}
+
+/* solid_vline_any(x, y1, y2, notme_self)'s answer as line_any finds it on the grid (pcol_query 1, gfar 0), without
+   pcol_query's flush (pk_swamp.c's idle piranha batch makes it, pcol_query, at the Step's place in its phase M; the
+   grid build's searches do not depend on when entries are flushed): -1 on line_any's other paths */
+int pw_solid_vline_q(int32_t x, int32_t y1, int32_t y2, int notme_self)
+{
+    int q = pcol_query_kind(OBJ_oSolid), r;
+    struct lq lq;
+    if (q < 0) return 0;
+    if (q != 1) return -1;
+    grid_flush();
+    if (gfar) return -1;
+    lq.iok = 1;
+    lq.lx = x; lq.hx = x;
+    lq.ly = y1 < y2 ? y1 : y2; lq.hy = y1 < y2 ? y2 : y1;
+    lq.axis = 1;
+    r = line_summary(&lq, OBJ_oSolid, 1, notme_self);
+    if (r >= 0) return r;
+    return any_scan(x, y1, x, y2, OBJ_oSolid, 1, notme_self);
 }
 
 int solid_hline_any(int32_t y, int32_t x1, int32_t x2, int notme_self)

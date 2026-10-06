@@ -17,6 +17,7 @@
 #ifdef PLAY_STATS
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #endif
 
 #define DIR(p)         (PE(p)->direction)       /* dir (oPiranha, oDeadFish, oVampire, oGhost, oJaws) */
@@ -311,10 +312,12 @@ static void fish_end(int i, int left, int right)
 #else
 #define FISH_CHECK(r, g, what) ((void)0)
 #endif
+#if !defined(PLAY_FIXED) && !defined(NUM_IS_CLASS)
+static const int16_t prey_objs[4] = { OBJ_oCaveman, OBJ_oShopkeeper, OBJ_oHawkman, OBJ_oYeti };
+#endif
 static __attribute__((noinline)) int piranha_idle(int i)
 {
 #if !defined(PLAY_FIXED) && !defined(NUM_IS_CLASS)
-    static const int16_t prey_objs[4] = { OBJ_oCaveman, OBJ_oShopkeeper, OBJ_oHawkman, OBJ_oYeti };
     struct pin *p = &PX(i);
     struct pin_ext *e = PE(p);
     union { double d; uint64_t u; } v;
@@ -476,6 +479,126 @@ static void piranha_step(int i)                                /* objects/oPiran
         BUBBLETIMER(&PX(i)) = (int16_t)RAND(40 - 10, 40 + 10);
     }
     fish_end(i, GSPR_sPiranhaLeft, GSPR_sPiranhaRight);
+}
+
+/* ---- idle piranhas in a row: the Step loop's batch (prun.c; from branch pphase-batch) ----------------------------- */
+/* ord[0 .. n): the Step loop's next instances (its snapshot, in step order), ord[0] an oPiranha. The leading run of
+   piranhas each in piranha_idle's case that swim on (water ahead, no oSolid point there, the column test known
+   without the flush), stay in the water, already have the sprite their dir gives, with no prey family member
+   swimming, has Steps that are exactly (piranha_idle)
+       the near test (status 1), the two tests ahead, moveTo_x1's column test (pcol_query's flush, then the grid
+       summary), pin_setx when clear (pw_xstep), bubbleTimer -= 1, pin_set_sprite to the sprite it has (nothing),
+       fish_end's water test (true)
+   and then the loop's pcol_event_done; nothing else runs between them (ord is the snapshot). Their tests read PL and
+   the character's position, the static-family index (oWater), the solid grid and pcol's oSolid count: a piranha is in
+   none of them (not oSolid, not static: grid_dirty leaves it out of both), and the run's writes (pw_xstep -> its own
+   fields, marks, box and collision entry; status, bubbleTimer; sync1) change none of them, so each piranha's answers
+   are the same before the run as at its own Step. Phase T finds them all without a write (the pw_* quick answers;
+   the run ends at the first piranha one cannot be found for, or that would turn, leave the water or change its
+   sprite); phase M makes each Step's writes in the Steps' order, with the one write its tests make, line_any's
+   pcol_query (the flush of the entries marked since: the previous piranha's), at its place; each piranha's marks are
+   made in its own M, in step order. pw_fam_swims is the Step's own memo (the same answer for the whole run). Returns
+   the number of Steps run (0: none, the caller runs ord[0]'s). PLAY_STATS: T makes no write (pw_muts, pcol's counters,
+   the RNG, PW.seq), M makes the Step's own test calls at their places and compares */
+#define PRUN_MAX 8
+int pswamp_piranha_run(const int16_t *ord, int n)
+{
+#if FISH_WALK
+    int16_t idx[PRUN_MAX];
+    int16_t ix[PRUN_MAX];
+#ifdef PLAY_STATS
+    int16_t iy[PRUN_MAX];
+#endif
+    int8_t act[PRUN_MAX];                                      /* 1 right (else left), 2 no move, 4 status 1 */
+    int m, j, swim, c = NOONE;
+#ifdef PLAY_STATS
+    uint32_t mu0 = pw_muts + pcol_st.inserts + pcol_st.removes + pcol_st.flushes + pcol_st.syncs + (uint32_t)PW.seq;
+    struct rng g0 = g_rng;
+#endif
+    if (n > PRUN_MAX) n = PRUN_MAX;
+    if (!ev_step_pen(OBJ_oPiranha) || pcol_quiet() || pw_fam_swims(prey_objs, 4)) return 0;
+    swim = PL.swimming && !PL.dead;
+    if (swim) c = instance_first_p(OBJ_oCharacter);
+    for (m = 0; m < n; m++) {                                  /* phase T */
+        int i = ord[m], d, r, a;
+        struct pin *p = &PX(i);
+        struct pin_ext *e;
+        union { double d; uint64_t u; } v;
+        int32_t x, y;
+        if (p->obj != OBJ_oPiranha || !p->alive) break;
+        e = PE(p);
+        if (!e->active || e->hp < 1 || e->status != 0 || BUBBLETIMER(p) <= 0 || !pin_xy_int(i, &x, &y) ||
+            x <= -29900 || x >= 29900 || y <= -29900 || y >= 29900)
+            break;
+        v.d = e->direction;
+        if (v.u == 0) d = 1;
+        else if (v.u == 0x4066800000000000ull) d = -1;         /* 180.0 */
+        else break;
+        if (p->spr != (d > 0 ? GSPR_sPiranhaRight : GSPR_sPiranhaLeft)) break;
+        if (pw_static_xy(OBJ_oWater, d > 0 ? x + 10 : x - 2, y) != 1) break;   /* (0: it turns, a new sprite) */
+        if (pw_solid_pt(d > 0 ? x + 10 : x - 2, y) != 0) break;
+        r = pw_solid_vline_q(d > 0 ? x + e->rbo : x + e->lbo - 1, y + e->tbo + 5, y + e->bbo - 1, i);
+        if (r < 0) break;
+        a = (d > 0) | (r ? 2 : 0);
+        if (pw_static_xy(OBJ_oWater, x + (r ? 0 : d) + 4, y + 4) != 1) break;   /* fish_end: stays in water */
+        if (swim && pdist_lt_at(p->x, p->y, 4, 4, PX(c).x, PX(c).y, 90)) a |= 4;
+        idx[m] = (int16_t)i;
+        ix[m] = (int16_t)x;
+#ifdef PLAY_STATS
+        iy[m] = (int16_t)y;
+#endif
+        act[m] = (int8_t)a;
+    }
+#ifdef PLAY_STATS
+    if (mu0 != pw_muts + pcol_st.inserts + pcol_st.removes + pcol_st.flushes + pcol_st.syncs + (uint32_t)PW.seq ||
+        memcmp(&g0, &g_rng, sizeof g0)) {
+        fprintf(stderr, "pswamp_piranha_run: phase T wrote\n");
+        abort();
+    }
+#endif
+    for (j = 0; j < m; j++) {                                  /* phase M */
+        int i = idx[j], a = act[j], d = a & 1 ? 1 : -1;
+        struct pin *p = &PX(i);
+        play_cur_obj = OBJ_oPiranha;
+#ifdef PLAY_STATS
+        {   /* the Step's own tests at their places (with their PLAY_STATS checks' searches), then T's answers */
+            int k = instance_first_p(OBJ_oCharacter), sv;
+            struct pin_ext *e = PE(p);
+            int nr = pdist_lt_at(p->x, p->y, 4, 4, PX(k).x, PX(k).y, 90) && PL.swimming && !PL.dead;
+            int ok = d > 0 ? collision_point_any_at(i, 8 + 2, 0, OBJ_oWater) && !CP(X(i) + 10, Y(i), OBJ_oSolid)
+                           : collision_point_any_at(i, -2, 0, OBJ_oWater) && !CP(X(i) - 2, Y(i), OBJ_oSolid);
+            sv = solid_vline_any(d > 0 ? ix[j] + e->rbo : ix[j] + e->lbo - 1, iy[j] + e->tbo + 5, iy[j] + e->bbo - 1, i);
+            if (!ok || nr != !!(a & 4) || sv != !!(a & 2) || pw_fam_swims(prey_objs, 4)) {
+                fprintf(stderr, "pswamp_piranha_run: phase T differs (%d)\n", i);
+                abort();
+            }
+        }
+#else
+        pcol_query(OBJ_oSolid);                                /* moveTo_x1's line_any: its flush */
+#endif
+        NOPS(10);                                              /* (moveTo_x1's) */
+        if (!(a & 2)) pw_xstep(i, ix[j], d);
+        if (a & 4) PE(p)->status = 1;
+#ifdef PLAY_STATS
+        {
+            int t = prey(i);
+            if (t != NOONE && PEN(&PX(t))->swimming && PE(&PX(t))->hp > 0) { fprintf(stderr, "pw_fam_swims\n"); abort(); }
+        }
+#endif
+        BUBBLETIMER(p) -= 1;
+#ifdef PLAY_STATS
+        if (p->spr != (d > 0 ? GSPR_sPiranhaRight : GSPR_sPiranhaLeft) || !collision_point_any_at(i, 4, 4, OBJ_oWater)) {
+            fprintf(stderr, "pswamp_piranha_run: fish_end differs (%d)\n", i);
+            abort();
+        }
+#endif
+        pcol_event_done(i);
+    }
+    return m;
+#else
+    (void)ord; (void)n;
+    return 0;
+#endif
 }
 
 static void deadfish_step(int i)                               /* objects/oDeadFish/Step_0.gml */

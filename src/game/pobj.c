@@ -1276,6 +1276,17 @@ static void stepk_check(int o, int k)
 
 /* 1 when ev_step(i) would do nothing (front_on 0): an object whose Step is treasure_step (stepk SK_TREASURE, kept
    from its first Step) out of view, treasure_step's first test (inview reads the view and the instance only) */
+/* 1 when ev_step(i) of an instance of o goes straight to pen_step (stepk SK_PEN, front_on 0) */
+int ev_step_pen(int o)
+{
+#ifdef PLAY_DCHECK
+    (void)o;
+    return 0;
+#else
+    return !front_on && stepk[o] == SK_PEN;
+#endif
+}
+
 int ev_step_idle(int i)
 {
     return stepk[PX(i).obj] == SK_TREASURE && !inview(i, 16);
