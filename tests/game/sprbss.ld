@@ -11,7 +11,7 @@ SECTIONS
         /* cold in play (main RAM is short: tests/ramcheck.ld): the generator's lists (src/game/inst.c, used while a
            level is generated) and the front end's layer order (src/front/front.c, the attract rooms only) */
         *(.bss.with_pool) *(.bss.gw_inext) *(.bss.gw_iprev) *(.bss.ghome) *(.bss.gw_ohead) *(.bss.gw_otail)
-        *(.bss.gw_live) *(.bss.lpos_id) *(.bss.lpos) *(.bss.w_alive)
+        *(.bss.gw_live) *(.bss.lpos_id) *(.bss.lpos) *(.bss.w_alive) *(.bss.xhint)
         . = ALIGN(4);
         __sprbss_a_end = .;
     }

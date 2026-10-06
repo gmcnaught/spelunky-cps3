@@ -79,6 +79,10 @@ static uint16_t xfar[XF_N];
 static uint8_t xsat[XF_N];
 static uint8_t xmask[PIN_MAX], xisfar[PIN_MAX], xond[PIN_MAX], xx0[PIN_MAX], xy0[PIN_MAX], xx1[PIN_MAX], xy1[PIN_MAX];
 static int16_t xdnext[PIN_MAX], xdhead = NOONE;
+/* per cell, the last entry placed (xflush_run) whose integer box covers the whole cell, any family, or NOONE: a hint
+   only. collision_point_any's static path tests it with point_hit before walking the family (xhint_hit), so a stale
+   hint (destroyed, moved, another object in a reused slot) costs a test and changes no answer */
+static int16_t xhint[GRID_H][GRID_W];
 static void xdirty(int i)
 {
     xond[i] = 1;
@@ -1414,6 +1418,8 @@ static void grid_reset(void)
         xsat[x] = 0;
         for (y = 0; y < GRID_H; y++) { int c; for (c = 0; c < GRID_W; c++) xcnt[x][y][c] = 0; }
     }
+    for (y = 0; y < GRID_H; y++)
+        for (x = 0; x < GRID_W; x++) xhint[y][x] = NOONE;
     xdhead = NOONE;
 #endif
 }
@@ -1620,10 +1626,26 @@ static __attribute__((noinline)) void xflush_run(void)
             if (ib[2] <= ib[0] || ib[3] <= ib[1]) { xmask[i] = 0; continue; }     /* empty: never hit */
             xx0[i] = (uint8_t)clampi(ib[0] >> 4, 0, GRID_W - 1); xx1[i] = (uint8_t)clampi((ib[2] - 1) >> 4, 0, GRID_W - 1);
             xy0[i] = (uint8_t)clampi(ib[1] >> 4, 0, GRID_H - 1); xy1[i] = (uint8_t)clampi((ib[3] - 1) >> 4, 0, GRID_H - 1);
+            {
+                int x, y, fx0 = clampi((ib[0] + 15) >> 4, 0, GRID_W), fx1 = clampi(ib[2] >> 4, 0, GRID_W);
+                int fy0 = clampi((ib[1] + 15) >> 4, 0, GRID_H), fy1 = clampi(ib[3] >> 4, 0, GRID_H);
+                for (y = fy0; y < fy1; y++)
+                    for (x = fx0; x < fx1; x++) xhint[y][x] = (int16_t)i;
+            }
         } else
             xisfar[i] = 1;
         xplace(i, 1);
     }
+}
+
+/* the cell's hint is an alive instance of obj's family, not notme, holding the whole point q: some instance of the
+   family but notme holds it (what xpoint_any finds; point_hit's box cache is its only side effect, as there) */
+static int xhint_hit(int obj, int notme, const struct pq *q, int prec)
+{
+    int k;
+    if (!q->iok || q->ix < 0 || q->iy < 0 || (q->ix >> 4) >= GRID_W || (q->iy >> 4) >= GRID_H) return 0;
+    k = xhint[q->iy >> 4][q->ix >> 4];
+    return k >= 0 && k != notme && PW.in[k].alive && obj_is(PW.in[k].obj, obj) && point_hit(k, q, prec);
 }
 
 /* no entry of family f has a box holding the whole point q (a point is in a box's cell) */
@@ -1724,7 +1746,7 @@ int (collision_point_any)(double px, double py, int obj, int prec, int notme_sel
         if (fam_none(obj)) return 0;
         pq_init(&q, px, py);
         if (xpoint_none(xf_of[obj], &q)) r = 0;
-        else r = xpoint_any(obj, notme_self, &q, prec);
+        else r = xhint_hit(obj, notme_self, &q, prec) || xpoint_any(obj, notme_self, &q, prec);
 #ifdef PLAY_STATS
         if (r != (collision_point_p(px, py, obj, prec, notme_self) != NOONE)) {
             fprintf(stderr, "collision_point_any: static family %d answer %d differs (%.17g %.17g)\n", obj, r, px, py);
