@@ -1,9 +1,10 @@
 # ICACHE: keeping streaming code and data out of the SH-2's 4 KB cache
 
-Status 2026-10-06, branch `claude/instruction-cache-optimization-kmmwck` on main d6a1155. Exploration: what keeps
+Status 2026-10-06, branch `claude/instruction-cache-optimization-kmmwck`, rebased on main c988cd1. Exploration: what keeps
 the jtcps3 / MAME ratio of the play step high, and which strategies raise the cache hit rate. Measured with the
 jtcost trace model (docs/PERF3.md section 1, docs/REVIEW-SH2.md section 3) on 7 traced steps, and with a real linked
-build checked in MAME. Nothing in src/ is changed. **The hardware A/B (section 6) is still to run.**
+build checked in MAME. Nothing in src/ is changed. **jtcps3 A/B (section 4.7): PASS 23/23 on both builds; route
+step means −9.1 % (−6.9 % to −11.2 %), generation −7.4 %.**
 
 ## 1. Summary
 
@@ -11,7 +12,7 @@ build checked in MAME. Nothing in src/ is changed. **The hardware A/B (section 6
 |---|---|---|
 | **A. Streaming functions run from SIMM 1's cache-through mirror** (0x26000000; 22 functions) | about −8 % / −4 % (model, functions alone) | linked, checksums equal |
 | **B. Streaming arrays read through main RAM's mirror** (0x22000000; 28 `.bss` arrays, `inst_mem` the largest) | about −8 % / −6 % on top of A | linked, checksums equal |
-| **A + B as built** (`tests/playsh2/nc_robust.txt`) | **−15.3 % / −8.8 %**, every step better (−7 % to −18 %); held-out steps −14 % to −18 % (fit) | **ready for jtcps3** |
+| **A + B as built** (`tests/playsh2/nc_robust.txt`) | **−15.3 % / −8.8 %**, every step better (−7 % to −18 %); held-out steps −14 % to −18 % (fit) | **jtcps3: route step means −9.1 %, generation −7.4 % (4.7)** |
 | C. Hot fields of `struct pin` in one line (a layout "sublist") | −1.1 % / −0.9 % alone; −0.3 to −0.6 % on top of A + B | measured, not kept |
 | D. Algorithmic sublists for the per-step sweeps (alarms, animate, Draw / Step snapshots) | `play_step` is 11.7 % of the step: the bound | sized, not built |
 | E. Two-way mode + hot code in the 2 KB cache RAM | **+19.5 %** (two-way alone +28 %) | rejected |
@@ -195,6 +196,43 @@ after B.
   - `-falign-functions=16`;
   - CCR.OD (a miss still reads the whole line: section 2).
 
+### 4.7 jtcps3 A/B (MiSTer .62, jtcps3.rbf 2026-10-02, main c988cd1)
+
+`JTV=_base scripts/playsh2_jt.sh` against `JTV=_nc NC=nc_robust.txt scripts/playsh2_jt.sh`. The two builds run the
+same 23 jobs (5 generation cases, 18 routes) on the same board, one after the other. Both show **PASS 23/23, SPR OK**
+on jtcps3 and in MAME (the NC set with `-nodrc`; every job's checksum equals the base build's). The NC run finished
+in about 19 minutes. Clocks were read from the results screen (`mister_run.sh` screenshots).
+
+| Job | Total | Step mean base -> NC | Mean | Max |
+|---|---|---|---|---|
+| G1-G5 (generation, summed) | 367.5 -> 340.5 M | | | |
+| G1 / G2 / G3 / G4 / G5 | −2.1 / −6.4 / −6.2 / −4.6 / −9.8 % | | | |
+| R1 EXIT55 | −6.2 % | 342,368 -> 317,219 | −7.3 % | −1.3 % |
+| R2 HANG_L | −6.4 % | 319,023 -> 287,446 | −9.9 % | −1.7 % |
+| R3 ITEMS | −6.0 % | 304,507 -> 273,185 | −10.3 % | −1.7 % |
+| R4 SPIKES | −4.8 % | 230,178 -> 206,713 | −10.2 % | −9.3 % |
+| R5 PUSH_R | −7.3 % | 332,305 -> 296,171 | −10.9 % | −4.6 % |
+| R6 WALK | −6.9 % | 358,002 -> 323,024 | −9.8 % | −1.7 % |
+| R7 BOMB_D | −6.6 % | 400,969 -> 362,376 | −9.6 % | −1.7 % |
+| R8 BOMB_T | −7.9 % | 319,557 -> 283,692 | −11.2 % | −7.2 % |
+| R9 BUY | −5.2 % | 403,588 -> 375,672 | −6.9 % | −5.3 % |
+| R10 CAVEMA | −6.1 % | 470,775 -> 432,151 | −8.2 % | −5.0 % |
+| R11 CAVEST | −6.3 % | 381,325 -> 346,827 | −9.0 % | −5.1 % |
+| R12 GIANT | −5.3 % | 429,740 -> 392,939 | −8.6 % | −5.7 % |
+| R13 IDOL | −5.2 % | 411,298 -> 379,271 | −7.8 % | −7.5 % |
+| R14 L3SPID | −5.1 % | 311,957 -> 283,789 | −9.0 % | −6.7 % |
+| R15 L4 | −5.8 % | 380,070 -> 344,017 | −9.5 % | −6.6 % |
+| R16 SHOP | −5.7 % | 357,026 -> 326,475 | −8.6 % | −6.6 % |
+| R17 SNAKES | −6.2 % | 379,021 -> 341,401 | −9.9 % | −5.8 % |
+| R18 SPIDER | −6.0 % | 319,194 -> 290,133 | −9.1 % | −8.5 % |
+| **routes, summed means** | | **6,450.9 -> 5,862.5 K** | **−9.1 %** | |
+
+- Every job is faster, generation included: section 5's concern about `inst_mem` read uncached during generation
+  does not apply on these 5 cases.
+- The route result (−9.1 %) matches the review constants' −8.8 % (section 4.4), not the fit's −15.3 %.
+- A route's total includes its level start, which gains less than its steps (total −4.8 % to −7.9 %). The max
+  column is mostly the level start (millions of clocks), and it gains −1.3 % to −9.3 %.
+
 ## 5. Caveats
 
 - **The constants decide the size of A.**
@@ -221,7 +259,7 @@ after B.
 
 ## 6. Next steps
 
-1. **Hardware A/B on jtcps3** (.62, through the lead). Same jobs, same code:
+1. **Hardware A/B on jtcps3: done 2026-10-06 (section 4.7).** Same jobs, same code:
    ```
    JTV=_base scripts/playsh2_jt.sh
    JTV=_nc NC=nc_robust.txt scripts/playsh2_jt.sh
