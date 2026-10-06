@@ -2060,7 +2060,7 @@ void pw_xstep(int i, int32_t x, int d)
 }
 
 /* some alive instance of one of the n families objs[] has its enemy record's swimming set */
-int pw_fam_swims(const int16_t *objs, int n)
+static int fam_swims_walk(const int16_t *objs, int n)
 {
     int a, j, k;
     for (a = 0; a < n; a++) {
@@ -2075,6 +2075,28 @@ int pw_fam_swims(const int16_t *objs, int n)
     return 0;
 }
 
+/* the walk's answer kept while PW.step, olive_gen and objs hold. Its one caller (pk_swamp.c piranha_idle) calls it
+   only in oPiranha's Step dispatch, so within a step nothing but piranha Steps runs between two calls: they write no
+   enemy's swimming (the writes: the enemies' Create events and their own Steps, pdamsel.c, pk_jungle.c, penemy.c,
+   pk_swamp.c create), and every instance they create or destroy bumps olive_gen (olive_add), as a room start does
+   (olists_reset). The host builds compare every kept answer with the walk */
+static uint32_t fsw_step, fsw_gen;
+static const int16_t *fsw_objs;
+static int8_t fsw_val;
+int pw_fam_swims(const int16_t *objs, int n)
+{
+    if (fsw_objs == objs && fsw_step == PW.step && fsw_gen == olive_gen + 1) {
+#ifdef PLAY_STATS
+        if (fsw_val != fam_swims_walk(objs, n)) { fprintf(stderr, "pw_fam_swims: kept answer differs\n"); abort(); }
+#endif
+        return fsw_val;
+    }
+    fsw_val = (int8_t)fam_swims_walk(objs, n);
+    fsw_objs = objs;
+    fsw_step = PW.step;
+    fsw_gen = olive_gen + 1;
+    return fsw_val;
+}
 
 /* a line query with whole-number ends: their bounding box, and whether the line is axis-aligned */
 struct lq { int iok, axis; int32_t lx, ly, hx, hy; };
