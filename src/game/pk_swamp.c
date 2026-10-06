@@ -287,11 +287,16 @@ static void piranha_step(int i)                                /* objects/oPiran
         pin_destroy(i);
     }
     p = &PX(i);
-    c = instance_first_p(OBJ_oCharacter);
-    near = pdist_lt_at(p->x, p->y, 4, 4, PX(c).x, PX(c).y, 90);  /* point_distance(x + 4, y + 4, c.x, c.y) < 90, now */
+    /* dist = point_distance(x + 4, y + 4, oCharacter.x, oCharacter.y) (:15) is read only by IDLE's and ATTACK's tests:
+       c and the compare are made there, at the position the Step started with (instance_first_p and pdist_lt_at
+       have no game effect: their caches give the same answers whenever filled) */
     if (PE(p)->status == 0) {                                  /* IDLE :17 */
+        pos x0 = p->x, y0 = p->y;
         fish_idle_swim(i);
-        if (near && PL.swimming && !PL.dead) PE(p)->status = 1;
+        if (PL.swimming && !PL.dead) {                         /* (the test's other operands first) */
+            c = instance_first_p(OBJ_oCharacter);
+            if (pdist_lt_at(x0, y0, 4, 4, PX(c).x, PX(c).y, 90)) PE(p)->status = 1;
+        }
         obj = prey_swims() ? prey(i) : NOONE;
 #ifdef PLAY_STATS
         if (obj == NOONE) {                                    /* the host builds: the skipped prey() fails the test */
@@ -307,7 +312,8 @@ static void piranha_step(int i)                                /* objects/oPiran
             PE(p)->status = 0;
             DIR(p) = RAND(0, 1) * 180;
         }
-    } else if (PE(p)->status == 1 && c != NOONE) {             /* ATTACK :63 */
+    } else if (PE(p)->status == 1 && (c = instance_first_p(OBJ_oCharacter)) != NOONE) {   /* ATTACK :63 */
+        near = pdist_lt_at(p->x, p->y, 4, 4, PX(c).x, PX(c).y, 90);   /* point_distance(x + 4, y + 4, c.x, c.y) < 90 */
         if (near && PL.swimming && !PL.dead) {
             double d = point_direction_d(X(i) + 4, Y(i) + 4, X(c), Y(c));
             int a = RAND(0, 1), b = RAND(0, 1);
