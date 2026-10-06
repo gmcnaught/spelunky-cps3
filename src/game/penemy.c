@@ -396,11 +396,11 @@ void pen_parent_step(int i)
         }
         PEN(p)->burning -= 1;
     }
-    if (CP(X(i) + (sprw(i) >> 1), Y(i) - 1, OBJ_oLava)) ptemple_world(5012, i, 1);                   /* :63 */
-    if (CP(X(i) + (sprw(i) >> 1), Y(i) + sprh(i) - 2, OBJ_oLava)) ptemple_world(5012, i, 2);   /* :65 */
+    if (collision_point_any_at(i, sprw(i) >> 1, -1, OBJ_oLava)) ptemple_world(5012, i, 1);                   /* :63 */
+    if (collision_point_any_at(i, sprw(i) >> 1, sprh(i) - 2, OBJ_oLava)) ptemple_world(5012, i, 2);   /* :65 */
     if (collision_rect_p(X(i) + 2, Y(i) + 2, X(i) + 14, Y(i) + 14, OBJ_oSpearsLeft, 0, NOONE) != NOONE)
         pcontent_enemy(5013, i, 0);                                                     /* P7 hook */
-    if (CP(X(i) + 8, Y(i) + 16, OBJ_oSpikes) && NGT(PE(p)->yVel, N(2))) {  /* :108 */
+    if (collision_point_any_at(i, 8, 16, OBJ_oSpikes) && NGT(PE(p)->yVel, N(2))) {  /* :108 */
         int spikes = instance_place_p(i, X(i) + 8, Y(i) + 14, OBJ_oSpikes);
         if (!bloodless_of(i) && spikes != NOONE) pin_set_sprite(spikes, GSPR_sSpikesBlood);
         if (PE(p)->hp > 0) {
@@ -646,7 +646,7 @@ static void spider_step(int i)
             PE(p)->status = 0;
         if (isCollisionTop(i, 1)) PE(p)->yVel = N(1);
     }
-    if (CP(X(i) + 8, Y(i) + 8, OBJ_oWater) && PE(p)->status != 4) {       /* :84 */
+    if (collision_point_any_at(i, 8, 8, OBJ_oWater) && PE(p)->status != 4) {       /* :84 */
         PE(p)->status = 4;
         pin_set_sprite(i, GSPR_sSpiderDrowning);
         PE(p)->alarm[1] = 30;

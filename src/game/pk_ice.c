@@ -203,7 +203,7 @@ static void yeti_step(int i)                                       /* objects/oY
         if (NEQ(PE(p)->xVel, N(0)) && PE(p)->hp > 0) pin_set_sprite(i, GSPR_sYetiStunL);
         else if (PEN(p)->bounced) pin_set_sprite(i, NLT(PE(p)->yVel, N(0)) ? GSPR_sYetiBounceL : GSPR_sYetiFallL);
         else pin_set_sprite(i, NGT(NABS(PE(p)->xVel), N(0)) ? GSPR_sYetiDieLL : GSPR_sYetiDieLR);
-        if (CP(X(i), Y(i), OBJ_oSpikes) && PEN(p)->edead && NNE(PE(p)->yVel, N(0))) {   /* :151 */
+        if (collision_point_any_at(i, 0, 0, OBJ_oSpikes) && PEN(p)->edead && NNE(PE(p)->yVel, N(0))) {   /* :151 */
             if (RAND(1, 8) == 1) pin_create(p->x, p->y, OBJ_oBlood);         /* other: self here */
             p = &PX(i);
         }
@@ -1316,7 +1316,7 @@ static int ev_step_ice(int i)
         return 1;
     case OBJ_oThinIce: thinice_step(i); return 1;
     case OBJ_oIceBlock:                                                /* objects/oIceBlock/Step_0.gml */
-        if (CP(X(i) + 8, Y(i) + 16, OBJ_oLava) && !CP(X(i) + 8, Y(i) + 17, OBJ_oSolid)) {
+        if (collision_point_any_at(i, 8, 16, OBJ_oLava) && !CP(X(i) + 8, Y(i) + 17, OBJ_oSolid)) {
             PE(p)->yVel = 0;
             PE(p)->myGrav = 0;
             pin_sety(p, PADDV(p->y, N(0.05)));

@@ -105,7 +105,7 @@ static void gold_drop(int i, int obj)
 static int gen_facing(int fromgen) { return fromgen ? play_gen_inst->facing : RAND(0, 1); }
 static int gen_swimming(int i, int fromgen)
 {
-    return fromgen ? (play_gen_inst->flags & IF_SWIMMING) != 0 : CP(X(i), Y(i), OBJ_oWater);
+    return fromgen ? (play_gen_inst->flags & IF_SWIMMING) != 0 : collision_point_any_at(i, 0, 0, OBJ_oWater);
 }
 
 /* objects/oFrog/Create_0.gml, objects/oFireFrog/Create_0.gml (the same) */
@@ -1007,7 +1007,7 @@ static int jungle_step(int i)
         return 1;
     case OBJ_oTreeBranch:                                            /* objects/oTreeBranch/Step_0.gml */
         if (eview(i, 16, 16)) {
-            if (!CP(X(i) - 16, Y(i), OBJ_oTree) && !CP(X(i) + 16, Y(i), OBJ_oTree)) pin_destroy(i);
+            if (!collision_point_any_at(i, -16, 0, OBJ_oTree) && !collision_point_any_at(i, 16, 0, OBJ_oTree)) pin_destroy(i);
             else VEG_NOTE(i, pw_static_clock(), 1);
         }
         return 1;

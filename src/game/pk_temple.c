@@ -919,7 +919,7 @@ static void smashtrap_step(int i)
     } else if (PE(p)->status == 99) {                                      /* :124 */
         PE(p)->xv = PE(p)->yv = PE(p)->xa = PE(p)->ya = 0;
         pin_sety(p, PADDV(p->y, N(0.05)));
-        if (CP(X(i), Y(i) - 1, OBJ_oLava)) pin_destroy(i);
+        if (collision_point_any_at(i, 0, -1, OBJ_oLava)) pin_destroy(i);
     }
     if (collision_rect_any_at(i, 1, 1, 15, 15, OBJ_oLava)) PE(p)->status = 99;
 }
@@ -1140,7 +1140,7 @@ static void lava_sink(struct pin *p)
     pin_sety(p, PADDV(p->y, N(0.05)));
 }
 static int lava_rect(int i) { return collision_rect_any_at(i, -3, -3, 3, 3, OBJ_oLava); }
-static int lava_point(int i) { return CP(X(i), Y(i) - 5, OBJ_oLava); }
+static int lava_point(int i) { return collision_point_any_at(i, 0, -5, OBJ_oLava); }
 static void lava_melt(int i)
 {
     struct pin *p = &PX(i);
@@ -1269,8 +1269,8 @@ static void olmec_step(int i)
         pin_setx(p, p->x - PI(1));
         PE(p)->xVel = 0;
     }
-    if (CP(X(i), Y(i) + 64, OBJ_oLava)) PE(p)->status = OL_DROWNING;
-    if (CP(X(i), Y(i) - 2, OBJ_oLava)) {                                  /* :36 */
+    if (collision_point_any_at(i, 0, 64, OBJ_oLava)) PE(p)->status = OL_DROWNING;
+    if (collision_point_any_at(i, 0, -2, OBJ_oLava)) {                                  /* :36 */
         G.olmecDead = 1;
         PG.kills += 1;
         pin_destroy(i);

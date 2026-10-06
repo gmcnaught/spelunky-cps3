@@ -1058,7 +1058,7 @@ static void dice_body(int i)
             PE(p)->yVel = 0;
             pin_sety(p, PADDV(p->y, N(0.05)));
         }
-        if (CP(X(i), Y(i) - 5, OBJ_oLava)) pin_destroy(i);
+        if (collision_point_any_at(i, 0, -5, OBJ_oLava)) pin_destroy(i);
     }
     p = &PX(i);
     if (NGT(NABS(PE(p)->xVel), N(3)) || NGT(NABS(PE(p)->yVel), N(3))) {        /* :105 */

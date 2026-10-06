@@ -131,7 +131,7 @@ static int create(int i, int fromgen)
         PE(p)->counter = 0;
         if (fromgen) {
             if (g && (g->flags & IF_SWIMMING)) PEN(p)->swimming = 1;
-        } else if (CP(X(i), Y(i), OBJ_oWater))
+        } else if (collision_point_any_at(i, 0, 0, OBJ_oWater))
             PEN(p)->swimming = 1;                              /* :33 */
         return 1;
     case OBJ_oVampire:                                         /* objects/oVampire/Create_0.gml */
@@ -257,7 +257,7 @@ static void fish_idle_swim(int i)
         if (CP(X(i) + 8 + 2, Y(i), OBJ_oWater) && !CP(X(i) + 10, Y(i), OBJ_oSolid)) moveTo(i, N(1), 0, 0, 0);
         else DIR(p) = 180;
     } else {
-        if (CP(X(i) - 2, Y(i), OBJ_oWater) && !CP(X(i) - 2, Y(i), OBJ_oSolid)) moveTo(i, N(-1), 0, 0, 0);
+        if (collision_point_any_at(i, -2, 0, OBJ_oWater) && !CP(X(i) - 2, Y(i), OBJ_oSolid)) moveTo(i, N(-1), 0, 0, 0);
         else DIR(p) = 0;
     }
 }
@@ -267,7 +267,7 @@ static void fish_end(int i, int left, int right)
     struct pin *p = &PX(i);
     if (DGT(DIR(p), 90) && DLT(DIR(p), 270)) pin_set_sprite(i, left);
     else pin_set_sprite(i, right);
-    if (!CP(X(i) + 4, Y(i) + 4, OBJ_oWater)) {
+    if (!collision_point_any_at(i, 4, 4, OBJ_oWater)) {
         pin_create(PX(i).x, PX(i).y, OBJ_oFishBone);
         pin_destroy(i);
     }
@@ -451,7 +451,7 @@ static void jaws_step(int i)
     struct pin *p = &PX(i);
     int pl = PL.idx;
     if (!eview(i, 48, 48)) return;                             /* :1 the view +- 48 */
-    if (!CP(X(i) + 8, Y(i) + 16, OBJ_oWater)) PE(p)->hp -= 1;  /* :5 */
+    if (!collision_point_any_at(i, 8, 16, OBJ_oWater)) PE(p)->hp -= 1;  /* :5 */
     if (PE(p)->hp < 1) {                                       /* :10 */
         int k;
         kill_count(i, &PG.megamouths);
@@ -475,10 +475,10 @@ static void jaws_step(int i)
     /* :34 dist = point_distance(x, y, oPlayer1.x, oPlayer1.y): not read */
     if (PE(p)->status == J_IDLE) {                             /* :36 */
         if (DEQ(DIR(p), 0)) {
-            if (CP(X(i) + 18, Y(i) + 16, OBJ_oWater) && !CP(X(i) + 18, Y(i) + 16, OBJ_oSolid)) moveTo(i, N(2), 0, 0, 0);
+            if (collision_point_any_at(i, 18, 16, OBJ_oWater) && !CP(X(i) + 18, Y(i) + 16, OBJ_oSolid)) moveTo(i, N(2), 0, 0, 0);
             else if (collision_rect_p(X(i) - 32, Y(i), X(i), Y(i) + 32, OBJ_oSolid, 0, NOONE) == NOONE) jaws_turn_left(i);
         } else {
-            if (CP(X(i) - 2, Y(i) + 16, OBJ_oWater) && !CP(X(i) - 2, Y(i) + 16, OBJ_oSolid)) moveTo(i, N(-2), 0, 0, 0);
+            if (collision_point_any_at(i, -2, 16, OBJ_oWater) && !CP(X(i) - 2, Y(i) + 16, OBJ_oSolid)) moveTo(i, N(-2), 0, 0, 0);
             else if (collision_rect_p(X(i) + 16, Y(i), X(i) + 48, Y(i) + 32, OBJ_oSolid, 0, NOONE) == NOONE)
                 jaws_turn_right(i);
         }
@@ -715,7 +715,7 @@ static void vampire_step(int i)
         } else if (PE(p)->facing == E_RIGHT) {
             if (!CP(X(i) + 8, Y(i) + 16, OBJ_oSolid)) PE(p)->status = V_BOUNCE;
         }
-        if (DLT(dabs(plx - X(i)), 32) && DLT(ply, Y(i) + 8) && !CP(X(i) + 8, Y(i) + 8, OBJ_oWater))
+        if (DLT(dabs(plx - X(i)), 32) && DLT(ply, Y(i) + 8) && !collision_point_any_at(i, 8, 8, OBJ_oWater))
             PE(p)->status = V_FLY;
         PE(p)->xVel = PE(p)->facing == E_LEFT ? N(-4) : N(4);
         break;
@@ -731,9 +731,9 @@ static void vampire_step(int i)
             PE(p)->xVel = 0;
             PE(p)->yVel = 0;
             PE(p)->counter = (int16_t)RAND(40, 100);
-        } else if (!CP(X(i) + 8, Y(i) + 8, OBJ_oWater)) {
+        } else if (!collision_point_any_at(i, 8, 8, OBJ_oWater)) {
             if (RAND(1, 100) == 1) PE(p)->status = V_FLY;
-            else if (CP(X(i) + 8, Y(i) + 24, OBJ_oWater)) PE(p)->status = V_FLY;
+            else if (collision_point_any_at(i, 8, 24, OBJ_oWater)) PE(p)->status = V_FLY;
         }
         break;
     case V_BOUNCE:                                             /* :189 */
@@ -802,7 +802,7 @@ static void vampire_step(int i)
                 }
             }
             PE(p)->facing = DLT(plx, X(i) + 8) ? E_LEFT : E_RIGHT;
-            if (PE(p)->colBot || CP(X(i), Y(i), OBJ_oWater)) PE(p)->status = V_IDLE;
+            if (PE(p)->colBot || collision_point_any_at(i, 0, 0, OBJ_oWater)) PE(p)->status = V_IDLE;
         } else {                                               /* :333 */
             PE(p)->xVel = 0;
             PE(p)->yVel = 0;
@@ -1031,7 +1031,7 @@ int pswamp_ev(int ev, int i, int arg)
         case OBJ_oJaws: jaws_step(i); return 1;
         case OBJ_oBubble:                                      /* objects/oBubble/Step_0.gml */
             pin_sety(p, PADDV(p->y, PE(p)->yVel));
-            if (!CP(X(i), Y(i), OBJ_oWater)) pin_destroy(i);
+            if (!collision_point_any_at(i, 0, 0, OBJ_oWater)) pin_destroy(i);
             return 1;
         case OBJ_oGrave:                                       /* objects/oGrave/Step_0.gml */
             if (eview(i, 20, 4) && !pveg_quiet(i)) {           /* (oTree's test: pk_jungle.c's notes) */
