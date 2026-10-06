@@ -1246,6 +1246,20 @@ static void stk_compact(void)
     nstk = n;
 }
 
+/* after a flush: the stack keeps only the entries still stale, in order (dead ones waiting for remove_marked). The
+   reads (stk_compact) are unchanged: they keep only the stale entries, and one dropped here that becomes stale again
+   is pushed again by mark_e (it pushes whenever it sets EF_STALE on a member; membership does not end within a room:
+   OI_DYN is only set, solid is the object's, and a reused slot starts at ef 0). Without this the stack held every
+   mark since its last read, up to ENT_MAX, and the next read (a creation-order scan of an oSolid child: a spear
+   trap's point test) sorted through them all */
+static void stk_clean(void)
+{
+    int k, n = 0;
+    for (k = 0; k < nstk; k++)
+        if (ef[stk[k]] & EF_STALE) stk[n++] = stk[k];
+    nstk = n;
+}
+
 static void mark_e(int e)
 {
     int o = eobj(e);
@@ -1299,6 +1313,7 @@ static __attribute__((noinline)) void flush_run(void)
             cupdate(e);
         }
     }
+    stk_clean();
 }
 
 static inline void flush(void)
