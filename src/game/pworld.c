@@ -64,7 +64,7 @@ static uint16_t gclock = 1, gepoch, gver[GRID_H][GRID_W];
    cell ([l, r - 1] x [t, b - 1] in cells, clamped), kept like the solid grid (an entry whose box may have changed
    waits on xdhead until the next query); a cell with no count holds no point of the family. xfar counts the entries
    with a box that is not BB_INT, xsat a cell count past 255 (then every query of the family takes the search).
-   Destroyed entries keep their counts until the slot is used again: a superset */
+   A destroyed or killed entry goes on xdhead and leaves the counts at the next query (xflush_run: not alive) */
 #ifndef PCOL_EXACT
 #define XF_N 8
 /* family 7 counts oTree's and oLeaves' instances together: for a query of either it is a superset count, and
@@ -786,6 +786,9 @@ void pin_destroy(int i)
         return;
     PW.in[i].alive = 0;          /* GameMaker marks it first: a search inside its Destroy event skips it */
     ounlink(i);
+#ifndef PCOL_EXACT
+    if (xmask[i] && !xond[i]) xdirty(i);            /* its counts leave the static-family index at the next query */
+#endif
     pw_draw_mark(i);
     ev_destroy(i);
     pcol_destroyed(i);           /* in the collision tree until the next RemoveMarked */
@@ -796,6 +799,9 @@ void pin_kill(int i)
     if (i >= 0) {
         if (PW.in[i].alive) { ounlink(i); PW.in[i].alive = 0; pw_draw_mark(i); }   /* (dead first: not back on the
                                                                                      animation list) */
+#ifndef PCOL_EXACT
+        if (xmask[i] && !xond[i]) xdirty(i);
+#endif
         PW.in[i].alive = 0;
         pcol_destroyed(i);
     }
