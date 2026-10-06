@@ -78,6 +78,7 @@ static int xbits_ok;
 static uint8_t xcnt[XF_N][GRID_H][GRID_W];
 static uint16_t xfar[XF_N];
 static uint8_t xsat[XF_N];
+static uint16_t xemp[XF_N];                      /* entries placed with an empty integer box (xisfar 2): in no cell */
 static uint8_t xmask[PIN_MAX], xisfar[PIN_MAX], xond[PIN_MAX], xx0[PIN_MAX], xy0[PIN_MAX], xx1[PIN_MAX], xy1[PIN_MAX];
 static int16_t xdnext[PIN_MAX], xdhead = NOONE;
 /* per cell, the last entry placed (xflush_run) whose integer box covers the whole cell, any family, or NOONE: a hint
@@ -1447,6 +1448,7 @@ static void grid_reset(void)
     for (x = 0; x < PIN_MAX; x++) xmask[x] = xisfar[x] = xond[x] = 0;
     for (x = 0; x < XF_N; x++) {
         xfar[x] = 0;
+        xemp[x] = 0;
         xsat[x] = 0;
         for (y = 0; y < GRID_H; y++) { int c; for (c = 0; c < GRID_W; c++) xcnt[x][y][c] = 0; }
     }
@@ -1637,7 +1639,8 @@ static void xplace(int i, int d)
     int f, x, y;
     for (f = 0; f < XF_N; f++) {
         if (!(xmask[i] >> f & 1)) continue;
-        if (xisfar[i]) { xfar[f] += d; continue; }
+        if (xisfar[i] == 1) { xfar[f] += d; continue; }
+        if (xisfar[i] == 2) { xemp[f] += d; continue; }
         for (y = xy0[i]; y <= xy1[i]; y++)
             for (x = xx0[i]; x <= xx1[i]; x++) {
                 if (d > 0 && xcnt[f][y][x] == 255) xsat[f] = 1;   /* (then the counts are not read until the reset) */
@@ -1658,7 +1661,11 @@ static __attribute__((noinline)) void xflush_run(void)
         if (!PW.in[i].alive || !(b = xbits[PW.in[i].obj]) || bbkind(i) == BB_NOSPR) continue;
         xmask[i] = (uint8_t)b;
         if (pin_ibox(i, ib)) {
-            if (ib[2] <= ib[0] || ib[3] <= ib[1]) { xmask[i] = 0; continue; }     /* empty: never hit */
+            if (ib[2] <= ib[0] || ib[3] <= ib[1]) {                  /* empty: never hit by a point; counted in xemp */
+                xisfar[i] = 2;                                       /* (xpoint_any tests it with point_hit: a miss) */
+                xplace(i, 1);
+                continue;
+            }
             xx0[i] = (uint8_t)clampi(ib[0] >> 4, 0, GRID_W - 1); xx1[i] = (uint8_t)clampi((ib[2] - 1) >> 4, 0, GRID_W - 1);
             xy0[i] = (uint8_t)clampi(ib[1] >> 4, 0, GRID_H - 1); xy1[i] = (uint8_t)clampi((ib[3] - 1) >> 4, 0, GRID_H - 1);
             {
@@ -2819,6 +2826,39 @@ static int place_cb(int k, void *v)
     return 0;
 }
 
+#ifndef PCOL_EXACT
+/* instance_place's candidates from the static-family index: self's integer box moved by whole dx, dy ([l, r) x [t, b),
+   not empty, inside the index's cells). An entry that overlap_at finds overlapping it has a non-empty integer box
+   (xfar and xemp 0: no other kind is placed) sharing a pixel with it, so it reaches one of its cells. -2: the index
+   cannot tell; NOONE: no entry of obj's family reaches them; else the only entry that does (the counts are 1 in all,
+   and the cell's hint is a placed entry of the family in that cell, so it is the counted one) */
+static int xplace_one(int self, double dx, double dy, int obj)
+{
+    int32_t ia[4], idx, idy, l, t, r, b;
+    int f, x, y, n = 0, cx = 0, cy = 0, k;
+    if (obj < 0 || (f = xf_of[obj]) < 0 || pcol_quiet()) return -2;
+    if (!pin_ibox_s(self, ia) || !whole(dx, &idx) || !whole(dy, &idy)) return -2;
+    l = ia[0] + idx; t = ia[1] + idy; r = ia[2] + idx; b = ia[3] + idy;
+    if (r <= l || b <= t || l < 0 || t < 0 || ((r - 1) >> 4) >= GRID_W || ((b - 1) >> 4) >= GRID_H) return -2;
+    if (xdhead >= 0) xflush_run();
+    if (xfar[f] || xsat[f] || xemp[f]) return -2;
+    for (y = t >> 4; y <= (b - 1) >> 4; y++)
+        for (x = l >> 4; x <= (r - 1) >> 4; x++)
+            if (xcnt[f][y][x]) {
+                n += xcnt[f][y][x];
+                if (n > 1) return -2;
+                cx = x;
+                cy = y;
+            }
+    if (n == 0) return NOONE;
+    k = xhint[cy][cx];
+    if (k < 0 || !PW.in[k].alive || !(xmask[k] & xf_bit[f]) || xisfar[k] || cx < xx0[k] || cx > xx1[k] ||
+        cy < xy0[k] || cy > xy1[k])
+        return -2;
+    return k;
+}
+#endif
+
 /* Command_InstancePlace: SetPosition(px, py) (a real move marks self dirty), the search, SetPosition back */
 int instance_place_p(int self, double px, double py, int obj)
 {
@@ -2833,9 +2873,29 @@ int instance_place_p(int self, double px, double py, int obj)
         pcol_touch(self);
         if (moved) pcol_place_marks(self);
         c.obj = obj; c.self = self; c.hit = NOONE; c.dx = dx; c.dy = dy;
-        if (pin_bbox(self, &l, &t, &r, &b))
-            pcol_search((float)(l + dx), (float)(t + dy), (float)(r + dx), (float)(b + dy), place_cb, &c);
-        else
+        if (pin_bbox(self, &l, &t, &r, &b)) {
+            float fl = (float)(l + dx), ft = (float)(t + dy), fr = (float)(r + dx), fb = (float)(b + dy);
+#ifndef PCOL_EXACT
+            /* a static family: the search's hits are its entries whose rectangles meet the query and that pass
+               place_cb (match, overlap_at); with at most one entry able to pass overlap_at (xplace_one), the search
+               returns it when it is a hit, else NOONE (the other entries' callbacks only fill box caches) */
+            k = xplace_one(self, dx, dy, obj);
+            if (k != -2) {
+                if (k >= 0 && !(pcol_search_has(k, fl, ft, fr, fb) && match(k, obj, self) && overlap_at(self, dx, dy, k)))
+                    k = NOONE;
+#ifdef PLAY_STATS
+                pcol_search(fl, ft, fr, fb, place_cb, &c);
+                if (c.hit != k) {
+                    fprintf(stderr, "instance_place_p: static-family answer %d differs from %d (%d %d)\n", k, c.hit, self,
+                            obj);
+                    abort();
+                }
+#endif
+                return k;
+            }
+#endif
+            pcol_search(fl, ft, fr, fb, place_cb, &c);
+        } else
             pcol_search((float)px, (float)py, (float)px, (float)py, place_cb, &c);
         return c.hit;
     }

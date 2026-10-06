@@ -29,6 +29,7 @@ void pcol_obj_tree(void);
 /* RTree::Search over [l, r] x [t, b] (inclusive): cb(entry, ctx) for each leaf entry in the tree's order, until
    it returns 0. The tree is locked meanwhile (no CollisionUpdate) */
 void pcol_search(float l, float t, float r, float b, int (*cb)(int e, void *ctx), void *ctx);
+int pcol_search_has(int e, float l, float t, float r, float b);   /* pcol_search would call back entry e (play) */
 /* the same over whole-number sides (|v| < 2^24): the search rectangle (float)l .. (float)b */
 void pcol_search_i(int32_t l, int32_t t, int32_t r, int32_t b, int (*cb)(int e, void *ctx), void *ctx);
 void pcol_place_marks(int self);       /* instance_place / place_meeting moved self there and back (SetPosition) */
