@@ -41,13 +41,14 @@ static uint16_t objev(int obj)
 #define EVK_OUTSIDE 13
 #define EVK_END 14
 #define EVK_DRAW 15
-static int16_t evobj[1024];
+static int16_t evobj[640];                    /* 617 entries with build/gen of 2026-10 */
 static int16_t evobj0[17];
 /* per key, the objects of evobj[evobj0[key] ..] whose list was non-empty when it was built: evnz[evobj0[key] ..
    + evnzn[key]], valid while pw_onz_gen is evnzg[key] - 1 (no list went empty or non-empty since: the same objects
    have instances). A walk over it visits the same instances as one over evobj's: an object it leaves out had an
    empty list then and still has */
-static int16_t evnz[1024], evnzn[16];
+#define EVNZ_N 560                            /* keys 0-14 only (509 entries; the Draw objects are not walked) */
+static int16_t evnz[EVNZ_N], evnzn[16];
 static uint32_t evnzg[16];
 
 static void evobj_init(void)
@@ -67,6 +68,7 @@ static void evobj_init(void)
         }
     }
     evobj0[16] = (int16_t)n;
+    if (evobj0[EVK_DRAW] > EVNZ_N) PUNTR(9004);
 }
 
 static void evnz_sync(int k0, int k1)
@@ -75,7 +77,7 @@ static void evnz_sync(int k0, int k1)
     for (key = k0; key < k1; key++) {
         if (evnzg[key] == pw_onz_gen + 1) continue;
         for (j = evobj0[key], n = 0; j < evobj0[key + 1]; j++)
-            if (pw_ohead[evobj[j]] >= 0) evnz[evobj0[key] + n++] = evobj[j];
+            if (pw_ohead[evobj[j]] >= 0 && evobj0[key] + n < EVNZ_N) evnz[evobj0[key] + n++] = evobj[j];
         evnzn[key] = (int16_t)n;
         evnzg[key] = pw_onz_gen + 1;
     }
