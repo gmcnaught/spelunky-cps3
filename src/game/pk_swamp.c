@@ -256,10 +256,12 @@ static void fish_idle_swim(int i)
 {
     struct pin *p = &PX(i);
     if (DEQ(DIR(p), 0)) {
-        if (collision_point_any_at(i, 8 + 2, 0, OBJ_oWater) && !CP(X(i) + 10, Y(i), OBJ_oSolid)) moveTo_x1(i, 1);
+        if (collision_point_any_at(i, 8 + 2, 0, OBJ_oWater) && !collision_point_any_at(i, 10, 0, OBJ_oSolid))
+            moveTo_x1(i, 1);
         else DIR(p) = 180;
     } else {
-        if (collision_point_any_at(i, -2, 0, OBJ_oWater) && !CP(X(i) - 2, Y(i), OBJ_oSolid)) moveTo_x1(i, -1);
+        if (collision_point_any_at(i, -2, 0, OBJ_oWater) && !collision_point_any_at(i, -2, 0, OBJ_oSolid))
+            moveTo_x1(i, -1);
         else DIR(p) = 0;
     }
 }

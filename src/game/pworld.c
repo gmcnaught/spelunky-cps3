@@ -1819,6 +1819,23 @@ static int xstatic_any(int obj, int notme, const struct pq *q, int prec)
 }
 #endif
 
+#ifndef PCOL_EXACT
+/* the oSolid summary's answer at query q (gfar 0, pcol_quiet() 0, oSolid alive): 1 a hit, 0 a miss, -1 unknown; reads
+   iok, ix, iy only */
+static int solid_point_sum(const struct pq *q, int prec, int notme_self)
+{
+    int cx, cy, n, k;
+    if (q->iok && q->ix >= 0 && q->iy >= 0 && (cx = q->ix >> 4) < GRID_W && (cy = q->iy >> 4) < GRID_H) {
+        grid_flush();
+        n = gfull[cy][cx];
+        k = gfblk[cy][cx];
+        if (n > 0 && k != notme_self && (!prec || !precise(k))) return 1;
+        if (gother[cy][cx] == 0 && (n == 0 || (n == 1 && k == notme_self))) return 0;
+    }
+    return -1;
+}
+#endif
+
 int (collision_point_any)(double px, double py, int obj, int prec, int notme_self)
 {
 #ifndef PCOL_EXACT
@@ -1842,16 +1859,10 @@ int (collision_point_any)(double px, double py, int obj, int prec, int notme_sel
         return r;
     }
     if (obj == OBJ_oSolid && !gfar && !pcol_quiet()) {
-        int cx, cy, n, k, r = -1;
+        int r;
         if (fam_none(obj)) return 0;
         pq_init(&q, px, py);
-        if (q.iok && q.ix >= 0 && q.iy >= 0 && (cx = q.ix >> 4) < GRID_W && (cy = q.iy >> 4) < GRID_H) {
-            grid_flush();
-            n = gfull[cy][cx];
-            k = gfblk[cy][cx];
-            if (n > 0 && k != notme_self && (!prec || !precise(k))) r = 1;
-            else if (gother[cy][cx] == 0 && (n == 0 || (n == 1 && k == notme_self))) r = 0;
-        }
+        r = solid_point_sum(&q, prec, notme_self);
         if (r >= 0) {
 #ifdef PLAY_STATS
             if (r != (collision_point_p(px, py, obj, prec, notme_self) != NOONE)) {
@@ -1910,6 +1921,22 @@ int (collision_point_any_at)(int i, int32_t dx, int32_t dy, int obj)
                 ok = 1;
             }
 #endif
+        }
+        /* oSolid at whole x, y: the summary on the same int query (collision_point_any's, without the doubles: the
+           point PTOD(x) + dx is the whole double x + dx, which pq_init takes as these ints); not known: the search
+           collision_point_any falls back to, at the same point */
+        if (obj == OBJ_oSolid && !gfar && !pcol_quiet() && xy_int_near(i, &x, &y)) {
+            int r;
+            q.iok = 1; q.ix = x + dx; q.iy = y + dy;                 /* (solid_point_sum reads iok, ix, iy) */
+            r = fam_none(obj) ? 0 : solid_point_sum(&q, 0, NOONE);
+            if (r < 0) r = collision_point_p(q.ix, q.iy, obj, 0, NOONE) != NOONE;
+#ifdef PLAY_STATS
+            if (r != (collision_point_p(PTOD(PW.in[i].x) + dx, PTOD(PW.in[i].y) + dy, obj, 0, NOONE) != NOONE)) {
+                fprintf(stderr, "collision_point_any_at: solid answer %d differs (%d %d)\n", r, q.ix, q.iy);
+                abort();
+            }
+#endif
+            return r;
         }
         if (ok) {
             int r = fam_none(obj) ? 0 : xstatic_any(obj, NOONE, &q, 0);
