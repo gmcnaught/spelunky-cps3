@@ -231,6 +231,23 @@ static int prey(int i)
     return obj;
 }
 
+/* some instance of prey()'s four families is swimming. prey() has no side effect, and IDLE uses its answer only as
+   obj != NOONE && obj's swimming && hp > 0: with no swimming instance in the families that test fails whatever
+   prey() returns */
+static int prey_swims(void)
+{
+    static const int16_t objs[4] = { OBJ_oCaveman, OBJ_oShopkeeper, OBJ_oHawkman, OBJ_oYeti };
+    int16_t w[32];
+    int k, j, n;
+    for (k = 0; k < 4; k++) {
+        n = pw_with(objs[k], w, 32);
+        if (n >= 32) return 1;
+        for (j = 0; j < n; j++)
+            if (PEN(&PX(w[j]))->swimming) return 1;
+    }
+    return 0;
+}
+
 /* IDLE: swim along the water */
 static void fish_idle_swim(int i)
 {
@@ -272,7 +289,13 @@ static void piranha_step(int i)                                /* objects/oPiran
     if (PE(p)->status == 0) {                                  /* IDLE :17 */
         fish_idle_swim(i);
         if (DLT(dist, 90) && PL.swimming && !PL.dead) PE(p)->status = 1;
-        obj = prey(i);
+        obj = prey_swims() ? prey(i) : NOONE;
+#ifdef PLAY_STATS
+        if (obj == NOONE) {                                    /* the host builds: the skipped prey() fails the test */
+            int t = prey(i);
+            if (t != NOONE && PEN(&PX(t))->swimming && PE(&PX(t))->hp > 0) { fprintf(stderr, "prey_swims\n"); abort(); }
+        }
+#endif
         if (obj != NOONE && PEN(&PX(obj))->swimming && PE(&PX(obj))->hp > 0) PE(p)->status = 3;
     } else if (PE(p)->status == 2) {                           /* PAUSE :53 */
         CANBITE(p) = 1;
