@@ -1034,7 +1034,10 @@ int pswamp_ev(int ev, int i, int arg)
             if (!CP(X(i), Y(i), OBJ_oWater)) pin_destroy(i);
             return 1;
         case OBJ_oGrave:                                       /* objects/oGrave/Step_0.gml */
-            if (eview(i, 20, 4) && !CP(X(i), Y(i) + 16, OBJ_oSolid)) pin_destroy(i);
+            if (eview(i, 20, 4) && !pveg_quiet(i)) {           /* (oTree's test: pk_jungle.c's notes) */
+                if (!CP(X(i), Y(i) + 16, OBJ_oSolid)) pin_destroy(i);
+                else pveg_note_solid(i);
+            }
             return 1;
         }
         return 0;

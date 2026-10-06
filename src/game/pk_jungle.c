@@ -800,7 +800,7 @@ static int veg_acts(int i, int inview)
     double x = X(i), y = Y(i);
     int a, b;
     switch (p->obj) {
-    case OBJ_oTree: case OBJ_oSpearTrapBottom: case OBJ_oSpearTrapTop: case OBJ_oSpearTrapLit:
+    case OBJ_oTree: case OBJ_oSpearTrapBottom: case OBJ_oSpearTrapTop: case OBJ_oSpearTrapLit: case OBJ_oGrave:
         return !CP(x, y + 16, OBJ_oSolid);
     case OBJ_oTreeBranch: return !CP(x - 16, y, OBJ_oTree) && !CP(x + 16, y, OBJ_oTree);
     default:
@@ -836,7 +836,12 @@ static int veg_quiet(int i)
 }
 #define VEG_NOTE(i, clk, full) veg_note(i, clk, full)
 #define VEG_QUIET(i) veg_quiet(i)
+/* oGrave's Step (pk_swamp.c: oTree's test at eview(i, 20, 4)) through the same notes */
+int pveg_quiet(int i) { return veg_quiet(i); }
+void pveg_note_solid(int i) { veg_note(i, pw_rest_clock(), 1); }
 #else
+int pveg_quiet(int i) { (void)i; return 0; }
+void pveg_note_solid(int i) { (void)i; }
 #define VEG_NOTE(i, clk, full) ((void)0)
 #define VEG_QUIET(i) 0
 #endif
@@ -973,6 +978,7 @@ static void speartrap_step(int i)                                    /* objects/
 int pjungle_idle(int i)
 {
     int o = PX(i).obj;
+    if (o == OBJ_oGrave) return !eview(i, 20, 4) || VEG_QUIET(i);    /* (its Step: pk_swamp.c) */
     if (o != OBJ_oTree && o != OBJ_oTreeBranch && o != OBJ_oLeaves) return 0;
     if (o != OBJ_oLeaves && !eview(i, 16, 16)) return 1;
 #ifndef PCOL_EXACT

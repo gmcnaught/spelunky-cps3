@@ -20,6 +20,8 @@
 #include "front.h"                                   /* FEV_* */
 
 int pjungle_ev(int ev, int i, int arg);
+int pveg_quiet(int i);                          /* pk_jungle.c: the vegetation memo (oGrave's Step) */
+void pveg_note_solid(int i);
 int pjungle_idle(int i);                         /* prun.c: oTree / oTreeBranch out of view, the vegetation memo */
 int pswamp_ev(int ev, int i, int arg);
 int pice_ev(int ev, int i, int arg);

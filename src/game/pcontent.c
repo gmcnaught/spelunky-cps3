@@ -6,6 +6,8 @@
 #define WEAK __attribute__((weak))
 WEAK int pjungle_ev(int ev, int i, int arg) { (void)ev; (void)i; (void)arg; return 0; }
 WEAK int pjungle_idle(int i) { (void)i; return 0; }
+WEAK int pveg_quiet(int i) { (void)i; return 0; }
+WEAK void pveg_note_solid(int i) { (void)i; }
 WEAK int pswamp_ev(int ev, int i, int arg) { (void)ev; (void)i; (void)arg; return 0; }
 WEAK int pice_ev(int ev, int i, int arg) { (void)ev; (void)i; (void)arg; return 0; }
 WEAK int ptemple_ev(int ev, int i, int arg) { (void)ev; (void)i; (void)arg; return 0; }
