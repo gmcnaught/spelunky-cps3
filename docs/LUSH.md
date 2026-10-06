@@ -276,12 +276,12 @@ piranhas (idle: moveTo, water tests, bubbles), frogs, man traps, a monkey and th
 the box cache, one solid line). The player's swimming Step (characterStepEvent 115 K incl. on drain 161) is shared
 code; it is the next candidate.
 
-## 11. Spear traps near instances (2026-10-06, branch totem on 041d709)
+## 13. Spear traps near instances (2026-10-06, branch totem on 041d709)
 
 User report (MiSTer): jungle levels slow down whenever something is near a totem trap (oSpearTrapBottom / Top /
 Lit).
 
-### 11.1 What happens near a trap
+### 13.1 What happens near a trap
 
 Host survey (a temporary print in speartrap_step, not committed): the three box tests (instance_box_maybe) run only
 on a step with fired == 0, so instance_nearest runs at most once per trap per 50 steps when something is in line.
@@ -325,7 +325,7 @@ the same), plus the creation and the first point tests.
 Not the cost: instance_nearest_p. On l6s23 one trap has an item in its box every step (the tests then fail): one
 instance_nearest_p 4.5 K, and instance_box_maybe 8.5 K for 21 calls (the idle traps' flat cost: jl6, step 242).
 
-### 11.2 Fixes (branch totem)
+### 13.2 Fixes (branch totem)
 
 | Commit | Change | Exactness |
 |---|---|---|
