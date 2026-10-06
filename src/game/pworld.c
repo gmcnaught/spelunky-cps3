@@ -116,8 +116,8 @@ static uint32_t watch_n;
 /* ---- per-object instance lists: the alive instances of each object in creation order (index order), and the
    alive count of each object with its descendants. Linked at pin_add, unlinked when alive goes to 0 ------------ */
 int16_t pw_ohead[OBJ_COUNT], pw_inext[PIN_MAX];
-/* bumped when an object's list goes from empty to non-empty or back, and at a level start (prun.c: the event
-   lists of objects with instances) */
+/* bumped at a level start (prun.c: the event lists of objects with instances; an object's list going from empty
+   to non-empty or back bumps the counts of its event keys, prun_onz) */
 uint32_t pw_onz_gen = 1;
 int16_t pw_seq[PIN_MAX];
 int16_t pw_ord[PIN_MAX];
@@ -215,7 +215,7 @@ static void olink(int i)
     int o = PW.in[i].obj;
     pw_inext[i] = NOONE;
     iprev[i] = otail[o];
-    if (otail[o] >= 0) pw_inext[otail[o]] = (int16_t)i; else { pw_ohead[o] = (int16_t)i; pw_onz_gen++; }
+    if (otail[o] >= 0) pw_inext[otail[o]] = (int16_t)i; else { pw_ohead[o] = (int16_t)i; prun_onz(o); }
     otail[o] = (int16_t)i;
     olive_add(o, 1);
     pw_anext[i] = NOONE;
@@ -235,7 +235,7 @@ static void ounlink(int i)
     int o = PW.in[i].obj;
     if (iprev[i] >= 0) pw_inext[iprev[i]] = pw_inext[i]; else pw_ohead[o] = pw_inext[i];
     if (pw_inext[i] >= 0) iprev[pw_inext[i]] = iprev[i]; else otail[o] = iprev[i];
-    if (pw_ohead[o] < 0) pw_onz_gen++;
+    if (pw_ohead[o] < 0) prun_onz(o);
     olive_add(o, -1);
     grid_unlink(i);
     pw_ta_off(i);
