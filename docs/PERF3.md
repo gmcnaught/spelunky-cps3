@@ -133,9 +133,9 @@ convention".
 
 | # | Work |
 |---|---|
-| 5.1 | **Level / room start** (2-21 M MAME clocks): profile with jtcost on the start step. Use DMAC 16-byte-unit copies and clears for inst_mem, the grids and the W -> PW load (0.77 clocks a byte, against 1.5 for CPU stores). Split the start over frames behind the transition |
+| 5.1 | **Level / room start** (2-21 M MAME clocks): profile with jtcost on the start step. Use DMAC 16-byte-unit copies and clears for inst_mem, the grids and the W -> PW load (0.77 clocks a byte, against 1.5 for CPU stores). **Wrong rate:** (correction 2026-10-06: the 0.77 clocks a byte from cps3-testgame's ttest is 4x too low. ttest.c:329 sets TCR0 = bytes / 16 in 16-byte mode, but TCR counts longwords (jtframe sh7604 DMAC.sv: one count per longword write beat; MAME sh7604.cpp: count &= ~3, -4 a 16-byte unit), so its 4 KB row moved 1 KB: about 3.1 clocks a byte, against 1.5 for CPU stores; docs/DRAW.md section 8); this idea pays only for transfers that overlap CPU work from the cache. Split the start over frames behind the transition |
 | 5.2 | **p99 steps:** trace the worst non-start step per route (playsh2 "largest steps") and apply the same table |
-| 5.3 | **Draw:**<br>- jtcost on `game_draw` (its 0.28 M allowance is unmeasured on jtcps3);<br>- draw1's queued item: the sprite-list DMA busy-wait in cps3v_vblank;<br>- entries built in main RAM and sent to sprite RAM by DMAC in place of ~550 CPU stores a frame. |
+| 5.3 | **Draw:**<br>- jtcost on `game_draw` (its 0.28 M allowance is unmeasured on jtcps3);<br>- draw1's queued item: the sprite-list DMA busy-wait in cps3v_vblank;<br>- entries built in main RAM and sent to sprite RAM by DMAC in place of ~550 CPU stores a frame (branch sprdma, docs/DRAW.md section 8; the DMAC is slower per byte than CPU stores, see 5.1). |
 
 ## 4. Order and batches
 

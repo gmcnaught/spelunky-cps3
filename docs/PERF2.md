@@ -228,7 +228,7 @@ measurements:
 |---|---|---|
 | Cache | 4 KB, 4-way, 16-byte lines, write-through, no write buffer; CCR two-way mode gives 2 KB of cache RAM at 0xC0000000 (RTL supports it; MAME maps only 1 KB) | **No.** A step walks about 39 KB of code, so halving the cache adds misses. Less code per step (A, D) is the lever. |
 | DIVU | About 39 clocks on jtcps3; MAME divides at once | moveTo's `play_time % r` and the like only. Small, and MAME would hide its cost. Not planned. |
-| DMAC | Works memory to memory. Only 16-byte units are faster than CPU stores on jtcps3 (0.77 clocks a byte). | No bulk clears or copies in a step. Level start only (out of scope). |
+| DMAC | Works memory to memory. No mode is faster than CPU stores on jtcps3: 16-byte units about 3.1 clocks a byte (the 0.77 measured earlier counted TCR in 16-byte units; it counts longwords: docs/DRAW.md section 8). | No bulk clears or copies in a step. Level start only (out of scope). |
 | MAC / dmuls | Present. dmulu + sts costs about 9 clocks on jtcps3 against 2 in MAME. | Positions and velocities stay binary64 / float32 (PLAN §1), so there are no fixed-point products to move. The soft-float multiply already uses dmulu. |
 | CPS3 PPU / DMA (character, palette, sprite list) | | Draw-side only. It does not reduce the step. |
 

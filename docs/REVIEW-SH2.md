@@ -42,7 +42,7 @@ playsh2 copy `spel/`, traces `spel/tests/playsh2/build/rx/trace/{a,b}.tr`.
 | Two-way mode (CCR.TW) | 2 KB cache + 2 KB on-chip RAM at 0xC0000000: load and store 1.5 clocks. MAME maps only 1 KB there (`cps3.cpp:2170`). Code placed there must be stored encrypted | RTL `CACHE.sv:111-112, 289-321`; maldita `docs/CPS3.md` |
 | MUL.L / DMULx.L | 4 cycles; `sts macl` right after waits: about 9 clocks a pair | RTL `MULT.sv:72-82`; maldita mbench |
 | DIVU | 39 clocks, runs alongside the CPU | RTL `DIVU.sv:83-136` |
-| DMAC | 2 channels; 16-byte units 0.77 clocks a byte (CPU stores: 1.5 a byte) | RTL `DMAC.sv`; cps3-testgame `docs/CPS3.md` |
+| DMAC | 2 channels; 16-byte units about 3.1 clocks a byte, longword burst 3.4 (CPU stores: 1.5 a byte). Earlier 0.77: ttest set TCR in 16-byte units, TCR counts longwords (docs/DRAW.md section 8) | RTL `DMAC.sv`; cps3-testgame `docs/CPS3.md` |
 | MAME | 1 clock per instruction, no cache, no wait states, DIVU instant | MAME `sh2.cpp:127-187, 327`, `sh7604.cpp:1139-1160` |
 | SH-2 addressing | `mov.l @(disp,Rn)` reaches 60 bytes; `mov.w` 30 bytes and `mov.b` 15 bytes, **and only through R0**; `@(disp,GBR)` reaches 1020 / 510 / 255 bytes through R0; a global's address costs one PC-relative literal load (a data read from SIMM 1) | SH-2 ISA; verified in the GCC 13.3 output below |
 
@@ -240,10 +240,11 @@ Also:
 ### P7. Offload where it pays (outside the mean step)
 
 - **Level start / room change** (2.0-2.8 M, up to 21 M clocks): clears and bulk copies (inst_mem, grids, the
-  generator's W into the play slots) via the DMAC in 16-byte units. That is 0.77 clocks a byte and runs alongside the
-  CPU, against 1.5 a byte for stores. Combine this with splitting the room start over frames.
+  generator's W into the play slots) via the DMAC in 16-byte units. That rested on 0.77 clocks a byte, which is wrong
+  (correction 2026-10-06: the 0.77 clocks a byte from cps3-testgame's ttest is 4x too low. ttest.c:329 sets TCR0 = bytes / 16 in 16-byte mode, but TCR counts longwords (jtframe sh7604 DMAC.sv: one count per longword write beat; MAME sh7604.cpp: count &= ~3, -4 a 16-byte unit), so its 4 KB row moved 1 KB: about 3.1 clocks a byte, against 1.5 for CPU stores; docs/DRAW.md section 8): the DMAC pays only where its transfer overlaps CPU work from the cache (cycle steal). Combine this with splitting the room start over frames.
 - **Display list:** build the entries in main RAM, then one DMAC 16-byte-unit transfer to sprite RAM in place of about
-  550 CPU stores (6 clocks each). Small (about 3 K clocks a frame), but it also frees the CPU while the transfer runs.
+  550 CPU stores (6 clocks each). Small (about 3 K clocks a frame), but it also frees the CPU while the transfer runs. Done on branch sprdma
+  (docs/DRAW.md section 8): the DMAC moves bytes slower than CPU stores, so the saving is the word-3 store only.
 - **DIVU / MAC:** nothing to offload in the step (0 divides traced).
   - `mul.l` + `sts` pairs (3,584) lose about 7 clocks each.
   - Keep strides power-of-two (P5).
