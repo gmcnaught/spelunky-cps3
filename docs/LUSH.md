@@ -136,3 +136,25 @@ view: moveTo and isCollision*), the collision pass 36 K, piranha 30 K, spear tra
 box tests), bubble 25 K, jars 24 K. l6s23 550 K: player 156 K, 3 piranhas 105 K (spread: point tests 8 K, moveTo 7 K,
 soft-float 10 K, psqrt 5 K), bubbles 47 K, spear traps 50 K. Next candidates: the player's Step (every level), the
 walking enemies' moveTo / isCollision* chain (man traps, piranhas), the bubbles' point test per step.
+
+## 8. Swimming (2026-10-06, branch swim)
+
+The user saw slowdowns while swimming. None of the three lush timing routes swims; the routes that do are
+c_swamp_swim (312 of 418 steps), c_swamp_drain (264 of 370) and c_swamp_lakejaws (167 of 294). MAME SOFTFP step
+means (steps 2+, playsh2 ROUTES="c_swamp_swim c_swamp_drain"), not swimming / swimming: 130 K / 239 K (swim),
+130 K / 334 K (drain); steps over ~165 K MAME (about the 0.74 M jtcps3 step budget): 98 and 188, all while
+swimming. The cost was the piranhas chasing a swimming player: their ATTACK direction (point_direction + a - b) is
+not a float direction, so psin_cr / pcos_cr ran the double-double series (dd_sincos) every call, four calls a
+piranha step (c_swamp_swim 200: 1,599 K jtcost fit, 64 % in the piranhas).
+
+- 57f19a3: psin_cr / pcos_cr through sincos_r's two Ziv tests (as psincos_cr), the series only when both fail.
+  tests/sincos against the old function (cr_trig_dd): 2,000,000,000 random doubles and all 1,135,869,954 float
+  directions 0 differ.
+- 91c9ed9: psincos_cr at the sites that take cos and sin of one angle (ast-grep call_expression rule over src/game
+  and src/front: 24 psin_cr / pcos_cr sites, 7 pairs; the piranha's and jaws' water test and move shared one angle).
+
+c_swamp_swim 200: 1,599 -> 826 K (jtcost fit). MAME means while swimming: swim 239 -> 154 K, drain 334 -> 215 K;
+steps over ~165 K: 98 -> 87, 188 -> 186 (the drain room's remaining load: 6 piranhas about 42 K each, spread over
+point tests, moveTo, psqrt via point_distance_d, sincos_r; the player 124 K; frogs, bubbles, a bomb).
+Gates on 91c9ed9: make check (EQUIV 88/88), ctall 59/59, playsh2 9,701/9,701 grid and SOFTFP, shell 26/26 + 49/49,
+game_check 0 px, capture_check 430/430, SH-2 0 warnings.
