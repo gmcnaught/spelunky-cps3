@@ -505,6 +505,93 @@ SH-2 0 compiler warnings (playsh2, tests/game; tests/game's ld "dot moved backwa
 regenerated: make check (EQUIV), ctall, game_check.
 
 
+## 12. A compact idle piranha path (branch piranha4 on main f7b9524)
+
+### 12.1 The idle Step's footprint before (f7b9524)
+
+jtcost on c_swamp_drain 61, one segment per store to play_cur_obj (the six idle piranhas run back to back in the
+Step loop). "NC" is tools/jtbypass.py's model with nc_robust.txt's functions and arrays charged uncached (what
+jtcps3 runs); "plain" is jtcost's fit on the plain link. Lines are distinct 16-byte lines touched in one segment.
+
+| | plain | NC |
+|---|---|---|
+| one idle piranha | 24.5 K, 4.2 K instructions, 555 fetch / 275 data misses (118 literal) | 22.4 K, 474 / 195 misses |
+| lines touched | 529 code (8.5 KB), 256 data (4.1 KB) | 453 cached code |
+| the step | 540 K | 463 K |
+
+The path, by code lines: the Step dispatch (play_step, ev_step, pen_step, pcontent_ev, pswamp_ev) 50; pdist_lt_at
+with pfix16 / dthr_get / __lshrdi3 and instance_first_p 62 (run every step, read only while the player swims); two
+water tests (collision_point_any_at, xstatic_any, xpoint_none, point_hit) 55; the solid test ahead on doubles
+(collision_point_any, pq_init, dwhole, extendsfdf2, adddf3) 50; moveTo_x1, solid_vline_any and the float add 76;
+the pcol flush of the previous piranha's move inside solid_vline_any (flush_run, cupdate_at, ebbox_rect / ebbox_int,
+bbkind_set, pgrid_put) 87; pw_changed's marks (nc_moved with pl_floor, grid_dirty, mark_e, tlist_front) 64; prey
+(pw_with, fam_begin, fam_get) 30. Data: 118 literal-pool lines, about 70 one-line globals of the index, grid and
+pcol tables, 30 stack lines, 19 instance-record lines.
+
+### 12.2 Implemented
+
+| Commit | Change |
+|---|---|
+| d8772b7 | piranha_idle (pk_swamp.c): the IDLE Step's common case (active, hp >= 1, dir exactly 0 / 180, bubble timer > 0, x, y whole): the water tests from the static-family index and the solid test from the summary on whole ints (pw_static_xy, pw_solid_pt; -1 sends a test to the general function), moveTo_x1's PLAY_WALK move inline, pw_xstep keeping the BB_INT box moved by d (the next flush skips bbkind_set), dist only while the player swims, prey() only when a prey family member swims (pw_fam_swims) |
+| 932948a | pw_xstep: (float)(x + d) from the bits (fint15; equal to (float)v for every \|v\| < 2^15) |
+| 580b6cf | pw_fam_swims: the answer kept while PW.step and olive_gen hold (its one caller runs only in oPiranha's Step dispatch; nothing there writes an enemy's swimming, and creations / destructions bump olive_gen) |
+
+Each commit: 182 host route runs byte-identical, no aborts; PLAY_STATS compares every quick answer with the
+general function's, the moved box with bbkind_set's, the kept prey answer with the walk.
+
+| | f7b9524 | 580b6cf | change |
+|---|---|---|---|
+| idle piranha, drain 61 (plain / NC) | 24.5 / 22.4 K | 12.3 / 10.1 K | -50 / -55 % |
+| drain 61 step (plain / NC) | 540 / 463 K | 456 / 386 K | -16 / -17 % |
+| drain 161 (swimming, attacks) (plain / NC) | 885 / 761 K | 844 / 727 K | -5 / -4 % |
+| swim 300 (plain / NC) | 598 / 506 K | 515 / 427 K | -14 / -16 % |
+| MAME SOFTFP drain / swim route means | 162.8 / 126.9 K | 154.1 / 117.5 K | -5.3 / -7.4 % |
+
+It does not fit the cache: one idle piranha still touches about 230 cached code lines and 170 data lines (NC),
+so piranhas 2-6 still miss most lines (170 fetch, 77 data misses each). What is left is shared code: the Step
+dispatch (52 lines), solid_vline_any with the pcol flush of the previous piranha's entry (flush_run, cupdate_at,
+ebbox_rect / ebbox_int, pgrid_put: 82), pw_changed's cached parts and data (nc, pl_floor, the dirty / stale /
+draw lists), 25 stack lines and the instance records. piranha_idle and its helpers are about 75 lines. Moving
+the cold parts of piranha_idle out of line did not change the model (measured, not kept).
+
+### 12.3 Next: the idle piranhas in two phases (not implemented; the argument)
+
+Within one step's Step dispatch the oPiranha instances are consecutive (objects in index order, oldest first) and
+nothing else runs between them. For a maximal run P1 .. Pk of consecutive piranhas that are all in piranha_idle's
+case, P1's Step would run phase A for all of them, then phase B for all, and P2 .. Pk's own Steps would return at
+once (marked done for this step):
+
+- A(j), pure: the case test, near (fish_near, only while the player swims), the water and solid tests ahead, and
+  the water test at (x + 4, y + 4) at both positions Pj can end at (x and x + d). If any answer is -1 or a water
+  answer at an end position is 0 (a fish bone would be made), the run is not batched (each Step runs as now).
+- B(j), in order: solid_vline_any and pw_xstep, or the turn with its sprite change; status, prey, bubble timer.
+
+Exactness. The original order is A1 B1 A2 B2 .. Ak Bk; the batch is A1 .. Ak B1 .. Bk. It is the same when no A(j)
+reads what a B(i), i < j, writes, and no B(i) reads what an A(j) writes:
+- A writes nothing observable: the grid_flush it may run flushes the solid grid's pending list, which piranha moves
+  never add to (grid_dirty adds only oSolid-family instances and objects without ext records), so it flushes the
+  same entries either way; the instance_first_p / pdist caches are caches.
+- A(j) reads Pj's own fields, PL, the character's position, the static water index, the solid summary and olive.
+  B(i) writes Pi's x, dir, sprite, status, bubble timer, its box cache, the pcol dirty / stale / test lists, the
+  draw list and the nc entry: none of these is read by A(j). No piranha is in a static family or oSolid, and the
+  batch creates and destroys nothing (bubble timer > 0; fish bones excluded above), so olive and the index stay.
+- B(j) reads Pj's fields, the solid grid (solid_vline_any; the pcol flush inside it changes when entries are
+  updated, which the grid build's searches do not depend on: pobj.c PLAY_REST, the argument PLAY_WALK already uses),
+  near and the prey memo. The order of the marks on the dirty, stale, test and draw lists is the original's: each
+  piranha's marks (the move's pw_changed, or the turn's pin_set_sprite) are all made in its own B, in step order.
+- The Step loop's work between two piranhas is pcol_event_done (sync1), a no-op while !pcol_quiet() (the batch
+  requires it: quiet_any is cleared by the first UpdateTree, and only a level load sets EF_NOSNAP).
+- No RNG draw and no creation happens in a batched Step, so draw order and creation numbers are unchanged.
+- The run must be the Step snapshot's: it needs the snapshot (prun.c `order[]`, swamp3's step loop: an accessor for
+  the next instance), or the argument that oPiranha is never created during play (only by generation; grep), so
+  the alive oPiranha list in creation order is the snapshot's run.
+
+Expected saving (NC model, drain 61): phase A's code (piranha_idle's test part, pw_static_xy, pw_solid_pt: about
+60 lines) and phase B's (solid_vline_any, the flush chain without bbkind_set, pw_xstep, pw_changed's cached parts,
+the field writes: about 130 lines plus about 60 data lines) each fit, and the dispatch of P2 .. Pk becomes a hot
+no-op Step (about 55 lines). Piranhas 2-6 would cost about 4.5-6.5 K instead of 10.1 K: about 20-28 K a walking
+swamp step (-5 to -7 % of drain 61's 386 K NC), the same on swim's idle steps, little on attack-heavy steps.
+
 ## 13. Spear traps near instances (2026-10-06, branch totem on 041d709)
 
 User report (MiSTer): jungle levels slow down whenever something is near a totem trap (oSpearTrapBottom / Top /
