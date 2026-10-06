@@ -276,6 +276,46 @@ piranhas (idle: moveTo, water tests, bubbles), frogs, man traps, a monkey and th
 the box cache, one solid line). The player's swimming Step (characterStepEvent 115 K incl. on drain 161) is shared
 code; it is the next candidate.
 
+### 10.4 Idle piranhas, and jtcps3 (branch swim2 on main 041d709)
+
+jtcost fit on 041d709, c_swamp_drain 61 (walking): 552 K, the six idle piranhas 176 K, of it 34.7 K instructions
+and 3,742 fetch-miss lines (each piranha's Step touches about 10 KB of code, more than the 4 KB cache, so each of the
+six starts cold). Per piranha: moveTo(+-1, 0) 10.6 K incl., point tests 6.5 K, pdist2 doubles 3.4 K, pw_with x4
+1.5 K, instance_first_p 1 K.
+
+| Commit | Change | MAME drain / swim |
+|---|---|---|
+| 041d709 | section 10.3's four fixes | 169.1 / 133.4 K |
+| 4fc1e13 | moveTo_x1: the fish's one-pixel idle swim as moveTo's PLAY_WALK path does it, without the set-up | |
+| ad5f648 | prey_swims: objects with no alive instance skipped before pw_with | 167.2 / 131.4 K |
+| 9f9425f | struct pq nodbl: collision_point_any_at's whole query does not convert ix, iy to doubles | |
+| b984b05 | instance_first_p: last four answers kept while no alive count changes (olive_gen; 36 B) | 165.1 / 129.2 K |
+| cc1b94f | pdist_lt_at: piranha / dead fish point_distance < 90 on 2^-16 integers (doubles near T(c) only) | **162.8 / 126.9 K** |
+
+From fddd5a7: drain -12.9 %, swim -12.0 % (MAME); steps before swimming 126.6 -> about 116 K.
+
+jtcps3 (.62, jtcps3.rbf 2026-10-02, NC link: `JTV=_s3 NC=nc_robust.txt JT_ROUTES=c_swamp_drain,c_swamp_swim,
+c_swamp_piranha,p5_lush_l5s11,p5_lush_l6s23 scripts/playsh2_jt.sh`; PASS 10/10, SPR OK; route step means with step 1):
+
+| Route | section 9 (fddd5a7) | 041d709 | cc1b94f | change | vs 0.525 M |
+|---|---|---|---|---|---|
+| c_swamp_drain | 841.1 K | 786.1 K | 763.2 K | -9.3 % | +45 % |
+| c_swamp_swim | 670.8 K | 635.0 K | 611.3 K | -8.9 % | +16 % |
+| c_swamp_piranha | 422.4 K | 417.4 K | 410.1 K | -2.9 % | met |
+| p5_lush_l5s11 | 516.7 K | 506.6 K | 504.4 K | -2.4 % | met |
+| p5_lush_l6s23 | 510.1 K | 494.5 K | 481.5 K | -5.6 % | met |
+
+The jtcps3 gain is about two thirds of MAME's: what is left is mostly fetch misses spread over the room's objects
+(piranhas, player, frogs, man traps, the collision pass). Byte-identical cuts of this kind will not reach 0.525 M on
+c_swamp_drain. Gameplay-visible options (not done; for the user): piranhas active only within a range of the player
+tighter than the view (pen_parent_step's eview), or idle piranhas stepping on alternate frames (about 15 % of a
+swamp step).
+
+Gates on cc1b94f: make check (EQUIV 88/88), ctall 59/59, playsh2 9,701/9,701 grid and SOFTFP, shell 26/26 + 49/49,
+game_check p4_exit559 / p5_shop / p5_spider 0 px (13 frames), capture_check 428/428 and 6/6, SH-2 0 warnings,
+tests/game stack room 33828 B. Every commit: 182 host route runs byte-identical.
+
+
 ## 11. Why the swamp rooms cost more: cache capacity, not instructions (2026-10-06, main 041d709)
 
 ### 11.1 The gap in numbers
@@ -401,3 +441,4 @@ attacking piranhas (42 K each) remain.
 - **Not byte-identical (gameplay-visible), not to implement:** a view test for piranhas (HD runs them everywhere:
   positions, bubbles and their RAND draws would differ off screen; on drain 61 all six are in view anyway, so
   little gain there); stepping idle piranhas every other frame (~85 K on walking steps, visibly different motion).
+||||||| 041d709

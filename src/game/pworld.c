@@ -176,11 +176,19 @@ static int ofam_next(int root, int o)
     return -1;
 }
 
+/* instance_first_p's last answers (4 objects), each kept while olive_gen holds: olive_gen is bumped on every change of
+   any object's alive count (olive_add: every link / unlink) and at every level start, and the oldest alive instance
+   of a family depends only on its alive set (creation numbers keep their order when renumbered). Tags are gen + 1 */
+static uint32_t olive_gen, ifc_tag[4];
+static int16_t ifc_obj[4], ifc_val[4];
+static uint8_t ifc_next;
+
 static void pdist_warm(void);
 static void olists_reset(void)
 {
     pdist_warm();
     int o;
+    olive_gen++;
     obj_desc_init();
     pcol_obj_tree();
 #ifndef PLAY_FIXED
@@ -207,6 +215,7 @@ static void olive_add(int obj, int d)
 #ifndef PLAY_FIXED
     if (nc_any) nc_inval(obj);
 #endif
+    olive_gen++;
     for (a = obj; a >= 0; a = objdefs[a].parent) olive[a] = (int16_t)(olive[a] + d);
 }
 
@@ -1378,7 +1387,7 @@ static int precise_point(int i, float px, float py)
 }
 
 /* a point query: px >= l && px < r with l, r whole is floor(px) >= l && floor(px) < r */
-struct pq { double px, py; int32_t ix, iy; int iok; };
+struct pq { double px, py; int32_t ix, iy; int iok, nodbl; };   /* nodbl: px, py not set; they are ix, iy (whole) */
 
 static void pq_init(struct pq *q, double px, double py)
 {
@@ -1386,12 +1395,14 @@ static void pq_init(struct pq *q, double px, double py)
         q->px = px;
         q->py = py;
         q->iok = 1;
+        q->nodbl = 0;
         return;
     }
     px = (float)px;                                  /* CInstance::Collision_Point takes floats */
     py = (float)py;
     q->px = px;
     q->py = py;
+    q->nodbl = 0;
     q->iok = dfloor_int(px, &q->ix) && dfloor_int(py, &q->iy);
 }
 
@@ -1403,12 +1414,14 @@ static int point_hit(int k, const struct pq *q, int prec)
         if (!(q->ix >= ib[0] && q->ix < ib[2] && q->iy >= ib[1] && q->iy < ib[3]))
             return 0;
     } else {
+        double px = q->nodbl ? (double)q->ix : q->px, py = q->nodbl ? (double)q->iy : q->py;
         if (!pin_bbox(k, &l, &t, &r, &b))
             return 0;
-        if (!(q->px >= l && q->px < r && q->py >= t && q->py < b))
+        if (!(px >= l && px < r && py >= t && py < b))
             return 0;
     }
-    return !prec || !precise(k) || precise_point(k, (float)q->px, (float)q->py);
+    if (!prec || !precise(k)) return 1;
+    return q->nodbl ? precise_point(k, (float)q->ix, (float)q->iy) : precise_point(k, (float)q->px, (float)q->py);
 }
 
 /* ---- the solid grid: every alive instance of the oSolid family with a sprite, in the 16 px cell of its box's
@@ -1886,12 +1899,13 @@ int (collision_point_any_at)(int i, int32_t dx, int32_t dy, int obj)
         if (obj >= 0 && xf_of[obj] >= 0 && !pcol_quiet()) {
             if (xy_int_near(i, &x, &y)) {
                 q.iok = 1; q.ix = x + dx; q.iy = y + dy;
-                q.px = q.ix; q.py = q.iy;
+                q.nodbl = 1;                                  /* (px, py: the whole ix, iy, converted only if read) */
                 ok = 1;
             }
 #if !defined(PLAY_FIXED)
             else if (dx == 0 && dy == 0) {
                 q.px = PW.in[i].x; q.py = PW.in[i].y;
+                q.nodbl = 0;
                 q.iok = pfloor_int(PW.in[i].x, &q.ix) && pfloor_int(PW.in[i].y, &q.iy);
                 ok = 1;
             }
@@ -1903,7 +1917,8 @@ int (collision_point_any_at)(int i, int32_t dx, int32_t dy, int obj)
             {
                 struct pq c;
                 pq_init(&c, PTOD(PW.in[i].x) + dx, PTOD(PW.in[i].y) + dy);
-                if (c.iok != q.iok || (c.iok && (c.ix != q.ix || c.iy != q.iy)) || c.px != q.px || c.py != q.py) {
+                if (c.iok != q.iok || (c.iok && (c.ix != q.ix || c.iy != q.iy)) || c.px != (q.nodbl ? (double)q.ix : q.px) ||
+                    c.py != (q.nodbl ? (double)q.iy : q.py)) {
                     fprintf(stderr, "collision_point_any_at: query differs (%d %d %d)\n", i, (int)dx, (int)dy);
                     abort();
                 }
@@ -3153,10 +3168,27 @@ int instance_box_maybe(int obj, int32_t x0, int32_t x1, int32_t y0, int32_t y1)
 int instance_first_p(int obj)
 {
     struct fam it;
+    int e, k;
     PWST(exists, 1);
     if (fam_none(obj)) return NOONE;
+    for (e = 0; e < 4; e++)
+        if (ifc_obj[e] == obj && ifc_tag[e] == olive_gen + 1) {
+#ifdef PLAY_STATS
+            fam_begin(&it, obj);
+            if (fam_get(&it) != ifc_val[e]) {
+                fprintf(stderr, "instance_first_p: cached %d differs (%d)\n", ifc_val[e], obj);
+                abort();
+            }
+#endif
+            return ifc_val[e];
+        }
     fam_begin(&it, obj);
-    return fam_get(&it);
+    k = fam_get(&it);
+    e = ifc_next++ & 3;
+    ifc_obj[e] = (int16_t)obj;
+    ifc_val[e] = (int16_t)k;
+    ifc_tag[e] = olive_gen + 1;
+    return k;
 }
 
 int instance_exists_p(int obj)
@@ -3219,10 +3251,10 @@ static struct { uint64_t cb, t; } dthr[DTHR_N];
 static uint8_t ndthr, dthr_next;
 static uint64_t dthr_bits(double d) { union { double d; uint64_t u; } v; v.d = d; return v.u; }
 static double dthr_dbl(uint64_t u) { union { double d; uint64_t u; } v; v.u = u; return v.d; }
-int pdist2_lt(double d2, double c)
+static uint64_t dthr_get(double c)                /* T(c)'s bits (found and kept at the first use of c) */
 {
     uint64_t cb = dthr_bits(c), lo, hi;
-    int k, r;
+    int k;
     for (k = 0; k < ndthr && dthr[k].cb != cb; k++) {}
     if (k == ndthr) {
         /* bounds that keep psqrt on its fast range: below lo every d2 compares true (lo's does), at hi false */
@@ -3240,7 +3272,12 @@ int pdist2_lt(double d2, double c)
         dthr[k].cb = cb;
         dthr[k].t = lo;
     }
-    r = dthr_bits(d2) < dthr[k].t;
+    return dthr[k].t;
+}
+
+int pdist2_lt(double d2, double c)
+{
+    int r = dthr_bits(d2) < dthr_get(c);
 #ifdef PLAY_STATS
     if (dthr_bits(d2) >> 63 || d2 != d2 || r != DLT(psqrt(d2), c)) {
         fprintf(stderr, "pdist2_lt: %.17g against %.17g: %d\n", d2, c, r);
@@ -3248,6 +3285,67 @@ int pdist2_lt(double d2, double c)
     }
 #endif
     return r;
+}
+
+#ifndef PLAY_FIXED
+/* a float as an int in units of 2^-16 when it is one exactly and |f| < 2^14 */
+static int pfix16(float f, int64_t *o)
+{
+    union { float f; uint32_t u; } v;
+    uint32_t e, m, sh;
+    int32_t a;
+    v.f = f;
+    if ((v.u & 0x7fffffffu) == 0) { *o = 0; return 1; }
+    e = (v.u >> 23) & 0xffu;
+    if (e == 0 || e > 140) return 0;
+    m = (v.u & 0x7fffffu) | 0x800000u;
+    if (e >= 134) a = (int32_t)(m << (e - 134));
+    else {
+        sh = 134 - e;
+        if (sh > 23 || (m & ((1u << sh) - 1))) return 0;
+        a = (int32_t)(m >> sh);
+    }
+    *o = (v.u >> 31) ? -a : a;
+    return 1;
+}
+#endif
+
+/* pdist2_lt(pdist2(PTOD(x1) + ox, PTOD(y1) + oy, PTOD(x2), PTOD(y2)), c) (point_distance from a position plus whole
+   offsets to a position, against c). With the four floats exact in 2^-16 units (|v| < 2^14), dx, dy are exact ints
+   (|.| < 2^31) and S = dx^2 + dy^2 exact (units 2^-32); pdist2's d2 = fl(fl(dx^2) + fl(dy^2)) is within a relative
+   2^-51.9 of S, so below m = (S >> 50) + 2 units of it. d2 < T(c) (pdist2_lt's threshold, Tf = floor(T 2^32)) is then
+   true when S + m <= Tf, false when S >= Tf + 1 + m; between them, and in every other case, the doubles. The host
+   builds compare every integer answer with the double one */
+int pdist_lt_at(pos x1, pos y1, int32_t ox, int32_t oy, pos x2, pos y2, double c)
+{
+#ifndef PLAY_FIXED
+    int64_t a, b, u, w;
+    if (pfix16(x1, &a) && pfix16(y1, &b) && pfix16(x2, &u) && pfix16(y2, &w)) {
+        int64_t dx = u - (a + ((int64_t)ox << 16)), dy = w - (b + ((int64_t)oy << 16));
+        uint64_t t = dthr_get(c), e = t >> 52, tf, S, m;
+        int r = -1;
+        if (dx > -0x7fffffffLL && dx < 0x7fffffffLL && dy > -0x7fffffffLL && dy < 0x7fffffffLL && e >= 1 &&
+            e <= 1052) {
+            uint64_t mt = (t & 0xfffffffffffffull) | (1ull << 52);
+            tf = e >= 1043 ? mt << (e - 1043) : (1043 - e >= 64 ? 0 : mt >> (1043 - e));
+            S = (uint64_t)((int64_t)(int32_t)dx * (int32_t)dx) + (uint64_t)((int64_t)(int32_t)dy * (int32_t)dy);
+            m = (S >> 50) + 2;
+            if (S + m <= tf) r = 1;
+            else if (S >= tf + 1 + m) r = 0;
+        }
+        if (r >= 0) {
+#ifdef PLAY_STATS
+            if (r != pdist2_lt(pdist2(PTOD(x1) + ox, PTOD(y1) + oy, PTOD(x2), PTOD(y2)), c)) {
+                fprintf(stderr, "pdist_lt_at: %d differs (%.9g %.9g %d %d %.9g %.9g %g)\n", r, x1, y1, (int)ox, (int)oy,
+                        x2, y2, c);
+                abort();
+            }
+#endif
+            return r;
+        }
+    }
+#endif
+    return pdist2_lt(pdist2(PTOD(x1) + ox, PTOD(y1) + oy, PTOD(x2), PTOD(y2)), c);
 }
 
 /* the thresholds of the constants the Steps compare with (a first use mid-step would bisect there: about 63 psqrt
