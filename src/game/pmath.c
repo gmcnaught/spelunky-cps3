@@ -506,13 +506,135 @@ static ddbl cr_reduce(double a, int *q)
     return r;
 }
 
+/* ---- the integer fast path of psin_cr / pcos_cr / psincos_cr (no soft-float): for 2^-6 <= |a| < 8,
+   r = |a| - k pi / 2 in 128-bit fixed point (|a| 2^124 is exact; pi / 2 2^124 rounded: |error| <= 2.5 2^-124 for
+   k <= 5), kept when 2^-30 <= |r| <= 0.8, normalized to 64 bits (N, relative error < 2^-62.9); z = r^2 and the series
+   sin r = r S(z), cos r = C(z) by Horner in unsigned Q63 (every partial sum is positive: z < 0.64 and each term is
+   under a sixth (sin) or a half (cos) of the one before; the terms dropped are below 2^-72). Error bounds in Q63
+   units: z <= 3.3 (N's truncation, the two floors); S(z) <= (0.5 + 1 + 3.3 / 6) / (1 - 0.64) < 5.7 (coefficient
+   rounding, the floor of each step, z's error times the next sum <= 1 / 6); C(z) <= (0.5 + 1 + 3.3 / 2) / 0.36 < 8.8.
+   So sin |r| = N S 2^.. within a relative 7 2^-63 + one unit of the product's floor (err: Y 2^-59 + 3 units), cos r
+   within 12 units. Ziv's test: the result is kept when both ends of [Y - err, Y + err] round (to nearest even) to the
+   same double, which is then the correctly rounded value: the one sincos_r's tests and its double-double series
+   give (tests/sincos fast). Otherwise the caller takes the old path */
+static const uint64_t SC_P124H = 0x1921fb54442d1846ull, SC_P124L = 0x9898cc51701b839aull;   /* pi / 2 2^124 */
+static const uint64_t SC_I64 = 0xa2f9836e4e44152aull;                                    /* 2 / pi 2^64 */
+static const uint64_t SC_S[10] = {                                                       /* 2^63 / (2i + 1)! */
+    0x8000000000000000ull, 0x1555555555555555ull, 0x0111111111111111ull, 0x0006806806806807ull,
+    0x0000171de3a556c7ull, 0x00000035cc8acfebull, 0x000000005849184full, 0x00000000006b9fd0ull,
+    0x000000000000654bull, 0x000000000000004cull };
+static const uint64_t SC_C[11] = {                                                       /* 2^63 / (2i)! */
+    0x8000000000000000ull, 0x4000000000000000ull, 0x0555555555555555ull, 0x002d82d82d82d82eull,
+    0x0000d00d00d00d01ull, 0x0000024fc9f6ef14ull, 0x000000047bb63bfeull, 0x00000000064e5d2aull,
+    0x000000000006b9fdull, 0x00000000000005a1ull, 0x0000000000000004ull };
+
+static void sc_mul(uint64_t a, uint64_t b, uint64_t *hi, uint64_t *lo)     /* a b = hi 2^64 + lo (32-bit products) */
+{
+    uint64_t a0 = (uint32_t)a, a1 = a >> 32, b0 = (uint32_t)b, b1 = b >> 32;
+    uint64_t p00 = a0 * b0, p01 = a0 * b1, p10 = a1 * b0, p11 = a1 * b1;
+    uint64_t mid = (p00 >> 32) + (uint32_t)p01 + (uint32_t)p10;
+    *lo = (mid << 32) | (uint32_t)p00;
+    *hi = p11 + (p01 >> 32) + (p10 >> 32) + (mid >> 32);
+}
+static uint64_t sc_mulq63(uint64_t a, uint64_t b)                          /* floor(a b / 2^63) */
+{
+    uint64_t h, l;
+    sc_mul(a, b, &h, &l);
+    return h << 1 | l >> 63;
+}
+static int sc_clz(uint64_t v)                                              /* v != 0 */
+{
+    int n = 0;
+    if (!(v >> 32)) { n += 32; v <<= 32; }
+    if (!(v >> 48)) { n += 16; v <<= 16; }
+    if (!(v >> 56)) { n += 8; v <<= 8; }
+    if (!(v >> 60)) { n += 4; v <<= 4; }
+    if (!(v >> 62)) { n += 2; v <<= 2; }
+    if (!(v >> 63)) n += 1;
+    return n;
+}
+static uint64_t sc_round(uint64_t y, int e)                 /* y 2^e, y >= 2^63, to nearest even: a normal double's bits */
+{
+    uint64_t m = y >> 11, rem = y & 0x7ff;
+    if (rem > 0x400 || (rem == 0x400 && (m & 1))) m++;
+    e += 11;
+    if (m >> 53) { m >>= 1; e++; }
+    return ((uint64_t)(e + 52 + 1023) << 52) | (m & 0xfffffffffffffull);
+}
+static int sc_ziv(uint64_t y, uint64_t err, int e, uint64_t *out)          /* y 2^e within err 2^e; y >= 2^61 */
+{
+    int s = sc_clz(y);
+    uint64_t a, b;
+    y <<= s;
+    err <<= s;
+    e -= s;
+    if (y - err < 0x8000000000000000ull || y + err < y) return 0;             /* (another binade: not tried) */
+    a = sc_round(y - err, e);
+    b = sc_round(y + err, e);
+    if (a != b) return 0;
+    *out = a;
+    return 1;
+}
+
+/* need: 1 sin, 2 cos, 3 both. 1 when every needed value passed (then *s / *c hold them), else 0 */
+static int sc_fast(double a, int need, double *s, double *c)
+{
+    union { double d; uint64_t u; } v;
+    uint64_t m, ah, h, l, kph, kpl, rh, rl, n, z, t, sb = 0, cb = 0;
+    int e, k, sh, rneg, i;
+    v.d = a;
+    e = (int)((v.u >> 52) & 0x7ff);
+    if (e < 1023 - 6 || e > 1023 + 2) return 0;                               /* 2^-6 <= |a| < 8 */
+    m = (v.u & 0xfffffffffffffull) | (1ull << 52);
+    ah = m << (e - 1015);                                                     /* |a| 2^60 < 2^63, exact */
+    sc_mul(ah, SC_I64, &h, &l);
+    k = (int)((h + (1ull << 59)) >> 60);                                      /* round(|a| 2 / pi), 0 .. 5 */
+    sc_mul(SC_P124L, (uint64_t)k, &h, &kpl);
+    kph = SC_P124H * (uint64_t)k + h;
+    rl = 0 - kpl;                                                             /* |a| 2^124 - k pi / 2 2^124 */
+    rh = ah - kph - (kpl != 0);
+    rneg = (int)(rh >> 63);
+    if (rneg) { rl = ~rl + 1; rh = ~rh + (rl == 0); }
+    if (rh < (1ull << 30)) return 0;                                          /* |r| < 2^-30 */
+    sh = sc_clz(rh);                                                          /* |r| = n 2^(-60 - sh) */
+    if (sh < 4) return 0;
+    n = (rh << sh) | (rl >> (64 - sh));
+    if (sh == 4 && n > 0xccccccccccccccccull) return 0;                       /* |r| > 0.8 */
+    sc_mul(n, n, &h, &l);
+    z = h >> (2 * sh - 7);                                                    /* r^2 2^63 */
+    if (need & ((k & 1) ? 2 : 1)) {                                           /* sin r */
+        t = SC_S[9];
+        for (i = 8; i >= 0; i--) t = SC_S[i] - sc_mulq63(z, t);
+        sc_mul(n, t, &h, &l);                                                 /* |sin r| = h 2^(-59 - sh) */
+        if (!sc_ziv(h, (h >> 59) + 3, -59 - sh, &sb)) return 0;
+        if (rneg) sb |= 0x8000000000000000ull;
+    }
+    if (need & ((k & 1) ? 1 : 2)) {                                           /* cos r */
+        t = SC_C[10];
+        for (i = 9; i >= 0; i--) t = SC_C[i] - sc_mulq63(z, t);
+        if (!sc_ziv(t, 12, -63, &cb)) return 0;
+    }
+    /* psincos_cr's quadrants (q = k & 3), then sin(-x) = -sin x */
+    switch (k & 3) {
+    case 0: v.u = sb; *s = v.d; v.u = cb; *c = v.d; break;
+    case 1: v.u = cb; *s = v.d; v.u = sb ^ 0x8000000000000000ull; *c = v.d; break;
+    case 2: v.u = sb ^ 0x8000000000000000ull; *s = v.d; v.u = cb ^ 0x8000000000000000ull; *c = v.d; break;
+    default: v.u = cb ^ 0x8000000000000000ull; *s = v.d; v.u = sb; *c = v.d; break;
+    }
+    if (a < 0) *s = -*s;
+    return 1;
+}
+
 /* sin / cos correctly rounded: cr_trig_dd's bits (its quadrant signs negate the rounded result exactly). sincos_r
    keeps its fast sums only when Ziv's test shows they round as the series does (tests/sincos: every float direction
    in degrees, and random double directions as the piranhas' and move_dir's, against cr_trig_dd) */
 double psin_cr(double x)
 {
     int q;
-    ddbl r = cr_reduce(x, &q);
+    ddbl r;
+    double fs, fc;
+    if (sc_fast(x, 1, &fs, &fc)) return fs;
+    r = cr_reduce(x, &q);
     switch (q) {
     case 0: return sincos_r(r, 1);
     case 1: return sincos_r(r, 0);
@@ -524,7 +646,10 @@ double psin_cr(double x)
 double pcos_cr(double x)
 {
     int q;
-    ddbl r = cr_reduce(x, &q);
+    ddbl r;
+    double fs, fc;
+    if (sc_fast(x, 2, &fs, &fc)) return fc;
+    r = cr_reduce(x, &q);
     switch (q) {
     case 0: return sincos_r(r, 0);
     case 1: return -sincos_r(r, 1);
@@ -538,7 +663,9 @@ void psincos_cr(double a, double *s, double *c)
 {
     double sr, cr;
     int q;
-    ddbl r = cr_reduce(a, &q);
+    ddbl r;
+    if (sc_fast(a, 3, s, c)) return;
+    r = cr_reduce(a, &q);
     sr = sincos_r(r, 1);
     cr = sincos_r(r, 0);
     switch (q) {
