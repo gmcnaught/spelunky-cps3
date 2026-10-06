@@ -441,4 +441,3 @@ attacking piranhas (42 K each) remain.
 - **Not byte-identical (gameplay-visible), not to implement:** a view test for piranhas (HD runs them everywhere:
   positions, bubbles and their RAND draws would differ off screen; on drain 61 all six are in view anyway, so
   little gain there); stepping idle piranhas every other frame (~85 K on walking steps, visibly different motion).
-||||||| 041d709
