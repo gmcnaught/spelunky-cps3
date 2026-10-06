@@ -5,7 +5,13 @@
  * sincos_r2's answers at its shipping e and at smaller ones (an accepted answer that differs from dd_sincos's at e
  * means stage 2's error reached e there).
  *   make -C tests/sincos && build/host/sincos [nproc [end bits, hex: a partial run]]
- *   build/host/sincos nproc rand <count> [seed]      (host, -ffp-contract=off: IEEE binary64 as the SH-2) */
+ *   build/host/sincos nproc rand <count> [seed]      (host, -ffp-contract=off: IEEE binary64 as the SH-2)
+ *   build/host/sincos nproc fast                     sc_fast (the integer path) against the old path (cr_reduce and
+ *                                                    sincos_r, checked equal to cr_trig_dd above) at degtorad_d of
+ *                                                    every float dir in [+0, 360] and of dir - 1, dir + 1 (the
+ *                                                    piranhas' point_direction + a - b), sin and cos alone and both
+ *   build/host/sincos nproc fastrand <count> [seed]  the same for random doubles in [-8, 8] and degrees in
+ *                                                    [-720, 1080] */
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -26,6 +32,40 @@ double patan(double x) { return x; }                /* pscript.c's (patan2 only;
 static const double EPS[NE] = { 0x1p-86, 0x1p-92, 0x1p-98, 0x1p-104 };
 
 struct res { long n, bad, fail1[2], acc[NE][2], accbad[NE][2]; };
+static int fastmode;
+
+static void old_sc(double a, double *s, double *c)  /* psincos_cr before sc_fast */
+{
+    double sr, cr;
+    int q;
+    ddbl r = cr_reduce(a, &q);
+    sr = sincos_r(r, 1);
+    cr = sincos_r(r, 0);
+    switch (q) {
+    case 0: *s = sr; *c = cr; break;
+    case 1: *s = cr; *c = -sr; break;
+    case 2: *s = -sr; *c = -cr; break;
+    default: *s = -cr; *c = sr; break;
+    }
+}
+
+/* fail1[0]: sc_fast(.., 3) refused; fail1[1]: sin alone or cos alone refused; bad: a kept value differs */
+static void one_fast(double a, struct res *R)
+{
+    double s, c, s0, c0, x, y;
+    int ok;
+    old_sc(a, &s0, &c0);
+    R->n++;
+    ok = sc_fast(a, 3, &s, &c);
+    if (!ok) R->fail1[0]++;
+    else if (memcmp(&s, &s0, 8) || memcmp(&c, &c0, 8)) {
+        if (R->bad++ < 5) printf("fast differs: a %.17g (bits %016llx)\n", a, (unsigned long long)*(uint64_t *)&a);
+    }
+    if (sc_fast(a, 1, &x, &y)) { if (memcmp(&x, &s0, 8) && R->bad++ < 5) printf("fast sin differs: a %.17g\n", a); }
+    else R->fail1[1]++;
+    if (sc_fast(a, 2, &x, &y)) { if (memcmp(&y, &c0, 8) && R->bad++ < 5) printf("fast cos differs: a %.17g\n", a); }
+    else R->fail1[1]++;
+}
 
 static ddbl reduce(double a, int *q)                /* psincos_cr's reduction */
 {
@@ -122,7 +162,12 @@ static void run(uint32_t u0, uint32_t u1, struct res *R)
     for (u = u0; u < u1; u++) {
         float f;
         memcpy(&f, &u, 4);
-        one(degtorad_d((double)f), R);
+        if (fastmode) {
+            one_fast(degtorad_d((double)f), R);
+            one_fast(degtorad_d((double)f + 1), R);
+            one_fast(degtorad_d((double)f - 1), R);
+        } else
+            one(degtorad_d((double)f), R);
     }
 }
 
@@ -135,7 +180,10 @@ static void run_rand(uint64_t seed, long n, struct res *R)
         double v;
         x ^= x << 13; x ^= x >> 7; x ^= x << 17;
         v = (double)(x >> 11) * 0x1p-53;                       /* [0, 1) with 53 random bits */
-        if (j & 1) one(v * 40.0 - 20.0, R);
+        if (fastmode) {
+            if (j & 1) one_fast(v * 16.0 - 8.0, R);
+            else one_fast(degtorad_d(v * 1800.0 - 720.0), R);
+        } else if (j & 1) one(v * 40.0 - 20.0, R);
         else one(degtorad_d(v * 1800.0 - 720.0), R);
     }
 }
@@ -143,17 +191,19 @@ static void run_rand(uint64_t seed, long n, struct res *R)
 int main(int argc, char **argv)
 {
     int np = argc > 1 ? atoi(argv[1]) : 8, i, j, k, fd[64][2];
-    int rnd = argc > 3 && !strcmp(argv[2], "rand");
+    int rnd = argc > 3 && (!strcmp(argv[2], "rand") || !strcmp(argv[2], "fastrand"));
     long rn = rnd ? atol(argv[3]) : 0;
     uint64_t rseed = rnd && argc > 4 ? strtoull(argv[4], 0, 10) : 1;
     const uint32_t hi = argc > 2 && !rnd ? (uint32_t)strtoul(argv[2], 0, 16) : 0x43b40001u;   /* (float)360 = 0x43b40000, inclusive */
     struct res T, R;
     memset(&T, 0, sizeof T);
+    fastmode = argc > 2 && (!strcmp(argv[2], "fast") || !strcmp(argv[2], "fastrand"));
+    const uint32_t hi2 = fastmode && !rnd ? 0x43b40001u : hi;
     if (np < 1 || np > 64) np = 8;
     for (i = 0; i < np; i++) {
         if (pipe(fd[i])) return 2;
         if (fork() == 0) {
-            uint32_t a = (uint32_t)((uint64_t)hi * i / np), b = (uint32_t)((uint64_t)hi * (i + 1) / np);
+            uint32_t a = (uint32_t)((uint64_t)hi2 * i / np), b = (uint32_t)((uint64_t)hi2 * (i + 1) / np);
             if (rnd) run_rand(rseed * 1000 + (uint64_t)i, rn / np, &R);
             else run(a, b, &R);
             if (i == 0 && !rnd) {                   /* -0 */
@@ -175,6 +225,11 @@ int main(int argc, char **argv)
         }
     }
     while (wait(0) > 0) ;
+    if (fastmode) {
+        printf("sincos fast: %ld arguments, %ld kept values differ from the old path; refused: both %ld, alone %ld\n",
+               T.n, T.bad, T.fail1[0], T.fail1[1]);
+        return T.bad != 0;
+    }
     printf("sincos: %ld arguments, %ld differ from cr_trig_dd\n", T.n, T.bad);
     for (j = 1; j >= 0; j--) {
         printf("  %s: first test fails %ld;", j ? "sin" : "cos", T.fail1[j]);

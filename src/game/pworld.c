@@ -64,7 +64,7 @@ static uint16_t gclock = 1, gepoch, gver[GRID_H][GRID_W];
    cell ([l, r - 1] x [t, b - 1] in cells, clamped), kept like the solid grid (an entry whose box may have changed
    waits on xdhead until the next query); a cell with no count holds no point of the family. xfar counts the entries
    with a box that is not BB_INT, xsat a cell count past 255 (then every query of the family takes the search).
-   Destroyed entries keep their counts until the slot is used again: a superset */
+   A destroyed or killed entry goes on xdhead and leaves the counts at the next query (xflush_run: not alive) */
 #ifndef PCOL_EXACT
 #define XF_N 8
 /* family 7 counts oTree's and oLeaves' instances together: for a query of either it is a superset count, and
@@ -78,6 +78,7 @@ static int xbits_ok;
 static uint8_t xcnt[XF_N][GRID_H][GRID_W];
 static uint16_t xfar[XF_N];
 static uint8_t xsat[XF_N];
+static uint16_t xemp[XF_N];                      /* entries placed with an empty integer box (xisfar 2): in no cell */
 static uint8_t xmask[PIN_MAX], xisfar[PIN_MAX], xond[PIN_MAX], xx0[PIN_MAX], xy0[PIN_MAX], xx1[PIN_MAX], xy1[PIN_MAX];
 static int16_t xdnext[PIN_MAX], xdhead = NOONE;
 /* per cell, the last entry placed (xflush_run) whose integer box covers the whole cell, any family, or NOONE: a hint
@@ -786,6 +787,9 @@ void pin_destroy(int i)
         return;
     PW.in[i].alive = 0;          /* GameMaker marks it first: a search inside its Destroy event skips it */
     ounlink(i);
+#ifndef PCOL_EXACT
+    if (xmask[i] && !xond[i]) xdirty(i);            /* its counts leave the static-family index at the next query */
+#endif
     pw_draw_mark(i);
     ev_destroy(i);
     pcol_destroyed(i);           /* in the collision tree until the next RemoveMarked */
@@ -796,6 +800,9 @@ void pin_kill(int i)
     if (i >= 0) {
         if (PW.in[i].alive) { ounlink(i); PW.in[i].alive = 0; pw_draw_mark(i); }   /* (dead first: not back on the
                                                                                      animation list) */
+#ifndef PCOL_EXACT
+        if (xmask[i] && !xond[i]) xdirty(i);
+#endif
         PW.in[i].alive = 0;
         pcol_destroyed(i);
     }
@@ -1441,6 +1448,7 @@ static void grid_reset(void)
     for (x = 0; x < PIN_MAX; x++) xmask[x] = xisfar[x] = xond[x] = 0;
     for (x = 0; x < XF_N; x++) {
         xfar[x] = 0;
+        xemp[x] = 0;
         xsat[x] = 0;
         for (y = 0; y < GRID_H; y++) { int c; for (c = 0; c < GRID_W; c++) xcnt[x][y][c] = 0; }
     }
@@ -1631,7 +1639,8 @@ static void xplace(int i, int d)
     int f, x, y;
     for (f = 0; f < XF_N; f++) {
         if (!(xmask[i] >> f & 1)) continue;
-        if (xisfar[i]) { xfar[f] += d; continue; }
+        if (xisfar[i] == 1) { xfar[f] += d; continue; }
+        if (xisfar[i] == 2) { xemp[f] += d; continue; }
         for (y = xy0[i]; y <= xy1[i]; y++)
             for (x = xx0[i]; x <= xx1[i]; x++) {
                 if (d > 0 && xcnt[f][y][x] == 255) xsat[f] = 1;   /* (then the counts are not read until the reset) */
@@ -1652,7 +1661,11 @@ static __attribute__((noinline)) void xflush_run(void)
         if (!PW.in[i].alive || !(b = xbits[PW.in[i].obj]) || bbkind(i) == BB_NOSPR) continue;
         xmask[i] = (uint8_t)b;
         if (pin_ibox(i, ib)) {
-            if (ib[2] <= ib[0] || ib[3] <= ib[1]) { xmask[i] = 0; continue; }     /* empty: never hit */
+            if (ib[2] <= ib[0] || ib[3] <= ib[1]) {                  /* empty: never hit by a point; counted in xemp */
+                xisfar[i] = 2;                                       /* (xpoint_any tests it with point_hit: a miss) */
+                xplace(i, 1);
+                continue;
+            }
             xx0[i] = (uint8_t)clampi(ib[0] >> 4, 0, GRID_W - 1); xx1[i] = (uint8_t)clampi((ib[2] - 1) >> 4, 0, GRID_W - 1);
             xy0[i] = (uint8_t)clampi(ib[1] >> 4, 0, GRID_H - 1); xy1[i] = (uint8_t)clampi((ib[3] - 1) >> 4, 0, GRID_H - 1);
             {
@@ -1761,6 +1774,38 @@ static int xpoint_any(int obj, int notme, const struct pq *q, int prec)
 }
 #endif
 
+#if !defined(PCOL_EXACT) && !defined(PLAY_FIXED)
+/* dfloor_int of a float's value from its bits: floor(f) when -30000 < f < 30000 (dfloor_int's range: a whole value
+   within it through dwhole, any other through the compare), else 0 */
+static int pfloor_int(float f, int32_t *o)
+{
+    union { float f; uint32_t u; } v;
+    uint32_t e, m, a, sh;
+    v.f = f;
+    e = (v.u >> 23) & 0xffu;
+    if (e < 127) {                                          /* |f| < 1: 0, or -1 below zero */
+        *o = (v.u & 0x80000000u) && (v.u & 0x7fffffffu) ? -1 : 0;
+        return 1;
+    }
+    if (e > 141) return 0;                                  /* |f| >= 32768, inf, NaN */
+    m = (v.u & 0x7fffffu) | 0x800000u;
+    sh = 150 - e;                                           /* 9 .. 23 fraction bits */
+    a = m >> sh;
+    if (a >= 30000) return 0;
+    *o = (v.u & 0x80000000u) ? -(int32_t)a - ((m & ((1u << sh) - 1)) != 0) : (int32_t)a;
+    return 1;
+}
+#endif
+
+#ifndef PCOL_EXACT
+/* collision_point_any's answer for a static family (xf_of[obj] >= 0, pcol_quiet() 0, obj alive) at the query q */
+static int xstatic_any(int obj, int notme, const struct pq *q, int prec)
+{
+    if (xpoint_none(xf_of[obj], q)) return 0;
+    return xhint_hit(obj, notme, q, prec) || xpoint_any(obj, notme, q, prec);
+}
+#endif
+
 int (collision_point_any)(double px, double py, int obj, int prec, int notme_self)
 {
 #ifndef PCOL_EXACT
@@ -1774,8 +1819,7 @@ int (collision_point_any)(double px, double py, int obj, int prec, int notme_sel
         int r;
         if (fam_none(obj)) return 0;
         pq_init(&q, px, py);
-        if (xpoint_none(xf_of[obj], &q)) r = 0;
-        else r = xhint_hit(obj, notme_self, &q, prec) || xpoint_any(obj, notme_self, &q, prec);
+        r = xstatic_any(obj, notme_self, &q, prec);
 #ifdef PLAY_STATS
         if (r != (collision_point_p(px, py, obj, prec, notme_self) != NOONE)) {
             fprintf(stderr, "collision_point_any: static family %d answer %d differs (%.17g %.17g)\n", obj, r, px, py);
@@ -1832,18 +1876,44 @@ int (collision_point_any_at)(int i, int32_t dx, int32_t dy, int obj)
 #ifndef PCOL_EXACT
     {
         int32_t x, y;
-        if (obj >= 0 && xf_of[obj] >= 0 && !pcol_quiet() && xy_int_near(i, &x, &y)) {
-            struct pq q;
-            q.iok = 1; q.ix = x + dx; q.iy = y + dy;
-            if (xpoint_none(xf_of[obj], &q)) {
+        struct pq q;
+        int ok = 0;
+        /* the query collision_point_any's pq_init makes of PTOD(x) + dx, PTOD(y) + dy, without the doubles: whole x, y
+           (|.| < 29900) give whole sums, which pq_init takes as these ints (px, py the same values); at dx = dy = 0 the
+           point is the position itself, a float: pq_init keeps a whole one, and rounds a fractional one to float,
+           which leaves it unchanged, so px, py are x, y and ix, iy their floors (iok while |v| < 30000, dfloor_int's
+           range) */
+        if (obj >= 0 && xf_of[obj] >= 0 && !pcol_quiet()) {
+            if (xy_int_near(i, &x, &y)) {
+                q.iok = 1; q.ix = x + dx; q.iy = y + dy;
+                q.px = q.ix; q.py = q.iy;
+                ok = 1;
+            }
+#if !defined(PLAY_FIXED)
+            else if (dx == 0 && dy == 0) {
+                q.px = PW.in[i].x; q.py = PW.in[i].y;
+                q.iok = pfloor_int(PW.in[i].x, &q.ix) && pfloor_int(PW.in[i].y, &q.iy);
+                ok = 1;
+            }
+#endif
+        }
+        if (ok) {
+            int r = fam_none(obj) ? 0 : xstatic_any(obj, NOONE, &q, 0);
 #ifdef PLAY_STATS
-                if (collision_point_p(PTOD(PW.in[i].x) + dx, PTOD(PW.in[i].y) + dy, obj, 0, NOONE) != NOONE) {
-                    fprintf(stderr, "collision_point_any_at: index miss differs (%d %d %d)\n", obj, q.ix, q.iy);
+            {
+                struct pq c;
+                pq_init(&c, PTOD(PW.in[i].x) + dx, PTOD(PW.in[i].y) + dy);
+                if (c.iok != q.iok || (c.iok && (c.ix != q.ix || c.iy != q.iy)) || c.px != q.px || c.py != q.py) {
+                    fprintf(stderr, "collision_point_any_at: query differs (%d %d %d)\n", i, (int)dx, (int)dy);
                     abort();
                 }
-#endif
-                return 0;
+                if (r != (collision_point_p(PTOD(PW.in[i].x) + dx, PTOD(PW.in[i].y) + dy, obj, 0, NOONE) != NOONE)) {
+                    fprintf(stderr, "collision_point_any_at: answer %d differs (%d %d %d)\n", r, obj, q.ix, q.iy);
+                    abort();
+                }
             }
+#endif
+            return r;
         }
     }
 #endif
@@ -2756,6 +2826,39 @@ static int place_cb(int k, void *v)
     return 0;
 }
 
+#ifndef PCOL_EXACT
+/* instance_place's candidates from the static-family index: self's integer box moved by whole dx, dy ([l, r) x [t, b),
+   not empty, inside the index's cells). An entry that overlap_at finds overlapping it has a non-empty integer box
+   (xfar and xemp 0: no other kind is placed) sharing a pixel with it, so it reaches one of its cells. -2: the index
+   cannot tell; NOONE: no entry of obj's family reaches them; else the only entry that does (the counts are 1 in all,
+   and the cell's hint is a placed entry of the family in that cell, so it is the counted one) */
+static int xplace_one(int self, double dx, double dy, int obj)
+{
+    int32_t ia[4], idx, idy, l, t, r, b;
+    int f, x, y, n = 0, cx = 0, cy = 0, k;
+    if (obj < 0 || (f = xf_of[obj]) < 0 || pcol_quiet()) return -2;
+    if (!pin_ibox_s(self, ia) || !whole(dx, &idx) || !whole(dy, &idy)) return -2;
+    l = ia[0] + idx; t = ia[1] + idy; r = ia[2] + idx; b = ia[3] + idy;
+    if (r <= l || b <= t || l < 0 || t < 0 || ((r - 1) >> 4) >= GRID_W || ((b - 1) >> 4) >= GRID_H) return -2;
+    if (xdhead >= 0) xflush_run();
+    if (xfar[f] || xsat[f] || xemp[f]) return -2;
+    for (y = t >> 4; y <= (b - 1) >> 4; y++)
+        for (x = l >> 4; x <= (r - 1) >> 4; x++)
+            if (xcnt[f][y][x]) {
+                n += xcnt[f][y][x];
+                if (n > 1) return -2;
+                cx = x;
+                cy = y;
+            }
+    if (n == 0) return NOONE;
+    k = xhint[cy][cx];
+    if (k < 0 || !PW.in[k].alive || !(xmask[k] & xf_bit[f]) || xisfar[k] || cx < xx0[k] || cx > xx1[k] ||
+        cy < xy0[k] || cy > xy1[k])
+        return -2;
+    return k;
+}
+#endif
+
 /* Command_InstancePlace: SetPosition(px, py) (a real move marks self dirty), the search, SetPosition back */
 int instance_place_p(int self, double px, double py, int obj)
 {
@@ -2770,9 +2873,29 @@ int instance_place_p(int self, double px, double py, int obj)
         pcol_touch(self);
         if (moved) pcol_place_marks(self);
         c.obj = obj; c.self = self; c.hit = NOONE; c.dx = dx; c.dy = dy;
-        if (pin_bbox(self, &l, &t, &r, &b))
-            pcol_search((float)(l + dx), (float)(t + dy), (float)(r + dx), (float)(b + dy), place_cb, &c);
-        else
+        if (pin_bbox(self, &l, &t, &r, &b)) {
+            float fl = (float)(l + dx), ft = (float)(t + dy), fr = (float)(r + dx), fb = (float)(b + dy);
+#ifndef PCOL_EXACT
+            /* a static family: the search's hits are its entries whose rectangles meet the query and that pass
+               place_cb (match, overlap_at); with at most one entry able to pass overlap_at (xplace_one), the search
+               returns it when it is a hit, else NOONE (the other entries' callbacks only fill box caches) */
+            k = xplace_one(self, dx, dy, obj);
+            if (k != -2) {
+                if (k >= 0 && !(pcol_search_has(k, fl, ft, fr, fb) && match(k, obj, self) && overlap_at(self, dx, dy, k)))
+                    k = NOONE;
+#ifdef PLAY_STATS
+                pcol_search(fl, ft, fr, fb, place_cb, &c);
+                if (c.hit != k) {
+                    fprintf(stderr, "instance_place_p: static-family answer %d differs from %d (%d %d)\n", k, c.hit, self,
+                            obj);
+                    abort();
+                }
+#endif
+                return k;
+            }
+#endif
+            pcol_search(fl, ft, fr, fb, place_cb, &c);
+        } else
             pcol_search((float)px, (float)py, (float)px, (float)py, place_cb, &c);
         return c.hit;
     }

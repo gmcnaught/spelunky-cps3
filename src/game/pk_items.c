@@ -662,7 +662,7 @@ static void flare_step(int i)
     p = &PX(i);
     if (LIGHT_ON() && PL.idx != NOONE && PX(PL.idx).alive)                     /* :2-3 */
         FLARE_DIST(p) = (float)distance_to_object_p(i, OBJ_oPlayer1);         /* a float in the runner */
-    if (collision_point_any(X(i), Y(i), OBJ_oWater, 0, NOONE)) {
+    if (collision_point_any_at(i, 0, 0, OBJ_oWater)) {
         pin_create(p->x, p->y, OBJ_oSplash);
         snd_play(SND_xsplash);                                                 /* :6 */
         p = &PX(i);

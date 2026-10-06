@@ -66,7 +66,7 @@ int pitem_step(int i)
     }
     case OBJ_oFlareCrate:                                              /* objects/oFlareCrate/Step_0.gml */
         item_step(i);
-        if (collision_point_any(PTOD(PX(i).x), PTOD(PX(i).y), OBJ_oWater, 0, NOONE)) pswamp_world(8001, i, 0);   /* -1, -1: false */
+        if (collision_point_any_at(i, 0, 0, OBJ_oWater)) pswamp_world(8001, i, 0);   /* -1, -1: false */
         return 1;
     }
     return 0;

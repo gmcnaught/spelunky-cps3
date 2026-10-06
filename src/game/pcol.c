@@ -906,6 +906,22 @@ static int16_t dhead = -1, tchead = -1;
 static rk er[ENT_MAX][4];           /* the rectangle the entry was put in with (RemoveRect's search key) */
 static uint8_t erw[ENT_MAX];           /* its form (struct rbr w) */
 #include "pcolgrid.h"                   /* the shipping build's play-time grid (PCOL_EXACT: the tree) */
+
+#ifndef PCOL_EXACT
+/* pcol_search(l, t, r, b, ..) in play calls back entry e: e is in the grid and its rectangle meets the query's
+   (pgrid_search's compare; the search reads every cell an entry in the grid can meet the query from). 0 in the
+   generator (the tree) */
+int pcol_search_has(int e, float l, float t, float r, float b)
+{
+    float f[4];
+    if (!PCOL_GRID_ON || e < 0 || e >= PIN_MAX || pg_cell[e] == PGRID_NONE) return 0;
+    f[0] = l; f[1] = t; f[2] = r; f[3] = b;
+    rset_f(&s_r, f);
+    s_kv = 0;
+    return pg_overlap(e);
+}
+#endif
+
 static void search_run(void) { if (PCOL_GRID_ON) pgrid_search(); else search_rec(rroot); }
 static uint8_t epass[ENT_MAX];         /* the HandleCollision pass that entry searched in (EPASS_NONE: none since the
                                           last wrap; pass_no runs 0 .. 254, then every epass is reset) */
