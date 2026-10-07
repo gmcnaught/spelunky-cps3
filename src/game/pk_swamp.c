@@ -773,7 +773,12 @@ static void zombie_step(int i)
     if (isCollisionLeft(i, 1)) PE(p)->xVel = N(1);
     colBot = isCollisionBottom(i, 1);
     PE(p)->colBot = (uint8_t)colBot;
-    dist = distance_to_object_p(i, OBJ_oPlayer1);
+    /* dist is read only while IDLE: otherwise distance_to_object_p's writes alone (the touches), at its place */
+    if (PE(p)->status == 0) dist = distance_to_object_p(i, OBJ_oPlayer1);
+    else {
+        pw_touch_object(i, OBJ_oPlayer1);
+        dist = 0;
+    }
     if (PE(p)->status == 0) {                                  /* IDLE :46 */
         PE(p)->xVel = 0;
         if (PE(p)->counter > 0) PE(p)->counter -= 1;

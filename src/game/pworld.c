@@ -4024,6 +4024,19 @@ double distance_to_object_p(int self, int obj)
     return best;
 }
 
+/* distance_to_object_p(self, obj)'s writes without the distance: the box touches (pcol_touch of self, then of each
+   instance of obj's family in its creation order) and the counter; for a caller that does not read the distance */
+void pw_touch_object(int self, int obj)
+{
+    int k;
+    struct fam it;
+    PWST(dist, 1);
+    pcol_touch(self);
+    if (fam_none(obj)) return;
+    fam_begin(&it, obj);
+    while ((k = fam_get(&it)) != NOONE) pcol_touch(k);
+}
+
 int pw_with(int obj, int16_t *out, int max)
 {
     int k, n = 0, m = 0, j;

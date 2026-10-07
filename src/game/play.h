@@ -474,6 +474,7 @@ int instance_exists_p(int obj);
 int instance_first_p(int obj);
 int instance_number_p(int obj);
 double distance_to_object_p(int self, int obj);
+void pw_touch_object(int self, int obj);            /* distance_to_object_p's touches alone */
 double distance_to_instance_p(int self, int other);
 int pin_overlap(int a, int b);
 /* tools/colprobe.py: Collision_Point / Rectangle / Line of instance k, Collision_Instance of a, b */
