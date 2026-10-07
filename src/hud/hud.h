@@ -81,4 +81,7 @@ void hud_text_centered(const char *text, enum hud_font f, int yellow, int offset
 void hud_text_faded(int on);
 /* string(n) of a whole number into buf (at least 12 bytes); returns buf */
 char *hud_itoa(int32_t n, char *buf);
+/* "m:ss" for sec >= 0 seconds, written at e (NUL-terminated); returns the NUL (the transition, scores and end
+   screens' times) */
+char *hud_mss(char *e, int32_t sec);
 #endif

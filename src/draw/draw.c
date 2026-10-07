@@ -939,13 +939,8 @@ static void transition_out(void)
     if (t[0] > -2) {                              /* m:ss / m2:ss2 of global.xtime and global.time (ms) */
         s = PG.xtime / 1000;
         s2 = PG.time / 1000;
-        e = catn(b, s / 60);
-        e = cat(e, s % 60 < 10 ? ":0" : ":");
-        e = catn(e, s % 60);
-        e = cat(e, " / ");
-        e = catn(e, s2 / 60);
-        e = cat(e, s2 % 60 < 10 ? ":0" : ":");
-        catn(e, s2 % 60);
+        e = cat(hud_mss(b, s), " / ");
+        hud_mss(e, s2);
         hud_text(b, HUD_FONT_SMALL, 0, 96, 64);
     }
     if (t[0] == 2) {

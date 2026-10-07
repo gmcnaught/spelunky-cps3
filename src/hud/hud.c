@@ -43,6 +43,20 @@ char *hud_itoa(int32_t n, char *buf)
     return buf;
 }
 
+char *hud_mss(char *e, int32_t sec)
+{
+    hud_itoa(sec / 60, e);
+    while (*e)
+        e++;
+    *e++ = ':';
+    if (sec % 60 < 10)
+        *e++ = '0';
+    hud_itoa(sec % 60, e);
+    while (*e)
+        e++;
+    return e;
+}
+
 static void glyphs(const char *text, enum hud_font f, const uint32_t *yellow, int all_yellow, int x, int y)
 {
     int adv = f == HUD_FONT_LARGE ? 16 : 8;

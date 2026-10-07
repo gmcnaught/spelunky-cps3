@@ -1395,10 +1395,8 @@ static void scores_text(void)
         e = b; { const char *t = "KILLS:   "; while (*t) *e++ = *t++; } hud_itoa(v3, e); hud_text(b, HUD_FONT_SMALL, 0, 120, 64);
         e = b; { const char *t = "SAVES:   "; while (*t) *e++ = *t++; } hud_itoa(v4, e); hud_text(b, HUD_FONT_SMALL, 0, 120, 80);
         if (SH.hs.value[HS_WINS] > 0) {                                             /* only display time if won */
-            int32_t sec = SH.hs.value[HS_TIME], m = sec / 60;
-            sec %= 60;
             e = b; { const char *t = "TIME:    "; while (*t) *e++ = *t++; }
-            e += 0; hud_itoa(m, e); while (*e) e++; *e++ = ':'; if (sec < 10) *e++ = '0'; hud_itoa(sec, e);
+            hud_mss(e, SH.hs.value[HS_TIME]);
             hud_text(b, HUD_FONT_SMALL, 0, 120, 96);
         }
         hud_text("STATISTICS", HUD_FONT_SMALL, 1, 112 + (192 - 10 * 8) / 2, 112);
@@ -1506,7 +1504,7 @@ int front_fade(int *a8)
    (hud_text_faded): they fade with it */
 static void final_score(int dx, int dy)
 {
-    char b[24], *e;
+    char b[24];
     hud_text_faded(END3.fadeOut);
     {
         if (END3.drawStatus > 0) hud_text_centered("YOU MADE IT!", HUD_FONT_LARGE, 1, dx, 32 + dy);
@@ -1517,15 +1515,8 @@ static void final_score(int dx, int dy)
             hud_text_centered(b, HUD_FONT_LARGE, 0, dx, 72 + dy);
         }
         if (END3.drawStatus > 4) {                                             /* :30 */
-            int32_t s = PG.time / 1000, m = 0;                                 /* floor(global.time / 1000) */
-            while (s > 59) { s -= 60; m += 1; }
             hud_text("TIME:    ", HUD_FONT_SMALL, 1, 64 + dx, 96 + dy);        /* tr("TIME:  ") */
-            e = b;
-            hud_itoa(m, e);
-            while (*e) e++;
-            *e++ = ':';
-            if (s < 10) *e++ = '0';
-            hud_itoa(s, e);
+            hud_mss(b, PG.time / 1000);                                        /* floor(global.time / 1000) */
             hud_text(b, HUD_FONT_SMALL, 0, 224 + dx, 96 + dy);
         }
         if (END3.drawStatus > 5) {
