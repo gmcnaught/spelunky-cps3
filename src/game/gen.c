@@ -3,6 +3,10 @@
  */
 #include "gen.h"
 #include "rng.h"
+#ifdef PLAY_STATS
+#include <stdio.h>
+#include <stdlib.h>
+#endif
 
 struct gglobals G;
 struct ggame GAME;
@@ -703,5 +707,11 @@ int gen_level(int32_t next_id)
             gen_create_event(k);
         }
     }
+#ifdef PLAY_STATS
+    if (with_top != 0) {                         /* a return or goto inside WITH_BEGIN .. WITH_END left it (inst.h) */
+        fprintf(stderr, "gen_level: with_top %d after generation\n", with_top);
+        abort();
+    }
+#endif
     return gen_untranslated ? -1 : 0;
 }
