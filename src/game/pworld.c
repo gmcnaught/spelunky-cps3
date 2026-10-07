@@ -3788,18 +3788,7 @@ int instance_number_p(int obj)
     return n;
 }
 
-/* distance_to_instance_p's square root: Newton from d (not correctly rounded: 1,046,164 of the integers 1 .. 2^22
-   differ from psqrt by an ulp; kept as it is). For d = n^2 it gives n exactly (checked for n = 1 .. 65536) */
-static double dist_newton(double d)
-{
-    double s = d, prev = 0;
-    int it;
-    if (d <= 0) return 0;
-    for (it = 0; it < 64 && s != prev; it++) { prev = s; s = 0.5 * (s + d / s); }
-    return s;
-}
-
-/* dist_newton(n) for a whole n <= 2^24: n = r^2 gives r (r = isqrt(n)), else the same loop from r + 0.5 ends on the
+/* pdist_newton(n) for a whole n <= 2^24: n = r^2 gives r (r = isqrt(n)), else the same loop from r + 0.5 ends on the
    same bits (checked for every n in 0 .. 2^24); it runs 3.2 times on average, from d 13.1 (n 1 .. 70580) */
 static double dist_newton_i(uint32_t n)
 {
@@ -3951,7 +3940,7 @@ double distance_to_instance_p(int self, int k)
         if (iyd < 0) iyd = -iyd;
         if (ixd <= 2895 && iyd <= 2895) return dist_newton_i((uint32_t)(ixd * ixd + iyd * iyd));
         xd = ixd; yd = iyd;
-        return dist_newton(xd * xd + yd * yd);
+        return pdist_newton(xd * xd + yd * yd);
     }
     if (!pin_bbox(self, &sl, &st, &sr, &sb))
         sl = sr = PTOD(PW.in[self].x), st = sb = PTOD(PW.in[self].y);
@@ -3962,7 +3951,7 @@ double distance_to_instance_p(int self, int k)
     if (t > sb) yd = t - sb;
     if (b < st) yd = b - st;
     d = xd * xd + yd * yd;
-    return dist_newton(d);                         /* sqrt by Newton (no libm on the SH-2) */
+    return pdist_newton(d);                         /* sqrt by Newton (no libm on the SH-2) */
 }
 
 double distance_to_object_p(int self, int obj)

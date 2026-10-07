@@ -12,6 +12,17 @@ double psin_cr(double x);                     /* correctly rounded (glibc's sin 
 double pcos_cr(double x);
 void psincos_cr(double a, double *s, double *c);   /* both, the same bits, one reduction */
 float patan2f(float y, float x);              /* glibc's atan2f (fdlibm float) */
+/* a square root by Newton from d, as distance_to_instance_p (pworld.c) and the player's slope / climb code
+   (pplayer.c) take it: not correctly rounded (1,046,164 of the integers 1 .. 2^22 differ from psqrt by an ulp; kept as
+   the code had it), d = n^2 gives n exactly (checked for n = 1 .. 65536); 0 for d <= 0 */
+static inline double pdist_newton(double d)
+{
+    double s = d, prev = 0;
+    int it;
+    if (d <= 0) return 0;
+    for (it = 0; it < 64 && s != prev; it++) { prev = s; s = 0.5 * (s + d / s); }
+    return s;
+}
 /* point_distance(x1, y1, x2, y2) < c as GML compares it (DLT), from d2 = pdist2(...) without the square root
    (pworld.c: a threshold on d2 per c) */
 static inline double pdist2(double x1, double y1, double x2, double y2)

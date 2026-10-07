@@ -6,6 +6,7 @@
  */
 #include "pint.h"
 #include "pcol.h"                                /* pcol_touch (the light search) */
+#include "pmath.h"                               /* pdist_newton */
 #include "penemy.h"
 #include "../snd/sndgame.h"                     /* the GML sound calls (src/snd) */
 #include "pmsg.h"                                /* the HUD messages (trMessages) */
@@ -715,17 +716,12 @@ static void characterStepEvent(int i)
             moveTo(i, PE(p)->xVel, PE(p)->yVel + NI(slopeChangeInY), &xVelInteger, &yVelInteger);
             {
                 double dx = PTOD(p->x) - PTOD(xPrev2), dy = PTOD(p->y) - PTOD(yPrev2), d2 = dx * dx + dy * dy;
-                double s = d2, prev = 0, a = xVelInteger < 0 ? -xVelInteger : xVelInteger;
-                int it;
+                double a = xVelInteger < 0 ? -xVelInteger : xVelInteger;
                 /* dist is read only by the test below (and the ratio when it holds). d2 <= a * a (a a whole number,
                    exact): sqrt(d2) <= a, and the loop's result s (a fixed point of the rounded step, reached in
                    under 64 iterations for these d2) is within a few ulps of sqrt(d2), so s - a <= eps and DGT is
                    false: the loop is skipped (tests/slopedist) */
-                if (d2 <= a * a) dist = 0;
-                else {
-                    for (it = 0; it < 64 && s != prev && d2 > 0; it++) { prev = s; s = 0.5 * (s + d2 / s); }
-                    dist = d2 > 0 ? s : 0;                                     /* point_distance */
-                }
+                dist = d2 <= a * a ? 0 : pdist_newton(d2);                     /* point_distance */
             }
             if (DGT(dist, (xVelInteger < 0 ? -xVelInteger : xVelInteger))) {
                 double ratio;
@@ -766,10 +762,8 @@ static void characterStepEvent(int i)
             pin_setispd(p, (img_t)(NTOD(NABS(PE(p)->xVel)) * NTOD(PL.runAnimSpeed) + 0.1));
     }
     if (PL.state == CLIMBING) {                                                /* :1030 */
-        double ax = NTOD(NABS(PE(p)->xVel)), ay = NTOD(NABS(PE(p)->yVel)), s2 = ax * ax + ay * ay, s = s2, prev = 0;
-        int it;
-        for (it = 0; it < 64 && s != prev && s2 > 0; it++) { prev = s; s = 0.5 * (s + s2 / s); }
-        pin_setispd(p, (img_t)((s2 > 0 ? s : 0) * NTOD(PL.climbAnimSpeed)));
+        double ax = NTOD(NABS(PE(p)->xVel)), ay = NTOD(NABS(PE(p)->yVel));
+        pin_setispd(p, (img_t)(pdist_newton(ax * ax + ay * ay) * NTOD(PL.climbAnimSpeed)));
     }
     if (NGE(PE(p)->xVel, N(4)) || NLE(PE(p)->xVel, N(-4))) {
         pin_setispd(p, 1);
@@ -879,6 +873,33 @@ static void open_crate(int i)
     PL.kAttackPressed = 0;
 }
 
+/* the held item h as the player leaves the room (exit_level :810-858 after its gold / damsel cases, and enter_door
+   :686-723, the same statements): a heavy one is dropped, an unarmed bomb or a rope goes back to the inventory (an
+   armed bomb is dropped), any other is carried to the next level as global.pickupItem */
+static void leave_with_held(int h)
+{
+    if (PE(&PX(h))->heavy) {
+        PE(&PX(h))->held = 0;
+        PL.holdItem = NOONE;
+        PL.pickupItemType = T_NONE;
+    } else if (PX(h).type == T_BOMB) {
+        if (PE(&PX(h))->armed) PE(&PX(h))->held = 0;
+        else {
+            PG.bombs += 1;
+            pin_destroy(h);
+        }
+        G.pickupItem = (uint8_t)pickup_of_ptype(PL.pickupItemType);
+    } else if (PX(h).type == T_ROPE) {
+        PG.rope += 1;
+        pin_destroy(h);
+        G.pickupItem = (uint8_t)pickup_of_ptype(PL.pickupItemType);
+    } else {
+        G.pickupItem = (uint8_t)pickup_of_ptype(PX(h).type);
+        PE(&PX(h))->breakPieces = 0;
+        pin_destroy(h);
+    }
+}
+
 static void exit_level(int i)
 {
     struct pin *p = &PX(i);
@@ -903,7 +924,7 @@ static void exit_level(int i)
                 pin_setx(&PX(h), PX(door).x + PI(8));
                 pin_sety(&PX(h), PX(door).y + PI(8));
                 pin_set_sprite(h, GSPR_sDamselExit);
-                PE(&PX(h))->status = 4;
+                PE(&PX(h))->status = D_EXIT;
                 PE(&PX(h))->held = 0;
                 PE(&PX(h))->xVel = 0;
                 PE(&PX(h))->yVel = 0;
@@ -912,31 +933,13 @@ static void exit_level(int i)
                 PE(&PX(h))->active = 0;
                 PL.holdItem = NOONE;
             } else {
-                PE(&PX(h))->status = 2;
+                PE(&PX(h))->status = D_THROWN;
                 PE(&PX(h))->held = 0;
                 PL.holdItem = NOONE;
                 PL.pickupItemType = T_NONE;
             }
-        } else if (PE(&PX(h))->heavy) {
-            PE(&PX(h))->held = 0;
-            PL.holdItem = NOONE;
-            PL.pickupItemType = T_NONE;
-        } else if (PX(h).type == T_BOMB) {
-            if (PE(&PX(h))->armed) PE(&PX(h))->held = 0;
-            else {
-                PG.bombs += 1;
-                pin_destroy(h);
-            }
-            G.pickupItem = (uint8_t)pickup_of_ptype(PL.pickupItemType);
-        } else if (PX(h).type == T_ROPE) {
-            PG.rope += 1;
-            pin_destroy(h);
-            G.pickupItem = (uint8_t)pickup_of_ptype(PL.pickupItemType);
-        } else {
-            G.pickupItem = (uint8_t)pickup_of_ptype(PX(h).type);
-            PE(&PX(h))->breakPieces = 0;
-            pin_destroy(h);
-        }
+        } else
+            leave_with_held(h);
         PL.holdItem = NOONE;
         PL.pickupItemType = T_NONE;
     }
@@ -972,27 +975,7 @@ static void enter_door(int i)
     double x, y;
     int door;
     if (isRoomIs(R_rOlmec) && PL.holdItem != NOONE) {                          /* :686 oXEnd is oXStart's child */
-        int h = PL.holdItem;
-        if (PE(&PX(h))->heavy) {
-            PE(&PX(h))->held = 0;
-            PL.holdItem = NOONE;
-            PL.pickupItemType = T_NONE;
-        } else if (PX(h).type == T_BOMB) {
-            if (PE(&PX(h))->armed) PE(&PX(h))->held = 0;
-            else {
-                PG.bombs += 1;
-                pin_destroy(h);
-            }
-            G.pickupItem = (uint8_t)pickup_of_ptype(PL.pickupItemType);
-        } else if (PX(h).type == T_ROPE) {
-            PG.rope += 1;
-            pin_destroy(h);
-            G.pickupItem = (uint8_t)pickup_of_ptype(PL.pickupItemType);
-        } else {
-            G.pickupItem = (uint8_t)pickup_of_ptype(PX(h).type);
-            PE(&PX(h))->breakPieces = 0;
-            pin_destroy(h);
-        }
+        leave_with_held(PL.holdItem);
     } else if (isRoomIs(R_rOlmec)) G.pickupItem = PICK_NONE;                   /* :724 */
     else if (PL.holdItem != NOONE) PE(&PX(PL.holdItem))->held = 0;
     PL.holdItem = NOONE;
@@ -1555,7 +1538,7 @@ void pl_step(int i)
         PE(&PX(h))->xVel = PE(p)->xVel;
         PE(&PX(h))->yVel = N(-6);
         PE(&PX(h))->armed = 1;
-        if (PX(h).type == T_DAMSEL) PE(&PX(h))->status = 2;                          /* :1691 (P5) */
+        if (PX(h).type == T_DAMSEL) PE(&PX(h))->status = D_THROWN;                          /* :1691 (P5) */
         else if (PX(h).type == T_BOW) scrFireBow();
         drop_or_switch();
     }
@@ -1722,7 +1705,7 @@ void pl_step(int i)
                         pin_setx(&PX(h), PX(door).x + PI(8));
                         pin_sety(&PX(h), PX(door).y + PI(8));
                         pin_set_sprite(h, GSPR_sDamselExit2);
-                        PE(&PX(h))->status = 4;
+                        PE(&PX(h))->status = D_EXIT;
                         PE(&PX(h))->held = 0;
                         PE(&PX(h))->xVel = 0;
                         PE(&PX(h))->yVel = 0;
@@ -1977,7 +1960,7 @@ void scrUseItem(void)
         return;
     } else {                                                                   /* :594 throw */
         if (o->type == T_DAMSEL) {                                             /* scrUseItem :596 (P5) */
-            PE(o)->status = 2;
+            PE(o)->status = D_THROWN;
             PE(o)->counter = PEN(o)->stunMax;
             pin_sety(o, o->y - (PI(4)));
             snd_play(SND_xdamsel);                                             /* :601 */
