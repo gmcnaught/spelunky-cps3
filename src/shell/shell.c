@@ -28,7 +28,7 @@ static void put_num(int col, int row, uint32_t v, int width)
     } while (v && n < 11);
     char s[12];
     int k = 0;
-    while (k < width - n && k < 11)
+    while (k < width - n && k + n < 11)          /* (width > 11: the number keeps its digits, s its NUL) */
         s[k++] = ' ';
     while (n)
         s[k++] = b[--n];

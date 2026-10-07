@@ -732,9 +732,15 @@ static const uint32_t ikey_mul[24] = { 1u << 23, 1u << 22, 1u << 21, 1u << 20, 1
                                        1u << 7, 1u << 6, 1u << 5, 1u << 4, 1u << 3, 1u << 2, 1u << 1, 1u };
 static rk ikey(int32_t v)
 {
-    uint32_t a = v < 0 ? (uint32_t)-v : (uint32_t)v, t = a, bits;
+    uint32_t a = v < 0 ? 0u - (uint32_t)v : (uint32_t)v, t = a, bits;
     int p = 0;
     if (a == 0) return 0;
+#ifdef PLAY_STATS
+    if (a >= 1u << 24) {                          /* ikey_mul has 24 entries: callers keep |v| < 2^24 */
+        fprintf(stderr, "ikey: |%ld| >= 2^24\n", (long)v);
+        abort();
+    }
+#endif
     if (t >= 0x10000u) { t >>= 16; p += 16; }
     if (t >= 0x100u) { t >>= 8; p += 8; }
     if (t >= 0x10u) { t >>= 4; p += 4; }

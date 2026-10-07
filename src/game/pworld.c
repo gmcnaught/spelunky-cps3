@@ -3886,7 +3886,7 @@ int pdist_lt_at(pos x1, pos y1, int32_t ox, int32_t oy, pos x2, pos y2, double c
 {
     int64_t a, b, u, w;
     if (pfix16(x1, &a) && pfix16(y1, &b) && pfix16(x2, &u) && pfix16(y2, &w)) {
-        int64_t dx = u - (a + ((int64_t)ox << 16)), dy = w - (b + ((int64_t)oy << 16));
+        int64_t dx = u - (a + (int64_t)ox * 65536), dy = w - (b + (int64_t)oy * 65536);   /* (ox, oy < 0: no shift) */
         uint64_t t = dthr_get(c), e = t >> 52, tf, S, m;
         int r = -1;
         if (dx > -0x7fffffffLL && dx < 0x7fffffffLL && dy > -0x7fffffffLL && dy < 0x7fffffffLL && e >= 1 &&
