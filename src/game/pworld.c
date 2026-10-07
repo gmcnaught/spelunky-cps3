@@ -3428,7 +3428,6 @@ int instance_place_ixy(int self, int32_t x, int32_t y, int32_t idx, int32_t idy,
     int32_t ia[4];
     if (q == 1 && pin_ibox_s(self, ia)) {
         struct qctx c;
-        float fl = PLACE_F(ia[0] + idx), ft = PLACE_F(ia[1] + idy), fr = PLACE_F(ia[2] + idx), fb = PLACE_F(ia[3] + idy);
         pcol_touch(self);
         if (moved) pcol_place_marks_kept(self);              /* (self's tree rectangle is its box: pcol.c pm_e) */
         c.obj = obj; c.self = self; c.hit = NOONE;            /* (c.dx, c.dy: set where a search reads them) */
@@ -3444,13 +3443,14 @@ int instance_place_ixy(int self, int32_t x, int32_t y, int32_t idx, int32_t idy,
                         if (ov && (precise(self) || precise(k))) ov = precise_collision_int(self, idx, idy, ia, k, ib);
                     } else
                         ov = -1;
-                    if (!(pcol_search_has(k, fl, ft, fr, fb) && match(k, obj, self) &&
-                          (ov >= 0 ? ov : overlap_at(self, idx, idy, k))))
+                    if (!(pcol_search_has_i(k, ia[0] + idx, ia[1] + idy, ia[2] + idx, ia[3] + idy) &&
+                          match(k, obj, self) && (ov >= 0 ? ov : overlap_at(self, idx, idy, k))))
                         k = NOONE;
                 }
 #ifdef PLAY_STATS
                 c.dx = idx; c.dy = idy;
-                pcol_search(fl, ft, fr, fb, place_cb, &c);
+                pcol_search(PLACE_F(ia[0] + idx), PLACE_F(ia[1] + idy), PLACE_F(ia[2] + idx), PLACE_F(ia[3] + idy), place_cb,
+                            &c);
                 if (c.hit != k) {
                     fprintf(stderr, "instance_place_ixy: static-family answer %d differs from %d (%d %d)\n", k, c.hit,
                             self, obj);
@@ -3462,7 +3462,7 @@ int instance_place_ixy(int self, int32_t x, int32_t y, int32_t idx, int32_t idy,
         }
 #endif
         c.dx = idx; c.dy = idy;
-        pcol_search(fl, ft, fr, fb, place_cb, &c);
+        pcol_search(PLACE_F(ia[0] + idx), PLACE_F(ia[1] + idy), PLACE_F(ia[2] + idx), PLACE_F(ia[3] + idy), place_cb, &c);
         return c.hit;
     }
     return place_after_query(self, q, (double)(x + idx), (double)(y + idy), idx, idy, moved, obj);

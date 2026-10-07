@@ -920,6 +920,27 @@ int pcol_search_has(int e, float l, float t, float r, float b)
     s_kv = 0;
     return pg_overlap(e);
 }
+
+/* pcol_search_has(e, (float)l, (float)t, (float)r, (float)b) for whole sides: below 2^14 in magnitude rset_f's
+   rectangle is the whole form of the ints (kint of each float is the int), which rset_i makes without the keys;
+   otherwise the float version. PLAY_STATS compares */
+int pcol_search_has_i(int e, int32_t l, int32_t t, int32_t r, int32_t b)
+{
+    int h;
+    if (!PCOL_GRID_ON || e < 0 || e >= PIN_MAX || pg_cell[e] == PGRID_NONE) return 0;
+    if (!(l > -WLIM && l < WLIM && t > -WLIM && t < WLIM && r > -WLIM && r < WLIM && b > -WLIM && b < WLIM))
+        return pcol_search_has(e, (float)l, (float)t, (float)r, (float)b);
+    rset_i(&s_r, l, t, r, b);
+    s_kv = 0;
+    h = pg_overlap(e);
+#ifdef PLAY_STATS
+    if (h != pcol_search_has(e, (float)l, (float)t, (float)r, (float)b)) {
+        fprintf(stderr, "pcol_search_has_i: %d differs (%d %d %d %d %d)\n", h, e, (int)l, (int)t, (int)r, (int)b);
+        abort();
+    }
+#endif
+    return h;
+}
 #endif
 
 static void search_run(void) { if (PCOL_GRID_ON) pgrid_search(); else search_rec(rroot); }
