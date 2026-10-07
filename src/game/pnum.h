@@ -228,6 +228,11 @@ static inline int gpos_muli_gt0(double a, int32_t m)
    42949.67 / 2^32: d > eps is h - v >= 1 or (h == v and l >= 42950); d < -eps is h - v <= -2 or (h - v == -1 and
    1 - l / 2^32 >= 42950 / 2^32). A negative x is -gcmp(|x|, -v). Other x (and |v| >= 2^30) take the double form */
 int gcmp_fi(float x, int32_t v);                    /* pworld.c (out of line: four tests a view check) */
+/* gcmp_dd out of line, for rare compares inside large hot functions: inlined there, gcmp_dd changed GCC's register
+   allocation of the whole function (characterStepEvent's ladder snap: jtcps3 route steps +1 to +3 %) */
+int gcmp_cold(double a, double b);                  /* pworld.c */
+#define NLT_COLD(a, b) (gcmp_cold(NTOD(a), NTOD(b)) < 0)
+#define NGT_COLD(a, b) (gcmp_cold(NTOD(a), NTOD(b)) > 0)
 #define PLTI(x, v) (gcmp_fi((x), (v)) < 0)
 #define PGTI(x, v) (gcmp_fi((x), (v)) > 0)
 #ifdef NUM_IS_CLASS

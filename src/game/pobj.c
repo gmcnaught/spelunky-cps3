@@ -881,7 +881,7 @@ static void jar_step(int i, int skull)
             PE(p)->yVel = NMUL(-PE(p)->yVel, N(0.8));
         }
         if (PE(p)->colLeft || PE(p)->colRight) {
-            if (NGT(NABS(PE(p)->xVel), skull ? N(2) : N(3))) destroy = 1;
+            if (NGT_COLD(NABS(PE(p)->xVel), skull ? N(2) : N(3))) destroy = 1;
             PE(p)->xVel = NMUL(-PE(p)->xVel, N(0.5));
         }
         if (!skull && collision_point_any(PTOD(p->x), PTOD(p->y), OBJ_oSolid, 0, NOONE)) destroy = 1;

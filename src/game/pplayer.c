@@ -516,7 +516,7 @@ static void characterStepEvent(int i)
                 int ladder = instance_place_p(i, PTOD(p->x), PTOD(p->y) + 16, OBJ_oLadder);
                 PL.ladder = ladder;
                 if (ladder != NOONE) {
-                    if (NLT(NABS(NP(p->x - (PX(ladder).x + PI(8)))), N(4))) {
+                    if (NLT_COLD(NABS(NP(p->x - (PX(ladder).x + PI(8)))), N(4))) {
                         pin_setx(p, PX(ladder).x + PI(8));
                         PE(p)->xVel = PE(p)->yVel = PE(p)->xAcc = PE(p)->yAcc = 0;
                         PL.state = CLIMBING;
@@ -557,7 +557,7 @@ static void characterStepEvent(int i)
         int ladder = instance_place_p(i, x, y - 8, OBJ_oLadder);
         PL.ladder = ladder;
         if (ladder != NOONE) {
-            if (NLT(NABS(NP(p->x - (PX(ladder).x + PI(8)))), N(4))) {
+            if (NLT_COLD(NABS(NP(p->x - (PX(ladder).x + PI(8)))), N(4))) {
                 pin_setx(p, PX(ladder).x + PI(8));
                 if (collision_point_p(PTOD(p->x), PTOD(p->y), OBJ_oLadder, 0, NOONE) == NOONE &&
                     collision_point_p(PTOD(p->x), PTOD(p->y), OBJ_oLadderTop, 0, NOONE) == NOONE)
