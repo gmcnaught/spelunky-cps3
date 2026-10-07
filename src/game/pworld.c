@@ -3223,6 +3223,13 @@ int instance_place_p(int self, double px, double py, int obj)
     return place_after_query(self, q, px, py, dx, dy, moved, obj);
 }
 
+/* (float)v of a box side: fint15's bits below 2^15 in magnitude (no __floatsisf call) */
+#ifndef PLAY_FIXED
+#define PLACE_F(v) ((v) > -32768 && (v) < 32768 ? fint15(v) : (float)(v))
+#else
+#define PLACE_F(v) ((float)(v))
+#endif
+
 /* instance_place_p(self, x + idx, y + idy, obj) for self at whole x, y (|.| < 29900) and |idx|, |idy| <= 16, without
    the doubles where self's box is cached whole (BB_INT / BB_INTS): px, py are whole, so dx, dy are idx, idy exactly,
    moved is idx || idy (whole values below 2^24 are their floats), pin_bbox's box is the ints and the query's floats
@@ -3235,10 +3242,10 @@ int instance_place_ixy(int self, int32_t x, int32_t y, int32_t idx, int32_t idy,
     int32_t ia[4];
     if (q == 1 && pin_ibox_s(self, ia)) {
         struct qctx c;
-        float fl = (float)(ia[0] + idx), ft = (float)(ia[1] + idy), fr = (float)(ia[2] + idx), fb = (float)(ia[3] + idy);
+        float fl = PLACE_F(ia[0] + idx), ft = PLACE_F(ia[1] + idy), fr = PLACE_F(ia[2] + idx), fb = PLACE_F(ia[3] + idy);
         pcol_touch(self);
-        if (moved) pcol_place_marks(self);
-        c.obj = obj; c.self = self; c.hit = NOONE; c.dx = idx; c.dy = idy;
+        if (moved) pcol_place_marks_kept(self);              /* (self's tree rectangle is its box: pcol.c pm_e) */
+        c.obj = obj; c.self = self; c.hit = NOONE;            /* (c.dx, c.dy: set where a search reads them) */
 #ifndef PCOL_EXACT
         {
             int k = xplace_one_i(self, idx, idy, obj);
@@ -3256,6 +3263,7 @@ int instance_place_ixy(int self, int32_t x, int32_t y, int32_t idx, int32_t idy,
                         k = NOONE;
                 }
 #ifdef PLAY_STATS
+                c.dx = idx; c.dy = idy;
                 pcol_search(fl, ft, fr, fb, place_cb, &c);
                 if (c.hit != k) {
                     fprintf(stderr, "instance_place_ixy: static-family answer %d differs from %d (%d %d)\n", k, c.hit,
@@ -3267,6 +3275,7 @@ int instance_place_ixy(int self, int32_t x, int32_t y, int32_t idx, int32_t idy,
             }
         }
 #endif
+        c.dx = idx; c.dy = idy;
         pcol_search(fl, ft, fr, fb, place_cb, &c);
         return c.hit;
     }

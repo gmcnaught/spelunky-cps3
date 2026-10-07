@@ -609,6 +609,25 @@ solid_point_sum's wrapper. 182 host route runs byte-identical to pre-merge main 
 | MAME SOFTFP drain / swim / grave means | 150.9 / 115.7 / 153.3 K | 143.6 / 110.8 / 152.7 K | -4.8 / -4.2 / -0.4 % |
 | MAME max step drain / grave | 1,091 / 678 K | 887 / 544 K | -19 / -20 % |
 
+
+### 12.5 jtcps3 on main 1f1815a (swamp3, totem, pphase spikes, sprdma, piranha4)
+
+.62, jtcps3.rbf 2026-10-02, NC link: `GAME_REV=1f1815a JTV=_p4 NC=nc_robust.txt JT_ROUTES=c_swamp_drain,c_swamp_swim,
+c_swamp_piranha,c_swamp_grave,p5_lush_l5s11,p5_lush_l6s23 scripts/playsh2_jt.sh` (MAME -nodrc: 11 / 11 checksums), then
+mister_run.sh (WAIT 900). PASS 11/11, SPR OK; route step means with step 1:
+
+| Route | section 9 (fddd5a7) | 10.4 (cc1b94f) | 1f1815a | vs cc1b94f | vs 0.525 M |
+|---|---|---|---|---|---|
+| c_swamp_drain | 841.1 K | 763.2 K | 635.4 K | -16.7 % | +21 % |
+| c_swamp_swim | 670.8 K | 611.3 K | 491.1 K | -19.7 % | met |
+| c_swamp_piranha | 422.4 K | 410.1 K | 390.5 K | -4.8 % | met |
+| c_swamp_grave | | | 626.1 K | | +19 % |
+| p5_lush_l5s11 | 516.7 K | 504.4 K | 467.7 K | -7.3 % | met |
+| p5_lush_l6s23 | 510.1 K | 481.5 K | 407.4 K | -15.4 % | met |
+
+Route maxima: drain 5.26 M, swim 5.26 M, piranha 3.41 M, grave 4.71 M, l5s11 3.76 M, l6s23 4.25 M (the level starts).
+Generation: G1-G5 12.8 / 115.6 / 24.6 / 53.3 / 133.4 M.
+
 ## 13. Spear traps near instances (2026-10-06, branch totem on 041d709)
 
 User report (MiSTer): jungle levels slow down whenever something is near a totem trap (oSpearTrapBottom / Top /
