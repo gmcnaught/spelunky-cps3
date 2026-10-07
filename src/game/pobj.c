@@ -1370,7 +1370,7 @@ void ev_step(int i)
     case OBJ_oSmokePuff: pin_sety(p, PSUBV(p->y, PE(p)->yVel)); break;
     case OBJ_oBurn:
         pin_sety(p, PADDV(p->y, PE(p)->yVel));
-        if (collision_point_any(PTOD(p->x), PTOD(p->y), OBJ_oSolid, 0, NOONE)) pin_destroy(i);
+        if (collision_point_any_at(i, 0, 0, OBJ_oSolid)) pin_destroy(i);
         break;
     case OBJ_oItemsGet:
         pin_sety(p, PSUBV(p->y, PE(p)->yVel));
@@ -1381,7 +1381,7 @@ void ev_step(int i)
     case OBJ_oRubble: case OBJ_oRubbleSmall: rubble_step(i); break;
     case OBJ_oPushBlock:                                                       /* inherited: no parent Step */
         if (collision_point_any_at(i, 8, 14, OBJ_oLava) &&
-            !collision_point_any(PTOD(p->x) + 8, PTOD(p->y) + 17, OBJ_oSolid, 0, NOONE))
+            !collision_point_any_at(i, 8, 17, OBJ_oSolid))
             PUNTR(1055);
         break;
     case OBJ_oWeb:                                                             /* objects/oWeb/Step_0.gml */
@@ -1397,11 +1397,11 @@ void ev_step(int i)
     case OBJ_oArrowTrapLeft: case OBJ_oArrowTrapLeftLit: case OBJ_oArrowTrapRight: case OBJ_oArrowTrapRightLit:
         break;                                                                 /* firing = false; the rest commented */
     case OBJ_oBones:                                                           /* objects/oBones/Step_0.gml */
-        if (!collision_point_any(PTOD(p->x) + 8, PTOD(p->y) + 16, OBJ_oSolid, 0, NOONE)) {
+        if (!collision_point_any_at(i, 8, 16, OBJ_oSolid)) {
             pin_sety(p, PADDV(p->y, PE(p)->yVel));
             PE(p)->yVel += PE(p)->yAcc;
         }
-        if (collision_point_any(PTOD(p->x) + 8, PTOD(p->y) + 15, OBJ_oSolid, 0, NOONE)) pin_sety(p, p->y - (PI(1)));
+        if (collision_point_any_at(i, 8, 15, OBJ_oSolid)) pin_sety(p, p->y - (PI(1)));
         break;
     case OBJ_oGamepad: break;                                                  /* prun.c */
     default:
