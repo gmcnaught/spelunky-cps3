@@ -498,7 +498,8 @@ static void ext_reset(void)
     ext_used = 0;
     en_zero(&pin_en[0]);
     nenfree = 0;
-    for (k = EN_MAX - 1; k >= 1; k--) enfree[nenfree++] = (int16_t)k;
+    for (k = EN_SCRATCH - 1; k >= 1; k--) enfree[nenfree++] = (int16_t)k;     /* EN_SCRATCH kept out */
+    en_zero(&pin_en[EN_SCRATCH]);
     en_used = 0;
 }
 
@@ -532,12 +533,18 @@ static int ext_alloc(void)
 
 int pw_ext_used_max(void) { return ext_used_max; }
 
+static int en_scratch(void)
+{
+    en_zero(&pin_en[EN_SCRATCH]);
+    return EN_SCRATCH;
+}
+
 static int en_alloc(void)
 {
     int e;
-    if (nenfree == 0) {
+    if (nenfree == 0) {                              /* full: the scratch record (never record 0, the zeros) */
         PUNTR(9008);
-        return 0;
+        return en_scratch();
     }
     e = enfree[--nenfree];
     en_zero(&pin_en[e]);
@@ -551,8 +558,8 @@ void pw_removed(int i)
     struct pin *p = &PW.in[i];
     rmq(nrmq) = (int16_t)i;                          /* its slot goes back at the step's end (pw_release) */
     nrmq++;
-    if (p->ext > 0) {
-        if (pin_ext[p->ext].en > 0) {
+    if (p->ext > 0 && p->ext != EXT_SCRATCH) {       /* the scratch records are shared: never on a free list */
+        if (pin_ext[p->ext].en > 0 && pin_ext[p->ext].en != EN_SCRATCH) {
             enfree[nenfree++] = pin_ext[p->ext].en;
             en_used--;
         }
@@ -775,7 +782,8 @@ int pin_add(int obj, pos x, pos y, int32_t id)
     PIN_WR(float, p->angle) = 0;
     pin_set_ext(p, pin_needs_ext(obj) ? ext_alloc() : 0);         /* with pin_add's defaults (ext_defaults) */
     if (obj == OBJ_oPlayer1 && p->ext) PE(p)->xprev = x;
-    if (p->ext && pin_needs_en(obj)) pin_ext[p->ext].en = (int16_t)en_alloc();
+    if (p->ext && pin_needs_en(obj))                 /* a scratch ext holder takes the scratch en (nothing to free) */
+        pin_ext[p->ext].en = (int16_t)(p->ext == EXT_SCRATCH ? en_scratch() : en_alloc());
     pw_ta_off(i);                                    /* (a reused slot is placed again by its creation number) */
     ta_on(i);
     pw_draw_mark(i);                                 /* (a reused slot may still be on the list: marked once) */

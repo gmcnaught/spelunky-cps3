@@ -190,8 +190,9 @@ void pw_release(void);
 #endif
 #define EXT_SCRATCH (EXT_MAX - 1)  /* never allocated: PIN_DEAD's record and a full ext_alloc's (pworld.c) */
 #ifndef EN_MAX
-#define EN_MAX 128               /* struct pin_en records (0: the shared zeros) */
+#define EN_MAX 128               /* struct pin_en records (0: the shared zeros, EN_SCRATCH): 54 at most in use */
 #endif
+#define EN_SCRATCH (EN_MAX - 1)    /* never allocated: a full en_alloc's and EXT_SCRATCH's (pworld.c) */
 extern struct pin_ext pin_ext[EXT_MAX];
 extern struct pin_en pin_en[EN_MAX];
 int pin_needs_ext(int obj);                       /* pworld.c: its instances get their own record */
