@@ -27,6 +27,8 @@ grep -q "^#define PIN_MAX ${PIN:-1792}\$" "$G/play.h"; touch "$G/stamp"
 # PCOL_EXACT in every file of the snapshot (pworld, pobj, penemy, pdamsel, pk_jungle, pscript test it too), as test/host's -DPCOL_EXACT
 if [ "${EXACT:-0}" = 1 ]; then for f in "$G"/*.c; do { echo "#define PCOL_EXACT 1"; cat "$f"; } > "$f.tmp" && mv "$f.tmp" "$f"; done; fi
 if [ -n "${GRID_SHIFT:-}" ]; then { echo "#define PCOL_GRID_SHIFT $GRID_SHIFT"; cat "$G/pcol.c"; } > "$G/pcol.tmp" && mv "$G/pcol.tmp" "$G/pcol.c"; fi
+# DEACT=<margin>: play.h's PLAY_DEACT (off-view deactivation, docs/DEACT.md; default 32, DEACT=0 off)
+if [ -n "${DEACT:-}" ]; then sed -i '' "s/^#define PLAY_DEACT [0-9][0-9]*\$/#define PLAY_DEACT $DEACT/" "$G/play.h"; grep -q "^#define PLAY_DEACT $DEACT\$" "$G/play.h"; fi
 # SNAP_FILE / SNAP_SED: an experimental edit of the snapshot (measurements only; src/game is never touched)
 if [ -n "${SNAP_SED:-}" ]; then sed -i '' "$SNAP_SED" "$G/$SNAP_FILE"; fi
 # the hot play files as one translation unit (scripts/unity.sh; UNITY=0: separate)

@@ -481,6 +481,65 @@ static void gamepad_step(uint16_t m)
     GP.down = m;
 }
 
+#if PLAY_DEACT
+/* ---- off-view deactivation (docs/DEACT.md; tools/tracer.py TRACE_DEACT, gml_GlobalScript_trcDeact trcDeactPass) --
+   oGamepad's Begin Step, every step of a level room but its first: (1) the instances the pass deactivated whose
+   (x, y) then is inside the view grown by PLAY_DEACT are activated, in the order they were deactivated; (2) the alive
+   candidates outside it are deactivated, in `with (all)` order (newest first), and listed with their (x, y) */
+#define DL_MAX 320                                /* deactivated at once; more stops the play loop (untranslated 9010) */
+static int16_t dl_i[DL_MAX];                      /* the instances the pass deactivated, in that order */
+static int dl_n;
+static uint8_t dbits[(OBJ_COUNT + 7) / 8], dbits_ok;   /* the candidate objects */
+#define DCAND(o) (dbits[(o) >> 3] & (1 << ((o) & 7)))
+
+static void dcand_init(void)
+{
+    static const int16_t ex[] = { OBJ_oShopkeeper, OBJ_oShopkeeper2, OBJ_oBomb, OBJ_oRopeThrow, OBJ_oFlare,
+                                  OBJ_oFireFrogArmed, OBJ_oFireFrogBomb, OBJ_oDamsel, OBJ_oDice, OBJ_oLampItem,
+                                  OBJ_oLampRedItem, OBJ_oJaws };
+    unsigned k;
+    int o;
+    for (o = 0; o < OBJ_COUNT; o++)
+        if (obj_is(o, OBJ_oEnemy) || obj_is(o, OBJ_oItem) || obj_is(o, OBJ_oTreasure)) dbits[o >> 3] |= (uint8_t)(1 << (o & 7));
+    for (k = 0; k < sizeof ex / sizeof ex[0]; k++) dbits[ex[k] >> 3] &= (uint8_t)~(1 << (ex[k] & 7));
+    dbits_ok = 1;
+}
+
+static int doutside(pos x, pos y, int32_t x0, int32_t y0, int32_t x1, int32_t y1)
+{
+    return PLTI(x, x0) || PGTI(x, x1) || PLTI(y, y0) || PGTI(y, y1);
+}
+
+/* (1) reads a listed instance's x, y now, as the GML reads them through its id (a deactivated instance's variables
+   stay readable: docs/DEACT.md 2) */
+static void deact_pass(void)
+{
+    int32_t x0 = PW.xview - PLAY_DEACT, y0 = PW.yview - PLAY_DEACT;
+    int32_t x1 = PW.xview + 320 + PLAY_DEACT, y1 = PW.yview + 240 + PLAY_DEACT;
+    int16_t *cand = order;                        /* (the snapshot's array: free before the alarm passes) */
+    int k, n = 0, nc = 0, i;
+    if (!dbits_ok) dcand_init();
+    for (k = 0; k < dl_n; k++) {
+        i = dl_i[k];
+        if (doutside(PX(i).x, PX(i).y, x0, y0, x1, y1)) dl_i[n++] = (int16_t)i;
+        else pw_activate(i);
+    }
+    dl_n = n;
+    for (i = pw_nthead; i >= 0; i = pw_ntnext[i]) {   /* creation order; the list below takes them newest first */
+        const struct pin *p = &PX(i);
+        if (!DCAND(p->obj) || !doutside(p->x, p->y, x0, y0, x1, y1)) continue;
+        if (p->ext && (PE(p)->held || PE(p)->forSale)) continue;
+        cand[nc++] = (int16_t)i;
+    }
+    if (dl_n + nc > DL_MAX) { PUNTR(9010); return; }
+    while (nc > 0) {
+        i = cand[--nc];
+        dl_i[dl_n++] = (int16_t)i;
+        pw_deactivate(i);
+    }
+}
+#endif
+
 /* enter the room of a room_goto(); 0, or the room if the play loop does not model it */
 static int room_change(void)
 {
@@ -518,6 +577,11 @@ int play_step(uint16_t keys, void (*record_cb)(int phase))
         if (play_noenemy && isRealLevel()) enemies_out();
         if (record_cb) record_cb(0);
         PW.room_new = 0;
+#if PLAY_DEACT
+        dl_n = 0;
+    } else if (PW.room == R_rLevel || PW.room == R_rLevel2 || PW.room == R_rLevel3) {
+        deact_pass();
+#endif
     }
     view_in_step = 1;
     /* an instance created during the alarm phase gets no alarm pass in it, also for the alarms after the one that

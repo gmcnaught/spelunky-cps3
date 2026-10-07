@@ -17,6 +17,8 @@ cp build/gen/objects.[ch] build/gen/gentables.[ch] build/gen/playtables.[ch] "$J
 # PCOL_EXACT in every file of the snapshot (pworld, pobj, penemy, pdamsel, pk_jungle, pscript test it too), as test/host's -DPCOL_EXACT
 if [ "${EXACT:-0}" = 1 ]; then for f in "$J/gA"/*.c; do { echo "#define PCOL_EXACT 1"; cat "$f"; } > "$f.tmp" && mv "$f.tmp" "$f"; done; fi
 if [ -n "${GRID_SHIFT:-}" ]; then { echo "#define PCOL_GRID_SHIFT $GRID_SHIFT"; cat "$J/gA/pcol.c"; } > "$J/pcol.tmp" && mv "$J/pcol.tmp" "$J/gA/pcol.c"; fi
+# DEACT=<margin>: play.h's PLAY_DEACT (off-view deactivation, docs/DEACT.md; default 32, DEACT=0 off)
+if [ -n "${DEACT:-}" ]; then sed -i '' "s/^#define PLAY_DEACT [0-9][0-9]*\$/#define PLAY_DEACT $DEACT/" "$J/gA/play.h"; grep -q "^#define PLAY_DEACT $DEACT\$" "$J/gA/play.h"; fi
 # OPT=-Os O2FILES="pcol.c pworld.c ...": the build at OPT with those snapshot files kept at O2 by a pragma (a plain
 # O2 pragma emits memmove calls, which do not link: loop-distribute-patterns off)
 for f in ${O2FILES:-}; do
