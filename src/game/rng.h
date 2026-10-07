@@ -17,5 +17,15 @@ uint32_t rng_next(struct rng *r);
 int32_t rng_rand(struct rng *r, int32_t a, int32_t b);
 
 #define RAND(a, b) rng_rand(&g_rng, (a), (b))
+/* a draw whose value the GML throws away (`rand(1, 1);`, `if (rand(1, 2))` that is always true): it advances the RNG */
+#define RAND_DISCARD(a, b) ((void)RAND((a), (b)))
+/* rand(lo, hi) - rand(lo, hi): GML evaluates the left operand first; C leaves the order of a - b unspecified, so the
+   two draws are separate statements here (do not fold them into one expression) */
+static inline int32_t rand_diff(int32_t lo, int32_t hi)
+{
+    int32_t a = RAND(lo, hi);
+    int32_t b = RAND(lo, hi);
+    return a - b;
+}
 
 #endif

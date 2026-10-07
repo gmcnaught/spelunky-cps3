@@ -68,10 +68,10 @@ void scrRoomGen(int room)
         case 7: shopType = SHOP_KISSING; tmpl = mines_shop[b + 2]; GAME.damsel = 1; break;
         }
     } else if (roomPath == 8) {                                                               /* :206 snake pit */
-        RAND(1, 1);
+        RAND_DISCARD(1, 1);
         tmpl = mines_snake[0];
     } else if (roomPath == 9) {                                                               /* :213 */
-        RAND(1, 1);
+        RAND_DISCARD(1, 1);
         tmpl = mines_snake[1];
     } else {                                                                                  /* :220 drop */
         if (roomPath == 7) n = RAND(4, 12);
@@ -333,7 +333,7 @@ static void gen_tree(int xpos, int ypos)
 /* shop tiles shared by the room generators (scrRoomGen2 :409-470 and the same blocks elsewhere) */
 static void tile_q(int room, int xpos, int ypos, int *obj)                    /* "q": dice-house prize */
 {
-    RAND(1, 6);                                                                /* n = rand(1,6) */
+    RAND_DISCARD(1, 6);                                                                /* n = rand(1,6) */
     scrGenerateItem(room, xpos + 8, ypos + 8, 1, obj);
     W.in[*obj].flags |= IF_INDICEHOUSE;
 }
@@ -469,7 +469,7 @@ void scrRoomGen2(int room)
         else n = RAND(1, 8);
         gs_set(&st, S2(211, n, 0));
     } else if (roomPath == 9) {                                               /* :223 mega mouth */
-        RAND(1, 1);
+        RAND_DISCARD(1, 1);
         gs_set(&st, S2(225, 1, 0));
     } else {                                                                  /* :230 drop */
         if (roomPathAbove != 2) n = RAND(1, 6);
@@ -482,7 +482,7 @@ void scrRoomGen2(int room)
         char tile = gs_at(&st, i);
         j = i;
         if (tile == '8') {
-            RAND(1, 1);
+            RAND_DISCARD(1, 1);
             obs_set(ob, &gt_scrRoomGen2_cases, 261, 1, 3);
         } else if (tile == '5') {
             if (RAND(1, 8) == 1) n = RAND(100, 102);
@@ -563,7 +563,7 @@ void scrRoomGen2(int room)
                 W.in[obj].deathtimer = (int16_t)dt;
             } else if (tile == 'x') tile_altar(xpos, ypos);
             else if (tile == 'p') {
-                RAND(1, 2);                                                   /* if (rand(1,2)): always true */
+                RAND_DISCARD(1, 2);                                                   /* if (rand(1,2)): always true */
                 instance_create(xpos, ypos, OBJ_oFakeBones);
             } else if (tile == 'T') gen_tree(xpos, ypos);
         }
@@ -592,7 +592,7 @@ void scrRoomGen3(int room)
         else n = RAND(1, 1);
         gs_set(&st, S3(54, n, 0));
     } else if (scrGetRoomX(x) == G.endRoomX && scrGetRoomY(y) == G.endRoomY) {   /* :61 */
-        RAND(1, 1);
+        RAND_DISCARD(1, 1);
         gs_set(&st, S3(64, 1, 0));
     } else if (roomPath == 0 && RAND(1, 2) == 1) {                            /* :69 side room */
         if (!GAME.altar && RAND(1, 12) == 1) {
@@ -622,16 +622,16 @@ void scrRoomGen3(int room)
         n = RAND(1, 2);
         gs_set(&st, S3(156, n, 0));
     } else if (roomPath == 7) {                                               /* :162 alien craft */
-        RAND(1, 1);
+        RAND_DISCARD(1, 1);
         gs_set(&st, S3(164, 1, 0));
     } else if (roomPath == 8) {
-        RAND(1, 1);
+        RAND_DISCARD(1, 1);
         gs_set(&st, S3(171, 1, 0));
     } else if (roomPath == 9) {
-        RAND(1, 1);
+        RAND_DISCARD(1, 1);
         gs_set(&st, S3(178, 1, 0));
     } else {                                                                  /* :183 */
-        RAND(1, 1);
+        RAND_DISCARD(1, 1);
         gs_set(&st, S3(185, 1, 0));
     }
 
@@ -770,7 +770,7 @@ void scrRoomGen4(int room)
         else n = RAND(1, 1);
         gs_set(&st, S4(54, n, 0));
     } else if (scrGetRoomX(x) == G.endRoomX && scrGetRoomY(y) == G.endRoomY) {   /* :61 */
-        RAND(1, 1);
+        RAND_DISCARD(1, 1);
         gs_set(&st, S4(64, 1, 0));
     } else if (roomPath == 0 && RAND(1, 4) > 1) {                             /* :69 side room */
         if (G.cityOfGold) {
@@ -822,7 +822,7 @@ void scrRoomGen4(int room)
         char tile = gs_at(&st, i);
         j = i;
         if (tile == '8') {
-            RAND(1, 1);
+            RAND_DISCARD(1, 1);
             obs_set(ob, &gt_scrRoomGen4_cases, 234, 1, 3);
         } else if (tile == '5') {
             n = RAND(1, 8);
@@ -948,7 +948,7 @@ void scrRoomGen5(int room)
         char tile = gs_at(&st, i);
         j = i;
         if (tile == '8') {
-            RAND(1, 1);
+            RAND_DISCARD(1, 1);
             obs_set(ob, &gt_scrRoomGen5_cases, 88, 1, 3);
         } else if (tile == '5') {
             n = RAND(1, 8);
@@ -1073,7 +1073,7 @@ void scrRoomGenMarket(int room)
         char tile = gs_at(&st, i);
         j = i;
         if (tile == '8') {
-            RAND(1, 1);
+            RAND_DISCARD(1, 1);
             obs_set(ob, &gt_scrRoomGenMarket_cases, 179, 1, 3);
         } else if (tile == '5') {
             if (RAND(1, 8) == 1) n = RAND(100, 102);
@@ -1137,7 +1137,7 @@ void scrRoomGenMarket(int room)
             else if (tile == 'z') instance_create(xpos + 8, ypos + 8, OBJ_oDice);
             else if (tile == 'B') instance_create(xpos, ypos, OBJ_oTrapBlock);
             else if (tile == 'p') {
-                RAND(1, 2);                                                   /* if (rand(1,2)): always true */
+                RAND_DISCARD(1, 2);                                                   /* if (rand(1,2)): always true */
                 instance_create(xpos, ypos, OBJ_oFakeBones);
             } else if (tile == 'T') gen_tree(xpos, ypos);
         }
@@ -1195,10 +1195,10 @@ void scrRoomGenYeti(int room)
         if (shopType == SHOP_CRAPS) gs_set(&st, SY(172, 6, 0));
         if (shopType == SHOP_KISSING) { gs_set(&st, SY(172, 7, 0)); GAME.damsel = 1; }
     } else if (roomPath == 8) {                                               /* :183 */
-        RAND(1, 1);
+        RAND_DISCARD(1, 1);
         gs_set(&st, SY(185, 1, 0));
     } else if (roomPath == 9) {
-        RAND(1, 1);
+        RAND_DISCARD(1, 1);
         gs_set(&st, SY(192, 1, 0));
     } else {                                                                  /* :197 drop */
         if (roomPath == 7) n = RAND(4, 12);

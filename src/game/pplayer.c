@@ -804,11 +804,7 @@ static void open_chest(int i)
         pin_set_sprite(chest, GSPR_sChestOpen);
         if (RAND(1, 12) == 1 && G.currLevel > 0) {
             obj = pin_create(PX(chest).x, PX(chest).y, OBJ_oBomb);
-            {
-                int a = RAND(0, 3);
-                int b = RAND(0, 3);
-                PE(&PX(obj))->xVel = NI(a - b);
-            }
+            PE(&PX(obj))->xVel = NI(rand_diff(0, 3));
             PE(&PX(obj))->yVel = N(-2);
             pin_set_sprite(obj, GSPR_sBombArmed);
             PE(&PX(obj))->alarm[1] = 40;
@@ -825,11 +821,7 @@ static void open_chest(int i)
                 case 2: obj = pin_create(PX(chest).x, PX(chest).y, OBJ_oSapphire); break;
                 case 3: obj = pin_create(PX(chest).x, PX(chest).y, OBJ_oRuby); break;
                 }
-                {
-                    int a = RAND(0, 3);
-                    int b = RAND(0, 3);
-                    PE(&PX(obj))->xVel = NI(a - b);
-                }
+                PE(&PX(obj))->xVel = NI(rand_diff(0, 3));
                 PE(&PX(obj))->yVel = N(-2);
             }
             if (RAND(1, 4) == 1) {
@@ -840,11 +832,7 @@ static void open_chest(int i)
                 case 2: obj = pin_create(PX(chest).x, PX(chest).y, OBJ_oSapphireBig); break;
                 case 3: obj = pin_create(PX(chest).x, PX(chest).y, OBJ_oRubyBig); break;
                 }
-                {
-                    int a = RAND(0, 3);
-                    int b = RAND(0, 3);
-                    PE(&PX(obj))->xVel = NI(a - b);
-                }
+                PE(&PX(obj))->xVel = NI(rand_diff(0, 3));
                 PE(&PX(obj))->yVel = N(-2);
             }
         }

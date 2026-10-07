@@ -338,8 +338,7 @@ static void jetpack_alarm(int i)
     int obj = pin_create(PX(i).x + PI(xa - xb), PX(i).y + PI(ya - yb), OBJ_oFlareSpark);
     PE(&PX(obj))->yVel = NI(RAND(1, 3));
     {
-        int a = RAND(0, 3), b = RAND(0, 3);
-        PE(&PX(obj))->xVel = NI(a - b);
+        PE(&PX(obj))->xVel = NI(rand_diff(0, 3));
     }
     snd_play(SND_xjetpack);                                                    /* :4 */
 }
@@ -551,8 +550,7 @@ static void open_flare_crate(int i)
     if (chest == NOONE) { PUNTR(2042); return; }
     for (k = 0; k < 3; k++) {
         int obj = pin_create(PX(chest).x, PX(chest).y, OBJ_oFlare);
-        int a = RAND(0, 3), b = RAND(0, 3);
-        PE(&PX(obj))->xVel = NI(a - b);
+        PE(&PX(obj))->xVel = NI(rand_diff(0, 3));
         PE(&PX(obj))->yVel = NI(RAND(1, 3) * -1);
     }
     snd_play(SND_xpickup);                                                     /* :662 */
@@ -970,8 +968,7 @@ static void kali_head_alarm(int i)
     pin_set_sprite(i, GSPR_sGTHHole);
     for (k = 0; k < 6; k++) {
         int obj = pin_create(PX(i).x, PX(i).y, OBJ_oSpider);
-        int a = RAND(0, 3), b = RAND(0, 3);
-        PE(&PX(obj))->xVel = NI(a - b);
+        PE(&PX(obj))->xVel = NI(rand_diff(0, 3));
         PE(&PX(obj))->yVel = NI(-RAND(1, 3));
     }
     snd_play(SND_xthump);
@@ -988,8 +985,7 @@ static void skull_pieces(int i)
         if (PE(p)->colLeft) PE(&PX(piece))->xVel = NI(RAND(1, 3));
         else if (PE(p)->colRight) PE(&PX(piece))->xVel = NI(-RAND(1, 3));
         else {
-            int a = RAND(1, 3), b = RAND(1, 3);
-            PE(&PX(piece))->xVel = NI(a - b);
+            PE(&PX(piece))->xVel = NI(rand_diff(1, 3));
         }
         if (PE(p)->colTop) PE(&PX(piece))->yVel = NI(RAND(0, 3));
         else PE(&PX(piece))->yVel = NI(-RAND(0, 3));

@@ -87,8 +87,7 @@ int pitem_collision(int self, int other)
         snd_play(SND_xchestopen);                                      /* :11 */
         obj = pin_create(PX(self).x, PX(self).y, OBJ_oUdjatEye);
         {
-            int a = RAND(0, 3), b = RAND(0, 3);
-            PE(&PX(obj))->xVel = NI(a - b);
+            PE(&PX(obj))->xVel = NI(rand_diff(0, 3));
         }
         PE(&PX(obj))->yVel = N(-2);
         obj = pin_create(PX(self).x, PX(self).y, OBJ_oPoof);

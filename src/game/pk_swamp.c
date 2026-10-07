@@ -66,8 +66,7 @@ static void bones_and_skull(pos x, pos y, int skull_dy)
     s = pin_create(x, y + PI(skull_dy), OBJ_oSkull);
     PE(&PX(s))->yVel = NI(-RAND(1, 3));
     {
-        int a = RAND(0, 3), b = RAND(0, 3);
-        PE(&PX(s))->xVel = NI(a - b);
+        PE(&PX(s))->xVel = NI(rand_diff(0, 3));
     }
 }
 
@@ -660,8 +659,7 @@ static void jaws_step(int i)
         }
         for (k = 0; k < 4; k++) {
             int obj = pin_create(PX(i).x + PI(16), PX(i).y + PI(16), OBJ_oCrate);
-            int a = RAND(0, 3), b = RAND(0, 3);
-            PE(&PX(obj))->xVel = NI(a - b);
+            PE(&PX(obj))->xVel = NI(rand_diff(0, 3));
             PE(&PX(obj))->yVel = NI(-RAND(1, 2));
         }
         pin_destroy(i);

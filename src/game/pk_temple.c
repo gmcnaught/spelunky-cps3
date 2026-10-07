@@ -1029,8 +1029,7 @@ static void gold_piece(int i, int obj)
     int ya = RAND(0, 4), yb = RAND(0, 4);
     int xa = RAND(0, 4), xb = RAND(0, 4);
     int g = pin_create(p->x + PI(8 + xa - xb), p->y + PI(8 + ya - yb), obj);
-    int a = RAND(0, 3), b = RAND(0, 3);
-    PE(&PX(g))->xVel = NI(a - b);
+    PE(&PX(g))->xVel = NI(rand_diff(0, 3));
     PE(&PX(g))->yVel = NI(RAND(2, 4) * 1);
 }
 
@@ -1238,8 +1237,7 @@ static void olmec_debris(int i, int xr, int x0, int yr, int y0, int xvk)
     if (xvk == 1) PE(&PX(d))->xVel = NI(RAND(1, 4));
     else if (xvk == -1) PE(&PX(d))->xVel = NI(-RAND(1, 4));
     else {
-        int a = RAND(1, 4), b = RAND(1, 4);
-        PE(&PX(d))->xVel = NI(a - b);
+        PE(&PX(d))->xVel = NI(rand_diff(1, 4));
     }
     PE(&PX(d))->yVel = NI(-RAND(1, 3));
 }

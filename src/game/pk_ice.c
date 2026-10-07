@@ -52,8 +52,7 @@ static int rubble8(int i, int obj, int k, int k2)
 static void gold_drop(int i, int obj)
 {
     int g = rubble8(i, obj, 4, 4);
-    int a = RAND(0, 3), b = RAND(0, 3);
-    PE(&PX(g))->xVel = NI(a - b);
+    PE(&PX(g))->xVel = NI(rand_diff(0, 3));
     PE(&PX(g))->yVel = NI(RAND(2, 4) * 1);
 }
 
@@ -373,8 +372,7 @@ static void yetiking_step(int i)                                   /* objects/oY
                 PE(&PX(obj))->forSale = 0;
             }
             {
-                int a = RAND(0, 3), b = RAND(0, 3);
-                PE(&PX(obj))->xVel = NI(a - b);
+                PE(&PX(obj))->xVel = NI(rand_diff(0, 3));
             }
             PE(&PX(obj))->yVel = NI(-RAND(1, 2));
         }
@@ -797,8 +795,7 @@ static void alienboss_step(int i)                                  /* objects/oA
             gem = pin_create(PX(i).x + PI(16), PX(i).y + PI(16),
                              n == 1 ? OBJ_oEmeraldBig : n == 2 ? OBJ_oSapphireBig : OBJ_oRubyBig);
             {
-                int a = RAND(0, 3), b = RAND(0, 3);
-                PE(&PX(gem))->xVel = NI(a - b);
+                PE(&PX(gem))->xVel = NI(rand_diff(0, 3));
             }
             PE(&PX(gem))->yVel = N(-2);
         }
@@ -1045,8 +1042,7 @@ static void darkfall_solid(int i)                                  /* objects/oD
         int yr = RAND(2, 14), xr = RAND(2, 14), obj;
         obj = pin_create(PX(i).x + PI(xr), PX(i).y + PI(yr), OBJ_oRubbleDark);
         {
-            int a = RAND(1, 3), b = RAND(1, 3);
-            PE(&PX(obj))->xVel = NI(a - b);
+            PE(&PX(obj))->xVel = NI(rand_diff(1, 3));
         }
         PE(&PX(obj))->yVel = NI(-RAND(0, 3));
     }

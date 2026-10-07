@@ -59,8 +59,7 @@ static void three_rubble(int i, int big, int small)
 static void gold_drop(int i, int obj)
 {
     int g = rubble_at(i, obj, 4, -1);
-    int a = RAND(0, 3), b = RAND(0, 3);
-    PE(&PX(g))->xVel = NI(a - b);
+    PE(&PX(g))->xVel = NI(rand_diff(0, 3));
     PE(&PX(g))->yVel = NI(RAND(2, 4) * 1);
 }
 
@@ -431,8 +430,7 @@ static void monkey_throw(int i)
         PE(&PX(obj))->canCollect = 0;
         PE(&PX(obj))->alarm[0] = 20;
         {
-            int a = RAND(1, 3), b = RAND(1, 3);
-            PE(&PX(obj))->xVel = NI(a - b);
+            PE(&PX(obj))->xVel = NI(rand_diff(1, 3));
         }
         PE(&PX(obj))->yVel = NI(-RAND(3, 4));
         snd_play(SND_xthrow);                                                         /* :241 */
@@ -440,8 +438,7 @@ static void monkey_throw(int i)
         PG.rope -= 1;
         obj = pin_create(p->x, p->y, OBJ_oRopeThrow);
         {
-            int a = RAND(1, 3), b = RAND(1, 3);
-            PE(&PX(obj))->xVel = NI(a - b);
+            PE(&PX(obj))->xVel = NI(rand_diff(1, 3));
         }
         PE(&PX(obj))->yVel = NI(-RAND(3, 4));
         snd_play(SND_xthrow);                                                         /* :253 */
@@ -455,8 +452,7 @@ static void monkey_throw(int i)
             PE(&PX(obj))->alarm[1] = 40;
         }
         {
-            int a = RAND(1, 3), b = RAND(1, 3);
-            PE(&PX(obj))->xVel = NI(a - b);
+            PE(&PX(obj))->xVel = NI(rand_diff(1, 3));
         }
         PE(&PX(obj))->yVel = NI(-RAND(3, 4));
         snd_play(SND_xthrow);                                                         /* :272 */
@@ -1319,8 +1315,7 @@ static void monkeys_off(int xv_kind)
         struct pin *m = &PX(w[k]);
         if (!m->alive || PE(m)->status != M_GRAB) continue;
         if (xv_kind == 2) {
-            int a = RAND(0, 1), b = RAND(0, 1);
-            PE(m)->xVel = NI(a - b);
+            PE(m)->xVel = NI(rand_diff(0, 1));
         } else
             PE(m)->xVel = xv_kind ? N(1) : N(-1);
         PE(m)->yVel = N(-4);

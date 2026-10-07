@@ -540,8 +540,7 @@ static void spiderhang_step(int i, int giant)
                 gem = pin_create(PX(i).x + PI(16), PX(i).y + PI(24),
                                  r == 1 ? OBJ_oEmeraldBig : r == 2 ? OBJ_oSapphireBig : OBJ_oRubyBig);
                 {
-                    int a = RAND(0, 3), b = RAND(0, 3);
-                    PE(&PX(gem))->xVel = NI(a - b);
+                    PE(&PX(gem))->xVel = NI(rand_diff(0, 3));
                 }
                 PE(&PX(gem))->yVel = N(-2);
             }
@@ -636,8 +635,7 @@ static void giantspider_step(int i)
             gem = pin_create(PX(i).x + PI(16), PX(i).y + PI(24),
                              r == 1 ? OBJ_oEmeraldBig : r == 2 ? OBJ_oSapphireBig : OBJ_oRubyBig);
             {
-                int a = RAND(0, 3), b = RAND(0, 3);
-                PE(&PX(gem))->xVel = NI(a - b);
+                PE(&PX(gem))->xVel = NI(rand_diff(0, 3));
             }
             PE(&PX(gem))->yVel = N(-2);
         }
@@ -876,8 +874,7 @@ static void skeleton_step(int i)
         skull = pin_create(PX(i).x + PI(8), PX(i).y + PI(8), OBJ_oSkull);
         PE(&PX(skull))->yVel = NI(-RAND(1, 3));
         {
-            int a = RAND(0, 3), b = RAND(0, 3);
-            PE(&PX(skull))->xVel = NI(a - b);
+            PE(&PX(skull))->xVel = NI(rand_diff(0, 3));
         }
         kill_count(i);
         pin_destroy(i);

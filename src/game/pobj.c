@@ -371,8 +371,7 @@ static int rubble_at(int i, int obj, int k, int spr)
 static void gold_drop(int i, int obj)
 {
     int g = rubble_at(i, obj, 4, -1);
-    int a = RAND(0, 3), b = RAND(0, 3);
-    PE(&PX(g))->xVel = NI(a - b);
+    PE(&PX(g))->xVel = NI(rand_diff(0, 3));
     PE(&PX(g))->yVel = NI(RAND(2, 4) * 1);
 }
 
@@ -423,8 +422,7 @@ static void destroy_jar_like(int i, int skull)
             if (PE(p)->colLeft) PE(&PX(piece))->xVel = NI(RAND(1, 3));
             else if (PE(p)->colRight) PE(&PX(piece))->xVel = NI(-RAND(1, 3));
             else {
-                int a = RAND(1, 3), b = RAND(1, 3);
-                PE(&PX(piece))->xVel = NI(a - b);
+                PE(&PX(piece))->xVel = NI(rand_diff(1, 3));
             }
             if (PE(p)->colTop) PE(&PX(piece))->yVel = NI(RAND(0, 3));
             else PE(&PX(piece))->yVel = NI(-RAND(0, 3));
@@ -1741,8 +1739,7 @@ void ev_collision(int self, int other)
             pin_create(p->x, p->y, OBJ_oSmokePuff);
             for (k = 0; k < 3; k++) {
                 int piece = pin_create(PX(self).x - PI(2), PX(self).y - PI(2), OBJ_oRubbleSmall);
-                int a = RAND(1, 3), b = RAND(1, 3);
-                PE(&PX(piece))->xVel = NI(a - b);
+                PE(&PX(piece))->xVel = NI(rand_diff(1, 3));
             }
             p = &PX(self);
             if (RAND(1, 3) == 1) pin_create(p->x, p->y, OBJ_oGoldChunk);
