@@ -1276,6 +1276,19 @@ static void stepk_check(int o, int k)
 
 /* 1 when ev_step(i) would do nothing (front_on 0): an object whose Step is treasure_step (stepk SK_TREASURE, kept
    from its first Step) out of view, treasure_step's first test (inview reads the view and the instance only) */
+/* 1 when ev_step(i) of an instance of o is exactly pkg_ev(FEV_STEP, i, 0): front_on 0, the Step kept as package
+   pkg_ev's direct call (SK_PKG + k), and no off-view test before it (pen_offview_obj 0). PLAY_DCHECK: 0 */
+int ev_step_is_pkg(int o, int (*pkg_ev)(int ev, int i, int arg))
+{
+#ifdef PLAY_DCHECK
+    (void)o; (void)pkg_ev;
+    return 0;
+#else
+    return !front_on && stepk[o] > SK_PKG && stepk[o] <= SK_PKG + 5 && !pen_offview_obj[o] &&
+           pcontent_pkg_ev[stepk[o] - SK_PKG] == pkg_ev;
+#endif
+}
+
 int ev_step_idle(int i)
 {
     return stepk[PX(i).obj] == SK_TREASURE && !inview(i, 16);

@@ -23,6 +23,7 @@ void pcol_touch_stale(int obj, int notme, int upto);  /* the touches of a creati
 /* ShouldUseFastCollision(obj) then, when it gives 1, UpdateTree: -1 no instance (no search at all), 1 search the
    tree (pcol_search), 2 test the object's instances in creation order (touching each, pcol_touch) */
 int pcol_query(int obj);
+int pcol_query_kind(int obj);          /* pcol_query's answer without its flush; 0: it would make obj dynamic first */
 /* the object tree (objdefs' parents): first child, next sibling (-1 none); pcol_obj_tree builds it (once) */
 extern int16_t pcol_ochild[], pcol_osib[];
 void pcol_obj_tree(void);

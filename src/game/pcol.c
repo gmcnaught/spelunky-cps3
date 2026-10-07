@@ -1672,6 +1672,16 @@ static inline int query_e(int obj, int gen)
 
 int pcol_query(int obj) { return query_e(obj, 0); }
 
+/* pcol_query(obj)'s answer without the flush (pk_swamp.c's idle piranha batch decides before any write which path
+   line_any takes): 0 when pcol_query would first make obj dynamic (query_dyn) */
+int pcol_query_kind(int obj)
+{
+    int cnt = ocnt[obj];
+    if (cnt == 0) return -1;
+    if (cnt < rn[rroot].level) return 2;
+    return (oinfo[obj] & (OI_MEMBER | OI_DYN)) ? 1 : 0;
+}
+
 int pcol_count(int obj) { return ocnt[obj]; }
 
 /* HandleCollision */
