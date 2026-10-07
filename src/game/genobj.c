@@ -629,7 +629,7 @@ static void destroy_event(int i)
         if (!G.cleanSolids) {
             int e = instance_create(x, y, OBJ_oCaveman);
             W.in[e].flags |= IF_INVINCIBLE;      /* invincible = 20 */
-            W.in[e].status = 98;
+            W.in[e].status = E_STUNNED;
             W.in[e].counter = 200;               /* stunTime of oEnemy */
             UNTRANSLATED(2001);                  /* invincible = 20 is not a flag */
         }

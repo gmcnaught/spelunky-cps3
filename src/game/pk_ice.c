@@ -21,8 +21,6 @@
 #include "pcol.h"
 #include "../snd/sndgame.h"
 
-enum { E_STUNNED = 98, E_DEAD = 99, E_LEFT = 0, E_RIGHT = 1 };
-
 static double gabs(double a) { return a < 0 ? -a : a; }
 static void solid_create(struct pin *p)                            /* objects/oSolid/Create_0.gml */
 {
@@ -1110,7 +1108,7 @@ static void springtrap_collision(int i, int o)
             pin_sety(q, q->y - PI(24));
             PE(q)->yVel = N(-8);
             if (q->type == T_DAMSEL) {
-                if (PE(q)->facing == 18) PE(q)->xVel -= N(1);
+                if (PE(q)->facing == LEFT) PE(q)->xVel -= N(1);
                 else PE(q)->xVel += N(1);
             }
             PE(&PX(i))->counter = 10;
@@ -1496,7 +1494,7 @@ static int ev_destroy_ice(int i)
             int e = pin_create(p->x, p->y, OBJ_oCaveman);
             struct pin *q = &PX(e);
             q->invincible = 20;
-            PE(q)->status = 98;
+            PE(q)->status = E_STUNNED;
             PE(q)->counter = PEN(q)->stunTime;
         }
         return 1;

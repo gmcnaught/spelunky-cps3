@@ -901,7 +901,7 @@ static void sacrifice(int i, int damsel)
     m1 = damsel ? "KALI ACCEPTS YOUR SACRIFICE!" : "KALI ACCEPTS THE SACRIFICE!";
     if (DLE(G.favor, -8))
         m1 = damsel ? "KALI DEVOURS YOUR SACRIFICE!" : "KALI DEVOURS THE SACRIFICE!";
-    else if (PE(p)->status == 98)
+    else if (PE(p)->status == E_STUNNED)
         G.favor += damsel ? fav * 1.5 : fav;
     else
         G.favor += damsel ? fav : fav / 2;
@@ -1066,7 +1066,7 @@ static void dice_body(int i)
             if (!o->invincible && o->obj != OBJ_oMagmaMan) {
                 PE(o)->xVel = PE(p)->xVel;
                 if (o->type == T_CAVEMAN || o->obj == OBJ_oManTrap || o->obj == OBJ_oYeti || o->obj == OBJ_oHawkman) {
-                    if (PE(o)->status != 98) {
+                    if (PE(o)->status != E_STUNNED) {
                         if (o->obj == OBJ_oManTrap) {
                             int ly = RAND(0, 16);
                             int lx = RAND(0, 16);
@@ -1075,13 +1075,13 @@ static void dice_body(int i)
                             pin_create(o->x, o->y, OBJ_oBlood);
                         o = &PX(e);
                         PE(o)->hp -= 1;
-                        PE(o)->status = 98;
+                        PE(o)->status = E_STUNNED;
                         PE(o)->counter = PEN(o)->stunTime;
                         PE(o)->yVel = N(-6);
                         snd_play(SND_xhit);
                     }
                 } else if (o->type == T_SHOPKEEPER) {
-                    if (PE(o)->status < 98) {
+                    if (PE(o)->status < E_STUNNED) {
                         pin_create(o->x, o->y, OBJ_oBlood);
                         o = &PX(e);
                         PE(o)->hp -= 1;
@@ -1098,7 +1098,7 @@ static void dice_body(int i)
                         snd_play(SND_xhit);
                     }
                 } else if (o->obj == OBJ_oAlienBoss) {
-                    if (PE(o)->status != 99 && o->spr != GSPR_sAlienBossHurt) {
+                    if (PE(o)->status != E_DEAD && o->spr != GSPR_sAlienBossHurt) {
                         pin_create(o->x + PI(8), o->y + PI(8), OBJ_oBlood);
                         o = &PX(e);
                         PE(o)->hp -= 1;
@@ -1121,7 +1121,7 @@ static void dice_body(int i)
         if (collision_rect_p(x - 2, y - 2, x + 2, y + 2, OBJ_oDamsel, 0, NOONE) != NOONE) {
             int d = instance_nearest_p(x, y, OBJ_oDamsel);
             struct pin *o = &PX(d);
-            if (!o->invincible && PE(o)->status != 2 && PE(o)->status != 99) {
+            if (!o->invincible && PE(o)->status != 2 && PE(o)->status != E_DEAD) {
                 pin_create(PX(i).x, PX(i).y, OBJ_oBlood);
                 o = &PX(d);
                 if (PE(o)->held) {

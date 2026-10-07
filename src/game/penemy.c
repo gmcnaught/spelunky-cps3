@@ -18,8 +18,6 @@
 #include <stdlib.h>
 #endif
 
-enum { E_STUNNED = 98, E_DEAD = 99, E_LEFT = 0, E_RIGHT = 1 };
-
 static int bloodless_of(int i)                                     /* Create's bloodless = true */
 {
     int o = PX(i).obj;
@@ -266,7 +264,7 @@ int pen_hit_common(int e, int kind)
             snd_play(SND_xhit);                                                /* oItem :263, oEnemy :198 */
         }
     } else if (t == T_SHOPKEEPER) {
-        if (PE(o)->status < 98) {
+        if (PE(o)->status < E_STUNNED) {
             blood(e, X(e), Y(e), 1);
             o = &PX(e);
             PE(o)->hp -= 1;
@@ -291,7 +289,7 @@ int pen_hit_common(int e, int kind)
             snd_play(SND_xhit);                                                /* :293, :229 */
         }
     } else if (t == T_ALIENBOSS) {
-        if (PE(o)->status != 99 && o->spr != GSPR_sAlienBossHurt) {
+        if (PE(o)->status != E_DEAD && o->spr != GSPR_sAlienBossHurt) {
             blood(e, X(e) + 8, Y(e) + 8, 1);
             o = &PX(e);
             PE(o)->hp -= 1;
@@ -334,7 +332,7 @@ void pen_parent_step(int i)
         if (PL.state == DUCKING && NLT(NABS(PE(q)->xVel), N(2))) pin_sety(p, q->y - PI(10));
         else pin_sety(p, q->y - PI(12));
         pin_setdepth(p, 1);
-        if (PL.holdItem == NOONE || PE(p)->status < 98) PE(p)->held = 0;
+        if (PL.holdItem == NOONE || PE(p)->status < E_STUNNED) PE(p)->held = 0;
     } else
         pin_setdepth(p, 60);
     if (CPn(X(i) + (sprw(i) >> 1), Y(i) + (sprh(i) >> 1), OBJ_oWaterSwim, i)) {   /* :34 */
@@ -370,23 +368,23 @@ void pen_parent_step(int i)
             PEN(p)->countsAsKill = 0;
             if (!bloodless_of(i)) blood(i, X(i) + sprw(i) / 2.0, Y(i) + sprh(i) / 2.0, 3);
             p = &PX(i);
-            if (caveman_like(p->type) || p->type == T_SHOPKEEPER) PE(p)->status = 99;
+            if (caveman_like(p->type) || p->type == T_SHOPKEEPER) PE(p)->status = E_DEAD;
         }
         PE(p)->myGrav = 0;
         PE(p)->xVel = 0;
         PE(p)->yVel = N(0.2);
     }
-    if (PE(p)->status >= 98) {                                             /* :131 sacrifice */
+    if (PE(p)->status >= E_STUNNED) {                                             /* :131 sacrifice */
         if (!PE(p)->held && NEQ(PE(p)->xVel, N(0)) && NEQ(PE(p)->yVel, N(0))) {
             if (CP(X(i) + 8, Y(i) + 16, OBJ_oSacAltarLeft)) pitems_world(5014, i, 0);
         } else
             PEN(p)->sacCount = 20;
     }
-    if (PE(p)->status == 98 && (NGT(NABS(PE(p)->xVel), N(2)) || NGT(NABS(PE(p)->yVel), N(2)))) {   /* :170 projectile */
+    if (PE(p)->status == E_STUNNED && (NGT(NABS(PE(p)->xVel), N(2)) || NGT(NABS(PE(p)->yVel), N(2)))) {   /* :170 projectile */
         int obj = collision_rect_p(X(i), Y(i), X(i) + 16, Y(i) + 16, OBJ_oEnemy, 0, i);
         if (obj != NOONE) {
             if (!PX(obj).invincible && PX(obj).obj != OBJ_oMagmaMan) {
-                if (PE(&PX(obj))->status < 98) PE(&PX(obj))->xVel = PE(p)->xVel;
+                if (PE(&PX(obj))->status < E_STUNNED) PE(&PX(obj))->xVel = PE(p)->xVel;
                 pen_hit_common(obj, 1);
                 /* type "Arrow" / "Fish Bone": not enemies */
             }
@@ -1326,7 +1324,7 @@ int pen_collision(int self, int other)
             for (k = 0; k < n; k++) {
                 int c = w[k];
                 if (!PX(c).alive) continue;
-                if (DLT(distance_to_object_p(c, OBJ_oPlayer1), 100) && PE(&PX(c))->status < 98) {
+                if (DLT(distance_to_object_p(c, OBJ_oPlayer1), 100) && PE(&PX(c))->status < E_STUNNED) {
                     PE(&PX(c))->status = 2;
                     snd_play(SND_xalert);                                      /* oEnemySight/Collision_oCharacter :6 */
                 }
@@ -1335,7 +1333,7 @@ int pen_collision(int self, int other)
             for (k = 0; k < n; k++) {
                 int c = w[k];
                 if (!PX(c).alive) continue;
-                if (DLT(distance_to_object_p(c, OBJ_oPlayer1), 100) && PE(&PX(c))->status < 98) {
+                if (DLT(distance_to_object_p(c, OBJ_oPlayer1), 100) && PE(&PX(c))->status < E_STUNNED) {
                     PE(&PX(c))->status = 2;
                     snd_play(SND_xalert);                                      /* oEnemySight/Collision_oCharacter :15 */
                 }
@@ -1427,7 +1425,7 @@ int pen_jar_hit(int jar, int skull)
             struct pin *o = &PX(e);
             PE(o)->xVel = PE(j)->xVel;
             if (o->type == T_CAVEMAN || o->type == T_MANTRAP || o->type == T_YETI || o->type == T_SHOPKEEPER) {
-                if (PE(o)->status != 98) {
+                if (PE(o)->status != E_STUNNED) {
                     if (o->type != T_MANTRAP) pin_create(o->x, o->y, OBJ_oBlood);
                     o = &PX(e);
                     PE(o)->status = E_STUNNED;
@@ -1452,7 +1450,7 @@ int pen_jar_hit(int jar, int skull)
 void pen_player_pickup_enemy(int i)
 {
     int obj = instance_nearest_p(X(i), Y(i), OBJ_oEnemy);
-    if (PE(&PX(obj))->status >= 98 && PE(&PX(obj))->canPickUp) {
+    if (PE(&PX(obj))->status >= E_STUNNED && PE(&PX(obj))->canPickUp) {
         PL.holdItem = obj;
         PE(&PX(obj))->held = 1;
         PL.whoaTimer = PL.whoaTimerMax;

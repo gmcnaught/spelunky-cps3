@@ -1344,7 +1344,7 @@ void ev_step(int i)
     case OBJ_oGoldIdol: goldidol_step(i); break;
     case OBJ_oKey:
         item_step(i);
-        if (PE(&PX(i))->held) pin_set_sprite(i, PL.facing == 18 ? GSPR_sKeyLeft : GSPR_sKeyRight);
+        if (PE(&PX(i))->held) pin_set_sprite(i, PL.facing == LEFT ? GSPR_sKeyLeft : GSPR_sKeyRight);
         break;
     case OBJ_oWhip: whip_step(i, 0); break;
     case OBJ_oWhipPre: whip_step(i, 1); break;

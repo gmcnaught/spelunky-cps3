@@ -15,7 +15,6 @@
 #include <stdlib.h>
 #endif
 
-enum { E_STUNNED = 98, E_DEAD = 99, E_LEFT = 0, E_RIGHT = 1 };
 /* oManTrap statuses */
 enum { MT_IDLE = 0, MT_WALK = 1, MT_SLEEPY = 96, MT_EATING = 97 };
 /* oFrog / oFireFrog / oMonkey statuses */
@@ -222,7 +221,7 @@ static void enemy_spears(int i)
             if (PE(p)->hp > 0) {
                 PE(p)->hp -= 2;
                 PEN(p)->countsAsKill = 0;
-                PE(p)->status = 98;
+                PE(p)->status = E_STUNNED;
                 PE(p)->counter = PEN(p)->stunTime;
                 PE(p)->yVel = N(-6);
                 if (DLT(X(trap) + 8, X(i) + 8)) PE(p)->xVel = N(4);

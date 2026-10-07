@@ -1959,7 +1959,7 @@ void scrUseItem(void)
                     }
                     if (!t) {
                         int o2 = pin_create(PX(PL.holdItem).x, PX(PL.holdItem).y, OBJ_oRopeThrow);
-                        if (PL.facing == 18) PE(&PX(o2))->xVel = N(-3.2);
+                        if (PL.facing == LEFT) PE(&PX(o2))->xVel = N(-3.2);
                         else PE(&PX(o2))->xVel = N(3.2);
                         PE(&PX(o2))->yVel = N(0.5);
                         pin_destroy(obj);

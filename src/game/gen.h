@@ -11,6 +11,7 @@
  */
 #ifndef GEN_H
 #define GEN_H
+#include "gmlstatus.h"                   /* E_*, D_*, S_*: the objects' status constants */
 #include <stdint.h>
 #include "inst.h"
 

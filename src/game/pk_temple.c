@@ -21,7 +21,7 @@
 #include "pmath.h"
 #include "pmsg.h"
 
-enum { E_IDLE = 0, E_WALK = 1, E_STUNNED = 98, E_DEAD = 99, E_LEFT = 0, E_RIGHT = 1 };
+enum { E_IDLE = 0, E_WALK = 1 };                 /* (E_STUNNED, E_DEAD, E_LEFT, E_RIGHT: gmlstatus.h) */
 
 /* collision_point(x, y, obj, -1, -1): the runner reads a bool argument as value > 0.5, so prec and notme are false */
 static int CPm(double x, double y, int obj) { return collision_point_any(x, y, obj, 0, NOONE); }
@@ -422,11 +422,11 @@ static void magma_hit_enemy(int i, int e, int man)
     if (o->type == T_MAGMAMAN) return;
     PE(o)->yVel = N(-4);
     PE(o)->xVel = DLT(X(i), PTOD(o->x)) ? N(-3) : N(3);
-    if (PE(o)->status != 98) snd_play(SND_xflame);                             /* :8 */
+    if (PE(o)->status != E_STUNNED) snd_play(SND_xflame);                             /* :8 */
     PEN(o)->burning = 100;
     PE(o)->hp -= 2;
     if (!man || (o->type != T_TOMBLORD && o->type != T_YETIKING)) {
-        PE(o)->status = 98;
+        PE(o)->status = E_STUNNED;
         PE(o)->counter = 50;
     }
 }
@@ -794,7 +794,7 @@ static void fly_hit(int i, int o)
             q = &PX(o);
             if (PE(q)->hp < 0) PEN(q)->bloodLeft -= 1;
         }
-        PE(q)->status = 98;
+        PE(q)->status = E_STUNNED;
         PE(q)->counter = 20;
         snd_play(SND_xhit);                                                    /* :28 */
         pin_destroy(i);
@@ -1393,7 +1393,7 @@ static void olmec_alarm(int i, int a)
             int hw = w[k], h;
             if (!PX(hw).alive) continue;
             h = pin_create(PX(hw).x, PX(hw).y, OBJ_oHawkman);
-            PE(&PX(h))->status = 98;
+            PE(&PX(h))->status = E_STUNNED;
             PE(&PX(h))->hp = 1;
             PE(&PX(h))->xVel = N(-3);
             PE(&PX(h))->yVel = N(-5);

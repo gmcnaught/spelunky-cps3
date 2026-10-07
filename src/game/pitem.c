@@ -29,11 +29,11 @@ int pitem_step(int i)
         return 1;
     case OBJ_oWebCannon:                                               /* objects/oWebCannon/Step_0.gml */
         item_step(i);
-        if (PE(&PX(i))->held) pin_set_sprite(i, PL.facing == 18 ? GSPR_sWebCannonL : GSPR_sWebCannonR);
+        if (PE(&PX(i))->held) pin_set_sprite(i, PL.facing == LEFT ? GSPR_sWebCannonL : GSPR_sWebCannonR);
         return 1;
     case OBJ_oMattock:                                                 /* objects/oMattock/Step_0.gml */
         item_step(i);
-        if (PE(&PX(i))->held) pin_set_sprite(i, PL.facing == 18 ? GSPR_sMattockLeft : GSPR_sMattockRight);
+        if (PE(&PX(i))->held) pin_set_sprite(i, PL.facing == LEFT ? GSPR_sMattockLeft : GSPR_sMattockRight);
         return 1;
     case OBJ_oMachete: case OBJ_oPistol: case OBJ_oShotgun: case OBJ_oSceptre:   /* <obj>/Step_0.gml */
         item_step(i);
@@ -42,13 +42,13 @@ int pitem_step(int i)
                     PX(i).obj == OBJ_oShotgun ? GSPR_sShotgunLeft : GSPR_sSceptreLeft;
             int r = PX(i).obj == OBJ_oMachete ? GSPR_sMacheteRight : PX(i).obj == OBJ_oPistol ? GSPR_sPistolRight :
                     PX(i).obj == OBJ_oShotgun ? GSPR_sShotgunRight : GSPR_sSceptreRight;
-            pin_set_sprite(i, PL.facing == 18 ? l : r);
+            pin_set_sprite(i, PL.facing == LEFT ? l : r);
         }
         return 1;
     case OBJ_oBow:                                                     /* objects/oBow/Step_0.gml */
         item_step(i);
         if (PX(i).alive && PE(&PX(i))->held) {
-            pin_set_sprite(i, PL.facing == 18 ? GSPR_sBowLeft : GSPR_sBowRight);
+            pin_set_sprite(i, PL.facing == LEFT ? GSPR_sBowLeft : GSPR_sBowRight);
             if (NGE(PL.bowStrength, N(10))) pin_setimg(&PX(i), 3);
             else if (NGT(PL.bowStrength, N(6))) pin_setimg(&PX(i), 2);
             else if (NGT(PL.bowStrength, N(2))) pin_setimg(&PX(i), 1);

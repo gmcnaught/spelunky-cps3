@@ -10,9 +10,6 @@
 #include "pmsg.h"                                /* the HUD messages (trMessages) */
 #include "pcontent.h"                            /* P7 content packages (docs/CONTENT.md) */
 
-enum { S_IDLE = 0, S_WALK = 1, S_ATTACK = 2, S_THROW = 3, S_PATROL = 4, S_FOLLOW = 5, S_STUNNED = 98, S_DEAD = 99 };
-enum { E_LEFT = 0, E_RIGHT = 1 };
-
 /* objects/oShopkeeper/Create_0.gml (fromgen: the generator set style, status, facing) */
 int pshop_create(int i, int fromgen)
 {
@@ -644,8 +641,8 @@ static void bullet_collision(int b, int other)
             }
             PE(o)->hp -= 4;
             if ((o->type == T_CAVEMAN || o->type == T_SHOPKEEPER || oo == OBJ_oYeti || oo == OBJ_oHawkman) &&
-                PE(o)->status != 99) {
-                PE(o)->status = 98;
+                PE(o)->status != E_DEAD) {
+                PE(o)->status = E_STUNNED;
                 PE(o)->counter = 20;
             }
             if (PEN(o)->bloodLeft > 0) {
@@ -759,7 +756,7 @@ void pshop_pay(int i)
         if (G.thiefLevel > 0 || G.murderer || !PE(&PX(obj))->forSale) {
         } else if (n == 0 && PG.money >= kiss) {
             if (PE(&PX(obj))->forSale && !PE(&PX(obj))->held) {
-                PE(&PX(obj))->status = 6;                                    /* KISS */
+                PE(&PX(obj))->status = D_KISS;
                 pin_set_sprite(obj, GSPR_sDamselKissL);
                 PG.money -= kiss;
                 PG.plife += 1;

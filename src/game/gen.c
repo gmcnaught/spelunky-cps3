@@ -621,7 +621,7 @@ static int scrInitLevel(void)
         WITH_BEGIN(e, OBJ_oExit)
             if (W.in[e].etype == EX_EXIT) {
                 obj = instance_create(W.in[e].x, W.in[e].y, OBJ_oShopkeeper);
-                W.in[obj].status = 4;
+                W.in[obj].status = S_PATROL;
             }
         WITH_END
     }

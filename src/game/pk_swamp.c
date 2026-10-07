@@ -27,7 +27,6 @@
 #define CAPEOPEN(p)    (PE(p)->trigger)         /* oCape open */
 #define VDEAD(p)       (PEN(p)->edead)          /* oVampire dead */
 
-enum { E_LEFT = 0, E_RIGHT = 1, E_STUNNED = 98, E_DEAD = 99 };
 /* oVampire's status values */
 enum { V_IDLE, V_WALK, V_ATTACK, V_THROW, V_RECOVER, V_BOUNCE, V_HANG, V_FLY };
 
@@ -1472,7 +1471,7 @@ int pswamp_enemy(int site, int e, int arg)
         return o->obj == OBJ_oVampire;                         /* bloodless (and its own collision event) */
     case 5016:                                                 /* oItem Step :243: vampires are weak to stakes */
         if (o->obj != OBJ_oVampire) return 0;
-        if (PE(o)->status != 98) PE(o)->hp -= 3;
+        if (PE(o)->status != E_STUNNED) PE(o)->hp -= 3;
         return 1;
     }
     return 0;

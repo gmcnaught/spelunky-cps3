@@ -8,8 +8,6 @@
 #include "../snd/sndgame.h"                     /* the GML sound calls (src/snd) */
 #include "pcontent.h"                            /* P7 content packages (docs/CONTENT.md) */
 
-enum { D_IDLE = 0, D_RUN = 1, D_THROWN = 2, D_YELL = 3, D_EXIT = 4, D_SLAVE = 5, D_KISS = 6, D_DEAD = 99 };
-
 /* objects/oDamsel/Create_0.gml (after oItem's) */
 int pdam_create(int i, int fromgen)
 {
@@ -313,7 +311,7 @@ void pen_item_hit_damsel(int it)
     struct pin *o;
     if (obj == NOONE) return;
     o = &PX(obj);
-    if (!o->invincible && PE(o)->status != 99 && PEN(o)->hit == 0) {
+    if (!o->invincible && PE(o)->status != D_DEAD && PEN(o)->hit == 0) {
         if (!(PE(o)->held && PE(&PX(it))->safe)) {
             scrCreateBlood(it, o->x, o->y, 1);
             o = &PX(obj);

@@ -255,15 +255,18 @@ static void transition_step(int i)
     }
 }
 
+/* objects/oPDummy/Create_0.gml's statuses (START, END, LAVA: not in the transition rooms) */
+enum { PD_TRANSITION = 0, PD_STOPPED = 99 };
+
 /* objects/oPDummy/Step_0.gml (transition part) */
 static void pdummy_step(int i)
 {
     struct pin *p = &PX(i);
     pin_sety(p, PADDV(p->y, PE(p)->yVel));
-    if (PE(p)->status != 99 && collision_point_p(PTOD(p->x) + 8, PTOD(p->y), OBJ_oDamselKiss, 0, NOONE) != NOONE) {   /* P5 */
+    if (PE(p)->status != PD_STOPPED && collision_point_p(PTOD(p->x) + 8, PTOD(p->y), OBJ_oDamselKiss, 0, NOONE) != NOONE) {   /* P5 */
         int person = instance_nearest_p(PTOD(p->x) + 8, PTOD(p->y), OBJ_oDamselKiss);
         if (!PE(&PX(person))->trigger) {                                             /* not kissed */
-            PE(p)->status = 99;                                                    /* STOPPED */
+            PE(p)->status = PD_STOPPED;
             PE(p)->xVel = 0;
             PE(p)->yVel = 0;
             pin_set_sprite(i, GSPR_sStandLeft);
@@ -272,7 +275,7 @@ static void pdummy_step(int i)
         }
     }
     if (instance_exists_p(OBJ_oTunnelMan)) PUNTR(4020);
-    if (PE(p)->status == 0) {                                                      /* TRANSITION */
+    if (PE(p)->status == PD_TRANSITION) {
         if (PTOD(p->x) >= 280) {
             if (p->spr != GSPR_sPExit && p->spr != GSPR_sDamselExit && p->spr != GSPR_sTunnelExit) {
                 snd_play(SND_xsteps);                                          /* :49 */
@@ -280,7 +283,7 @@ static void pdummy_step(int i)
             }
         } else
             pin_setx(p, p->x + (PI(2)));
-    } else if (PE(p)->status != 99)                                                /* STOPPED: nothing */
+    } else if (PE(p)->status != PD_STOPPED)                                        /* STOPPED: nothing */
         PUNTR(4021);
 }
 

@@ -195,7 +195,7 @@ void scrRoomGen(int room)
             } else if (tile == 'D') {                                                        /* :457 */
                 obj = instance_create(xpos + 8, ypos + 8, OBJ_oDamsel);
                 W.in[obj].flags |= IF_FORSALE;
-                W.in[obj].status = 5;
+                W.in[obj].status = D_SLAVE;
             } else if (tile == 's') {                                                        /* :463 */
                 if (RAND(1, 10) == 1) instance_create(xpos, ypos, OBJ_oSnake);
                 else if (RAND(1, 2) == 1) instance_create(xpos, ypos, OBJ_oBrick);
@@ -372,7 +372,7 @@ static void tile_damsel_for_sale(int xpos, int ypos, int *obj)                /*
 {
     *obj = instance_create(xpos + 8, ypos + 8, OBJ_oDamsel);
     W.in[*obj].flags |= IF_FORSALE;
-    W.in[*obj].status = 5;
+    W.in[*obj].status = D_SLAVE;
 }
 
 static void tile_smooth(int xpos, int ypos, int spr, int *obj)                /* "b" / ":" */
