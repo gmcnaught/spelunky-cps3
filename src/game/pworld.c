@@ -525,7 +525,9 @@ static int ext_alloc(void)
 
 int pw_ext_used_max(void) { return ext_used_max; }
 
-static int en_scratch(void)
+/* (out of line, and pin_add calls en_alloc alone: pin_add is hot and cached; a scratch-ext test there with en_zero
+   inlined grew it by 472 bytes, which moved the cached code after it: jtcps3 route steps +1 to +4 %) */
+static __attribute__((noinline)) int en_scratch(void)
 {
     en_zero(&pin_en[EN_SCRATCH]);
     return EN_SCRATCH;
@@ -774,8 +776,7 @@ int pin_add(int obj, pos x, pos y, int32_t id)
     PIN_WR(float, p->angle) = 0;
     pin_set_ext(p, pin_needs_ext(obj) ? ext_alloc() : 0);         /* with pin_add's defaults (ext_defaults) */
     if (obj == OBJ_oPlayer1 && p->ext) PE(p)->xprev = x;
-    if (p->ext && pin_needs_en(obj))                 /* a scratch ext holder takes the scratch en (nothing to free) */
-        pin_ext[p->ext].en = (int16_t)(p->ext == EXT_SCRATCH ? en_scratch() : en_alloc());
+    if (p->ext && pin_needs_en(obj)) pin_ext[p->ext].en = (int16_t)en_alloc();   /* (a scratch ext holder's: never freed) */
     pw_ta_off(i);                                    /* (a reused slot is placed again by its creation number) */
     ta_on(i);
     pw_draw_mark(i);                                 /* (a reused slot may still be on the list: marked once) */
