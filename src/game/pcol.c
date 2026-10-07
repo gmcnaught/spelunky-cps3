@@ -1195,9 +1195,18 @@ static int remove_fast(int e)
 }
 
 /* CollisionUpdate: take the entry out (if in) and put it in with its current box */
+/* pm_e: an entry whose tree rectangle (er, erw, its grid cell) is its current box. pcol_place_marks_kept sets it on an
+   entry in the tree and not stale (pcol_handle's premise: a tree member that is not stale has its box as its tree
+   rectangle; outside an instance_place_p fam scan, the only place cupdate_at puts a shifted box); every change of the
+   box marks through pcol_changed / pcol_mark, which drop it, as do a shifted cupdate_at, entry_clear, the room reset,
+   rebuild_all and gen_load. A grid-mode cupdate of it would write the same rectangle (er_set) into the same cell
+   (pgrid_put returns on an unchanged cell): it is left as it is (the PLAY_STATS builds compute it and compare) */
+static int16_t pm_e = -1;
+
 static void cupdate_at(int e, float dx, float dy)
 {
     struct rbr b;
+    if (e == pm_e) pm_e = -1;                     /* (a shifted box, or one not skipped: recomputed below) */
     if (!(ef[e] & EF_TREE) && edead(e)) return;
     if (rlock) return;
     if (!emember(e)) return;
@@ -1220,7 +1229,29 @@ static void cupdate_at(int e, float dx, float dy)
     ef[e] |= EF_TREE;
 }
 
-static void cupdate(int e) { cupdate_at(e, 0, 0); }
+
+static void cupdate(int e)
+{
+    if (e == pm_e && PCOL_GRID_ON && (ef[e] & EF_TREE) && !rlock && emember(e)) {
+        PCST(pcol_st.inserts++);
+#if defined(PLAY_STATS) && !defined(PCOL_EXACT)
+        {
+            struct rbr b;
+            int c[4], cell;
+            ebbox_rect(e, 0, 0, &b);
+            pg_cells(b.r, b.w, c);
+            cell = (c[2] - c[0] > 1 || c[3] - c[1] > 1) ? PGRID_BIG : c[1] * PGRID_W + c[0];
+            if (b.w != erw[e] || b.r[0] != er[e][0] || b.r[1] != er[e][1] || b.r[2] != er[e][2] ||
+                b.r[3] != er[e][3] || cell != pg_cell[e]) {
+                fprintf(stderr, "cupdate: kept entry %d's box differs from its tree rectangle\n", e);
+                abort();
+            }
+        }
+#endif
+        return;
+    }
+    cupdate_at(e, 0, 0);
+}
 
 /* CollisionMarkDirty (with the stale bounding box flag its callers set) */
 /* the stale tree members (EF_STALE, on the dirty list): pushed when they become stale; entries no longer stale and
@@ -1307,6 +1338,7 @@ static void mark_e(int e)
    first looks at it (sync1) or any UpdateTree (sync_all) */
 void pcol_changed(int i)
 {
+    if (i == pm_e) pm_e = -1;
     if (!PW.in[i].alive || (ef[i] & EF_NOSNAP)) return;
     mark_e(i);
 }
@@ -1401,14 +1433,27 @@ void pcol_place_marks(int self)
     mark_e(self);
 }
 
+/* pcol_place_marks where self's tree rectangle is its box (in the tree, not stale: instance_place_ixy, after its
+   pcol_touch): the flush that follows may keep it (pm_e) */
+void pcol_place_marks_kept(int self)
+{
+    int kept;
+    sync1(self);
+    kept = (ef[self] & (EF_TREE | EF_STALE)) == EF_TREE;
+    mark_e(self);
+    pm_e = kept ? (int16_t)self : -1;
+}
+
 void pcol_mark(int i)
 {
+    if (i == pm_e) pm_e = -1;
     sync1(i);
     mark_e(i);
 }
 
 static void entry_clear(int e)
 {
+    if (e == pm_e) pm_e = -1;
     dlist_remove(e);
     tlist_remove(e);
     if (PCOL_GRID_ON) pgrid_out(e);
@@ -1427,6 +1472,7 @@ static void room_reset(void)
         epass[e] = EPASS_NONE;
     }
     dhead = tchead = -1;
+    pm_e = -1;
     npend = 0;
     nstk = 0;
 #ifdef PLAY_STATS
@@ -1470,6 +1516,7 @@ static void rebuild_all(void)
 {
     int e, j;
     rt_reset();
+    pm_e = -1;
     if (PCOL_GRID_ON) pgrid_clear();
     for (e = 0; e < ENT_MAX; e++) ef[e] &= (uint8_t)~EF_TREE;
     for (j = 0; j < (gmode ? W.n : PW.nord); j++)
@@ -1497,6 +1544,7 @@ static void gen_load(void)
     int16_t *map = pend;                          /* free: remove_marked empties it */
     int w, n = 0, k, e;
     remove_marked();
+    pm_e = -1;
     for (w = 0; w < W.n; w++) map[w] = (int16_t)(W.in[w].alive ? n++ : -1);
 #define GMAP(x) ((x) < 0 ? (int16_t)-1 : map[x])
     for (k = 0; k < RT_NODES; k++) {              /* tree leaves */

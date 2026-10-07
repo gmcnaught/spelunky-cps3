@@ -3244,7 +3244,7 @@ int instance_place_ixy(int self, int32_t x, int32_t y, int32_t idx, int32_t idy,
         struct qctx c;
         float fl = PLACE_F(ia[0] + idx), ft = PLACE_F(ia[1] + idy), fr = PLACE_F(ia[2] + idx), fb = PLACE_F(ia[3] + idy);
         pcol_touch(self);
-        if (moved) pcol_place_marks(self);
+        if (moved) pcol_place_marks_kept(self);              /* (self's tree rectangle is its box: pcol.c pm_e) */
         c.obj = obj; c.self = self; c.hit = NOONE;            /* (c.dx, c.dy: set where a search reads them) */
 #ifndef PCOL_EXACT
         {
