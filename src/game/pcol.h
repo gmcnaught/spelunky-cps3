@@ -10,6 +10,8 @@ void pcol_after_reset(void);           /* pw_reset: a new room (StartRoom's Rebu
                                           generated (its RemoveMarked after the Create events, then renamed) */
 void pcol_added(int i);                /* pin_add: a new instance (no tree action) */
 void pcol_create(int i);               /* instance_create: CRoom::AddInstance + CollisionInsert, before Create */
+void pcol_deactivated(int i);           /* off-view deactivation: out of the tree, lists and counts now */
+void pcol_activated(int i);            /* activated again: put in as instance_create puts a new one in */
 void pcol_room_inst(int i);            /* a room instance at room start (StartRoom: CollisionMarkDirty) */
 void pcol_changed(int i);              /* a setter changed a collision field (pworld.c pw_changed) */
 void pcol_mark(int i);                 /* a change of position / sprite / mask / scale / angle (MarkDirty) */

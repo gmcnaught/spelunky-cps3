@@ -174,6 +174,15 @@ TRACE_VARS = ['state', 'xAcc', 'yAcc', 'held', 'armed', 'status', 'fallTimer', '
 # level room, before the phase-0 record (P4: the player without enemies). oEnemy covers every enemy (shopkeepers
 # included); oDamsel walks on her own; oFakeBones turns into a skeleton when the player comes near
 NOENEMY_OBJS = ['oEnemy', 'oDamsel', 'oFakeBones']
+# TRACE_DEACT=<margin> (docs/DEACT.md): off-view deactivation, the rule src/game/prun.c's deact pass applies
+DEACT = os.environ.get('TRACE_DEACT')
+DEACT_ROOTS = ['oEnemy', 'oItem', 'oTreasure']            # these objects and their descendants are candidates,
+DEACT_EXEMPT = ['oShopkeeper', 'oShopkeeper2', 'oBomb', 'oRopeThrow', 'oFlare', 'oFireFrogArmed',   # except these
+                'oFireFrogBomb', 'oDamsel', 'oDice', 'oLampItem', 'oLampRedItem', 'oJaws']
+# HD's legacy activation calls (no-ops in stock 1.2.2, where nothing is deactivated during play) become no-ops here
+# too: the deact pass is the only activation and deactivation in a level room
+DEACT_SITES = {'gml_Object_oLevel_Step_0': ['instance_activate_region(', 'instance_activate_object('],
+               'gml_Object_oGame_Step_0': ['instance_activate_region(']}
 CHUNK = 50
 TAIL = int(os.environ.get('TRACE_TAIL', 30))
 MAX_STEPS = int(os.environ.get('TRACE_MAX', 20000))
@@ -465,7 +474,7 @@ global.trc_lastroom = -1;
 global.trc_buf = -1;
 global.trc_evl = [];
 global.trc_evn = 0;
-{'global.trc_snd = [];' + chr(10) + 'global.trc_sndn = 0;' + chr(10) if TRACE_SND else ''}global.trc_ends = [{', '.join(ends) or '0'}];
+{'global.trc_dl = [];' + chr(10) if DEACT else ''}{'global.trc_snd = [];' + chr(10) + 'global.trc_sndn = 0;' + chr(10) if TRACE_SND else ''}global.trc_ends = [{', '.join(ends) or '0'}];
 global.trc_masks = [{', '.join(masks) or '0'}];
 '''
     keys = ''.join(f'''
@@ -517,7 +526,9 @@ if (room != global.trc_lastroom)
     {noenemy}
     {record(0)}
     {tree_gml()}
+    {'global.trc_dl = [];' if DEACT else ''}
 }}
+{f'else if (room == rLevel || room == rLevel2 || room == rLevel3) trcDeactPass({int(DEACT)});' if DEACT else ''}
 '''
     end = f'''
 if (global.trc_done || !global.trc_on) exit;
@@ -649,7 +660,7 @@ g.QueueAppend("gml_Object_oGamepad_Create_0", {q(create)});
 g.QueueReplace("gml_Object_oGamepad_Step_0", {q(step)});
 g.QueueReplace("gml_Object_oGamepad_Step_1", {q(begin)});
 g.QueueReplace("gml_Object_oGamepad_Step_2", {q(end)});
-{shots}{evlog_csx() if os.environ.get('TRACE_EVLOG') == '1' else ''}{genprobe_csx(q)}{treeat_csx(q)}{snd_csx(q)}
+{shots}{evlog_csx() if os.environ.get('TRACE_EVLOG') == '1' else ''}{genprobe_csx(q)}{treeat_csx(q)}{snd_csx(q)}{deact_csx(q)}
 File.WriteAllText({q(names)}, sb.ToString());
 g.Import();
 '''
@@ -674,6 +685,66 @@ function trcPlaySound(s, p, l) { trcSnd(10, s, p * 2 + (l ? 1 : 0)); return audi
 SND_SCRIPTS = {'playSound': 'trcSnd(1, argument0, 0);', 'playMusic': 'trcSnd(2, argument0, argument1 ? 1 : 0);',
                'startMusic': 'trcSnd(3, undefined, 0);', 'stopAllMusic': 'trcSnd(4, undefined, 0);',
                'setSoundVol': 'trcSnd(5, argument0, argument1);'}
+
+
+def deact_gml():
+    """TRACE_DEACT: gml_GlobalScript_trcDeact (docs/DEACT.md). trcDeactPass runs in oGamepad's Begin Step of every
+    level room step but the room's first: (1) every instance it deactivated whose stored (x, y) is inside the region
+    is activated, in the order they were deactivated; (2) every active candidate whose (x, y) is outside it is
+    deactivated, in with (all) order. Region: the view the last draw left, grown by the margin on each side"""
+    roots = ' || '.join(f'o == {r} || object_is_ancestor(o, {r})' for r in DEACT_ROOTS)
+    ex = ' || '.join(f'o == {e}' for e in DEACT_EXEMPT)
+    probe = '' if os.environ.get('TRACE_DEACT_PROBE') != '1' else '''
+    if (nc > 0 && !variable_global_exists("trc_dprobe"))
+    {
+        global.trc_dprobe = 1;
+        var s = "deact " + string(real(cand[0][0]));
+        try { s += " obj " + object_get_name(cand[0][0].object_index) + " x " + string(cand[0][0].x); } catch (e) { s += " read error: " + string(e.message); }
+        s += " exists " + string(instance_exists(cand[0][0]));
+        var pf = file_text_open_write("deact_probe.txt"); file_text_write_string(pf, s); file_text_close(pf);
+    }'''
+    return f'''
+function trcNoActivate() {{ }}
+function trcDeactOk()
+{{
+    var o = object_index;
+    if (!({roots})) return false;
+    if ({ex}) return false;
+    if (variable_instance_exists(id, "held") && held) return false;
+    if (variable_instance_exists(id, "forSale") && forSale) return false;
+    return true;
+}}
+function trcDeactPass(m)
+{{
+    var cam = view_camera[0];
+    var x0 = camera_get_view_x(cam) - m, y0 = camera_get_view_y(cam) - m;
+    var x1 = camera_get_view_x(cam) + camera_get_view_width(cam) + m, y1 = camera_get_view_y(cam) + camera_get_view_height(cam) + m;
+    var dl = global.trc_dl, keep = [], nk = 0;
+    for (var k = 0; k < array_length(dl); k++)
+    {{
+        var e = dl[k];
+        if (e[1] < x0 || e[1] > x1 || e[2] < y0 || e[2] > y1) {{ keep[nk] = e; nk += 1; }}
+        else instance_activate_object(e[0]);
+    }}
+    var cand = [], nc = 0;
+    with (all)
+    {{
+        if ((x < x0 || x > x1 || y < y0 || y > y1) && trcDeactOk()) {{ cand[nc] = [id, x, y]; nc += 1; }}
+    }}
+    for (var k = 0; k < nc; k++) {{ instance_deactivate_object(cand[k][0]); keep[nk] = cand[k]; nk += 1; }}
+    global.trc_dl = keep;{probe}
+}}
+'''
+
+
+def deact_csx(q):
+    if not DEACT:
+        return ''
+    out = f'g.QueueReplace("gml_GlobalScript_trcDeact", {q(deact_gml())});\n'
+    for site, calls in DEACT_SITES.items():
+        for c in calls:
+            out += f'g.QueueFindReplace("{site}", {q(c)}, {q("trcNoActivate(")});\n'
+    return out
 
 
 def snd_csx(q):

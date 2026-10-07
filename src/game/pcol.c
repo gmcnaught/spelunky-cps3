@@ -1561,6 +1561,31 @@ void pcol_create(int i)
     if (oinfo[PW.in[i].obj] & OI_F08) tlist_front(i);
 }
 
+/* off-view deactivation (pworld.c pw_deactivate). The runner leaves a deactivated instance's entry in the tree, where
+   searches pass over it (its instance is not alive), and puts it in again when it is activated (Observed:
+   build/trace/dz_tree_oTreasure / dz_tree_oItem, p5_caveman seed 863 TRACE_DEACT=32 with TRACE_TREE at 13 records:
+   the search order equal with this, different when the entry leaves the tree at deactivation or stays where it was
+   at activation; docs/DEACT.md 2). Off the dirty and test lists and out of the object's count meanwhile; the grid
+   (pcolgrid.h) takes it out, as its search has no alive test */
+void pcol_deactivated(int i)
+{
+    uint8_t keep = ef[i] & EF_TREE;
+    obj_count(PW.in[i].obj, -1);
+    entry_clear(i);
+    if (!PCOL_GRID_ON) ef[i] = keep;
+}
+
+/* pw_activate: put in again as instance_create puts a new instance in (pcol_added's count, pcol_create: marked dirty,
+   CollisionUpdate now). Marked dirty only, or put in only, gave the same search order on the probes above */
+void pcol_activated(int i)
+{
+    uint8_t keep = ef[i] & EF_TREE;
+    entry_clear(i);
+    ef[i] = (uint8_t)(EF_USED | keep);
+    obj_count(PW.in[i].obj, 1);
+    pcol_create(i);
+}
+
 void pcol_room_inst(int i)
 {
     ef[i] |= EF_NOSNAP;                           /* the loader sets its fields after pin_add */

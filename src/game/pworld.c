@@ -823,6 +823,54 @@ void pin_kill(int i)
     }
 }
 
+/* off-view deactivation (docs/DEACT.md, prun.c deact_pass): instance_deactivate_object(i). Not alive for every event
+   loop, query, `with`, count and the recorder (GameMaker skips a deactivated instance in all of them), out of the
+   object lists and pw_ord, its collision entry taken out (pcol_deactivated); the slot and its records stay (its
+   variables stay readable through references, as GameMaker's) */
+void pw_deactivate(int i)
+{
+    int k, j;
+    if (!PW.in[i].alive) return;
+    ounlink(i);
+    PW.in[i].alive = 0;
+    pw_draw_mark(i);
+#ifndef PCOL_EXACT
+    if (xmask[i] && !xond[i]) xdirty(i);
+#endif
+    for (k = j = 0; k < PW.nord; k++)
+        if (pw_ord[k] != i) pw_ord[j++] = pw_ord[k];
+    PW.nord = (int16_t)j;
+    pcol_deactivated(i);
+}
+
+/* instance_activate_object(i) of a deactivated instance: it comes back as the newest instance (Observed: last in its
+   object's Step order, first in `with (all)`, docs/DEACT.md 2), with a new creation number, and is put in the
+   collision tree as instance_create puts a new one in (pcol_activated) */
+void pw_activate(int i)
+{
+    int k;
+    if (PW.in[i].alive) return;
+    if (PW.seq > PW_SEQ_RENUM) {                      /* creation numbers from 0 again, in the same order */
+        for (k = 0; k < PW.nord; k++) pw_seq[pw_ord[k]] = (int16_t)k;
+        PW.seq = PW.nord;
+    }
+    pw_seq[i] = PW.seq++;
+    pw_ord[PW.nord++] = (int16_t)i;
+    PW.in[i].alive = 1;
+    PW.in[i].bbk = 0;
+    pw_ta_off(i);
+    ta_on(i);
+    pw_draw_mark(i);
+    olink(i);
+    gcell[i] = NOONE;
+    gond[i] = 0;
+#ifndef PCOL_EXACT
+    if (xmask[i] && !xond[i]) xdirty(i);
+#endif
+    grid_dirty(i);
+    pcol_activated(i);
+}
+
 /* sprite_index = spr: image_index is kept unless it is past the new sprite's frames, then 0 (Observed in
    build/trace/p4_walk_s1: sRunLeft at image 4.668 -> sFallLeft (1 frame) 0.0 in record 60; sFallLeft at 0.4 ->
    sRunLeft (6 frames) 0.4 in record 66) */
