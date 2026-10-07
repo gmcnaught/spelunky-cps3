@@ -2704,6 +2704,27 @@ int (collision_rect_any)(double x1, double y1, double x2, double y2, int obj, in
     return collision_rect_p(x1, y1, x2, y2, obj, prec, notme_self) != NOONE;
 }
 
+/* isCollisionLeft / Right / Top / Bottom (i, d) and getIdCollisionLeft / Right's line test (pscript.c anyCollision*)
+   on whole x, y (the shadows: pin_xy_int_p) and the setCollisionBounds offsets: calculateCollisionBounds' sides
+   lb = x + lbo, tb = y + tbo, rb = x + rbo, bb = y + bbo (whole: the rounding is the identity, as pscript.c ibounds
+   took them), the scripts' line from them, and ik_line. -1 (nothing done) when x or y is not whole: the scripts'
+   doubles then. side: bit 0 the right / bottom edge, bit 1 a horizontal line, bit 2 the line starts 5 px below
+   the top (IK_* in play.h) */
+__attribute__((noinline)) int ik_side(int i, int side, int d)
+{
+    const struct pin *p = &PW.in[i];
+    const struct pin_ext *e;
+    int32_t x, y, a;
+    if (!pin_xy_int_p(p, &x, &y)) return -1;
+    e = PE(p);
+    if (side & 2) {                               /* collision_line(lb, a, rb - 1, a): Top a = tb - d, Bottom bb + d - 1 */
+        a = side & 1 ? y + e->bbo + d - 1 : y + e->tbo - d;
+        return ik_line(x + e->lbo, a, x + e->rbo - 1, a, i);
+    }
+    a = side & 1 ? x + e->rbo + d - 1 : x + e->lbo - d;   /* collision_line(a, tb (+ 5), a, bb - 1): Left lb - d, Right rb + d - 1 */
+    return ik_line(a, y + e->tbo + (side & 4 ? 5 : 0), a, y + e->bbo - 1, i);
+}
+
 /* collision_line(x, y1, x, y2, oSolid, 1, notme) != noone and collision_line(x1, y, x2, y, ...): isCollisionLeft /
    Right / Top / Bottom with whole-number bounds (pscript.c); obj and prec constant, four arguments in registers */
 int solid_vline_any(int32_t x, int32_t y1, int32_t y2, int notme_self)
