@@ -11,8 +11,9 @@
 # Output: build/capture/ (cabinet.log, capture.txt, capture2.txt, host steps.log, snap/, the result lines)
 set -e
 cd "$(dirname "$0")/.."
-O=build/capture; T=tests/game; G=$T/build/g
-rm -rf "$O" "$T/build/capture"; mkdir -p "$O/w"
+# RUNTAG=<tag>: build/capture_<tag> and tests/game/build/t_<tag> (two checks side by side)
+BD=build${RUNTAG:+/t_$RUNTAG}; O=build/capture${RUNTAG:+_$RUNTAG}; T=tests/game; G=$T/$BD/g
+rm -rf "$O" "$T/$BD/capture"; mkdir -p "$O/w"
 rm -rf "$G"; mkdir -p "$G"
 git archive HEAD src/game | tar -x -C "$G" --strip-components=2
 for f in $GAME_FILES; do cp "src/game/$f" "$G/$f"; done
@@ -23,16 +24,16 @@ scripts/unity.sh "$G"
 touch "$G/stamp"
 REV=$(git rev-parse --short=8 HEAD); DIRTY=0; git diff --quiet HEAD -- src tests/game build/gen || DIRTY=1
 [ "${CAP_GOD:-0}" = 1 ] && DEV=1                     # INVINCIBLE is in dev builds only
-scripts/dmake.sh $T OUT=build/capture PLAY=1 REV=$REV DIRTY=$DIRTY ${DEV:+DEV=$DEV} > "$O/make.log" 2>&1 ||
+scripts/dmake.sh $T W=$BD OUT=$BD/capture PLAY=1 REV=$REV DIRTY=$DIRTY ${DEV:+DEV=$DEV} > "$O/make.log" 2>&1 ||
   { tail -20 "$O/make.log"; exit 1; }
-CAP=$(awk '$2 == "__capture_start" { print $1 }' $T/build/capture/main.map)
+CAP=$(awk '$2 == "__capture_start" { print $1 }' $T/$BD/capture/main.map)
 [ -n "$CAP" ] || { echo "no capture symbol in main.map"; exit 1; }
 CAP_LOG=$O/cabinet.log CAP_ADDR=$CAP CAP_MONKEY=${CAP_MONKEY:-1} CAP_START=${CAP_START:-200} CAP_PLAY=${CAP_PLAY:-6000} \
-CAP_SHOTS=${CAP_SHOTS:-24} scripts/mame.sh sfiii3na -rompath $T/build/capture/mame -skip_gameinfo -nothrottle \
+CAP_SHOTS=${CAP_SHOTS:-24} scripts/mame.sh sfiii3na -rompath $T/$BD/capture/mame -skip_gameinfo -nothrottle \
   -sound none -video none -seconds_to_run ${SECONDS_TO_RUN:-3000} -cfg_directory "$O/w/cfg" -nvram_directory "$O/w/nvram" \
   -snapshot_directory "$O/snap" -diff_directory "$O/w/diff" -state_directory "$O/w/sta" -inipath "$O/w" \
   -autoboot_script scripts/lua/capture.lua > "$O/mame.log" 2>&1 || true
-rm -rf $T/build/capture/mame $T/build/capture/*.bin
+rm -rf $T/$BD/capture/mame $T/$BD/capture/*.bin
 n1=$(sed -n 's/^SHOTS 1 \([0-9]*\)/\1/p' "$O/cabinet.log"); n2=$(sed -n 's/^SHOTS 2 \([0-9]*\)/\1/p' "$O/cabinet.log")
 [ -n "$n1" ] && [ -n "$n2" ] || { echo "MAME did not finish both snapshot sets"; tail -5 "$O/mame.log"; exit 1; }
 S=$(ls "$O"/snap/sfiii3na/*.png | sort)

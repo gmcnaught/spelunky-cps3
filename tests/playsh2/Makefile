@@ -13,9 +13,11 @@ PROF   ?= 0
 PROF_KIND ?= 3
 PROF_SKIP ?= 1
 # every C file of the snapshot (src/game's and build/gen's tables)
-GSRC   := $(notdir $(wildcard build/g/*.c))
-SRCS   := main.c core.c isr.S $(addprefix build/g/,$(GSRC)) $(ROOT)/src/sh2/fma.c $(ROOT)/src/snd/snd.c   # fma.c: pcol.c's fmaf (no libm)
-CFLAGS := $(OPT) -std=gnu99 -fno-bit-tests -Wno-unused-parameter -Wno-sign-compare -Ibuild/g -Ibuild -I. -I$(ROOT)/src/snd -I$(ROOT)/src/front \
+# W=<dir>: the work directory (snapshot g/, jobs.h, jt/; default build): scripts' RUNTAG=<tag> (build/t_<tag>)
+W      ?= build
+GSRC   := $(notdir $(wildcard $(W)/g/*.c))
+SRCS   := main.c core.c isr.S $(addprefix $(W)/g/,$(GSRC)) $(ROOT)/src/sh2/fma.c $(ROOT)/src/snd/snd.c   # fma.c: pcol.c's fmaf (no libm)
+CFLAGS := $(OPT) -std=gnu99 -fno-bit-tests -Wno-unused-parameter -Wno-sign-compare -I$(W)/g -I$(W) -I. -I$(ROOT)/src/snd -I$(ROOT)/src/front \
           -DPROF_PERIOD=$(PROF) -DPROF_KIND=$(PROF_KIND) -DPROF_SKIP=$(PROF_SKIP) -fdata-sections -Wl,-T,sprbss.ld -Wl,-T,../ramcheck.ld
 # JOBSDIR=<dir>: jobs.h from that directory in place of build/jobs.h (scripts/playsh2_check.sh ROUTES=: mkjobs.py --routes)
 ifneq ($(JOBSDIR),)
@@ -58,7 +60,7 @@ endif
 # results on screen (bigtext.c)
 ifeq ($(JT),1)
 SRCS   += bigtext.c
-CFLAGS := -Ibuild/jt $(if $(JTNAME),'-DJT_NAME="$(JTNAME)"') $(filter-out -Wl$(comma)-T$(comma)sprbss.ld,$(CFLAGS)) -Wl,-T,jtcold.ld -DJT=1   # build/jt: jobs.h, jt_expect.h
+CFLAGS := -I$(W)/jt $(if $(JTNAME),'-DJT_NAME="$(JTNAME)"') $(filter-out -Wl$(comma)-T$(comma)sprbss.ld,$(CFLAGS)) -Wl,-T,jtcold.ld -DJT=1 $(if $(filter 1,$(JTFAST)),-DJTFAST=1)   # build/jt: jobs.h, jt_expect.h; JTFAST=1: core.h
 endif
 # NC=<nc.txt>: functions, const tables and .bss arrays linked at the cache-through mirrors, read past the SH-2 cache
 # (tests/playsh2/mknc.py, docs/ICACHE.md); the build then uses LAYOUT's -ffunction-sections link with mknc.py's script.
@@ -78,10 +80,10 @@ LAYOUT ?=
 ifneq ($(LAYOUT),)
 CFLAGS += -ffunction-sections
 endif
-SRCS   := $(filter-out $(addprefix build/g/,$(OSFILES)),$(SRCS)) $(addprefix $(OUT)/os/,$(OSFILES:.c=.o))
+SRCS   := $(filter-out $(addprefix $(W)/g/,$(OSFILES)),$(SRCS)) $(addprefix $(OUT)/os/,$(OSFILES:.c=.o))
 include ../../../cps3-testgame/sdk/sdk.mk
 
-$(OUT)/os/%.o: build/g/%.c build/g/stamp
+$(OUT)/os/%.o: $(W)/g/%.c $(W)/g/stamp
 	@mkdir -p $(OUT)/os
 	sh-elf-gcc $(CPS3_CFLAGS) $(filter-out -Wl%,$(CFLAGS)) -Os -I$(CPS3_SDK)/include -c $< -o $@
 ifneq ($(LAYOUT),)
@@ -91,13 +93,13 @@ $(OUT)/main.elf: $(LAYOUT)
 	  -Wl,-Map,$(OUT)/main.map -o $@ $(CPS3_SDK_SRCS) $(SRCS) -lgcc
 endif
 
-build/g/stamp:
+$(W)/g/stamp:
 	@echo "build/g missing: scripts/playsh2_check.sh snapshots src/game and build/gen there"; false
-$(addprefix build/g/,$(GSRC)): build/g/stamp
-build/jobs.h: mkjobs.py $(wildcard ../routes/p*.txt)
-	@mkdir -p build
+$(addprefix $(W)/g/,$(GSRC)): $(W)/g/stamp
+$(W)/jobs.h: mkjobs.py $(wildcard ../routes/p*.txt)
+	@mkdir -p $(W)
 	python3 mkjobs.py $@ ../routes
-$(OUT)/main.elf: build/g/stamp build/jobs.h core.h sprbss.ld wrap.S attr.c $(ROOT)/src/sh2/softfp.c $(ROOT)/src/sh2/softfp_sh2.S
+$(OUT)/main.elf: $(W)/g/stamp $(W)/jobs.h core.h sprbss.ld wrap.S attr.c $(ROOT)/src/sh2/softfp.c $(ROOT)/src/sh2/softfp_sh2.S
 # NC builds: SIMM 1 holds .nctext (loaded at 0x06000000, run at 0x26000000) before .text
 ifneq ($(NC),)
 $(OUT)/mame/sfiii3na: $(OUT)/main.elf $(FLASH)

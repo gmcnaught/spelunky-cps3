@@ -11,7 +11,7 @@
 # never end (no sound clock in tests/game/host.c): its replays are missing on the host side.
 set -e
 cd "$(dirname "$0")/.."
-G=tests/game/build/g; O=build/game/end
+G=tests/game/build${RUNTAG:+/t_$RUNTAG}/g; O=build/game/end${RUNTAG:+/t_$RUNTAG}   # RUNTAG: game_check.sh RUNTAG's snapshot
 [ -f "$G/stamp" ] || { echo "no src/game snapshot: run scripts/game_check.sh first"; exit 1; }
 mkdir -p $O
 SDK=../cps3-testgame/sdk/include

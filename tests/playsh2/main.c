@@ -118,7 +118,7 @@ void plat_end(void)
 }
 #ifdef JT
 /* JT builds: per job in the header block, words 16 + 8 * job: total clocks, steps, the steps' clocks, the largest
-   step, the records' hash (sum and instances of each, FNV-1a), the level start's clocks */
+   step, the records' hash (sum and instances of each, FNV-1a), the level start's clocks, the job's wall clocks */
 #define JTR(j, k) R32(PBASE + 4 * (16 + 8 * (j) + (k)))
 static uint32_t fnv(uint32_t h, uint32_t v)
 {
@@ -133,6 +133,10 @@ void plat_rec(int job, int kind, int idx, uint32_t sum, uint32_t n, uint32_t ext
     uint32_t c = (t1 - t0) * 32;
     (void)extra;
     (void)idx;
+    if (kind == KIND_FINAL) {                     /* JTFAST: the end state's checksum only, no work timed */
+        JTR(job, 4) = fnv(fnv(JTR(job, 4), sum), n);
+        return;
+    }
     JTR(job, 0) += c;
     if (kind == KIND_STEP || kind == KIND_EARLY) {
         JTR(job, 1) += 1;
@@ -327,10 +331,16 @@ int main(void)
     for (;;) ;
 #endif
     for (j = 0; j < NJOBS; j++) {
+#ifdef JT
+        uint32_t w0 = now();
+#endif
         ram_init();
         cur_tag = jobs[j].route < 0 ? KIND_GEN : KIND_START;
         if (jobs[j].route < 0) run_gen(j, jobs[j].seed, jobs[j].level);
         else run_route(j, jobs[j].seed, &routes[jobs[j].route], 30);
+#ifdef JT
+        JTR(j, 6) = (now() - w0) * 32;            /* the job's wall clocks: the timed work and everything around it */
+#endif
     }
 #ifdef JT
     jt_show(spr_bad);

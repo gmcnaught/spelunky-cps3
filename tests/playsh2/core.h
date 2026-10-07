@@ -3,7 +3,10 @@
 #define PLAYSH2_CORE_H
 #include <stdint.h>
 
-enum { KIND_GEN = 1, KIND_START = 2, KIND_STEP = 3, KIND_EARLY = 4, KIND_BENCH = 5 };
+enum { KIND_GEN = 1, KIND_START = 2, KIND_STEP = 3, KIND_EARLY = 4, KIND_BENCH = 5, KIND_FINAL = 6 };
+/* JTFAST builds (scripts/playsh2_jt.sh JTFAST=1): the records after the level start carry no state checksum (sum 0),
+   one KIND_FINAL record per route carries the final state's (sum_play); host and SH-2 both, so a job's hash still
+   means "the same play" (every step's instance count and the end state), without the per-step hashing */
 
 /* the jobs (build/jobs.h, mkjobs.py): a generation case (level > 0, route < 0) or a route replay */
 struct job { uint32_t seed; int16_t level; int16_t route; };

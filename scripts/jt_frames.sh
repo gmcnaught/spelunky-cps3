@@ -13,19 +13,19 @@
 # HOLD=frames per window (default 1192: 20 s at 59.6 Hz)
 cd "$(dirname "$0")/.."
 # OUT=dir (default build/jtshot): never wiped; files are replaced one by one, the expected images in OUT/expect
-H=${HOLD:-1192}; D=${OUT:-build/jtshot}; mkdir -p "$D/expect"; : > "$D/mame.txt"; : > "$D/schedule.txt"
+H=${HOLD:-1192}; D=${OUT:-build/jtshot${RUNTAG:+_$RUNTAG}}; mkdir -p "$D/expect"; : > "$D/mame.txt"; : > "$D/schedule.txt"
 FPS=59.6
 check() {  # route seed trace recs level money enemies attract
   if [ -n "$8" ]; then ATTRACT=$8 HOLD=$H HUD=1 scripts/game_check.sh $1 $2 $3 $4 $5 $6 $7
   else HOLD=$H HUD=1 scripts/game_check.sh $1 $2 $3 $4 $5 $6 $7; fi | grep -v ": draw"
 }
 run() {   # name route seed trace recs level money enemies [attract]
-  n=$1; r=$2; s=$3; t=$4; recs=$5; o=tests/game/build/${r}_hud1${9:+_attract$9}_hold
+  n=$1; r=$2; s=$3; t=$4; recs=$5; o=tests/game/build${RUNTAG:+/t_$RUNTAG}/${r}_hud1${9:+_attract$9}_hold
   k=$(echo $recs | tr ',' '\n' | grep -c .)
-  python3 -c "import sys; k=int(sys.argv[1]); print('#define NHOLDS %d\nstatic const uint32_t hold_at[NHOLDS] = { %s };' % (k, ', '.join(['0'] * k)))" $k > tests/game/build/hold.h
+  python3 -c "import sys; k=int(sys.argv[1]); print('#define NHOLDS %d\nstatic const uint32_t hold_at[NHOLDS] = { %s };' % (k, ', '.join(['0'] * k)))" $k > tests/game/build${RUNTAG:+/t_$RUNTAG}/hold.h
   check $r $s $t $recs $6 $7 $8 $9 > /dev/null                      # pass 1
   grep '^S' "$o/out.txt" | awk '{ print $3, $17, $NF }' > "$D/pass1_$n.txt"
-  python3 - "$D/pass1_$n.txt" $H $FPS ${9:+attract} > tests/game/build/hold.h 2>> "$D/schedule.txt" <<'PY'
+  python3 - "$D/pass1_$n.txt" $H $FPS ${9:+attract} > tests/game/build${RUNTAG:+/t_$RUNTAG}/hold.h 2>> "$D/schedule.txt" <<'PY'
 import sys
 rows = [l.split() for l in open(sys.argv[1])]
 H, fps, attract = int(sys.argv[2]), float(sys.argv[3]), len(sys.argv) > 4
