@@ -138,12 +138,19 @@ void run_route(int job, uint32_t seed, const struct route *rt, int tail)
         r = play_step(k < n ? masks[k] : 0, rec_cb);
         plat_end();
         snd_frame();                              /* as playhost: a frame of the sounds' time per step (not timed) */
+#ifdef JTFAST
+        plat_rec(job, r == PLAY_ROOM_EARLY ? KIND_EARLY : KIND_STEP, idx++, 0, (uint32_t)PW.n, play_dops);
+#else
         plat_rec(job, r == PLAY_ROOM_EARLY ? KIND_EARLY : KIND_STEP, idx++, sum_play(), (uint32_t)PW.n,
                  play_dops);
+#endif
         if (r == PLAY_ROOM_EARLY) {
             k--;
             continue;
         }
         if (r != 0) break;
     }
+#ifdef JTFAST
+    plat_rec(job, KIND_FINAL, idx, sum_play(), (uint32_t)PW.n, 0);   /* the end state (core.h JTFAST) */
+#endif
 }

@@ -58,7 +58,7 @@ endif
 # results on screen (bigtext.c)
 ifeq ($(JT),1)
 SRCS   += bigtext.c
-CFLAGS := -Ibuild/jt $(if $(JTNAME),'-DJT_NAME="$(JTNAME)"') $(filter-out -Wl$(comma)-T$(comma)sprbss.ld,$(CFLAGS)) -Wl,-T,jtcold.ld -DJT=1   # build/jt: jobs.h, jt_expect.h
+CFLAGS := -Ibuild/jt $(if $(JTNAME),'-DJT_NAME="$(JTNAME)"') $(filter-out -Wl$(comma)-T$(comma)sprbss.ld,$(CFLAGS)) -Wl,-T,jtcold.ld -DJT=1 $(if $(filter 1,$(JTFAST)),-DJTFAST=1)   # build/jt: jobs.h, jt_expect.h; JTFAST=1: core.h
 endif
 # NC=<nc.txt>: functions, const tables and .bss arrays linked at the cache-through mirrors, read past the SH-2 cache
 # (tests/playsh2/mknc.py, docs/ICACHE.md); the build then uses LAYOUT's -ffunction-sections link with mknc.py's script.
