@@ -44,20 +44,36 @@ static void reset_block(struct hiscores *hs)
     hs->value[HS_TUNNEL2] = TUNNEL2_MAX + 1;
 }
 
+void hs_clear(const struct settings *st)
+{
+    struct hiscores hs;
+    for (int k = 0; k <= 10; k++)
+        hs.value[k] = 0;
+    hs_write(&hs, st);
+}
+
 void hs_boot(struct hiscores *hs, struct settings *st, struct hs_globals *g)
 {
     uint32_t w[HS_EE_WORDS];
     for (int k = 0; k < HS_EE_WORDS; k++)
         w[k] = shell_ee_read(HS_EE_AT + k);
     int ok = w[0] == HS_MAGIC && w[12] == check_of(w);
+    int ini = ok;                                   /* hs_clear's block: the settings, no ini */
+    if (ok) {
+        int zero = 1;
+        for (int k = 1; k <= 10; k++)
+            if (w[k] != 0)
+                zero = 0;
+        ini = !zero;
+    }
     st->free_play = 0;
     st->coins_per_credit = 1;
     st->toggle_run = 0;
     st->smooth = 1;
     st->invincible = 0;
     hs->value[0] = 0;
-    for (int k = 1; k <= 10; k++)
-        hs->value[k] = ok ? (int32_t)w[k] : 0;
+    for (int k = 1; k <= 10; k++)                   /* (none is stored negative: one read so is 0) */
+        hs->value[k] = ini && (int32_t)w[k] > 0 ? (int32_t)w[k] : 0;
     if (ok) {
         st->free_play = (w[11] & SET_FREE) != 0;
         st->toggle_run = (w[11] & SET_TRUN) != 0;
@@ -66,12 +82,12 @@ void hs_boot(struct hiscores *hs, struct settings *st, struct hs_globals *g)
         st->invincible = (w[11] & SET_GOD) != 0;
 #endif
         st->coins_per_credit = (uint8_t)(w[11] >> SET_CPC_AT & 15);
-        if (st->coins_per_credit == 0)
+        if (st->coins_per_credit == 0 || st->coins_per_credit > 9)   /* the menu's range (shell.c) */
             st->coins_per_credit = 1;
     }
     /* oGlobals/Create_0.gml:38-39: ini_read_real("highscore", "value8", 10001), ("value9", 20001) */
-    g->tunnel1 = ok ? hs->value[HS_TUNNEL1] : 10001;
-    g->tunnel2 = ok ? hs->value[HS_TUNNEL2] : 20001;
+    g->tunnel1 = ini ? hs->value[HS_TUNNEL1] : 10001;
+    g->tunnel2 = ini ? hs->value[HS_TUNNEL2] : 20001;
     g->first_time = 0;
     /* :57-71 every value1..9 <= 0 (a missing key reads 0): scrResetHighscores, firstTime */
     int all = 1;

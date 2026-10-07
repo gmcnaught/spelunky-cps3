@@ -42,7 +42,7 @@ struct hiscores {
 /* operator settings (word 27) */
 struct settings {
     uint8_t free_play;          /* bit 0 */
-    uint8_t coins_per_credit;   /* bits 8-11: 1..9 (0 read as 1) */
+    uint8_t coins_per_credit;   /* bits 8-11: 1..9 (0 or > 9 read as 1) */
     uint8_t toggle_run;         /* bit 1: the run button toggles running (HD's global.toggleRunEnabled, X10) */
     uint8_t smooth;             /* bit 2 clear: smooth motion (src/draw draw_smooth; on in a new or older block) */
     uint8_t invincible;         /* bit 3: developer option INVINCIBLE (src/game play_god); read only in SHELL_DEV
@@ -65,6 +65,10 @@ void shell_ee_write(int word, uint32_t v);
  * tunnel globals of that session keep the values read before the reset. */
 void hs_boot(struct hiscores *hs, struct settings *st, struct hs_globals *g);
 void hs_write(const struct hiscores *hs, const struct settings *st);
+/* the settings screen's CLEAR HIGH SCORES: the next boot is HD's first start (no ini) with st kept. Stores st with
+ * value1..10 all 0, which hs_boot reads as no ini (no HD session stores it: scrResetHighscores leaves value8 / 9
+ * above 0 and every game adds a play) */
+void hs_clear(const struct settings *st);
 
 /* the game's state at scrUpdateHighscores(type) */
 enum hs_type { HS_DEATH = 0, HS_WIN = 1, HS_MINIGAME = 2 };

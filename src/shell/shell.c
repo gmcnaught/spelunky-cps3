@@ -224,7 +224,7 @@ static void settings_run(void)
     for (int t = 0; t < 4; t++)
         cps3v_tilemap(t, 0, 0, CPS3V_MAP_UNIT(0), 0);
     clear_text();
-    struct settings st;
+    struct settings st;                          /* by field: a struct copy is a memcpy call (-nostdlib) */
     st.free_play = SH.st.free_play;
     st.coins_per_credit = SH.st.coins_per_credit;
     st.toggle_run = SH.st.toggle_run;
@@ -293,19 +293,9 @@ static void settings_run(void)
         if (leave)
             break;
     }
-    if (clear) {                                 /* the next boot finds no block: HD's first start (hs_boot) */
-        for (int k = 0; k < HS_EE_WORDS; k++)
-            shell_ee_write(HS_EE_AT + k, 0);
-        if (st.free_play || st.coins_per_credit != 1 || st.toggle_run || !st.smooth || st.invincible) {   /* keep the settings: a reset block */
-            struct hiscores hs;
-            hs.value[0] = 0;
-            for (int k = 1; k <= 10; k++)
-                hs.value[k] = 0;
-            hs.value[HS_TUNNEL1] = TUNNEL1_MAX + 1;
-            hs.value[HS_TUNNEL2] = TUNNEL2_MAX + 1;
-            hs_write(&hs, &st);
-        }
-    } else
+    if (clear)                                   /* the next boot: HD's first start, these settings kept */
+        hs_clear(&st);
+    else
         hs_write(&SH.hs, &st);
     /* restart as a reset does: interrupts masked, VBR 0 (the ROM's vector table: the game may have moved it to RAM,
        which start-up clears) */

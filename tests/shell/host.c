@@ -177,6 +177,32 @@ static void test_hiscores(void)
     ee_writes = 0;
     hs_write(&h2, &s2);
     CHECK(ee_writes == 0);
+    /* out-of-range values in a block that passes its check: coins per credit read as 1, scores as 0 */
+    hs_write(&hs, &st);
+    ee[HS_EE_AT + 11] = (ee[HS_EE_AT + 11] & ~(15u << 8)) | 12u << 8;
+    ee[HS_EE_AT + HS_MONEY] = (uint32_t)-5;
+    {
+        uint32_t s = 0;
+        for (int k = 0; k < HS_EE_WORDS - 1; k++)
+            s += ee[HS_EE_AT + k];
+        ee[HS_EE_AT + 12] = s ^ 0x5a5a5a5au;
+    }
+    hs_boot(&h2, &s2, &g);
+    CHECK(s2.coins_per_credit == 1 && h2.value[HS_MONEY] == 0 && s2.free_play == 1 && h2.value[HS_MINI] == 120445);
+    /* CLEAR HIGH SCORES with settings kept: the next boot is the blank-EEPROM boot with those settings */
+    st.free_play = 1;
+    st.coins_per_credit = 4;
+    hs_clear(&st);
+    hs_boot(&h2, &s2, &g);
+    CHECK(g.tunnel1 == 10001 && g.tunnel2 == 20001 && g.first_time == 1 && h2.value[HS_MONEY] == 0 &&
+          h2.value[HS_TUNNEL1] == TUNNEL1_MAX + 1 && s2.free_play == 1 && s2.coins_per_credit == 4);
+    hs_boot(&h2, &s2, &g);
+    CHECK(g.tunnel1 == TUNNEL1_MAX + 1 && g.first_time == 0 && s2.coins_per_credit == 4);
+    /* and with the default settings: the same as a blank EEPROM */
+    struct settings d = { 0, 1, 0, 1, 0 };
+    hs_clear(&d);
+    hs_boot(&h2, &s2, &g);
+    CHECK(g.tunnel1 == 10001 && g.first_time == 1 && s2.free_play == 0 && s2.coins_per_credit == 1);
 }
 
 int main(void)
