@@ -4,14 +4,11 @@
  */
 #include "pint.h"
 #include "penemy.h"
+#include "penhelp.h"                           /* X, Y, CP, eview, isCollisionSolid, ... */
 #include "../snd/sndgame.h"                     /* the GML sound calls (src/snd) */
 #include "pcontent.h"                            /* P7 content packages (docs/CONTENT.md) */
 
 enum { D_IDLE = 0, D_RUN = 1, D_THROWN = 2, D_YELL = 3, D_EXIT = 4, D_SLAVE = 5, D_KISS = 6, D_DEAD = 99 };
-
-static double X(int i) { return PTOD(PX(i).x); }
-static double Y(int i) { return PTOD(PX(i).y); }
-static int CP(double x, double y, int obj) { return collision_point_any(x, y, obj, 0, NOONE); }
 
 /* objects/oDamsel/Create_0.gml (after oItem's) */
 int pdam_create(int i, int fromgen)
@@ -337,15 +334,6 @@ void pen_item_hit_damsel(int it)
         }
     }
 }
-
-/* the jar's speed test (:148's second operand) before its collision_rectangle in the grid build: the query
-   has no result-visible effect there (searches go in creation order, whatever the flush history: pobj.c PLAY_REST; penemy.c's pen_jar_hit),
-   so a jar at |xVel|, |yVel| <= 2 skips it. The exact build keeps the query first (it moves the R-tree's flush) */
-#ifdef PCOL_EXACT
-#define JAR_FAST(j) 1
-#else
-#define JAR_FAST(j) (NGT(NABS(PE(j)->xVel), N(2)) || NGT(NABS(PE(j)->yVel), N(2)))
-#endif
 
 /* oJar / oSkull Step :148-170: a fast jar hits a damsel (1: the jar breaks) */
 int pdam_jar_hit(int jar)

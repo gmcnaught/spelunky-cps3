@@ -5,21 +5,13 @@
  */
 #include "pint.h"
 #include "penemy.h"
+#include "penhelp.h"                           /* X, Y, CP, eview, isCollisionSolid, ... */
 #include "../snd/sndgame.h"                     /* the GML sound calls (src/snd) */
 #include "pmsg.h"                                /* the HUD messages (trMessages) */
 #include "pcontent.h"                            /* P7 content packages (docs/CONTENT.md) */
 
 enum { S_IDLE = 0, S_WALK = 1, S_ATTACK = 2, S_THROW = 3, S_PATROL = 4, S_FOLLOW = 5, S_STUNNED = 98, S_DEAD = 99 };
 enum { E_LEFT = 0, E_RIGHT = 1 };
-
-static double X(int i) { return PTOD(PX(i).x); }
-static double Y(int i) { return PTOD(PX(i).y); }
-static int CP(double x, double y, int obj) { return collision_point_any(x, y, obj, 0, NOONE); }
-/* collision_point(..., -1, -1): -1 is false for prec and notme (GML bool: value > 0.5; penemy.c CPn) */
-static int CPn(double x, double y, int obj, int self) { (void)self; return collision_point_any(x, y, obj, 0, NOONE); }
-static double dabs(double a) { return a < 0 ? -a : a; }
-static int sprw(int i) { int s = PX(i).spr; return s >= 0 ? spr_dim(psprite[s].w, PX(i).xscale) : 0; }
-static int sprh(int i) { int s = PX(i).spr; return s >= 0 ? spr_dim(psprite[s].h, PX(i).yscale) : 0; }
 
 /* objects/oShopkeeper/Create_0.gml (fromgen: the generator set style, status, facing) */
 int pshop_create(int i, int fromgen)
@@ -227,7 +219,6 @@ static int buy_message(int it, const char **part, char *num)
     part[0] = "";                                                          /* oItem's default buyMessage: "" */
     return 0;
 }
-
 
 /* objects/oShopkeeper/Step_0.gml */
 static void shopkeeper_step(int i)

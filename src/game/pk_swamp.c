@@ -9,6 +9,7 @@
  * Instance variables kept in struct pin_ext / pin_en fields of other names (the GML name in the macro): */
 #include "pint.h"
 #include "penemy.h"
+#include "penhelp.h"                           /* X, Y, CP, eview, isCollisionSolid, ... */
 #include "pcol.h"
 #include "pmath.h"
 #include "pcontent.h"
@@ -30,24 +31,6 @@ enum { E_LEFT = 0, E_RIGHT = 1, E_STUNNED = 98, E_DEAD = 99 };
 /* oVampire's status values */
 enum { V_IDLE, V_WALK, V_ATTACK, V_THROW, V_RECOVER, V_BOUNCE, V_HANG, V_FLY };
 
-static double X(int i) { return PTOD(PX(i).x); }
-static double Y(int i) { return PTOD(PX(i).y); }
-static int CP(double x, double y, int obj) { return collision_point_any(x, y, obj, 0, NOONE); }
-static int sprw(int i) { int s = PX(i).spr; return s >= 0 ? spr_dim(psprite[s].w, PX(i).xscale) : 0; }
-static int sprh(int i) { int s = PX(i).spr; return s >= 0 ? spr_dim(psprite[s].h, PX(i).yscale) : 0; }
-static double dabs(double a) { return a < 0 ? -a : a; }
-
-/* the enemies' view test: x > xview - l and x < xview + 320 + r (same for y) */
-static int eview(int i, int l, int r)
-{
-    int32_t ix, iy;
-    view_read();
-    if (pin_xy_int(i, &ix, &iy))          /* whole x, y: GML's compare of two ints is their order (as inview) */
-        return ix > PW.xview - l && ix < PW.xview + 320 + r && iy > PW.yview - l && iy < PW.yview + 240 + r;
-    return PGTI(PX(i).x, PW.xview - l) && PLTI(PX(i).x, PW.xview + 320 + r) && PGTI(PX(i).y, PW.yview - l) &&
-           PLTI(PX(i).y, PW.yview + 240 + r);
-}
-
 /* distance_to_point(px, py) from i's bounding box */
 static double distance_to_point_p(int i, double px, double py)
 {
@@ -60,8 +43,6 @@ static double distance_to_point_p(int i, double px, double py)
     if (py < t) yd = py - t;
     return psqrt(xd * xd + yd * yd);
 }
-
-static void make_active(struct pin *p) { PE(p)->xVel = PE(p)->yVel = PE(p)->xAcc = PE(p)->yAcc = 0; }
 
 /* moveTo(c * cos(degtorad(d)), -c * sin(degtorad(d))) */
 /* GML move toward direction d at speed c: moveTo by c * cos, -c * sin of degtorad_d(d), given as co, si (psincos_cr:
@@ -238,7 +219,6 @@ static __attribute__((noinline)) int prey(int i)
     }
     return obj;
 }
-
 
 /* IDLE: swim along the water */
 static void fish_idle_swim(int i)

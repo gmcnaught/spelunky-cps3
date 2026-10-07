@@ -9,17 +9,14 @@
 #include "pcontent.h"
 #include "pmath.h"
 #include "penemy.h"
+#include "penhelp.h"                           /* X, Y, CP, eview, isCollisionSolid, ... */
 #include "../snd/sndgame.h"                     /* the GML sound calls (src/snd) */
 #include "pmsg.h"                                /* the HUD messages (trMessages) */
 
 #define ME (PX(PL.idx))
-static double X(int i) { return PTOD(PX(i).x); }
-static double Y(int i) { return PTOD(PX(i).y); }
-static int CP(double x, double y, int obj) { return collision_point_any(x, y, obj, 0, NOONE); }
 
 /* oPlayer1 Create :51-53 */
 enum { FIRING_PISTOL_MAX = 20, FIRING_SHOTGUN_MAX = 40 };
-
 
 /* scripts/scrPlayerIsDucking */
 static int scrPlayerIsDucking(int i)

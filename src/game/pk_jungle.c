@@ -6,6 +6,7 @@
  * GML keeps running after instance_destroy() inside an event: so does this code (RNG draws included). */
 #include "pint.h"
 #include "penemy.h"
+#include "penhelp.h"                           /* X, Y, CP, eview, isCollisionSolid, ... */
 #include "pcontent.h"
 #include "../snd/sndgame.h"
 #include "pmath.h"
@@ -29,44 +30,6 @@ static struct jx {
 static struct jx *JX(int i) { return &jx[pin_ext[PX(i).ext].en]; }
 /* oFireFrogBomb.swimming, by pin_ext record */
 static uint8_t ffb_swim[EXT_MAX];
-
-static double X(int i) { return PTOD(PX(i).x); }
-static double Y(int i) { return PTOD(PX(i).y); }
-static int CP(double x, double y, int obj) { return collision_point_any(x, y, obj, 0, NOONE); }
-/* collision_point(x, y, obj, -1, -1): prec off, notme off (-1 reads as false; rule and evidence at penemy.c CPn) */
-static int CPn(double x, double y, int obj, int self) { (void)self; return collision_point_any(x, y, obj, 0, NOONE); }
-static int sprw(int i) { int s = PX(i).spr; return s >= 0 ? spr_dim(psprite[s].w, PX(i).xscale) : 0; }
-static int sprh(int i) { int s = PX(i).spr; return s >= 0 ? spr_dim(psprite[s].h, PX(i).yscale) : 0; }
-static double dabs(double d) { return d < 0 ? -d : d; }
-static int pl(void) { return PL.idx; }
-
-/* x > xview - l and x < xview + 320 + r (y likewise) */
-static int eview(int i, int l, int r)
-{
-    int32_t ix, iy;
-    view_read();
-    if (pin_xy_int(i, &ix, &iy))          /* whole x, y: GML's compare of two ints is their order (as inview) */
-        return ix > PW.xview - l && ix < PW.xview + 320 + r && iy > PW.yview - l && iy < PW.yview + 240 + r;
-    return PGTI(PX(i).x, PW.xview - l) && PLTI(PX(i).x, PW.xview + 320 + r) && PGTI(PX(i).y, PW.yview - l) &&
-           PLTI(PX(i).y, PW.yview + 240 + r);
-}
-
-static int isCollisionSolid(int i)
-{
-    double lb, tb, rb, bb;
-    int32_t x, y;
-    /* whole x, y: the corners are whole, and collision_rect_p takes rq_init's integer path, which is
-       collision_rect_i's (iok, fok 0, the same bounds; no instance of oSolid: NOONE without a side effect in both);
-       solid_rect_any (pworld.c) answers that query's != NOONE from the solid grid's cell summary, else searches */
-    if (pin_xy_int(i, &x, &y) && x > -29000 && x < 29000 && y > -29000 && y < 29000) {
-        const struct pin_ext *e = PE(&PX(i));
-        return solid_rect_any(x + e->lbo, y + e->tbo, x + e->rbo - 1, y + e->bbo - 1, i);
-    }
-    calcBounds(i, &lb, &tb, &rb, &bb);
-    return collision_rect_any(lb, tb, rb - 1, bb - 1, OBJ_oSolid, 1, i);
-}
-
-static void make_active(struct pin *p) { PE(p)->xVel = PE(p)->yVel = PE(p)->xAcc = PE(p)->yAcc = 0; }
 
 /* instance_create(x + rand(0, 16), y - 8 + rand(0, 16), oLeaf): y's number first */
 static void leaf_at(int i)

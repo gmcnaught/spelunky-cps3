@@ -14,6 +14,7 @@
  */
 #include "pint.h"
 #include "penemy.h"
+#include "penhelp.h"                           /* X, Y, CP, eview, isCollisionSolid, ... */
 #include "pcontent.h"
 #include "inst.h"                                    /* play_gen_inst (struct inst, IF_*) */
 #include "../snd/sndgame.h"
@@ -22,15 +23,8 @@
 
 enum { E_IDLE = 0, E_WALK = 1, E_STUNNED = 98, E_DEAD = 99, E_LEFT = 0, E_RIGHT = 1 };
 
-static double X(int i) { return PTOD(PX(i).x); }
-static double Y(int i) { return PTOD(PX(i).y); }
-static int CP(double x, double y, int obj) { return collision_point_any(x, y, obj, 0, NOONE); }
 /* collision_point(x, y, obj, -1, -1): the runner reads a bool argument as value > 0.5, so prec and notme are false */
 static int CPm(double x, double y, int obj) { return collision_point_any(x, y, obj, 0, NOONE); }
-static int sprw(int i) { int s = PX(i).spr; return s >= 0 ? spr_dim(psprite[s].w, PX(i).xscale) : 0; }
-static int sprh(int i) { int s = PX(i).spr; return s >= 0 ? spr_dim(psprite[s].h, PX(i).yscale) : 0; }
-static int pl(void) { return PL.idx; }
-static double dabs(double a) { return a < 0 ? -a : a; }
 
 /* x > xview - l and x < xview + 320 + r (same for y with 240) */
 static int vw(int i, int l, int r)
@@ -479,13 +473,6 @@ static void magmaman_create(int i)
     PE(p)->counter = 0;
     PEN(p)->sightCounter = 0;
     PE(p)->facing = E_RIGHT;
-}
-
-static int isCollisionSolid(int i)
-{
-    double lb, tb, rb, bb;
-    calcBounds(i, &lb, &tb, &rb, &bb);
-    return collision_rect_any(lb, tb, rb - 1, bb - 1, OBJ_oSolid, 1, i);
 }
 
 /* objects/oMagmaMan/Step_0.gml (no inherited Step) */

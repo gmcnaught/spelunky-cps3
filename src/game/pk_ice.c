@@ -15,6 +15,7 @@
  * oDrip (oIce / oIceBlock Destroy, oThinIce, oIceBottom) is package B's object: created here, run there. */
 #include "pint.h"
 #include "penemy.h"
+#include "penhelp.h"                           /* X, Y, CP, eview, isCollisionSolid, ... */
 #include "pcontent.h"
 #include "pmath.h"
 #include "pcol.h"
@@ -22,17 +23,6 @@
 
 enum { E_STUNNED = 98, E_DEAD = 99, E_LEFT = 0, E_RIGHT = 1 };
 
-static double X(int i) { return PTOD(PX(i).x); }
-static double Y(int i) { return PTOD(PX(i).y); }
-static int CP(double x, double y, int obj) { return collision_point_any(x, y, obj, 0, NOONE); }
-/* collision_point(x, y, obj, -1, -1): -1 is false for prec and notme (a GML bool is value > 0.5; Observed:
-   c_ice_alienboss record 213, oYeti's ledge test at (528, 48) hits an oDarkFall at 528, 48 whose precise mask has
-   pixel (0, 0) clear) */
-static int CPn(double x, double y, int obj, int self) { (void)self; return collision_point_any(x, y, obj, 0, NOONE); }
-static int sprw(int i) { int s = PX(i).spr; return s >= 0 ? spr_dim(psprite[s].w, PX(i).xscale) : 0; }
-static int sprh(int i) { int s = PX(i).spr; return s >= 0 ? spr_dim(psprite[s].h, PX(i).yscale) : 0; }
-static int pl(void) { return PL.idx; }
-static void make_active(struct pin *p) { PE(p)->xVel = PE(p)->yVel = PE(p)->xAcc = PE(p)->yAcc = 0; }
 static double gabs(double a) { return a < 0 ? -a : a; }
 static void solid_create(struct pin *p)                            /* objects/oSolid/Create_0.gml */
 {
@@ -67,13 +57,6 @@ static void gold_drop(int i, int obj)
     int a = RAND(0, 3), b = RAND(0, 3);
     PE(&PX(g))->xVel = NI(a - b);
     PE(&PX(g))->yVel = NI(RAND(2, 4) * 1);
-}
-
-static int isCollisionSolid(int i)
-{
-    double lb, tb, rb, bb;
-    calcBounds(i, &lb, &tb, &rb, &bb);
-    return collision_rect_any(lb, tb, rb - 1, bb - 1, OBJ_oSolid, 1, i);
 }
 
 /* if (countsAsKill) { global.enemyKills[k] (statistics), global.<kind> += 1, global.kills += 1 } */

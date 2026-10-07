@@ -8,6 +8,7 @@
  */
 #include "pint.h"
 #include "penemy.h"
+#include "penhelp.h"                           /* X, Y, CP, eview, isCollisionSolid, ... */
 #include "../snd/sndgame.h"                     /* the GML sound calls (src/snd) */
 #include "pmath.h"
 #include "pcontent.h"                            /* P7 content packages (docs/CONTENT.md) */
@@ -19,15 +20,6 @@
 
 enum { E_STUNNED = 98, E_DEAD = 99, E_LEFT = 0, E_RIGHT = 1 };
 
-static double X(int i) { return PTOD(PX(i).x); }
-static double Y(int i) { return PTOD(PX(i).y); }
-static int CP(double x, double y, int obj) { return collision_point_any(x, y, obj, 0, NOONE); }
-/* collision_point(x, y, obj, -1, -1): the runner reads a GML bool as value > 0.5, so -1 is false for both prec
-   (bounding box only) and notme (self not excluded). Observed: c_ice_alienboss record 213, oYeti's ledge test at
-   (528, 48) hits an oDarkFall at 528, 48 whose precise mask has pixel (0, 0) clear */
-static int CPn(double x, double y, int obj, int self) { (void)self; return collision_point_any(x, y, obj, 0, NOONE); }
-static int sprw(int i) { int s = PX(i).spr; return s >= 0 ? spr_dim(psprite[s].w, PX(i).xscale) : 0; }
-static int sprh(int i) { int s = PX(i).spr; return s >= 0 ? spr_dim(psprite[s].h, PX(i).yscale) : 0; }
 static int bloodless_of(int i)                                     /* Create's bloodless = true */
 {
     int o = PX(i).obj;
@@ -40,34 +32,6 @@ static void blood(int self, double x, double y, int n)            /* scrCreateBl
 }
 /* "Caveman" / "ManTrap" / "Yeti" / "Hawkman" (no Create sets "Hawkman": oHawkman's type is "Yeti") */
 static int caveman_like(int t) { return t == T_CAVEMAN || t == T_MANTRAP || t == T_YETI; }
-
-/* the enemies' view test: x > xview - l and x < xview + 320 + r (same for y) */
-static int eview(int i, int l, int r)
-{
-    int32_t ix, iy;
-    view_read();
-    if (pin_xy_int(i, &ix, &iy))          /* whole x, y: GML's compare of two ints is their order (|a - b| >= 1 or 0) */
-        return ix > PW.xview - l && ix < PW.xview + 320 + r && iy > PW.yview - l && iy < PW.yview + 240 + r;
-    return PGTI(PX(i).x, PW.xview - l) && PLTI(PX(i).x, PW.xview + 320 + r) && PGTI(PX(i).y, PW.yview - l) &&
-           PLTI(PX(i).y, PW.yview + 240 + r);
-}
-
-static int isCollisionSolid(int i)
-{
-    double lb, tb, rb, bb;
-    int32_t x, y;
-    /* whole x, y: the corners are whole, and collision_rect_p takes rq_init's integer path, which is
-       collision_rect_i's (iok, fok 0, the same bounds; no instance of oSolid: NOONE without a side effect in both);
-       solid_rect_any (pworld.c) answers that query's != NOONE from the solid grid's cell summary, else searches */
-    if (pin_xy_int(i, &x, &y) && x > -29000 && x < 29000 && y > -29000 && y < 29000) {
-        const struct pin_ext *e = PE(&PX(i));
-        return solid_rect_any(x + e->lbo, y + e->tbo, x + e->rbo - 1, y + e->bbo - 1, i);
-    }
-    calcBounds(i, &lb, &tb, &rb, &bb);
-    return collision_rect_any(lb, tb, rb - 1, bb - 1, OBJ_oSolid, 1, i);
-}
-
-static int pl(void) { return PL.idx; }
 
 /* ---- Create --------------------------------------------------------------------------------------------- */
 /* objects/oEnemy/Create_0.gml (after oDrawnSprite's: type = "") */
@@ -102,15 +66,13 @@ void pen_enemy_create(int i)
     PEN(p)->bombID = NOONE;
 }
 
-static void en_make_active(struct pin *p) { PE(p)->xVel = PE(p)->yVel = PE(p)->xAcc = PE(p)->yAcc = 0; }
-
 int pen_create(int i, int fromgen)
 {
     struct pin *p = &PX(i);
     switch (p->obj) {
     case OBJ_oSnake:                                                   /* objects/oSnake/Create_0.gml */
         pen_enemy_create(i);
-        en_make_active(p);
+        make_active(p);
         setCollisionBounds(i, 2, 0, 14, 16);
         PE(p)->xVel = N(2.5);
         pin_setispd(p, (img_t)0.4);
@@ -137,7 +99,7 @@ int pen_create(int i, int fromgen)
         return 1;
     case OBJ_oSpiderHang:                                              /* objects/oSpiderHang/Create_0.gml */
         pen_enemy_create(i);
-        en_make_active(p);
+        make_active(p);
         setCollisionBounds(i, 4, 0, 12, 12);
         pin_setispd(p, (img_t)0.4);
         PE(p)->hp = 1;
@@ -147,7 +109,7 @@ int pen_create(int i, int fromgen)
     case OBJ_oSpider:                                                  /* objects/oSpider/Create_0.gml */
         pen_enemy_create(i);
         p->type = T_SPIDER;
-        en_make_active(p);
+        make_active(p);
         setCollisionBounds(i, 1, 5, 15, 16);
         PE(p)->myGrav = N(0.2);
         PEN(p)->myGravNorm = N(0.2);
@@ -158,7 +120,7 @@ int pen_create(int i, int fromgen)
         return 1;
     case OBJ_oGiantSpiderHang:                                         /* objects/oGiantSpiderHang/Create_0.gml */
         pen_enemy_create(i);
-        en_make_active(p);
+        make_active(p);
         setCollisionBounds(i, 0, 0, 32, 16);
         pin_setispd(p, (img_t)0.4);
         PE(p)->hp = 10;
@@ -172,7 +134,7 @@ int pen_create(int i, int fromgen)
     case OBJ_oGiantSpider:                                             /* objects/oGiantSpider/Create_0.gml */
         pen_enemy_create(i);
         p->type = T_GIANTSPIDER;
-        en_make_active(p);
+        make_active(p);
         setCollisionBounds(i, 2, 16, 30, 32);
         PE(p)->myGrav = N(0.3);
         PEN(p)->myGravNorm = N(0.3);
@@ -186,7 +148,7 @@ int pen_create(int i, int fromgen)
         return 1;
     case OBJ_oCaveman:                                                 /* objects/oCaveman/Create_0.gml */
         pen_enemy_create(i);
-        en_make_active(p);
+        make_active(p);
         setCollisionBounds(i, 2, 0, sprw(i) - 2, sprh(i));
         PE(p)->xVel = N(2.5);
         pin_setispd(p, (img_t)0.5);
@@ -204,7 +166,7 @@ int pen_create(int i, int fromgen)
         return 1;
     case OBJ_oSkeleton:                                                /* objects/oSkeleton/Create_0.gml */
         pen_enemy_create(i);
-        en_make_active(p);
+        make_active(p);
         setCollisionBounds(i, 2, 0, 14, 16);
         PE(p)->xVel = 0;
         pin_setispd(p, (img_t)0.5);
@@ -231,7 +193,7 @@ int pen_create(int i, int fromgen)
         create_detritus(i);
         p = &PX(i);
         pin_setispd(p, (img_t)0.3);
-        en_make_active(p);
+        make_active(p);
         setCollisionBounds(i, -4, -4, 4, 4);
         {
             double a = prandom(4);
@@ -262,7 +224,7 @@ int pen_create(int i, int fromgen)
         p->shopWall = 0;
         p->type = T_NONE;
         p->cleanDeath = 0;
-        en_make_active(p);
+        make_active(p);
         setCollisionBounds(i, -14, -16, 14, 16);
         PE(p)->myGrav = N(0.6);
         p->invincible = 1;
@@ -1038,7 +1000,7 @@ const uint8_t pen_offview_obj[OBJ_COUNT] = {
 
 /* i of such an object out of eview(i, 20, 4): its whole Step, 1. pen_parent_step's first test is that eview, which
    sets active = 0 and returns; the Step's own test then gives the same answer (eview reads the view and x, y only;
-   the four files' eview are the same code; active is what pen_parent_step just set) */
+   every file's eview is penhelp.h's; active is what pen_parent_step just set) */
 int pen_offview(int i)
 {
     if (eview(i, 20, 4)) return 0;
@@ -1451,15 +1413,6 @@ void pen_item_hit_enemy(int it)
         }
     }
 }
-
-/* the jar's speed test (:104 / :148's second operand) before its collision_rectangle in the grid build: the query
-   has no result-visible effect there (searches go in creation order, whatever the flush history: pobj.c PLAY_REST),
-   so a jar at |xVel|, |yVel| <= 2 skips it. The exact build keeps the query first (it moves the R-tree's flush) */
-#ifdef PCOL_EXACT
-#define JAR_FAST(j) 1
-#else
-#define JAR_FAST(j) (NGT(NABS(PE(j)->xVel), N(2)) || NGT(NABS(PE(j)->yVel), N(2)))
-#endif
 
 /* oJar / oSkull Step :104-145: 1 if the jar hit an enemy (it breaks) */
 int pen_jar_hit(int jar, int skull)
