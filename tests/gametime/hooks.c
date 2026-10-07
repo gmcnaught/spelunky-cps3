@@ -34,10 +34,11 @@ uint32_t now(void)
 }
 
 /* the vector table moved to RAM (VBR) with the FRT output compare (vector 72) added: the SDK's table (BIOS ROM at 0)
-   has no FRT entry. In .trace, first in main RAM (0x02000000, VBR's 1 KB alignment without a fill in .bss: main RAM
-   has no room for one above the stack reserve); frt_start writes all 128 entries */
+   has no FRT entry. In sprite RAM after M (marker.ld .gtvec, 0x0402fc00): it is VBR only from main_boot to
+   src/main's vbl_irq_install, which copies it (with vector 72) into main RAM's table, so no measured frame reads it;
+   main RAM has no room for it above the stack reserve (ramcheck.ld). frt_start writes all 128 entries */
 void frt_isr(void);
-static void (*vtab[128])(void) __attribute__((section(".trace"), aligned(1024), used));
+static void (*vtab[128])(void) __attribute__((section(".gtvec"), aligned(1024), used));
 static void frt_start(void)
 {
     int k;
