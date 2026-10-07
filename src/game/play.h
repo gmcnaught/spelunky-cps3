@@ -33,6 +33,15 @@
 #include "gentables.h"
 #include "playtables.h"
 
+/* the grid build's skips of work that has no result-visible effect (pscript.c PLAY_WALK, pobj.c PLAY_REST, pk_swamp.c
+   FISH_WALK): off in the exact build (PCOL_EXACT), the counting build (NUM_IS_CLASS) and with -DPLAY_NOREST (the
+   check that the skips change no record) */
+#if !defined(PCOL_EXACT) && !defined(NUM_IS_CLASS) && !defined(PLAY_NOREST)
+#define PLAY_SKIPS 1
+#else
+#define PLAY_SKIPS 0
+#endif
+
 /* play slots (PIN_DEAD the last): generated levels up to 1,404 instances (lake), 1,537 slots after 300 idle steps
    on a lake level, play adds up to 117 on the routes; tests/game: .data + .bss 450 KB of 512, 72 KB left for the
    stack, the cold arrays in sprite RAM (docs/DRAW.md section 6).

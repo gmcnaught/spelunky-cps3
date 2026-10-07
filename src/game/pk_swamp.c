@@ -258,7 +258,7 @@ static void fish_end(int i, int left, int right)
    - prey() only when some instance of its four families swims (prey_objs' note: otherwise the test fails);
    - DIR's compares on its bits: 0 is DEQ 0 and right; 180 is not DEQ 0 and left (90 < 180 < 270).
    Returns 0 without doing anything when the case does not apply (piranha_step then runs) */
-#if !defined(PCOL_EXACT) && !defined(NUM_IS_CLASS) && !defined(PLAY_NOREST)
+#if PLAY_SKIPS                                                 /* play.h */
 #define FISH_WALK 1                                            /* pscript.c's PLAY_WALK */
 #else
 #define FISH_WALK 0
