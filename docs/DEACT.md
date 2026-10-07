@@ -204,3 +204,22 @@ A jtcps3 run on .62 (playsh2_jt.sh with DEACT=32) would replace these.
 - **Checks on 86b81a5 + this branch:** PLAY_DEACT 0 build vs 86b81a5: every tests/routes/*.txt run (94) and fullreg
   (p5_caveman, p4_bomb_throw x levels 1-16 x seeds 1-20) byte-identical stdout. Default build: the 15 dz routes
   record-equal; the 15 traces made again with the id-read GML byte-identical to the earlier ones.
+
+## 7. jtcps3 (.62, jtcps3.rbf 2026-10-02, 2026-10-06 22:32)
+
+`DEACT=32 JTV=_dz NC=nc_robust.txt JT_ROUTES=c_swamp_drain,c_swamp_swim,c_swamp_piranha,c_swamp_grave,p5_lush_l5s11,
+p5_lush_l6s23 scripts/playsh2_jt.sh` on 2ab4c45 (main 86b81a5 + deact). PASS 11/11, SPR OK (MAME -nodrc PASS 11/11
+too). Route step means with step 1, against piranha4's measured 1f1815a run (LUSH.md 12.5; 86b81a5 adds swamp4's
+player change only, not measured on jtcps3 separately):
+
+| Route | 1f1815a | deact2 (PLAY_DEACT 32) | change | vs 0.525 M | max step |
+|---|---|---|---|---|---|
+| c_swamp_drain | 635.4 K | 583.6 K | -8.2 % | +11 % | 5.23 M |
+| c_swamp_swim | 491.1 K | 459.6 K | -6.4 % | met | 5.23 M |
+| c_swamp_piranha | 390.5 K | 368.1 K | -5.7 % | met | 3.37 M |
+| c_swamp_grave | 626.1 K | 577.0 K | -7.9 % | +10 % | 4.65 M |
+| p5_lush_l5s11 | 467.7 K | 409.8 K | -12.4 % | met | 3.74 M |
+| p5_lush_l6s23 | 407.4 K | 372.2 K | -8.7 % | met | 4.19 M |
+
+The max column is each route's first step (the level start). Section 5.1's projection B was within 1-3 % on the
+routes it covered (drain 597 / swim 473 / l5s11 436 / l6s23 393 K projected, from an estimated base).
