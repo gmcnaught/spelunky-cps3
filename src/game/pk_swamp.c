@@ -1385,10 +1385,11 @@ static void check_water(void)
         if (isRoomIs(R_rOlmec)) continue;
         lava = obj_is(PX(j).obj, OBJ_oLava);                   /* type == "Lava" */
         if (pin_xy_int(j, &ix, &iy) && ix > -29900 && ix < 29900 && iy > -29900 && iy < 29900) {
-            /* whole x, y: the same tests on ints (y < 512 is iy < 512; CP(x + dx, y + dy, obj) is
-               collision_point_any_at(j, dx, dy, obj), whose query is CP's on the doubles; x -+ 16: instance_place_ixy) */
+            /* whole x, y: the same tests on ints (y < 512 is iy < 512; CP(x + dx, y + dy, oSolid) || CP(.., oWater) is
+               pw_filled_xy: collision_point_any_at's branches, whose query is CP's on the doubles, on the ints;
+               x -+ 16: instance_place_ixy) */
             if (!(iy < 512)) continue;
-            if (!collision_point_any_at(j, 0, -16, OBJ_oSolid) && !collision_point_any_at(j, 0, -16, OBJ_oWater))
+            if (!pw_filled_xy(OBJ_oWater, ix, iy - 16))
                 pin_set_sprite(j, lava ? GSPR_sLavaTop : GSPR_sWaterTop);
             obj = instance_place_ixy(j, ix, iy, -16, 0, OBJ_oWater);
             if (obj != NOONE && (PX(obj).spr == GSPR_sWaterTop || PX(obj).spr == GSPR_sLavaTop))
@@ -1396,9 +1397,8 @@ static void check_water(void)
             obj = instance_place_ixy(j, ix, iy, 16, 0, OBJ_oWater);
             if (obj != NOONE && (PX(obj).spr == GSPR_sWaterTop || PX(obj).spr == GSPR_sLavaTop))
                 pin_set_sprite(j, lava ? GSPR_sLavaTop : GSPR_sWaterTop);
-            if ((!collision_point_any_at(j, -16, 0, OBJ_oSolid) && !collision_point_any_at(j, -16, 0, OBJ_oWater)) ||
-                (!collision_point_any_at(j, 16, 0, OBJ_oSolid) && !collision_point_any_at(j, 16, 0, OBJ_oWater)) ||
-                (!collision_point_any_at(j, 0, 16, OBJ_oSolid) && !collision_point_any_at(j, 0, 16, OBJ_oWater))) {
+            if (!pw_filled_xy(OBJ_oWater, ix - 16, iy) || !pw_filled_xy(OBJ_oWater, ix + 16, iy) ||
+                !pw_filled_xy(OBJ_oWater, ix, iy + 16)) {
                 pin_destroy(j);
                 waterCounter += 1;
             }

@@ -2081,6 +2081,45 @@ int (collision_rect_any_at)(int i, int32_t l, int32_t t, int32_t r, int32_t b, i
                                 obj, 0, NOONE);
 }
 
+/* collision_point_any_at(i, dx, dy, obj) (the play.h macro with it) when i's x, y are whole with |.| < 29900
+   (xy_int_near) and px = x + dx, py = y + dy: its branches on the ints given, without reading the position again
+   (check_water's tests of a water's neighbours: pw_filled_xy) */
+static int point_at_xy(int obj, int32_t px, int32_t py)
+{
+    if (pw_noinst_point(obj)) return 0;
+#ifndef PCOL_EXACT
+    {
+        struct pq q;
+        int r;
+        q.iok = 1; q.ix = px; q.iy = py; q.nodbl = 1;
+        if (obj == OBJ_oSolid && !gfar && !pcol_quiet()) {
+            r = fam_none(obj) ? 0 : solid_point_sum(&q, 0, NOONE);
+            if (r < 0) r = collision_point_p(px, py, obj, 0, NOONE) != NOONE;
+        } else if (obj >= 0 && xf_of[obj] >= 0 && !pcol_quiet()) {
+            r = fam_none(obj) ? 0 : ik_xpt(obj, NOONE, 0, px, py);
+            if (r < 0) r = xstatic_any(obj, NOONE, &q, 0);
+        } else
+            return (collision_point_any)(px, py, obj, 0, NOONE);
+#ifdef PLAY_STATS
+        if (r != (collision_point_p((double)px, (double)py, obj, 0, NOONE) != NOONE)) {
+            fprintf(stderr, "point_at_xy: answer %d differs (%d %d %d)\n", r, obj, (int)px, (int)py);
+            abort();
+        }
+#endif
+        return r;
+    }
+#else
+    return (collision_point_any)(px, py, obj, 0, NOONE);
+#endif
+}
+
+/* collision_point_any_at(i, dx, dy, oSolid) || collision_point_any_at(i, dx, dy, obj) for i at whole x, y (|.| < 29900)
+   and px = x + dx, py = y + dy (|dx|, |dy| <= 16) */
+int pw_filled_xy(int obj, int32_t px, int32_t py)
+{
+    return point_at_xy(OBJ_oSolid, px, py) || point_at_xy(obj, px, py);
+}
+
 int (collision_point_any_at)(int i, int32_t dx, int32_t dy, int obj)
 {
 #ifndef PCOL_EXACT
