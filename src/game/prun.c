@@ -486,8 +486,9 @@ static void gamepad_step(uint16_t m)
    oGamepad's Begin Step, every step of a level room but its first: (1) the instances the pass deactivated whose
    (x, y) then is inside the view grown by PLAY_DEACT are activated, in the order they were deactivated; (2) the alive
    candidates outside it are deactivated, in `with (all)` order (newest first), and listed with their (x, y) */
-static int16_t dl_i[PIN_MAX];
-static pos dl_x[PIN_MAX], dl_y[PIN_MAX];
+#define DL_MAX 320                                /* deactivated at once; more stops the play loop (untranslated 9010) */
+static int16_t dl_i[DL_MAX];
+static pos dl_x[DL_MAX], dl_y[DL_MAX];
 static int dl_n;
 static uint8_t dcand[OBJ_COUNT];                  /* 1: a candidate object, 2: dcand built */
 
@@ -513,7 +514,7 @@ static void deact_pass(void)
 {
     int32_t x0 = PW.xview - PLAY_DEACT, y0 = PW.yview - PLAY_DEACT;
     int32_t x1 = PW.xview + 320 + PLAY_DEACT, y1 = PW.yview + 240 + PLAY_DEACT;
-    static int16_t cand[PIN_MAX];
+    int16_t *cand = order;                        /* (the snapshot's array: free before the alarm passes) */
     int k, n = 0, nc = 0, i;
     if (!(dcand[0] & 2)) dcand_init();
     for (k = 0; k < dl_n; k++) {
@@ -529,6 +530,7 @@ static void deact_pass(void)
         if (p->ext && (PE(p)->held || PE(p)->forSale)) continue;
         cand[nc++] = (int16_t)i;
     }
+    if (dl_n + nc > DL_MAX) { PUNTR(9010); return; }
     while (nc > 0) {
         i = cand[--nc];
         dl_i[dl_n] = (int16_t)i; dl_x[dl_n] = PX(i).x; dl_y[dl_n] = PX(i).y; dl_n++;

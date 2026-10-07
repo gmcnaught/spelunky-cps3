@@ -179,7 +179,7 @@ DEACT = os.environ.get('TRACE_DEACT')
 DEACT_ROOTS = ['oEnemy', 'oItem', 'oTreasure']            # these objects and their descendants are candidates,
 DEACT_EXEMPT = ['oShopkeeper', 'oShopkeeper2', 'oBomb', 'oRopeThrow', 'oFlare', 'oFireFrogArmed',   # except these
                 'oFireFrogBomb', 'oDamsel', 'oDice', 'oLampItem', 'oLampRedItem', 'oJaws']
-# HD's legacy activation calls (no-ops in stock 1.2.2, where nothing is deactivated during play) become no-ops here
+# HD's legacy activation calls (no-ops in stock 1.2.2, where nothing is deactivated during play) become max(...) here
 # too: the deact pass is the only activation and deactivation in a level room
 DEACT_SITES = {'gml_Object_oLevel_Step_0': ['instance_activate_region(', 'instance_activate_object('],
                'gml_Object_oGame_Step_0': ['instance_activate_region(']}
@@ -528,7 +528,7 @@ if (room != global.trc_lastroom)
     {tree_gml()}
     {'global.trc_dl = [];' if DEACT else ''}
 }}
-{f'else if (room == rLevel || room == rLevel2 || room == rLevel3) trcDeactPass({int(DEACT)});' if DEACT else ''}
+{deact_gml() if DEACT else ''}
 '''
     end = f'''
 if (global.trc_done || !global.trc_on) exit;
@@ -688,10 +688,12 @@ SND_SCRIPTS = {'playSound': 'trcSnd(1, argument0, 0);', 'playMusic': 'trcSnd(2, 
 
 
 def deact_gml():
-    """TRACE_DEACT: gml_GlobalScript_trcDeact (docs/DEACT.md). trcDeactPass runs in oGamepad's Begin Step of every
-    level room step but the room's first: (1) every instance it deactivated whose stored (x, y) is inside the region
-    is activated, in the order they were deactivated; (2) every active candidate whose (x, y) is outside it is
-    deactivated, in with (all) order. Region: the view the last draw left, grown by the margin on each side"""
+    """TRACE_DEACT=<margin> (docs/DEACT.md): the pass, inline in oGamepad's Begin Step (else-branch of the room's
+    first Begin Step) of rLevel, rLevel2, rLevel3: (1) every instance it deactivated whose stored (x, y) is inside the
+    region is activated, in the order they were deactivated; (2) every active candidate whose (x, y) is outside it
+    is deactivated, in with (all) order. Region: the view the last draw left, grown by the margin on each side.
+    (No new global script: one next to TRACE_SND's gml_GlobalScript_trcSnd hung the runner)"""
+    m = int(DEACT)
     roots = ' || '.join(f'o == {r} || object_is_ancestor(o, {r})' for r in DEACT_ROOTS)
     ex = ' || '.join(f'o == {e}' for e in DEACT_EXEMPT)
     probe = '' if os.environ.get('TRACE_DEACT_PROBE') != '1' else '''
@@ -704,21 +706,11 @@ def deact_gml():
         var pf = file_text_open_write("deact_probe.txt"); file_text_write_string(pf, s); file_text_close(pf);
     }'''
     return f'''
-function trcNoActivate() {{ }}
-function trcDeactOk()
-{{
-    var o = object_index;
-    if (!({roots})) return false;
-    if ({ex}) return false;
-    if (variable_instance_exists(id, "held") && held) return false;
-    if (variable_instance_exists(id, "forSale") && forSale) return false;
-    return true;
-}}
-function trcDeactPass(m)
+else if (room == rLevel || room == rLevel2 || room == rLevel3)
 {{
     var cam = view_camera[0];
-    var x0 = camera_get_view_x(cam) - m, y0 = camera_get_view_y(cam) - m;
-    var x1 = camera_get_view_x(cam) + camera_get_view_width(cam) + m, y1 = camera_get_view_y(cam) + camera_get_view_height(cam) + m;
+    var x0 = camera_get_view_x(cam) - {m}, y0 = camera_get_view_y(cam) - {m};
+    var x1 = camera_get_view_x(cam) + camera_get_view_width(cam) + {m}, y1 = camera_get_view_y(cam) + camera_get_view_height(cam) + {m};
     var dl = global.trc_dl, keep = [], nk = 0;
     for (var k = 0; k < array_length(dl); k++)
     {{
@@ -729,7 +721,12 @@ function trcDeactPass(m)
     var cand = [], nc = 0;
     with (all)
     {{
-        if ((x < x0 || x > x1 || y < y0 || y > y1) && trcDeactOk()) {{ cand[nc] = [id, x, y]; nc += 1; }}
+        if (x < x0 || x > x1 || y < y0 || y > y1)
+        {{
+            var o = object_index;
+            if (({roots}) && !({ex}) && !(variable_instance_exists(id, "held") && held) &&
+                !(variable_instance_exists(id, "forSale") && forSale)) {{ cand[nc] = [id, x, y]; nc += 1; }}
+        }}
     }}
     for (var k = 0; k < nc; k++) {{ instance_deactivate_object(cand[k][0]); keep[nk] = cand[k]; nk += 1; }}
     global.trc_dl = keep;{probe}
@@ -738,12 +735,13 @@ function trcDeactPass(m)
 
 
 def deact_csx(q):
+    """TRACE_DEACT: HD's legacy activation calls become max(...) (no side effect, any number of arguments)"""
     if not DEACT:
         return ''
-    out = f'g.QueueReplace("gml_GlobalScript_trcDeact", {q(deact_gml())});\n'
+    out = ''
     for site, calls in DEACT_SITES.items():
         for c in calls:
-            out += f'g.QueueFindReplace("{site}", {q(c)}, {q("trcNoActivate(")});\n'
+            out += f'g.QueueFindReplace("{site}", {q(c)}, {q("max(")});\n'
     return out
 
 
