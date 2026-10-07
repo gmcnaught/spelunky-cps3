@@ -505,9 +505,22 @@ static void dcand_init(void)
     dbits_ok = 1;
 }
 
-static int doutside(pos x, pos y, int32_t x0, int32_t y0, int32_t x1, int32_t y1)
+/* the view tests on the bits of x, y (PLTI / PGTI: gcmp_fi). At a whole position (the integer shadows, play.h
+   pin_xy_int_p) x - v is a whole number for an int v, beyond eps unless 0: PLTI(x, v) is x < v and PGTI(x, v) x > v */
+static int doutside(const struct pin *p, int32_t x0, int32_t y0, int32_t x1, int32_t y1)
 {
-    return PLTI(x, x0) || PGTI(x, x1) || PLTI(y, y0) || PGTI(y, y1);
+    int32_t x, y;
+    if (pin_xy_int_p(p, &x, &y)) {
+        int r = x < x0 || x > x1 || y < y0 || y > y1;
+#ifdef PLAY_STATS
+        if (r != (PLTI(p->x, x0) || PGTI(p->x, x1) || PLTI(p->y, y0) || PGTI(p->y, y1))) {
+            fprintf(stderr, "doutside: integer answer %d differs\n", r);
+            abort();
+        }
+#endif
+        return r;
+    }
+    return PLTI(p->x, x0) || PGTI(p->x, x1) || PLTI(p->y, y0) || PGTI(p->y, y1);
 }
 
 /* (1) reads a listed instance's x, y now, as the GML reads them through its id (a deactivated instance's variables
@@ -521,13 +534,13 @@ static void deact_pass(void)
     if (!dbits_ok) dcand_init();
     for (k = 0; k < dl_n; k++) {
         i = dl_i[k];
-        if (doutside(PX(i).x, PX(i).y, x0, y0, x1, y1)) dl_i[n++] = (int16_t)i;
+        if (doutside(&PX(i), x0, y0, x1, y1)) dl_i[n++] = (int16_t)i;
         else pw_activate(i);
     }
     dl_n = n;
     for (i = pw_nthead; i >= 0; i = pw_ntnext[i]) {   /* creation order; the list below takes them newest first */
         const struct pin *p = &PX(i);
-        if (!DCAND(p->obj) || !doutside(p->x, p->y, x0, y0, x1, y1)) continue;
+        if (!DCAND(p->obj) || !doutside(p, x0, y0, x1, y1)) continue;
         if (p->ext && (PE(p)->held || PE(p)->forSale)) continue;
         cand[nc++] = (int16_t)i;
     }

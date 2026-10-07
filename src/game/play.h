@@ -474,6 +474,7 @@ int instance_exists_p(int obj);
 int instance_first_p(int obj);
 int instance_number_p(int obj);
 double distance_to_object_p(int self, int obj);
+void pw_touch_object(int self, int obj);            /* distance_to_object_p's touches alone */
 double distance_to_instance_p(int self, int other);
 int pin_overlap(int a, int b);
 /* tools/colprobe.py: Collision_Point / Rectangle / Line of instance k, Collision_Instance of a, b */
@@ -491,6 +492,7 @@ int pw_solid_vline_q(int32_t x, int32_t y1, int32_t y2, int notme_self);   /* so
 #ifdef PLAY_STATS
 extern uint32_t pw_muts;                          /* pw_draw_mark calls (every field change marks) */
 #endif            /* pin_setx(x + d) of a whole x, the whole box cache kept */
+int pw_filled_xy(int obj, int32_t px, int32_t py);   /* CP(px, py, oSolid) || CP(px, py, obj): whole point of a whole position */
 int pw_solid_pt(int32_t x, int32_t y);              /* collision_point_any(x, y, oSolid, 0, noone)'s summary, else -1 */
 int pw_fam_swims(const int16_t *objs, int n);       /* an alive instance of the families swims (PEN swimming) */
 

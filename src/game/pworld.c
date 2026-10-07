@@ -841,9 +841,28 @@ void pw_deactivate(int i)
 #ifndef PCOL_EXACT
     if (xmask[i] && !xond[i]) xdirty(i);
 #endif
-    for (k = j = 0; k < PW.nord; k++)
-        if (pw_ord[k] != i) pw_ord[j++] = pw_ord[k];
-    PW.nord = (int16_t)j;
+    /* pw_ord without i: pw_ord holds distinct slots in creation order, so pw_seq rises along it (pw_activate appends
+       with the next number; the renumbering keeps the order) and i's place is found by a binary search on pw_seq;
+       the entries after it move down one. The linear filter where the search does not land on i */
+    {
+        int lo = 0, hi = PW.nord - 1, s0 = pw_seq[i];
+        while (lo < hi) {
+            int m = (lo + hi) >> 1;
+            if (pw_seq[pw_ord[m]] < s0) lo = m + 1; else hi = m;
+        }
+        if (PW.nord > 0 && pw_ord[lo] == i) {
+            for (k = lo; k < PW.nord - 1; k++) pw_ord[k] = pw_ord[k + 1];
+            PW.nord = (int16_t)(PW.nord - 1);
+        } else {
+#ifdef PLAY_STATS
+            fprintf(stderr, "pw_deactivate: %d not found by creation number\n", i);
+            abort();
+#endif
+            for (k = j = 0; k < PW.nord; k++)
+                if (pw_ord[k] != i) pw_ord[j++] = pw_ord[k];
+            PW.nord = (int16_t)j;
+        }
+    }
     pcol_deactivated(i);
 }
 
@@ -2081,6 +2100,45 @@ int (collision_rect_any_at)(int i, int32_t l, int32_t t, int32_t r, int32_t b, i
                                 obj, 0, NOONE);
 }
 
+/* collision_point_any_at(i, dx, dy, obj) (the play.h macro with it) when i's x, y are whole with |.| < 29900
+   (xy_int_near) and px = x + dx, py = y + dy: its branches on the ints given, without reading the position again
+   (check_water's tests of a water's neighbours: pw_filled_xy) */
+static int point_at_xy(int obj, int32_t px, int32_t py)
+{
+    if (pw_noinst_point(obj)) return 0;
+#ifndef PCOL_EXACT
+    {
+        struct pq q;
+        int r;
+        q.iok = 1; q.ix = px; q.iy = py; q.nodbl = 1;
+        if (obj == OBJ_oSolid && !gfar && !pcol_quiet()) {
+            r = fam_none(obj) ? 0 : solid_point_sum(&q, 0, NOONE);
+            if (r < 0) r = collision_point_p(px, py, obj, 0, NOONE) != NOONE;
+        } else if (obj >= 0 && xf_of[obj] >= 0 && !pcol_quiet()) {
+            r = fam_none(obj) ? 0 : ik_xpt(obj, NOONE, 0, px, py);
+            if (r < 0) r = xstatic_any(obj, NOONE, &q, 0);
+        } else
+            return (collision_point_any)(px, py, obj, 0, NOONE);
+#ifdef PLAY_STATS
+        if (r != (collision_point_p((double)px, (double)py, obj, 0, NOONE) != NOONE)) {
+            fprintf(stderr, "point_at_xy: answer %d differs (%d %d %d)\n", r, obj, (int)px, (int)py);
+            abort();
+        }
+#endif
+        return r;
+    }
+#else
+    return (collision_point_any)(px, py, obj, 0, NOONE);
+#endif
+}
+
+/* collision_point_any_at(i, dx, dy, oSolid) || collision_point_any_at(i, dx, dy, obj) for i at whole x, y (|.| < 29900)
+   and px = x + dx, py = y + dy (|dx|, |dy| <= 16) */
+int pw_filled_xy(int obj, int32_t px, int32_t py)
+{
+    return point_at_xy(OBJ_oSolid, px, py) || point_at_xy(obj, px, py);
+}
+
 int (collision_point_any_at)(int i, int32_t dx, int32_t dy, int obj)
 {
 #ifndef PCOL_EXACT
@@ -2514,9 +2572,12 @@ static int precise_line(int k, const float *o)
     return 0;
 }
 
+static int line_hit_vi(int k, int32_t X, int32_t lo, int32_t hi);
+static int line_hit_hi(int k, int32_t Y, int32_t lo, int32_t hi);
+static int line_hit_f(int k, struct qctx *c);
+
 static int line_hit(int k, struct qctx *c)
 {
-    double l, t, r, b, x1, y1, x2, y2;
     const struct lq *q = &c->lq;
     int prec = c->prec;
     int32_t ib[4];
@@ -2525,7 +2586,27 @@ static int line_hit(int k, struct qctx *c)
             return 0;
         if (q->axis && (!prec || !precise(k)))
             return 1;
+        if (q->axis) {                            /* an axis-aligned line against a precise entry: line_hit_vi */
+            int r = q->lx == q->hx ? line_hit_vi(k, q->lx, q->ly, q->hy) : line_hit_hi(k, q->ly, q->lx, q->hx);
+            if (r >= 0) {
+#ifdef PLAY_STATS
+                if (r != line_hit_f(k, c)) {
+                    fprintf(stderr, "line_hit_vi: %d differs (%d: %d %d %d)\n", r, k, (int)q->lx, (int)q->ly, (int)q->hy);
+                    abort();
+                }
+#endif
+                return r;
+            }
+        }
     }
+    return line_hit_f(k, c);
+}
+
+/* line_hit past its integer tests: the doubles and floats of CInstance::Collision_Line */
+static int line_hit_f(int k, struct qctx *c)
+{
+    double l, t, r, b, x1, y1, x2, y2;
+    int prec = c->prec;
     if (!pin_bbox(k, &l, &t, &r, &b))
         return 0;
     if (!c->dbl) {
@@ -3164,6 +3245,63 @@ static int pci_bit(const struct pci *q, int cx, int cy)
     return (q->mask[cy * q->bpr + (cx >> 3)] & bit[cx & 7]) != 0;
 }
 
+/* line_hit's precise test of the vertical whole line x = X, y = lo .. hi (lo < hi) against entry k with an integer box
+   (BB_INT: angle 0, scales +-1, whole x, y) and a mask, on ints. line_box_f: a miss when X is outside [l, r) or the
+   segment outside [t, b] in y; otherwise it keeps the segment (X <= r - 1 < r - 1e-5: no clip). precise_line's
+   vertical branch (slope 0): v = max(t, lo) .. min(b, hi) in steps of 1 (floats of ints: exact), the mask column
+   floor((X - x) / xs + xo) = xo + (X - x) xs and row floor((v - y) / ys + yo) = yo + (v - y) ys (angle 0: cs 1, sn
+   and ns signed zeros), inside the mask box, the bit (pci_bit as pc_bit). -1: another case (the floats) */
+static int line_hit_vi(int k, int32_t X, int32_t lo, int32_t hi)
+{
+    struct pci A;
+    const struct pin *p = &PW.in[k];
+    int32_t v, v1, tx;
+    if (p->bbk != BB_INT || lo >= hi) return -1;
+    pci_of(k, 0, 0, &A);
+    if (!A.mask) return -1;
+    if (X < p->bl || X >= p->br || lo >= p->bb || hi < p->bt) return 0;
+    tx = A.xo + (X - A.x) * A.sx;
+    if (tx < A.ml || tx > A.mr) return 0;
+    v = lo > p->bt ? lo : p->bt;
+    v1 = hi < p->bb ? hi : p->bb;
+    for (; v <= v1; v++) {
+        int32_t ty = A.yo + (v - A.y) * A.sy;
+        if (ty >= A.mt && ty <= A.mb && pci_bit(&A, tx, ty)) return 1;
+    }
+    return 0;
+}
+
+/* the same for the horizontal whole line y = Y, x = lo .. hi (lo < hi). line_box_f: a miss when Y is outside [t, b) or
+   the segment outside [l, r] in x; otherwise the segment from xa = max(l, lo) (the clip at l: y unchanged, slope 0)
+   to xb = hi, or to r' = (float)r + -1e-5f when hi > r'. For 0 < r < 2^14, r' < r when r <= 256 (the float spacing
+   just below r is at most 2^-16 < 2 x 1e-5 there; at 256 it is 2^-16 too) and r' = r above 256 (spacing below r at
+   least 2^-15 > 2 x 1e-5), so the last whole x <= xb is min(hi, r <= 256 ? r - 1 : r). precise_line's horizontal
+   branch (slope 0) walks v = xa .. that x, column xo + (v - x) xs, row yo + (Y - y) ys; where the clipped segment is
+   one point (xa = xb) it takes precise_point, whose column and row at whole x, y and angle 0 are the same
+   (floor((px - x) / xs + xo), ...) with the same frame and mask box: one step of the walk. -1: r outside (0, 2^14),
+   not BB_INT, no mask */
+static int line_hit_hi(int k, int32_t Y, int32_t lo, int32_t hi)
+{
+    struct pci A;
+    const struct pin *p = &PW.in[k];
+    int32_t v, v1, ty, r = p->br;
+    if (p->bbk != BB_INT || lo >= hi || r <= 0 || r >= 16384) return -1;
+    pci_of(k, 0, 0, &A);
+    if (!A.mask) return -1;
+    if (Y < p->bt || Y >= p->bb || lo >= r || hi < p->bl) return 0;
+    v = lo > p->bl ? lo : p->bl;
+    v1 = r <= 256 ? r - 1 : r;
+    if (hi < v1) v1 = hi;
+    if (v > v1) return 0;
+    ty = A.yo + (Y - A.y) * A.sy;
+    if (ty < A.mt || ty > A.mb) return 0;
+    for (; v <= v1; v++) {
+        int32_t tx = A.xo + (v - A.x) * A.sx;
+        if (tx >= A.ml && tx <= A.mr && pci_bit(&A, tx, ty)) return 1;
+    }
+    return 0;
+}
+
 static int precise_collision_int(int a, int32_t dx, int32_t dy, const int32_t *ia, int b, const int32_t *ib)
 {
     struct pci A, B;
@@ -3370,7 +3508,6 @@ int instance_place_ixy(int self, int32_t x, int32_t y, int32_t idx, int32_t idy,
     int32_t ia[4];
     if (q == 1 && pin_ibox_s(self, ia)) {
         struct qctx c;
-        float fl = PLACE_F(ia[0] + idx), ft = PLACE_F(ia[1] + idy), fr = PLACE_F(ia[2] + idx), fb = PLACE_F(ia[3] + idy);
         pcol_touch(self);
         if (moved) pcol_place_marks_kept(self);              /* (self's tree rectangle is its box: pcol.c pm_e) */
         c.obj = obj; c.self = self; c.hit = NOONE;            /* (c.dx, c.dy: set where a search reads them) */
@@ -3386,13 +3523,14 @@ int instance_place_ixy(int self, int32_t x, int32_t y, int32_t idx, int32_t idy,
                         if (ov && (precise(self) || precise(k))) ov = precise_collision_int(self, idx, idy, ia, k, ib);
                     } else
                         ov = -1;
-                    if (!(pcol_search_has(k, fl, ft, fr, fb) && match(k, obj, self) &&
-                          (ov >= 0 ? ov : overlap_at(self, idx, idy, k))))
+                    if (!(pcol_search_has_i(k, ia[0] + idx, ia[1] + idy, ia[2] + idx, ia[3] + idy) &&
+                          match(k, obj, self) && (ov >= 0 ? ov : overlap_at(self, idx, idy, k))))
                         k = NOONE;
                 }
 #ifdef PLAY_STATS
                 c.dx = idx; c.dy = idy;
-                pcol_search(fl, ft, fr, fb, place_cb, &c);
+                pcol_search(PLACE_F(ia[0] + idx), PLACE_F(ia[1] + idy), PLACE_F(ia[2] + idx), PLACE_F(ia[3] + idy), place_cb,
+                            &c);
                 if (c.hit != k) {
                     fprintf(stderr, "instance_place_ixy: static-family answer %d differs from %d (%d %d)\n", k, c.hit,
                             self, obj);
@@ -3404,7 +3542,7 @@ int instance_place_ixy(int self, int32_t x, int32_t y, int32_t idx, int32_t idy,
         }
 #endif
         c.dx = idx; c.dy = idy;
-        pcol_search(fl, ft, fr, fb, place_cb, &c);
+        pcol_search(PLACE_F(ia[0] + idx), PLACE_F(ia[1] + idy), PLACE_F(ia[2] + idx), PLACE_F(ia[3] + idy), place_cb, &c);
         return c.hit;
     }
     return place_after_query(self, q, (double)(x + idx), (double)(y + idy), idx, idy, moved, obj);
@@ -3884,6 +4022,19 @@ double distance_to_object_p(int self, int obj)
         if (d < best) best = d;
     }
     return best;
+}
+
+/* distance_to_object_p(self, obj)'s writes without the distance: the box touches (pcol_touch of self, then of each
+   instance of obj's family in its creation order) and the counter; for a caller that does not read the distance */
+void pw_touch_object(int self, int obj)
+{
+    int k;
+    struct fam it;
+    PWST(dist, 1);
+    pcol_touch(self);
+    if (fam_none(obj)) return;
+    fam_begin(&it, obj);
+    while ((k = fam_get(&it)) != NOONE) pcol_touch(k);
 }
 
 int pw_with(int obj, int16_t *out, int max)

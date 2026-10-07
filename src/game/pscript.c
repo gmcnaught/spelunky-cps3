@@ -50,13 +50,28 @@ static inline __attribute__((always_inline)) int ibounds(int i, int32_t *lb, int
 }
 
 /* scripts/isCollisionLeft: collision_line(round(lb-d), round(tb), round(lb-d), round(bb-1), oSolid, 1, 1) > 0 */
+/* collision_line_p(x1, y1, x2, y2, oSolid, 1, notme) != NOONE for the scripts' rounded ends at a fractional position
+   (dround gives ints: the line's ends are whole): solid_vline_any / solid_hline_any, whose contract is that query on
+   whole ends (ik_side's path at a whole position). PLAY_STATS compares with collision_line_p */
+static int solid_line_r(int32_t x1, int32_t y1, int32_t x2, int32_t y2, int i)
+{
+    int r = x1 == x2 ? solid_vline_any(x1, y1, y2, i) : solid_hline_any(y1, x1, x2, i);
+#ifdef PLAY_STATS
+    if (r != (collision_line_p(x1, y1, x2, y2, OBJ_oSolid, 1, i) != NOONE)) {
+        fprintf(stderr, "solid_line_r: %d differs (%d %d %d %d %d)\n", r, (int)x1, (int)y1, (int)x2, (int)y2, i);
+        abort();
+    }
+#endif
+    return r;
+}
+
 int isCollisionLeft(int i, int d)
 {
     double lb, tb, rb, bb;
     int r = ik_side(i, IK_LEFT, d);
     if (r >= 0) return r;
     calcBounds(i, &lb, &tb, &rb, &bb);
-    return collision_line_p(dround(lb - d), dround(tb), dround(lb - d), dround(bb - 1), OBJ_oSolid, 1, i) != NOONE;
+    return solid_line_r(dround(lb - d), dround(tb), dround(lb - d), dround(bb - 1), i);
 }
 
 int isCollisionRight(int i, int d)
@@ -65,7 +80,7 @@ int isCollisionRight(int i, int d)
     int r = ik_side(i, IK_RIGHT, d);
     if (r >= 0) return r;
     calcBounds(i, &lb, &tb, &rb, &bb);
-    return collision_line_p(dround(rb + d - 1), dround(tb), dround(rb + d - 1), dround(bb - 1), OBJ_oSolid, 1, i) != NOONE;
+    return solid_line_r(dround(rb + d - 1), dround(tb), dround(rb + d - 1), dround(bb - 1), i);
 }
 
 int isCollisionTop(int i, int d)
@@ -74,7 +89,7 @@ int isCollisionTop(int i, int d)
     int r = ik_side(i, IK_TOP, d);
     if (r >= 0) return r;
     calcBounds(i, &lb, &tb, &rb, &bb);
-    return collision_line_p(dround(lb), dround(tb - d), dround(rb - 1), dround(tb - d), OBJ_oSolid, 1, i) != NOONE;
+    return solid_line_r(dround(lb), dround(tb - d), dround(rb - 1), dround(tb - d), i);
 }
 
 int isCollisionBottom(int i, int d)
@@ -83,7 +98,7 @@ int isCollisionBottom(int i, int d)
     int r = ik_side(i, IK_BOTTOM, d);
     if (r >= 0) return r;
     calcBounds(i, &lb, &tb, &rb, &bb);
-    return collision_line_p(dround(lb), dround(bb + d - 1), dround(rb - 1), dround(bb + d - 1), OBJ_oSolid, 1, i) != NOONE;
+    return solid_line_r(dround(lb), dround(bb + d - 1), dround(rb - 1), dround(bb + d - 1), i);
 }
 
 /* scripts/isCollisionLadder */
