@@ -441,3 +441,50 @@ attacking piranhas (42 K each) remain.
 - **Not byte-identical (gameplay-visible), not to implement:** a view test for piranhas (HD runs them everywhere:
   positions, bubbles and their RAND draws would differ off screen; on drain 61 all six are in view anyway, so
   little gain there); stepping idle piranhas every other frame (~85 K on walking steps, visibly different motion).
+
+### 11.5 Implemented (branch swamp3 on main 16ab24f)
+
+swim2's second batch (section 10.4: moveTo_x1, prey_swims' empty-object skip, struct pq nodbl, the instance_first_p
+cache, pdist_lt_at) landed on main while this was in progress. It covers 11.3's fix 2 and part of fix 1, so those
+are not repeated here. Six commits, each with 182 host route runs byte-identical:
+
+| Commit | Change (11.3 fix) |
+|---|---|
+| 1d553a0 | fish_end's DIR compares on the bits (CGT 90 / CLT 270, pcmpc.h; tests/cmpc 445 M cases, 0 differ) (1) |
+| 262c356 | piranha_step: c and the distance test only where IDLE / ATTACK read them (IDLE: only while the player swims) (1) |
+| 0c37d52 | collision_point_any_at: oSolid at a whole position from the solid summary on the int query; the fish's solid tests (1) |
+| 15b122c | prey_swims walks the families' object lists (no pw_with copy) (1) |
+| 8f49444 | direct package Step for enemies that pen_step hands to pcontent_ev (pen_step returns 2 -> stepk SK_PKG) (3) |
+| 6839211 | enemies out of eview(20, 4) whose Step starts with pen_parent_step: active = 0 on the SK_PEN / SK_PKG dispatch (4) |
+
+jtcost fit, main 16ab24f -> swamp3 6839211:
+
+| Step | model | instructions | fetch misses | data misses |
+|---|---|---|---|---|
+| c_swamp_drain 61 (walking) | 540.4 -> **471.7 K (-12.7 %)** | 125.0 -> 114.0 K | 9,197 -> 7,701 | 5,787 -> 5,000 |
+| c_swamp_drain 161 (swimming) | 885.5 -> 831.3 K (-6.1 %) | 213.9 -> 207.9 K | 15,013 -> 13,846 | 9,194 -> 8,464 |
+| c_swamp_swim 201 (swimming) | 750.6 -> 698.2 K (-7.0 %) | 182.8 -> 176.7 K | 12,782 -> 11,524 | 7,753 -> 7,105 |
+| p5_caveman 138 | 431.8 -> 415.8 K (-3.7 %) | 108.8 -> 107.8 K | 6,552 -> 6,319 | 4,477 -> 4,197 |
+| p5_lush_l5s37 201 | 468.4 -> 446.8 K (-4.6 %) | 124.7 -> 123.0 K | 6,725 -> 6,276 | 4,860 -> 4,533 |
+
+MAME SOFTFP (steps 2+): c_swamp_drain 162.8 -> 154.8 K (-4.9 %; walking steps 2-106 113.6 -> 104.0 K, swimming
+182.3 -> 175.0 K), c_swamp_swim 126.9 -> 118.5 K (-6.6 %; swimming 131.3 -> 123.4 K). playsh2 SOFTFP mean of all
+route steps 90,423 -> 89,503 (-1.0 %): lush -1.4 to -5.4 %, other P5 -0.06 to -0.65 %, P4 / P1 +0.1 to +0.2 %,
+p5_snakes +0.5 % (the table lookup on each enemy dispatch).
+
+Measured and not kept:
+- An integer path for anim_one (image_index + image_speed in 256ths when the sprite speed is 1.0f; exact,
+  1.57 G cases checked against float): drain 61 492.5 -> 492.0 K. It removed 14 __mulsf3 calls but added 508
+  instructions and 65 fetch misses to play_step: most swamp instances animate at 0.2 / 0.4, which are not
+  multiples of 1/256.
+- The off-view test in every ev_step (before the claimant switch): +1 to +2 % MAME on P4 / P5 routes (a switch
+  on every Step). It now runs on the enemy dispatch only, from a const table.
+
+Off-view share, for the deactivation decision (instrumented host build, eview(i, 20, 4) at each piranha Step):
+c_swamp_drain 1,317 of 2,121 piranha Steps in view, c_swamp_swim 1,306 of 2,508. On walking steps 4 of the 6
+piranhas are in view; later in the routes 2-3 are. An off-view idle piranha costs about 18-20 K jtcps3 now.
+
+Gates on 6839211: playsh2 9,701 / 9,701 grid and SOFTFP, shell 26/26 + 49/49, capture_check 428/428 and 6/6,
+SH-2 0 compiler warnings (playsh2, tests/game; tests/game's ld "dot moved backwards before .sprbss_a" is on
+16ab24f too), tests/game stack room 33,796 B (16ab24f: 33,828 B). Not yet run, waiting for build/trace to be
+regenerated: make check (EQUIV), ctall, game_check.

@@ -18,7 +18,7 @@ static long n, bad;
 struct cc { double c; uint64_t l, h; };     /* h or l 0: not used */
 static const struct cc cs[] = {
     { 6, CMPC_L_6, 0 }, { 3, 0, CMPC_H_3 }, { 2, CMPC_L_2, 0 }, { 1, CMPC_L_1, CMPC_H_1 }, { -3, CMPC_L_M3, 0 },
-    { 0.1, CMPC_L_0_1, 0 },
+    { 0.1, CMPC_L_0_1, 0 }, { 90, 0, CMPC_H_90 }, { 270, CMPC_L_270, 0 },
 };
 
 static void check(const struct cc *c, uint64_t u)

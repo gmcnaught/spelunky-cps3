@@ -1305,7 +1305,12 @@ void ev_step(int i)
     }
 #else
     switch (stepk[p->obj]) {                                                   /* P5 hook */
-    case SK_PEN: pen_step(i); return;
+    case SK_PEN: {
+        int o = p->obj;
+        if (pen_offview_obj[o] && pen_offview(i)) return;      /* (penemy.c) */
+        if (pen_step(i) == 2) step_pkg(o);       /* pen_step's path for o ends in pcontent_ev: call the package */
+        return;
+    }
     case SK_PDAM: pdam_step(i); return;
     case SK_PSHOP: pshop_step(i); return;
     case SK_PITEM: pitem_step(i); return;
@@ -1314,7 +1319,10 @@ void ev_step(int i)
     case SK_NONE:
         if ((stepk[p->obj] = (uint8_t)step_hooks(i)) != SK_OWN) return;
         break;
-    default: pcontent_pkg_ev[stepk[p->obj] - SK_PKG](FEV_STEP, i, 0); return;     /* SK_PKG + 1-5 */
+    default:                                                                   /* SK_PKG + 1-5 */
+        if (pen_offview_obj[p->obj] && pen_offview(i)) return;
+        pcontent_pkg_ev[stepk[p->obj] - SK_PKG](FEV_STEP, i, 0);
+        return;
     }
 #endif
     switch (p->obj) {

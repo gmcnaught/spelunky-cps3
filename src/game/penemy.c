@@ -1028,6 +1028,24 @@ static void boulder_solid(int i, int o)
     }
 }
 
+/* the objects whose Step is pen_parent_step(i) and then `if (!eview(i, 20, 4)) return` (oSnake, oSkeleton, oFrog,
+   oFireFrog, oManTrap, oMonkey, oZombie, oVampire) or `if (!active) return` (oCaveman, oYeti), each reached by a
+   switch on the object with nothing before it */
+const uint8_t pen_offview_obj[OBJ_COUNT] = {
+    [OBJ_oSnake] = 1, [OBJ_oSkeleton] = 1, [OBJ_oCaveman] = 1, [OBJ_oFrog] = 1, [OBJ_oFireFrog] = 1, [OBJ_oManTrap] = 1,
+    [OBJ_oMonkey] = 1, [OBJ_oZombie] = 1, [OBJ_oVampire] = 1, [OBJ_oYeti] = 1,
+};
+
+/* i of such an object out of eview(i, 20, 4): its whole Step, 1. pen_parent_step's first test is that eview, which
+   sets active = 0 and returns; the Step's own test then gives the same answer (eview reads the view and x, y only;
+   the four files' eview are the same code; active is what pen_parent_step just set) */
+int pen_offview(int i)
+{
+    if (eview(i, 20, 4)) return 0;
+    PE(&PX(i))->active = 0;
+    return 1;
+}
+
 int pen_step(int i)
 {
     struct pin *p = &PX(i);
@@ -1055,7 +1073,7 @@ int pen_step(int i)
     }
     if (obj_is(p->obj, OBJ_oEnemy) && p->obj != OBJ_oShopkeeper) {
         if (!pcontent_ev(FEV_STEP, i, 0)) PUNTR(5003);                                       /* P7 hook */
-        return 1;
+        return 2;                                          /* (handed to pcontent_ev: pobj.c ev_step) */
     }
     return 0;
 }

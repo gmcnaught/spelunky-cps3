@@ -12,6 +12,7 @@
 #include "pcol.h"
 #include "pmath.h"
 #include "pcontent.h"
+#include "pcmpc.h"
 #include "../snd/sndgame.h"                     /* the GML sound calls (src/snd) */
 #ifdef PLAY_STATS
 #include <stdio.h>
@@ -234,19 +235,29 @@ static int prey(int i)
 
 /* some instance of prey()'s four families is swimming. prey() has no side effect, and IDLE uses its answer only as
    obj != NOONE && obj's swimming && hp > 0: with no swimming instance in the families that test fails whatever
-   prey() returns */
+   prey() returns. The families' alive instances are the objects' lists (pw_ohead: alive, linked at pin_add,
+   unlinked when alive goes to 0) of every object that is one of the four or descends from one */
 static int prey_swims(void)
 {
     static const int16_t objs[4] = { OBJ_oCaveman, OBJ_oShopkeeper, OBJ_oHawkman, OBJ_oYeti };
-    int16_t w[32];
-    int k, j, n;
-    for (k = 0; k < 4; k++) {
-        if (pw_count(objs[k]) == 0) continue;                  /* (pw_with: none) */
-        n = pw_with(objs[k], w, 32);
-        if (n >= 32) return 1;
-        for (j = 0; j < n; j++)
-            if (PEN(&PX(w[j]))->swimming) return 1;
+    static int16_t po[16];
+    static int npo = -1;
+    int k, j;
+    if (npo < 0) {
+        int n = 0;
+        for (k = 0; k < OBJ_COUNT; k++)
+            for (j = 0; j < 4; j++)
+                if (obj_is(k, objs[j])) {
+                    if (n < 16) po[n] = (int16_t)k;
+                    n++;
+                    break;
+                }
+        npo = n;
     }
+    if (npo > 16) return 1;                                    /* (not the case: then prey() decides) */
+    for (k = 0; k < npo; k++)
+        for (j = pw_ohead[po[k]]; j >= 0; j = pw_inext[j])
+            if (PEN(&PX(j))->swimming) return 1;
     return 0;
 }
 
@@ -255,10 +266,12 @@ static void fish_idle_swim(int i)
 {
     struct pin *p = &PX(i);
     if (DEQ(DIR(p), 0)) {
-        if (collision_point_any_at(i, 8 + 2, 0, OBJ_oWater) && !CP(X(i) + 10, Y(i), OBJ_oSolid)) moveTo_x1(i, 1);
+        if (collision_point_any_at(i, 8 + 2, 0, OBJ_oWater) && !collision_point_any_at(i, 10, 0, OBJ_oSolid))
+            moveTo_x1(i, 1);
         else DIR(p) = 180;
     } else {
-        if (collision_point_any_at(i, -2, 0, OBJ_oWater) && !CP(X(i) - 2, Y(i), OBJ_oSolid)) moveTo_x1(i, -1);
+        if (collision_point_any_at(i, -2, 0, OBJ_oWater) && !collision_point_any_at(i, -2, 0, OBJ_oSolid))
+            moveTo_x1(i, -1);
         else DIR(p) = 0;
     }
 }
@@ -266,7 +279,7 @@ static void fish_idle_swim(int i)
 static void fish_end(int i, int left, int right)
 {
     struct pin *p = &PX(i);
-    if (DGT(DIR(p), 90) && DLT(DIR(p), 270)) pin_set_sprite(i, left);
+    if (CGT(DIR(p), 90, CMPC_H_90) && CLT(DIR(p), 270, CMPC_L_270)) pin_set_sprite(i, left);   /* (pcmpc.h) */
     else pin_set_sprite(i, right);
     if (!collision_point_any_at(i, 4, 4, OBJ_oWater)) {
         pin_create(PX(i).x, PX(i).y, OBJ_oFishBone);
@@ -286,11 +299,16 @@ static void piranha_step(int i)                                /* objects/oPiran
         pin_destroy(i);
     }
     p = &PX(i);
-    c = instance_first_p(OBJ_oCharacter);
-    near = pdist_lt_at(p->x, p->y, 4, 4, PX(c).x, PX(c).y, 90);  /* point_distance(x + 4, y + 4, c.x, c.y) < 90, now */
+    /* dist = point_distance(x + 4, y + 4, oCharacter.x, oCharacter.y) (:15) is read only by IDLE's and ATTACK's tests:
+       c and the compare are made there, at the position the Step started with (instance_first_p and pdist_lt_at
+       have no game effect: their caches give the same answers whenever filled) */
     if (PE(p)->status == 0) {                                  /* IDLE :17 */
+        pos x0 = p->x, y0 = p->y;
         fish_idle_swim(i);
-        if (near && PL.swimming && !PL.dead) PE(p)->status = 1;
+        if (PL.swimming && !PL.dead) {                         /* (the test's other operands first) */
+            c = instance_first_p(OBJ_oCharacter);
+            if (pdist_lt_at(x0, y0, 4, 4, PX(c).x, PX(c).y, 90)) PE(p)->status = 1;
+        }
         obj = prey_swims() ? prey(i) : NOONE;
 #ifdef PLAY_STATS
         if (obj == NOONE) {                                    /* the host builds: the skipped prey() fails the test */
@@ -306,7 +324,8 @@ static void piranha_step(int i)                                /* objects/oPiran
             PE(p)->status = 0;
             DIR(p) = RAND(0, 1) * 180;
         }
-    } else if (PE(p)->status == 1 && c != NOONE) {             /* ATTACK :63 */
+    } else if (PE(p)->status == 1 && (c = instance_first_p(OBJ_oCharacter)) != NOONE) {   /* ATTACK :63 */
+        near = pdist_lt_at(p->x, p->y, 4, 4, PX(c).x, PX(c).y, 90);   /* point_distance(x + 4, y + 4, c.x, c.y) < 90 */
         if (near && PL.swimming && !PL.dead) {
             double d = point_direction_d(X(i) + 4, Y(i) + 4, X(c), Y(c));
             int a = RAND(0, 1), b = RAND(0, 1);

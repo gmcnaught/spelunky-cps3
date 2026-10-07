@@ -79,6 +79,10 @@ static uint8_t xcnt[XF_N][GRID_H][GRID_W];
 static uint16_t xfar[XF_N];
 static uint8_t xsat[XF_N];
 static uint16_t xemp[XF_N];                      /* entries placed with an empty integer box (xisfar 2): in no cell */
+/* 1 once an entry of the family was placed with a precise sprite (precise()) since the index's reset: while 0, no
+   entry is precise (a sprite or mask change re-places the entry: pw_changed -> grid_dirty -> xdirty), so a prec 1
+   query of the family answers as a prec 0 one (rect_hit: prec matters only for precise entries) */
+static uint8_t xprecf[XF_N];
 static uint8_t xmask[PIN_MAX], xisfar[PIN_MAX], xond[PIN_MAX], xx0[PIN_MAX], xy0[PIN_MAX], xx1[PIN_MAX], xy1[PIN_MAX];
 static int16_t xdnext[PIN_MAX], xdhead = NOONE;
 /* per cell, the last entry placed (xflush_run) whose integer box covers the whole cell, any family, or NOONE: a hint
@@ -1463,6 +1467,7 @@ static void grid_reset(void)
         xfar[x] = 0;
         xemp[x] = 0;
         xsat[x] = 0;
+        xprecf[x] = 0;
         for (y = 0; y < GRID_H; y++) { int c; for (c = 0; c < GRID_W; c++) xcnt[x][y][c] = 0; }
     }
     for (y = 0; y < GRID_H; y++)
@@ -1673,6 +1678,11 @@ static __attribute__((noinline)) void xflush_run(void)
         xmask[i] = xisfar[i] = 0;
         if (!PW.in[i].alive || !(b = xbits[PW.in[i].obj]) || bbkind(i) == BB_NOSPR) continue;
         xmask[i] = (uint8_t)b;
+        if (precise(i)) {
+            int f;
+            for (f = 0; f < XF_N; f++)
+                if (b >> f & 1) xprecf[f] = 1;
+        }
         if (pin_ibox(i, ib)) {
             if (ib[2] <= ib[0] || ib[3] <= ib[1]) {                  /* empty: never hit by a point; counted in xemp */
                 xisfar[i] = 2;                                       /* (xpoint_any tests it with point_hit: a miss) */
@@ -1819,6 +1829,23 @@ static int xstatic_any(int obj, int notme, const struct pq *q, int prec)
 }
 #endif
 
+#ifndef PCOL_EXACT
+/* the oSolid summary's answer at query q (gfar 0, pcol_quiet() 0, oSolid alive): 1 a hit, 0 a miss, -1 unknown; reads
+   iok, ix, iy only */
+static int solid_point_sum(const struct pq *q, int prec, int notme_self)
+{
+    int cx, cy, n, k;
+    if (q->iok && q->ix >= 0 && q->iy >= 0 && (cx = q->ix >> 4) < GRID_W && (cy = q->iy >> 4) < GRID_H) {
+        grid_flush();
+        n = gfull[cy][cx];
+        k = gfblk[cy][cx];
+        if (n > 0 && k != notme_self && (!prec || !precise(k))) return 1;
+        if (gother[cy][cx] == 0 && (n == 0 || (n == 1 && k == notme_self))) return 0;
+    }
+    return -1;
+}
+#endif
+
 int (collision_point_any)(double px, double py, int obj, int prec, int notme_self)
 {
 #ifndef PCOL_EXACT
@@ -1842,16 +1869,10 @@ int (collision_point_any)(double px, double py, int obj, int prec, int notme_sel
         return r;
     }
     if (obj == OBJ_oSolid && !gfar && !pcol_quiet()) {
-        int cx, cy, n, k, r = -1;
+        int r;
         if (fam_none(obj)) return 0;
         pq_init(&q, px, py);
-        if (q.iok && q.ix >= 0 && q.iy >= 0 && (cx = q.ix >> 4) < GRID_W && (cy = q.iy >> 4) < GRID_H) {
-            grid_flush();
-            n = gfull[cy][cx];
-            k = gfblk[cy][cx];
-            if (n > 0 && k != notme_self && (!prec || !precise(k))) r = 1;
-            else if (gother[cy][cx] == 0 && (n == 0 || (n == 1 && k == notme_self))) r = 0;
-        }
+        r = solid_point_sum(&q, prec, notme_self);
         if (r >= 0) {
 #ifdef PLAY_STATS
             if (r != (collision_point_p(px, py, obj, prec, notme_self) != NOONE)) {
@@ -1910,6 +1931,22 @@ int (collision_point_any_at)(int i, int32_t dx, int32_t dy, int obj)
                 ok = 1;
             }
 #endif
+        }
+        /* oSolid at whole x, y: the summary on the same int query (collision_point_any's, without the doubles: the
+           point PTOD(x) + dx is the whole double x + dx, which pq_init takes as these ints); not known: the search
+           collision_point_any falls back to, at the same point */
+        if (obj == OBJ_oSolid && !gfar && !pcol_quiet() && xy_int_near(i, &x, &y)) {
+            int r;
+            q.iok = 1; q.ix = x + dx; q.iy = y + dy;                 /* (solid_point_sum reads iok, ix, iy) */
+            r = fam_none(obj) ? 0 : solid_point_sum(&q, 0, NOONE);
+            if (r < 0) r = collision_point_p(q.ix, q.iy, obj, 0, NOONE) != NOONE;
+#ifdef PLAY_STATS
+            if (r != (collision_point_p(PTOD(PW.in[i].x) + dx, PTOD(PW.in[i].y) + dy, obj, 0, NOONE) != NOONE)) {
+                fprintf(stderr, "collision_point_any_at: solid answer %d differs (%d %d)\n", r, q.ix, q.iy);
+                abort();
+            }
+#endif
+            return r;
         }
         if (ok) {
             int r = fam_none(obj) ? 0 : xstatic_any(obj, NOONE, &q, 0);
@@ -2625,15 +2662,19 @@ static int rect_cb(int k, void *v)
 
 static int rect_run(struct rq *rq, int q, const float *r, int obj, int prec, int notme_self);
 
-/* a prec 0 query of a static family (the index) with integer corners (iok: rect_hit's integer test on BB_INT boxes,
+/* a prec 0 query (or prec 1 with no precise entry: xprecf) of a static family (the index) with integer corners (iok: rect_hit's integer test on BB_INT boxes,
    max(l, bl) < min(r, br) and in y, so a hit has a pixel of the box inside the corners; an empty box never hits; a
    box of another kind is in xfar) and no entry of the family in the cells they cover: NOONE. The host builds test
    every entry of the family beside every answer */
 static int rq_static_none(struct rq *rq, int obj, int prec, int notme_self)
 {
 #ifndef PCOL_EXACT
-    if (prec || obj < 0 || xf_of[obj] < 0 || !rq->iok || pcol_quiet() ||
-        !xrect_none(xf_of[obj], rq->ilx, rq->ily, rq->ihx, rq->ihy))
+    if (obj < 0 || xf_of[obj] < 0 || !rq->iok || pcol_quiet()) return 0;
+    if (prec) {                                  /* prec 1: as prec 0 while no entry of the family is precise */
+        if (xdhead >= 0) xflush_run();
+        if (xprecf[xf_of[obj]]) return 0;
+    }
+    if (!xrect_none(xf_of[obj], rq->ilx, rq->ily, rq->ihx, rq->ihy))
         return 0;
 #ifdef PLAY_STATS
     {   /* every entry of the family, by rect_hit */
