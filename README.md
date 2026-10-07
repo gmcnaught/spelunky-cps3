@@ -18,6 +18,50 @@ The generators read HD's art, sound and data from `refs/`; their outputs, `build
 so the game builds without `refs/` (CI does). The rest of `refs/`, `build/` and `rom/` is git-ignored (see
 [Build inputs](#build-inputs-refs-and-buildgen)).
 
+## How to play
+
+### Install (MiSTer)
+
+Download `spelunky.zip` and the `.mra` from the [latest release](https://github.com/gmcnaught/spelunky-cps3/releases/latest).
+Put `spelunky.zip` in `games/mame/` and the MRA in `_Arcade/`. GitHub names the MRA `Spelunky.Classic.Arcade.mra`:
+rename it to `Spelunky Classic Arcade.mra` for the menu. The game runs on the jtcps3 core, which also needs your own
+`jtbeta.zip`.
+
+### Controls
+
+Insert a coin and press Start. The panel whose Start began the game controls it (one player).
+
+| Button | In play |
+|---|---|
+| Stick | Move; up / down climb ropes and ladders, enter doors, look; down crouches |
+| B1 (LP) | Jump |
+| B2 (MP) | Whip; with an item held, throw or use it; down + B2 picks up (B2 also skips transitions and restarts after a death) |
+| B3 (HP) | Switch item: cycles the hands between the held item, a bomb and a rope |
+| B4 (LK) | Run (hold; or press once with RUN BUTTON set to TOGGLE) |
+| B5 (MK) | Bomb |
+| B6 (HK) | Rope |
+| Start | Pay: buy the shop item you are holding |
+
+### Service menu (settings)
+
+![Settings screen](docs/img/settings.png)
+
+Open it by holding **Coin + B2** together on either panel for one second, or with the test switch (MAME: Service
+Mode, F2; jtcps3: F2). The stock jtcps3 has no OSD test switch, so on MiSTer use Coin + B2. Opening the menu ends
+any game in progress, and the coin from the combo is not kept.
+
+Up / down choose a row; B1 or right changes it, left changes it back.
+
+| Item | Values | What it does |
+|---|---|---|
+| FREE PLAY | OFF / ON | ON: Start begins a game without credits; the attract mode shows FREE PLAY |
+| COINS PER CREDIT | 1-9 | Coins needed for one credit (at most 9 credits). The service button gives one credit |
+| RUN BUTTON | HOLD / TOGGLE | HOLD: run while B4 is held. TOGGLE: B4 switches between run and walk; each game starts walking |
+| SMOOTH MOTION | ON / OFF | ON: 60 positions a second from the game's 30 steps (a midpoint frame between steps, one frame later). OFF: each step's frame shown twice |
+| CLEAR HIGH SCORES | NO / YES | YES: the scores and stats are cleared when you save (the settings are kept) |
+| GAME CAPTURE | (B1 or right opens it) | The last game's controls and checkpoints as pages of marks on screen, for bug reports: photograph or record the pages and they replay step for step on the host build ([docs/ARCADE.md](docs/ARCADE.md) section 7). Pages turn every 2.5 s; B1 / right next, left back, B2 returns to the menu |
+| SAVE AND EXIT | (B1) | Stores the settings in the EEPROM and restarts the game. The test switch does the same from any row |
+
 ## Where the code is
 
 | Path | What it is |
