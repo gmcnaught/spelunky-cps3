@@ -7,6 +7,7 @@
 #   JTV=<variant>, RUNTAG=<tag> (as playsh2_jt.sh), POLL=30 s, FIRST=20 s (the first look), MAXWAIT=2400 s, MRA_DIR=_CPS3Test
 #   -> build/jt_time/<set>_<date>/{results.png,results.txt}; exit 0 PASS, 1 FAIL / not read, 2 timeout
 # e.g. JTFAST=1 JT_NOGEN=1 JT_ROUTES=p4_exit559,p5_caveman scripts/playsh2_jt.sh && scripts/jt_time.sh
+# (the set is linked as playsh2_jt.sh built it: NC=nc_robust.txt by default since 2026-10-07, NC=none for the plain link)
 set -e
 cd "$(dirname "$0")/.."
 DEV=${MISTER:-root@192.168.20.62}; MD=${MRA_DIR:-_CPS3Test}
