@@ -12,7 +12,7 @@ Prints one line:
        the particles of COSMETIC|-> pos=<first x/y
        difference|-> set=<first instance-set difference|-> maxd_pre=<largest |dx|,|dy| before disc>
        route=<PASS|FAIL:<why>> state=<PASS when gbag is - or not before rng, else FAIL> rooms=<room@t ...>
-Discrete state as tools/playfx.py (header, instance set, object, sprite, floor(image_index), depth, visible,
+Discrete state (header, instance set, object, sprite, floor(image_index), depth, visible,
 alarms, integer variables). Route check: the same rooms in the same order with entry steps within 1, the same
 deaths, the same damage sequence (life after each loss), and equal last money / bombs / ropes, over the records
 both have (the variant may stop early only if the exact one does).

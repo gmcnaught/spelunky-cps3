@@ -279,7 +279,7 @@ static void fish_end(int i, int left, int right)
    - prey() only when some instance of its four families swims (prey_objs' note: otherwise the test fails);
    - DIR's compares on its bits: 0 is DEQ 0 and right; 180 is not DEQ 0 and left (90 < 180 < 270).
    Returns 0 without doing anything when the case does not apply (piranha_step then runs) */
-#if !defined(PCOL_EXACT) && !defined(PLAY_FIXED) && !defined(NUM_IS_CLASS) && !defined(PLAY_NOREST)
+#if !defined(PCOL_EXACT) && !defined(NUM_IS_CLASS) && !defined(PLAY_NOREST)
 #define FISH_WALK 1                                            /* pscript.c's PLAY_WALK */
 #else
 #define FISH_WALK 0
@@ -292,7 +292,7 @@ static void fish_end(int i, int left, int right)
 #endif
 static __attribute__((noinline)) int piranha_idle(int i)
 {
-#if !defined(PLAY_FIXED) && !defined(NUM_IS_CLASS)
+#if !defined(NUM_IS_CLASS)
     struct pin *p = &PX(i);
     struct pin_ext *e = PE(p);
     union { double d; uint64_t u; } v;

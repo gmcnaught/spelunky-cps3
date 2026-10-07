@@ -239,11 +239,7 @@ static inline int fne(float a, float b)
     if ((x.u & 0x7fffffffu) > 0x7f800000u || (y.u & 0x7fffffffu) > 0x7f800000u) return 1;
     return x.u != y.u && ((x.u | y.u) << 1) != 0;
 }
-#ifdef PLAY_FIXED
-#define POS_NE(a, b) ((a) != (b))                 /* pos is an integer there */
-#else
 #define POS_NE(a, b) fne((a), (b))
-#endif
 /* pin_xy_int's shadows (struct pin ix, iy): PXY_UNK until read after a change of the float (a value unchanged as POS_NE
    sees it, +0 / -0, keeps the same int). PIN_SETX_RAW / PIN_SETY_RAW: a write of x / y without the dirty marks (moveTo's
    walk, pin_add) */
@@ -424,13 +420,7 @@ int (collision_point_any_at)(int i, int32_t dx, int32_t dy, int obj);           
    in registers, no stack traffic in the collision helpers) */
 static inline int pos_int(pos v, int32_t *o)
 {
-#ifdef PLAY_FIXED
-    if ((v & ((1 << PFRAC_BITS) - 1)) != 0) return 0;
-    *o = v >> PFRAC_BITS;
-    return *o > -30000 && *o < 30000;
-#else
     return fwhole(v, o) && *o > -30000 && *o < 30000;
-#endif
 }
 /* pin_xy_int from the shadows ix, iy (struct pin): both known and whole, one known not whole (0), else pin_xy_fill
    (pworld.c) decodes the floats and stores the shadows. The PLAY_STATS builds (PIN_SHADOW_CHECK) compare every answer

@@ -1,10 +1,8 @@
-/* Arithmetic of the play loop: GameMaker's reals (binary64) for the fractional game variables, selectable.
+/* Arithmetic of the play loop: GameMaker's reals (binary64) for the fractional game variables.
  *
- *   default            num = double, pos = float: bit-exact with GameMaker 2024.14, which computes every GML
- *                      real in binary64 and stores the built-in x, y, image_* in single precision (the
- *                      reference build of P4).
- *   -DPLAY_FIXED       num = s7.24 fixed point in an int32 (velocities, accelerations, gravity, friction: |v| < 128),
- *                      pos = s13.18 fixed point in an int32 (positions: |p| < 8192). Maldita's F16 formats.
+ *   num = double, pos = float: bit-exact with GameMaker 2024.14, which computes every GML real in binary64 and stores
+ *   the built-in x, y, image_* in single precision. (The s7.24 / s13.18 fixed-point build, PLAY_FIXED, changed
+ *   positions on 5 of 6 P4 routes, PLAN.md P4, and was removed.) PLAY_COUNT (C++): num a class counting operations.
  *
  * num: the GML variables xVel, yVel, xAcc, yAcc, grav, myGrav, gravityIntensity, friction factors, ...
  * pos: x, y. Most positions stay whole numbers (moveTo moves one pixel at a time), but rubble, poofs, flares and
@@ -87,7 +85,6 @@ static inline bool operator!=(num a, num b) { play_dcount.cmp++; return a.v != b
 #define NUM_IS_CLASS 1
 #endif
 
-#ifndef PLAY_FIXED
 #ifndef NUM_IS_CLASS
 typedef double num;
 #endif
@@ -137,58 +134,6 @@ static inline double dfrac(double a) { return a - (double)(int32_t)a; }
 /* 1 / a for a in (0, 1) (moveTo's round(1 / frac)) */
 #define NRECIP_ROUND(a) dround((double)((num)1.0 / (a)))
 #define NOPS(k)       (play_dops += (k))      /* binary64 operations counted (the SH-2 cost question) */
-#else
-typedef int32_t num;                          /* s7.24 */
-typedef int32_t pos;                          /* s13.18 */
-#define NFRAC_BITS 24
-#define PFRAC_BITS 18
-#define N(c)          ((num)((c) * 16777216.0 + ((c) < 0 ? -0.5 : 0.5)))
-#define NI(i)         ((num)((int32_t)(i) * 16777216))
-#define NMUL(a, b)    ((num)(((int64_t)(a) * (int64_t)(b)) >> 24))
-#define NDIV(a, b)    ((num)((((int64_t)(a)) << 24) / (b)))
-#define NMULI(a, i)   ((num)((a) * (int32_t)(i)))
-#define NTOD(a)       ((double)(a) / 16777216.0)
-#define ND(d)         ((num)((d) * 16777216.0 + ((d) < 0 ? -0.5 : 0.5)))
-#define P(c)          ((pos)((c) * 262144.0 + ((c) < 0 ? -0.5 : 0.5)))
-#define PI(i)         ((pos)((int32_t)(i) * 262144))
-#define PN(n)         ((pos)((n) >> 6))
-#define PADDN(dst, n) ((dst) += (pos)((n) >> 6))
-#define PSUBN(dst, n) ((dst) -= (pos)((n) >> 6))
-#define PADDV(cur, n) ((pos)((cur) + (pos)((n) >> 6)))
-#define PSUBV(cur, n) ((pos)((cur) - (pos)((n) >> 6)))
-#define NP(p)         ((num)((p) << 6))
-#define PTOD(p)       ((double)(p) / 262144.0)
-static inline int32_t fx_floor(int32_t a, int b) { return a >> b; }
-static inline int32_t fx_ceil(int32_t a, int b) { return -((-a) >> b); }
-static inline int32_t fx_round(int32_t a, int b)
-{
-    int32_t f = a >> b, d = a - (f << b), h = 1 << (b - 1);
-    if (d > h) return f + 1;
-    if (d < h) return f;
-    return (f & 1) ? f + 1 : f;
-}
-#define NFLOOR(a)     fx_floor((a), 24)
-#define NCEIL(a)      fx_ceil((a), 24)
-#define NROUND(a)     fx_round((a), 24)
-#define PFLOOR(a)     fx_floor((a), 18)
-#define PCEIL(a)      fx_ceil((a), 18)
-#define PROUND(a)     fx_round((a), 18)
-#define NABS(a)       ((a) < 0 ? -(a) : (a))
-static inline num fx_frac(num a) { return a < 0 ? -((-a) & 0xFFFFFF) : (a & 0xFFFFFF); }
-#define NFRAC(a)      fx_frac(a)
-/* round(1 / a), a in (0, 1) s7.24: 2^48 / a in 24 fraction bits, rounded half to even */
-static inline int32_t fx_recip_round(num a)
-{
-    int64_t q = (((int64_t)1) << 48) / a, r = (((int64_t)1) << 48) % a;
-    int32_t f = (int32_t)(q >> 24);
-    int64_t d = q & 0xFFFFFF;
-    if (d > 0x800000 || (d == 0x800000 && r != 0)) return f + 1;
-    if (d < 0x800000) return f;
-    return (f & 1) ? f + 1 : f;
-}
-#define NRECIP_ROUND(a) fx_recip_round(a)
-#define NOPS(k)       ((void)0)
-#endif
 
 /* bit tests without soft-float (the SH-2 has no FPU): d == 0 (either sign), and a float that is a whole number below
    2^15 in magnitude as its int (the mantissa times 2^(e - 127 + 9) has the integer part in the high word and the
@@ -282,27 +227,13 @@ static inline int gpos_muli_gt0(double a, int32_t m)
    2^-9 <= |x| < 2^23 the float is +-(h + l / 2^32) on its bits (fwhole's multiply; l a 2^-32 fraction) and eps is
    42949.67 / 2^32: d > eps is h - v >= 1 or (h == v and l >= 42950); d < -eps is h - v <= -2 or (h - v == -1 and
    1 - l / 2^32 >= 42950 / 2^32). A negative x is -gcmp(|x|, -v). Other x (and |v| >= 2^30) take the double form */
-#ifndef PLAY_FIXED
 int gcmp_fi(float x, int32_t v);                    /* pworld.c (out of line: four tests a view check) */
 #define PLTI(x, v) (gcmp_fi((x), (v)) < 0)
 #define PGTI(x, v) (gcmp_fi((x), (v)) > 0)
-#else
-#define PLTI(x, v) DLT(PTOD(x), (v))
-#define PGTI(x, v) DGT(PTOD(x), (v))
-#endif
-#ifndef PLAY_FIXED
 #ifdef NUM_IS_CLASS
 static inline int gcmp_n(num a, num b) { play_dcount.cmp++; return gcmp_dd(a.v, b.v); }
 #else
 #define gcmp_n(a, b) gcmp_d((a), (b))
-#endif
-#else
-static inline int gcmp_n(int32_t a, int32_t b)   /* epsilon 0.00001 = 168 / 2^24 */
-{
-    int32_t d = a - b;
-    if ((d < 0 ? -d : d) <= 168) return 0;
-    return d >= 0 ? 1 : -1;
-}
 #endif
 #define NLT(a, b) (gcmp_n((a), (b)) < 0)
 #define NLE(a, b) (gcmp_n((a), (b)) <= 0)
@@ -310,7 +241,7 @@ static inline int gcmp_n(int32_t a, int32_t b)   /* epsilon 0.00001 = 168 / 2^24
 #define NGE(a, b) (gcmp_n((a), (b)) >= 0)
 #define NEQ(a, b) (gcmp_n((a), (b)) == 0)
 #define NNE(a, b) (gcmp_n((a), (b)) != 0)
-#if !defined(PLAY_FIXED) && !defined(NUM_IS_CLASS)
+#if !defined(NUM_IS_CLASS)
 #define NMULI_GT0(a, i) gpos_muli_gt0((double)(a), (i))        /* NGT(NMULI(a, i), N(0)) */
 #else
 #define NMULI_GT0(a, i) NGT(NMULI((a), (i)), N(0))

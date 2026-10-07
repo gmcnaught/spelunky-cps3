@@ -4,8 +4,8 @@
  *   NLT(v, N(c)) == v is a NaN or v <= L(c);   NGT(v, N(c)) == v is not a NaN and v >= H(c).
  * The double order on the bits: key(u) = u's magnitude bits with the sign bit set for v >= +0, all bits inverted
  * for a negative v (-0 orders below +0; no threshold here is 0). L and H by tools (round-to-nearest binary search
- * over the keys); tests/cmpc checks each pair against the macros. num as double only: PLAY_FIXED and NUM_IS_CLASS
- * builds keep the macros (CLT / CGT below) */
+ * over the keys); tests/cmpc checks each pair against the macros. num as double only: the NUM_IS_CLASS
+ * build keeps the macros (CLT / CGT below) */
 #ifndef PCMPC_H
 #define PCMPC_H
 #include <stdint.h>
@@ -35,7 +35,7 @@ static inline int cmpc_gt(double v, uint64_t h)     /* NGT(v, N(c)), h = H(c)'s 
 #define CMPC_H_90   0x4056800029f16b12ull   /* 90.00001 */
 #define CMPC_L_270  0x4070dffff583a53bull   /* 269.99999 */
 
-#if defined(PLAY_FIXED) || defined(NUM_IS_CLASS)
+#if defined(NUM_IS_CLASS)
 #define CLT(v, c, l) NLT((v), N(c))
 #define CGT(v, c, h) NGT((v), N(c))
 #else

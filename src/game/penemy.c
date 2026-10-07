@@ -1079,7 +1079,7 @@ int pen_step(int i)
 }
 
 /* ---- built-in motion (GameMaker: after the Step events, x += hspeed, y += vspeed) ------------------------ */
-#if !defined(PLAY_FIXED) && !defined(NUM_IS_CLASS)
+#if !defined(NUM_IS_CLASS)
 /* a sight's motion (pen_sight_speed's +-10 and a |vspeed| < 2^-47) without the double sums, for 1 <= |x|, |y| < 2^20:
    x + 10 is exact in binary64 (x a float there: at most 44 significant bits), so (float)((double)x +- 10) is the
    float sum x +- 10.0f (one rounding of the exact sum); (double)y + vspeed is within 2^-31 of y, under half a float
@@ -1104,7 +1104,7 @@ void pen_motion(void)
     for (k = pw_ohead[OBJ_oEnemySight]; k >= 0; k = pw_inext[k]) {
         struct pin *p = &PW.in[k];
         if (!p->alive || (dzero(PEN(p)->hspeed) && dzero(PEN(p)->vspeed))) continue;
-#if !defined(PLAY_FIXED) && !defined(NUM_IS_CLASS)
+#if !defined(NUM_IS_CLASS)
         if (sight_fast(p)) {                                                   /* the same floats (sight_fast) */
             pin_setx(p, p->x + (PEN(p)->hspeed > 0 ? 10.0f : -10.0f));
             continue;
@@ -1562,11 +1562,7 @@ static int ccb(int s, int d)
 /* the moving solid's viscidTop (the boulder's 1); another object's from its package (pcontent_msolid), -1 when
    none translates it */
 /* v is -0 (x + 0 would store +0) */
-#ifdef PLAY_FIXED
-static int pos_negz(pos v) { (void)v; return 0; }
-#else
 static int pos_negz(pos v) { union { float f; uint32_t u; } b; b.f = v; return b.u == 0x80000000u; }
-#endif
 
 static int viscidTop_of(int s) { return PX(s).obj == OBJ_oBoulder ? 1 : pcontent_msolid(s); }
 
@@ -1584,7 +1580,7 @@ void pen_moving_solids(void)
         int32_t xi = 0, yi = 0;
         if (!p->alive) continue;
         if (viscidTop_of(s) < 0) PUNTR(5050);                                 /* P7 hook (pcontent_msolid) */
-#if !defined(PLAY_FIXED) && !defined(NUM_IS_CLASS)
+#if !defined(NUM_IS_CLASS)
         if (dzero(PE(p)->xVel) && dzero(PE(p)->yVel) && dzero(PE(p)->xAcc) && dzero(PE(p)->yAcc)) {
             /* at rest (on the bits): the sums are +-0, approximatelyZero(+-0) sets each to +0, xi = yi = 0 below */
             PE(p)->xVel = PE(p)->yVel = PE(p)->xAcc = PE(p)->yAcc = 0;

@@ -556,7 +556,7 @@ void ev_destroy(int i)
  * entry's dirty / test-list marks; the grid build's searches do not depend on when an entry is flushed) and the
  * outcome flags the caller reads (destroy, the branch taken). The checks: the grid host build with and without the
  * skip (-DPLAY_NOREST) gives the same records on every route. */
-#if !defined(PCOL_EXACT) && !defined(PLAY_FIXED) && !defined(NUM_IS_CLASS) && !defined(PLAY_NOREST)
+#if !defined(PCOL_EXACT) && !defined(NUM_IS_CLASS) && !defined(PLAY_NOREST)
 #define PLAY_REST 1
 #ifndef REST_MAX
 #define REST_MAX 128             /* rst[] entries (a power of 2): instance p's is rst[p->ext & (REST_MAX - 1)] */

@@ -161,12 +161,10 @@ static int16_t olive[OBJ_COUNT];
 #define odesc0 obj_desc0
 #define odesc obj_desc
 
-#ifndef PLAY_FIXED
 static uint8_t nc_any;                           /* instance_nearest_p's cache (nc) is in use */
 static void nc_inval(int obj);
 static void nc_moved(int i);
 static void nc_reset(void);
-#endif
 
 /* a family walk over the object tree (pcol.c's pcol_ochild / pcol_osib) in preorder: the object after o in root's
    family, o's subtree skipped when it holds no alive instance (olive counts a family) */
@@ -195,9 +193,7 @@ static void olists_reset(void)
     olive_gen++;
     obj_desc_init();
     pcol_obj_tree();
-#ifndef PLAY_FIXED
     nc_reset();
-#endif
     for (o = 0; o < OBJ_COUNT; o++) {
         pw_ohead[o] = otail[o] = NOONE;
         olive[o] = 0;
@@ -216,9 +212,7 @@ static void olive_add(int obj, int d)
 #ifndef PCOL_EXACT
     if (xbits[obj]) xchg++;                       /* (xbits is set at the first level start, before any instance) */
 #endif
-#ifndef PLAY_FIXED
     if (nc_any) nc_inval(obj);
-#endif
     olive_gen++;
     for (a = obj; a >= 0; a = objdefs[a].parent) olive[a] = (int16_t)(olive[a] + d);
 }
@@ -382,9 +376,7 @@ void pw_draw_dirty_clear(void)
 void pw_changed(int i)
 {
     if (i == watch_i) watch_n++;
-#ifndef PLAY_FIXED
     if (nc_any) nc_moved(i);
-#endif
     pw_draw_mark(i);
     PW.in[i].bbk = 0;
     grid_dirty(i);
@@ -974,7 +966,6 @@ static void bbox_dbl(const struct pin *p, const struct gsprcol *c, double *l, do
     *b = *t + (ys < 0 ? -ys : ys) * (c->b - c->t + 1);
 }
 
-#ifndef PLAY_FIXED
 /* pnum.h's PLTI / PGTI (its comment) */
 static const uint32_t ffix32_mul[32] = {
     1u << 0,  1u << 1,  1u << 2,  1u << 3,  1u << 4,  1u << 5,  1u << 6,  1u << 7,  1u << 8,  1u << 9,  1u << 10,
@@ -998,7 +989,6 @@ int gcmp_fi(float x, int32_t v)
     else r = k < -1 || l <= 0u - 42950u ? -1 : 0;
     return (b.u >> 31) ? -r : r;
 }
-#endif
 
 /* 1 / -1 when f is exactly 1.0f / -1.0f, else 0 (bits: the same answer as for (double)f) */
 static int funit(float f)
@@ -1969,7 +1959,7 @@ static int xpoint_any(int obj, int notme, const struct pq *q, int prec)
 }
 #endif
 
-#if !defined(PCOL_EXACT) && !defined(PLAY_FIXED)
+#if !defined(PCOL_EXACT)
 /* dfloor_int of a float's value from its bits: floor(f) when -30000 < f < 30000 (dfloor_int's range: a whole value
    within it through dwhole, any other through the compare), else 0 */
 static int pfloor_int(float f, int32_t *o)
@@ -2165,14 +2155,12 @@ int (collision_point_any_at)(int i, int32_t dx, int32_t dy, int obj)
                 q.nodbl = 1;                                  /* (px, py: the whole ix, iy, converted only if read) */
                 ok = 1;
             }
-#if !defined(PLAY_FIXED)
             else if (dx == 0 && dy == 0) {
                 q.px = PW.in[i].x; q.py = PW.in[i].y;
                 q.nodbl = 0;
                 q.iok = pfloor_int(PW.in[i].x, &q.ix) && pfloor_int(PW.in[i].y, &q.iy);
                 ok = 1;
             }
-#endif
         }
         /* oSolid at whole x, y: the summary on the same int query (collision_point_any's, without the doubles: the
            point PTOD(x) + dx is the whole double x + dx, which pq_init takes as these ints); not known: the search
@@ -2262,7 +2250,6 @@ int pw_solid_pt(int32_t x, int32_t y)
 /* pin_setx(p, PI(x + d)) for i's whole x (|x| < 29900) and d = +-1. A box cached whole (BB_INT) before stays cached:
    bbkind_set's box at x + d is the old one moved by d (the sprite, the scales and the angle are unchanged, x + d is
    whole), and the setter's marks (pw_changed) do not read the box */
-#ifndef PLAY_FIXED
 /* (float)v for |v| < 2^15 from the bits (no __floatsisf call): the top bit's place e by four compares, the mantissa as
    a * 2^(23 - e) (exact: a < 2^(e + 1)), its hidden bit added to the exponent field 126 + e. Checked equal to
    (float)v for every |v| < 2^15 */
@@ -2282,9 +2269,6 @@ static float fint15(int32_t v)
     return r.f;
 }
 #define XSTEP_POS(v) fint15(v)
-#else
-#define XSTEP_POS(v) PI(v)
-#endif
 void pw_xstep(int i, int32_t x, int d)
 {
     struct pin *p = &PW.in[i];
@@ -3108,7 +3092,7 @@ static int rq_static_none(struct rq *rq, int obj, int prec, int notme_self)
 #endif
 }
 
-#if !defined(PCOL_EXACT) && !defined(PLAY_FIXED)
+#if !defined(PCOL_EXACT)
 static int dfloor14(double v, int32_t *o);
 /* a family of at most 4 alive instances whose integer boxes (pin_ibox) all lie off the query's floors: X0 = floor of
    the lesser x corner, X1 of the greater (floor is monotonic), box right b[2] < X0 or left b[0] > X1 + 1, or the same
@@ -3155,7 +3139,7 @@ int (collision_rect_p)(double x1, double y1, double x2, double y2, int obj, int 
     float r[4];
     PWST(rect, 1);
     if (q < 0) return NOONE;
-#if !defined(PCOL_EXACT) && !defined(PLAY_FIXED)
+#if !defined(PCOL_EXACT)
     if (rect_far_none(x1, y1, x2, y2, obj, prec, notme_self)) return NOONE;
 #endif
     rq_init(&rq, x1, y1, x2, y2);
@@ -3498,11 +3482,7 @@ int instance_place_p(int self, double px, double py, int obj)
 }
 
 /* (float)v of a box side: fint15's bits below 2^15 in magnitude (no __floatsisf call) */
-#ifndef PLAY_FIXED
 #define PLACE_F(v) ((v) > -32768 && (v) < 32768 ? fint15(v) : (float)(v))
-#else
-#define PLACE_F(v) ((float)(v))
-#endif
 
 /* instance_place_p(self, x + idx, y + idy, obj) for self at whole x, y (|.| < 29900) and |idx|, |idy| <= 16, without
    the doubles where self's box is cached whole (BB_INT / BB_INTS): px, py are whole, so dx, dy are idx, idy exactly,
@@ -3556,7 +3536,6 @@ int instance_place_ixy(int self, int32_t x, int32_t y, int32_t idx, int32_t idy,
     return place_after_query(self, q, (double)(x + idx), (double)(y + idy), idx, idy, moved, obj);
 }
 
-#ifndef PLAY_FIXED
 /* floor(v) as an int when |v| < 2^14, from the double's bits (dwhole's product: the integer part in the high word,
    the fraction in the low word and in lo) */
 static int dfloor14(double v, int32_t *o)
@@ -3579,9 +3558,7 @@ static int dfloor14(double v, int32_t *o)
     *o = (hi & 0x80000000u) ? -(int32_t)ip - (fr != 0) : (int32_t)ip;
     return 1;
 }
-#endif
 
-#ifndef PLAY_FIXED
 /* instance_nearest_p's integer pass reads, per family, the alive instances and floor(x), floor(y) (|.| < 2^14). They
    are kept for up to NC_N families between calls (a lush level's spear traps ask for the nearest oEnemy,
    oMoveableSolid and oItem one after another): an entry is dropped when an instance of its family is linked or
@@ -3677,10 +3654,9 @@ static struct ncache *nc_get(int obj)
     nc_fill(&nc[e], obj);
     return &nc[e];
 }
-#endif
 
 /* instance_nearest: the instance of least d = dx * dx + dy * dy (doubles), the first of them in the family's order.
-   The integer pass (not PLAY_FIXED): with X = floor(px), Xk = floor(x_k) (all |.| < 2^14, else the double loop) and
+   The integer pass: with X = floor(px), Xk = floor(x_k) (all |.| < 2^14, else the double loop) and
    D = X - Xk, dx = px - x_k lies in (D - 1, D + 1), so |dx| is in [lo, hi] = [max(|D| - 1, 0), |D| + 1], and the same
    in y; L = lox^2 + loy^2 and U = hix^2 + hiy^2 are whole numbers below 2^31 (doubles exactly) and rounding is
    monotonic, so the double d of instance k is in [L_k, U_k]. The first instance of least d has L <= its d <= every
@@ -3696,7 +3672,6 @@ int instance_nearest_p(double px, double py, int obj)
     struct fam it;
     PWST(nearest, 1);
     if (fam_none(obj)) return NOONE;
-#ifndef PLAY_FIXED
     {
         int16_t ck[NEAR_MAX];
         uint32_t cl[NEAR_MAX], mu = 0xffffffffu;
@@ -3753,7 +3728,6 @@ int instance_nearest_p(double px, double py, int obj)
             return best;
         }
     }
-#endif
     fam_begin(&it, obj);
     while ((k = fam_get(&it)) != NOONE) {
         double dx, dy, d;
@@ -3769,11 +3743,10 @@ int instance_nearest_p(double px, double py, int obj)
 }
 
 /* 0 when no alive instance of the family has floor(x) in [x0, x1] and floor(y) in [y0, y1] (nc_get's floors); 1 when
-   one has, or may (the family does not fit the cache, PLAY_FIXED). No side effect besides the cache (the speartrap
+   one has, or may (the family does not fit the cache). No side effect besides the cache (the speartrap
    step: an instance_nearest whose answer cannot pass the tests that follow is not computed) */
 int instance_box_maybe(int obj, int32_t x0, int32_t x1, int32_t y0, int32_t y1)
 {
-#ifndef PLAY_FIXED
     const struct ncache *c;
     int j;
     if (fam_none(obj)) return 0;
@@ -3783,10 +3756,6 @@ int instance_box_maybe(int obj, int32_t x0, int32_t x1, int32_t y0, int32_t y1)
     for (j = 0; j < c->n; j++)
         if (c->x[j] >= x0 && c->x[j] <= x1 && c->y[j] >= y0 && c->y[j] <= y1) return 1;
     return 0;
-#else
-    (void)obj; (void)x0; (void)x1; (void)y0; (void)y1;
-    return 1;
-#endif
 }
 
 int instance_first_p(int obj)
@@ -3911,7 +3880,6 @@ int pdist2_lt(double d2, double c)
     return r;
 }
 
-#ifndef PLAY_FIXED
 /* a float as an int in units of 2^-16 when it is one exactly and |f| < 2^14 */
 static int pfix16(float f, int64_t *o)
 {
@@ -3932,7 +3900,6 @@ static int pfix16(float f, int64_t *o)
     *o = (v.u >> 31) ? -a : a;
     return 1;
 }
-#endif
 
 /* pdist2_lt(pdist2(PTOD(x1) + ox, PTOD(y1) + oy, PTOD(x2), PTOD(y2)), c) (point_distance from a position plus whole
    offsets to a position, against c). With the four floats exact in 2^-16 units (|v| < 2^14), dx, dy are exact ints
@@ -3942,7 +3909,6 @@ static int pfix16(float f, int64_t *o)
    builds compare every integer answer with the double one */
 int pdist_lt_at(pos x1, pos y1, int32_t ox, int32_t oy, pos x2, pos y2, double c)
 {
-#ifndef PLAY_FIXED
     int64_t a, b, u, w;
     if (pfix16(x1, &a) && pfix16(y1, &b) && pfix16(x2, &u) && pfix16(y2, &w)) {
         int64_t dx = u - (a + ((int64_t)ox << 16)), dy = w - (b + ((int64_t)oy << 16));
@@ -3968,7 +3934,6 @@ int pdist_lt_at(pos x1, pos y1, int32_t ox, int32_t oy, pos x2, pos y2, double c
             return r;
         }
     }
-#endif
     return pdist2_lt(pdist2(PTOD(x1) + ox, PTOD(y1) + oy, PTOD(x2), PTOD(y2)), c);
 }
 

@@ -26,7 +26,7 @@ PSRC := $(ROOT)/src/game/pworld.c $(ROOT)/src/game/pscript.c $(ROOT)/src/game/po
 # host only (stdio): the SDK voice stubs and the SND lines (not in the sh2 objects)
 HSRC := sndhost.c
 
-all: $(OUT)/genhost $(OUT)/playhost $(OUT)/playhost_fx $(OUT)/playhost_nc $(OUT)/playhost_grid $(OUT)/playhost_eq
+all: $(OUT)/genhost $(OUT)/playhost $(OUT)/playhost_nc $(OUT)/playhost_grid $(OUT)/playhost_eq
 
 $(GEN)/objects.h $(GEN)/objects.c:
 	cd $(ROOT) && python3 tools/hdobjects.py refs/hd/src build/gen/objects.h
@@ -45,14 +45,10 @@ $(ROOT)/build/snd/sndnames.h: $(ROOT)/build/snd/snd.h
 $(GEN)/playtables.h $(GEN)/playtables.c: $(GEN)/objects.h
 	cd $(ROOT) && python3 tools/hdplaytables.py refs/hd/linux-arm64/assets/game.unx build/gen/playtables.h
 
-# the play loop: binary64 (default) and s7.24 / s13.18 fixed point (-DPLAY_FIXED)
+# the play loop (binary64 velocities, float positions: src/game/pnum.h)
 $(OUT)/playhost: playhost.c $(SRC) $(PSRC) $(ROOT)/src/game/*.h $(GEN)/playtables.h $(ROOT)/build/snd/sndnames.h $(ROOT)/src/snd/snd.h
 	mkdir -p $(OUT)
 	$(CC) $(CFLAGS) -DPLAY_STATS $(INC) -o $@ playhost.c $(SRC) $(PSRC) $(HSRC)
-
-$(OUT)/playhost_fx: playhost.c $(SRC) $(PSRC) $(ROOT)/src/game/*.h $(GEN)/playtables.h $(ROOT)/build/snd/sndnames.h $(ROOT)/src/snd/snd.h
-	mkdir -p $(OUT)
-	$(CC) $(CFLAGS) -DPLAY_FIXED $(INC) -o $@ playhost.c $(SRC) $(PSRC) $(HSRC)
 
 # the gameplay-equivalence pair (scripts/equiv_check.sh, tools/equivcheck.py; docs/EQUIV.md): the shipping build's
 # collision grid and the exact build, both with the RNG state per record (PLAY_RNGLOG: Q lines)
@@ -110,10 +106,9 @@ $(OUT)/playhost_count: playhost.c $(SRC) $(PSRC) $(ROOT)/src/game/*.h $(GEN)/pla
 	mkdir -p $(OUT)
 	$(CXX) -x c++ -std=c++17 -O2 -w -DPLAY_COUNT $(INC) -o $@ playhost.c $(SRC) $(PSRC) $(HSRC)
 
-# the play loop in both arithmetic builds (binary64: GCC's soft-float; PLAY_FIXED: integers only)
+# the play loop (binary64: GCC's soft-float)
 sh2: $(GEN)/objects.h $(GEN)/gentables.h $(GEN)/playtables.h
-	mkdir -p $(OUT)/sh2 $(OUT)/sh2fx
-	for f in $(SRC) $(filter-out sndhost.c,$(PSRC)); do sh-elf-gcc -m2 -std=c99 -O2 -Wall -ffreestanding -fno-bit-tests -DPLAY_FIXED $(INC) -c $$f -o $(OUT)/sh2fx/$$(basename $$f .c).o || exit 1; done
+	mkdir -p $(OUT)/sh2
 	for f in $(SRC) $(filter-out sndhost.c,$(PSRC)); do sh-elf-gcc -m2 -std=c99 -O2 -Wall -ffreestanding -fno-bit-tests $(INC) -c $$f -o $(OUT)/sh2/$$(basename $$f .c).o || exit 1; done
 	sh-elf-gcc -m2 -std=c99 -O2 -Wall -Wextra -ffreestanding -fno-bit-tests -c $(ROOT)/src/sh2/fma.c -o $(OUT)/sh2/fma.o
 

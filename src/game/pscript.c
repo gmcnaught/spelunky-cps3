@@ -235,7 +235,7 @@ static int is_character(int i)
 struct vparts { int32_t r, fl; int neg; };
 static void vel_parts(num a, struct vparts *o)
 {
-#if !defined(PLAY_FIXED) && !defined(PLAY_COUNT)
+#if !defined(PLAY_COUNT)
     if (precip_parts(a, &o->r, &o->fl, &o->neg)) return;
 #endif
     {
@@ -253,7 +253,7 @@ static void vel_parts(num a, struct vparts *o)
    build's searches do not depend on when an entry is flushed (pobj.c PLAY_REST); the one setter call leaves the marks
    the last of the walk's would (the draw mark, the box cache, the dirty / test lists' fronts; rest_end reads only
    whether a change happened) */
-#if !defined(PCOL_EXACT) && !defined(PLAY_FIXED) && !defined(NUM_IS_CLASS) && !defined(PLAY_NOREST)
+#if !defined(PCOL_EXACT) && !defined(NUM_IS_CLASS) && !defined(PLAY_NOREST)
 #define PLAY_WALK 1
 #else
 #define PLAY_WALK 0
