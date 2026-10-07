@@ -2001,13 +2001,11 @@ int pw_static_xy(int obj, int32_t x, int32_t y)
 int pw_solid_pt(int32_t x, int32_t y)
 {
 #ifndef PCOL_EXACT
-    int cx, cy;
+    struct pq q;
     if (gfar || pcol_quiet()) return -1;
     if (fam_none(OBJ_oSolid)) return 0;
-    if (x < 0 || y < 0 || (cx = x >> 4) >= GRID_W || (cy = y >> 4) >= GRID_H) return -1;
-    grid_flush();
-    if (gfull[cy][cx] > 0) return 1;
-    return gother[cy][cx] == 0 ? 0 : -1;
+    q.iok = 1; q.ix = x; q.iy = y;                             /* (solid_point_sum reads iok, ix, iy) */
+    return solid_point_sum(&q, 0, NOONE);
 #else
     (void)x; (void)y;
     return -1;
@@ -2081,8 +2079,8 @@ static int fam_swims_walk(const int16_t *objs, int n)
     return 0;
 }
 
-/* the walk's answer kept while PW.step, olive_gen and objs hold. Its one caller (pk_swamp.c piranha_idle) calls it
-   only in oPiranha's Step dispatch, so within a step nothing but piranha Steps runs between two calls: they write no
+/* the walk's answer kept while PW.step, olive_gen and objs hold. Its callers (pk_swamp.c: piranha_step, piranha_idle,
+   pswamp_piranha_run) call it only in oPiranha's Step dispatch, so within a step nothing but piranha Steps runs between two calls: they write no
    enemy's swimming (the writes: the enemies' Create events and their own Steps, pdamsel.c, pk_jungle.c, penemy.c,
    pk_swamp.c create), and every instance they create or destroy bumps olive_gen (olive_add), as a room start does
    (olists_reset). The host builds compare every kept answer with the walk */

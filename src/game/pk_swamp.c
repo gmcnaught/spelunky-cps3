@@ -223,6 +223,11 @@ static int create(int i, int fromgen)
 
 /* ---- oPiranha / oDeadFish Step ----------------------------------------------------------------------------- */
 /* obj = instance_nearest(x, y, oCaveman), then oShopkeeper, oHawkman, oYeti: the first alive (hp > 0) one */
+/* prey()'s four families. pw_fam_swims(prey_objs, 4): some alive instance of them swims. prey() has no side effect,
+   and IDLE uses its answer only as obj != NOONE && obj's swimming && hp > 0: with no swimming instance in the
+   families that test fails whatever prey() returns */
+static const int16_t prey_objs[4] = { OBJ_oCaveman, OBJ_oShopkeeper, OBJ_oHawkman, OBJ_oYeti };
+
 static __attribute__((noinline)) int prey(int i)
 {
     static const int16_t objs[4] = { OBJ_oCaveman, OBJ_oShopkeeper, OBJ_oHawkman, OBJ_oYeti };
@@ -234,33 +239,6 @@ static __attribute__((noinline)) int prey(int i)
     return obj;
 }
 
-/* some instance of prey()'s four families is swimming. prey() has no side effect, and IDLE uses its answer only as
-   obj != NOONE && obj's swimming && hp > 0: with no swimming instance in the families that test fails whatever
-   prey() returns. The families' alive instances are the objects' lists (pw_ohead: alive, linked at pin_add,
-   unlinked when alive goes to 0) of every object that is one of the four or descends from one */
-static int prey_swims(void)
-{
-    static const int16_t objs[4] = { OBJ_oCaveman, OBJ_oShopkeeper, OBJ_oHawkman, OBJ_oYeti };
-    static int16_t po[16];
-    static int npo = -1;
-    int k, j;
-    if (npo < 0) {
-        int n = 0;
-        for (k = 0; k < OBJ_COUNT; k++)
-            for (j = 0; j < 4; j++)
-                if (obj_is(k, objs[j])) {
-                    if (n < 16) po[n] = (int16_t)k;
-                    n++;
-                    break;
-                }
-        npo = n;
-    }
-    if (npo > 16) return 1;                                    /* (not the case: then prey() decides) */
-    for (k = 0; k < npo; k++)
-        for (j = pw_ohead[po[k]]; j >= 0; j = pw_inext[j])
-            if (PEN(&PX(j))->swimming) return 1;
-    return 0;
-}
 
 /* IDLE: swim along the water */
 static void fish_idle_swim(int i)
@@ -298,7 +276,7 @@ static void fish_end(int i, int left, int right)
      ibounds' ints from the whole x, y), where that path exists; x + PI(d) of a whole float x is (pos)(x + d);
    - dist only when it is read (PL.swimming && !PL.dead), from the position before the move as piranha_step's;
      pdist_lt_at and instance_first_p have no side effect;
-   - prey() only when some instance of its four families swims (prey_swims' note: otherwise the test fails);
+   - prey() only when some instance of its four families swims (prey_objs' note: otherwise the test fails);
    - DIR's compares on its bits: 0 is DEQ 0 and right; 180 is not DEQ 0 and left (90 < 180 < 270).
    Returns 0 without doing anything when the case does not apply (piranha_step then runs) */
 #if !defined(PCOL_EXACT) && !defined(PLAY_FIXED) && !defined(NUM_IS_CLASS) && !defined(PLAY_NOREST)
@@ -311,9 +289,6 @@ static void fish_end(int i, int left, int right)
     do { if ((r) >= 0 && (r) != ((g) != 0)) { fprintf(stderr, "piranha_idle: %s %d differs (%d)\n", what, r, i); abort(); } } while (0)
 #else
 #define FISH_CHECK(r, g, what) ((void)0)
-#endif
-#if !defined(PLAY_FIXED) && !defined(NUM_IS_CLASS)
-static const int16_t prey_objs[4] = { OBJ_oCaveman, OBJ_oShopkeeper, OBJ_oHawkman, OBJ_oYeti };
 #endif
 static __attribute__((noinline)) int piranha_idle(int i)
 {
@@ -412,11 +387,11 @@ static void piranha_step(int i)                                /* objects/oPiran
             c = instance_first_p(OBJ_oCharacter);
             if (pdist_lt_at(x0, y0, 4, 4, PX(c).x, PX(c).y, 90)) PE(p)->status = 1;
         }
-        obj = prey_swims() ? prey(i) : NOONE;
+        obj = pw_fam_swims(prey_objs, 4) ? prey(i) : NOONE;
 #ifdef PLAY_STATS
         if (obj == NOONE) {                                    /* the host builds: the skipped prey() fails the test */
             int t = prey(i);
-            if (t != NOONE && PEN(&PX(t))->swimming && PE(&PX(t))->hp > 0) { fprintf(stderr, "prey_swims\n"); abort(); }
+            if (t != NOONE && PEN(&PX(t))->swimming && PE(&PX(t))->hp > 0) { fprintf(stderr, "pw_fam_swims\n"); abort(); }
         }
 #endif
         if (obj != NOONE && PEN(&PX(obj))->swimming && PE(&PX(obj))->hp > 0) PE(p)->status = 3;
@@ -516,7 +491,7 @@ int pswamp_piranha_run(const int16_t *ord, int n)
     struct rng g0 = g_rng;
 #endif
     if (n > PRUN_MAX) n = PRUN_MAX;
-    if (!ev_step_pen(OBJ_oPiranha) || pcol_quiet() || pw_fam_swims(prey_objs, 4)) return 0;
+    if (!ev_step_is_pkg(OBJ_oPiranha, pswamp_ev) || pcol_quiet() || pw_fam_swims(prey_objs, 4)) return 0;
     swim = PL.swimming && !PL.dead;
     if (swim) c = instance_first_p(OBJ_oCharacter);
     for (m = 0; m < n; m++) {                                  /* phase T */
@@ -1399,22 +1374,6 @@ int pswamp_player(int site, int i, int arg)
 /* ---- the items' and world's sites (pobj.c, pitem.c) ------------------------------------------------------- */
 /* oGame Step :71-126: with oWater, the surface sprites and the water that has lost its walls */
 static int32_t waterLoopSafety;
-/* CP(x + dx, y + dy, obj) for water j at whole x, y (|.| < 29900), |dx|, |dy| <= 16: the same query on ints
-   (collision_point_any_at's for oWater; the solid summary's, pw_solid_pt, for oSolid; else CP on the doubles) */
-static int water_cp(int j, int32_t x, int32_t y, int32_t dx, int32_t dy, int obj)
-{
-    int r;
-    if (obj != OBJ_oSolid) return collision_point_any_at(j, dx, dy, obj);
-    r = pw_solid_pt(x + dx, y + dy);
-#ifdef PLAY_STATS
-    if (r >= 0 && r != (CP(X(j) + dx, Y(j) + dy, OBJ_oSolid) != 0)) {
-        fprintf(stderr, "water_cp: solid %d differs (%d)\n", r, j);
-        abort();
-    }
-#endif
-    return r >= 0 ? r : CP(X(j) + dx, Y(j) + dy, OBJ_oSolid);
-}
-
 static void check_water(void)
 {
     int16_t w[PIN_MAX];
@@ -1426,9 +1385,10 @@ static void check_water(void)
         if (isRoomIs(R_rOlmec)) continue;
         lava = obj_is(PX(j).obj, OBJ_oLava);                   /* type == "Lava" */
         if (pin_xy_int(j, &ix, &iy) && ix > -29900 && ix < 29900 && iy > -29900 && iy < 29900) {
-            /* whole x, y: the same tests on ints (y < 512 is iy < 512; x +- 16 and y +- 16 are whole) */
+            /* whole x, y: the same tests on ints (y < 512 is iy < 512; CP(x + dx, y + dy, obj) is
+               collision_point_any_at(j, dx, dy, obj), whose query is CP's on the doubles; x -+ 16: instance_place_ixy) */
             if (!(iy < 512)) continue;
-            if (!water_cp(j, ix, iy, 0, -16, OBJ_oSolid) && !water_cp(j, ix, iy, 0, -16, OBJ_oWater))
+            if (!collision_point_any_at(j, 0, -16, OBJ_oSolid) && !collision_point_any_at(j, 0, -16, OBJ_oWater))
                 pin_set_sprite(j, lava ? GSPR_sLavaTop : GSPR_sWaterTop);
             obj = instance_place_ixy(j, ix, iy, -16, 0, OBJ_oWater);
             if (obj != NOONE && (PX(obj).spr == GSPR_sWaterTop || PX(obj).spr == GSPR_sLavaTop))
@@ -1436,9 +1396,9 @@ static void check_water(void)
             obj = instance_place_ixy(j, ix, iy, 16, 0, OBJ_oWater);
             if (obj != NOONE && (PX(obj).spr == GSPR_sWaterTop || PX(obj).spr == GSPR_sLavaTop))
                 pin_set_sprite(j, lava ? GSPR_sLavaTop : GSPR_sWaterTop);
-            if ((!water_cp(j, ix, iy, -16, 0, OBJ_oSolid) && !water_cp(j, ix, iy, -16, 0, OBJ_oWater)) ||
-                (!water_cp(j, ix, iy, 16, 0, OBJ_oSolid) && !water_cp(j, ix, iy, 16, 0, OBJ_oWater)) ||
-                (!water_cp(j, ix, iy, 0, 16, OBJ_oSolid) && !water_cp(j, ix, iy, 0, 16, OBJ_oWater))) {
+            if ((!collision_point_any_at(j, -16, 0, OBJ_oSolid) && !collision_point_any_at(j, -16, 0, OBJ_oWater)) ||
+                (!collision_point_any_at(j, 16, 0, OBJ_oSolid) && !collision_point_any_at(j, 16, 0, OBJ_oWater)) ||
+                (!collision_point_any_at(j, 0, 16, OBJ_oSolid) && !collision_point_any_at(j, 0, 16, OBJ_oWater))) {
                 pin_destroy(j);
                 waterCounter += 1;
             }

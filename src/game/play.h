@@ -484,7 +484,7 @@ void scrUpdateHighscores(int type);
 void ev_create(int i);
 void ev_destroy(int i);
 void ev_step(int i);
-int ev_step_pen(int o);                           /* pobj.c: ev_step(i) of o goes straight to pen_step */
+int ev_step_is_pkg(int o, int (*pkg_ev)(int ev, int i, int arg));   /* pobj.c: ev_step(i) of o is pkg_ev's Step */
 int ev_step_idle(int i);                          /* pobj.c: 1 when ev_step(i) would do nothing (front_on 0) */
 void ev_end_step(int i);
 void ev_alarm(int i, int a);
