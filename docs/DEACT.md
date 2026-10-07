@@ -6,8 +6,9 @@ HD 1.2.2 is accepted.
 
 ## 1. The rule
 
-**Where.** One pass, at oGamepad's Begin Step (HD: tools/tracer.py `TRACE_DEACT=<margin>`, gml_GlobalScript_trcDeact
-`trcDeactPass`; port: play_step right after the Begin Step block, `deact_pass`). oGamepad's Begin Step runs before
+**Where.** One pass, at oGamepad's Begin Step (HD: tools/tracer.py `TRACE_DEACT=<margin>`, deact_gml, inline in the
+Begin Step: a new global script beside TRACE_SND's gml_GlobalScript_trcSnd hung the runner; port: play_step right after
+the Begin Step block, `deact_pass`). oGamepad's Begin Step runs before
 every other instance's Begin Step except oScreen's, and no other gameplay object has a Begin Step, so the pass sits
 after the animation and before the alarms, Step, collision and End Step events of the same frame.
 
@@ -46,7 +47,7 @@ The list is emptied at each room's first Begin Step.
 **HD's legacy activation calls** (oLevel Step: `instance_activate_region` of the view + 96, `instance_activate_object`
 of oCharacter, ropes, ...; oGame Step: `instance_activate_region` around draining water) are no-ops in stock 1.2.2,
 which deactivates nothing during play (the matching `instance_deactivate_region` is commented out in oLevel). The
-patch turns them into a no-op function (`trcNoActivate`), so the pass is the only activation in a level. The pause's
+patch turns each call into `max(...)` (same arguments, no side effect), so the pass is the only activation in a level. The pause's
 `instance_deactivate_all` / `instance_activate_all` stay (not on any route; the port does not model them).
 
 ## 2. What GameMaker does with a deactivated instance (Observed, HD runner, build/trace/dz_probe_cave, p5_caveman
@@ -62,8 +63,12 @@ seed 863, TRACE_DEACT=32 with TRACE_EVLOG / TRACE_TREE probes)
 - **Activation puts the instance last**, as a new creation: last in its object's Step order (oGoldBar Step order
   110976, 110977, 110991, 111003, 111004, 110998 after 110998's activation), first in `with (all)` order (the record
   order, newest first). Deactivating and activating changes the order the instance is dispatched in.
-- **The collision tree**: activation re-inserts it (the tree's search order changes: 111003 111005 111004 after
-  activation where they were 111003 111004 111005 before), so deactivation takes it out.
+- **The collision tree**: the entry of a deactivated instance stays in the tree (searches pass over it) and is put in
+  again at activation (the search order changes: 111003 111005 111004 after activation where it was 111003 111004
+  111005). Checked with TRACE_TREE (oTreasure, oItem) at 13 records each (build/trace/dz_tree_*): equal with this
+  model; taking the entry out at deactivation, or leaving it in place at activation, gives a different order. Marked
+  dirty + put in (instance_create's), put in only, or marked dirty only: the same order on these probes (the port
+  uses instance_create's).
 
 ## 3. The port
 
@@ -72,14 +77,17 @@ seed 863, TRACE_DEACT=32 with TRACE_EVLOG / TRACE_TREE probes)
   `TRACE_DEACT=32` on the HD side, `PLAY_DEACT=32` on the port side.
 - Deactivate (pworld.c `pw_deactivate`): the structural half of pin_kill without removing the slot: `alive = 0`
   (every event loop, query, `with`, count and the recorder skip it, as in GM), unlinked from the object lists
-  (ounlink: olive counts, nearest caches, the grid, the animation list), out of pw_ord, the collision entry taken out
-  (pcol_deactivated: tree remove, object count, dirty / test lists). The slot, pin_ext and pin_en stay.
+  (ounlink: olive counts, nearest caches, the grid, the animation list), out of pw_ord, its collision entry kept in
+  the tree (pcol_deactivated: off the dirty / test lists and the object count; the grid build takes it out of the
+  grid). The slot, pin_ext and pin_en stay. The list holds at most 320 (DL_MAX; more: untranslated 9010).
 - Activate (`pw_activate`): the structural half of pin_add on the kept record: a new creation number (pw_seq =
   PW.seq++, appended to pw_ord, the object lists and the animation list, so it is the newest), `alive = 1`, put in
-  the collision tree as instance_create does (pcol_activated), marked for the drawing.
+  the collision tree as instance_create does (pcol_activated), marked for the drawing. A renumbering of the creation
+  numbers (as pw_release's) runs first when PW.seq is near the limit.
 - References kept across steps (PL.holdItem, trapID, enemyID, bombID) are not cleared: the slot is not released.
-- The piranha batch hook (piranha4, after `play_cur_obj = PX(i).obj;`): a deactivated piranha is unlinked, so it is
-  not in the Step snapshot and breaks a batch run like a destroyed one.
+- The piranha batch hook (piranha4, `pswamp_piranha_run(order + k, n - k)` after `play_cur_obj = PX(i).obj;`): the
+  pass runs before the Step snapshot, and a deactivated piranha is unlinked, so it is not in `order` and a batch run
+  never spans it. No hook needed in the Step loop.
 
 ## 4. Verification plan
 
@@ -89,3 +97,46 @@ seed 863, TRACE_DEACT=32 with TRACE_EVLOG / TRACE_TREE probes)
 3. Grid build: tools/equivcheck.py route check and state gate on the same traces.
 4. Cost: MAME SOFTFP and jtcost on c_swamp_drain, c_swamp_swim, p5_lush_l5s11 / l6s23, p5_caveman.
 5. The full retrace (build/retrace_cmds.sh with TRACE_DEACT=32) and all gates: a lead decision.
+
+## 5. Results (branch deact2, 2026-10-06; main 5e7974c + the deact commits)
+
+**Exactness.** 15 routes regenerated with TRACE_DEACT=32 as build/trace/dz_<route>_s<seed> (build/retrace_cmds.sh's
+commands; existing traces untouched). The exact build with PLAY_DEACT=32 (build/host_dz/playhost) is record-equal
+on all 15: p5_caveman 291/291, p5_snakes 244/244, p5_spider 302/302, p5_shop 317/317, p5_buy 345/345, p5_l4 251/251,
+p5_giant 201/201 (the trace continues into rHighscores, as without deact), p5_lush_l5s11 637/637, l6s23 631/631,
+l5s37 641/641, c_swamp_drain 371/371, c_swamp_swim 419/419, c_swamp_piranha 413/413, c_jungle_mantrap 405/405,
+c_jungle_firefrog 413/413. Sound calls (tools/sndcmp.py) 0 differ on drain, swim, mantrap. The default build
+(PLAY_DEACT 0) stays record-equal to the existing traces (caveman, drain, l5s11 checked).
+
+**Grid build** (playhost_grid vs playhost_eq, both PLAY_DEACT=32, tools/equivcheck.py): route and state PASS on 13.
+p5_lush_l5s37: the accepted gameplay difference at gbag 419 (tests/equiv_accept.txt, unchanged). c_jungle_firefrog:
+route PASS, state FAIL at gbag 115: which of two adjacent oSpikes (110853 / 110854) takes sSpikesBlood (collision
+order: the grid's newest first against the tree's order after an activation's re-insert), then a rubble position
+at 235; RNG equal throughout. Without deact the route passes both. Needs an accept line after the retrace:
+`c_jungle_firefrog_s296 115 spike blood order (collision order after an activation's re-insert); RNG equal`.
+
+**MAME SOFTFP** (playsh2 ROUTES="c_swamp_drain c_swamp_swim p5_lush_l5s11 p5_lush_l6s23 p5_caveman", checksums
+2349 / 2349 equal), route mean step:
+
+| Route | PLAY_DEACT 0 | PLAY_DEACT 32 | change |
+|---|---|---|---|
+| c_swamp_drain | 167,537 | 151,023 | -9.9 % |
+| c_swamp_swim | 131,150 | 115,510 | -11.9 % |
+| p5_lush_l5s11 | 119,957 | 101,629 | -15.3 % |
+| p5_lush_l6s23 | 111,455 | 97,395 | -12.6 % |
+| p5_caveman | 99,638 | 96,815 | -2.8 % |
+| all 2344 steps | 124,664 | 110,168 | -11.6 % |
+
+**jtcost** (fit constants; one call over the five routes, steps by record count as jtcost.sh numbers them):
+
+| Step | instructions | model jtcps3 | change |
+|---|---|---|---|
+| c_swamp_drain 61 (walking) | 124,985 -> 96,434 | 537,445 -> 405,971 | -24.5 % |
+| c_swamp_drain 161 (swimming) | 213,970 -> 190,553 | 878,286 -> 741,525 | -15.6 % |
+| c_swamp_swim 571 (route step 200) | 177,944 -> 152,019 | 726,201 -> 592,205 | -18.5 % |
+| c_swamp_swim 721 (route step 350) | 137,779 -> 100,288 | 593,262 -> 406,476 | -31.5 % |
+| p5_lush_l5s11 991 (step 201) | 121,726 -> 104,278 | 478,074 -> 401,403 | -16.0 % |
+| p5_lush_l6s23 1628 (step 201) | 130,699 -> 109,177 | 516,224 -> 425,960 | -17.5 % |
+| p5_caveman 2196 (step 138) | 108,789 -> 101,771 | 425,119 -> 393,478 | -7.4 % |
+
+The jtcps3 run on .62 was not made (the lead hands out the device).
