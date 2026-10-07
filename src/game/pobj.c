@@ -86,7 +86,7 @@ static void treasure(int i, int type, int l, int t, int r, int b, int value, int
 {
     struct pin *p = &PX(i);
     create_treasure(p);
-    p->type = (int16_t)type;
+    p->type = (int8_t)type;
     make_active(p);
     setCollisionBounds(i, l, t, r, b);
     if (yOff) PE(p)->yOff = (int16_t)yOff;
@@ -99,7 +99,7 @@ static void item(int i, int type, int l, int t, int r, int b, int32_t cost)
 {
     struct pin *p = &PX(i);
     create_item(p);
-    p->type = (int16_t)type;
+    p->type = (int8_t)type;
     make_active(p);
     setCollisionBounds(i, l, t, r, b);
     if (cost >= 0) PE(p)->cost = cost;
@@ -581,7 +581,7 @@ static int rest_region(const struct pin *p, int32_t *b)
 {
     const struct pin_ext *e = PE(p);
     int32_t x, y;
-    if (!fwhole(p->x, &x) || !fwhole(p->y, &y)) return 0;
+    if (!pin_xy_int_p(p, &x, &y) && (!fwhole(p->x, &x) || !fwhole(p->y, &y))) return 0;   /* (whole beyond +-30000: fwhole) */
     b[0] = x + (e->lbo < 0 ? e->lbo : 0) - 3; b[1] = y + (e->tbo < 0 ? e->tbo : 0) - 3;
     b[2] = x + (e->rbo > 0 ? e->rbo : 0) + 3; b[3] = y + (e->bbo > 0 ? e->bbo : 0) + 3;
     return 1;
@@ -780,8 +780,8 @@ void item_step(int i)
                    (cupdate_at), and the stale stack is read in creation order. The final y is the setters' */
                 if (!obj_is(p->obj, OBJ_oSolid)) {
                     pos y1 = p->y - (PI(1)), y2 = y1 + (PI(1));
-                    PIN_WR(pos, p->y) = y1;
-                    if (!isCollisionBottom(i, 1)) PIN_WR(pos, p->y) = y2;
+                    PIN_SETY_RAW(p, y1);
+                    if (!isCollisionBottom(i, 1)) PIN_SETY_RAW(p, y2);
                     pin_changed_(p);
                 } else
 #endif

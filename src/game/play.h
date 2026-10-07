@@ -110,20 +110,23 @@ struct pin_en {
 /* field order for the SH-2's displacement reach (mov.b @(disp,Rn) 0-15, mov.w 0-30, mov.l 0-60): bytes, then int16,
    then the 32-bit fields; 64 bytes (pworld.c checks it) */
 struct pin {
-    uint8_t alive, persistent;
+    uint8_t alive;
     PIN_RO uint8_t visible;
     /* the bounding box cache (pworld.c pin_bbox): bbk 0 not computed since the last change of x / y / sprite /
        mask / scale (the setters clear it), BB_INT the box is bl, bt, br, bb exactly (BB_INTS too, pworld.c), BB_DBL computed in double
        each time, BB_NOSPR no sprite */
     uint8_t bbk;
-    uint8_t invincible, cleanDeath, shopWall, treasure;
+    int8_t type;            /* enum ptype (T_COUNT 83) */
+    uint8_t invincible;     /* 0, 1, or 20 (oFrozenCaveman's Destroy: the caveman it makes) */
+    uint8_t cleanDeath : 1, shopWall : 1, treasure : 3;   /* treasure: enum treasure (TR_*, inst.h) */
     int16_t obj;            /* OBJ_* */
     int16_t ext;            /* its struct pin_ext (0: the shared defaults) */
     PIN_RO int16_t spr;     /* sprite_index (GSPR_*, -1 none) */
     PIN_RO int16_t mask;    /* mask_index (-1: the sprite) */
     int16_t bl, bt, br, bb;
-    int16_t type;           /* enum ptype */
     int16_t exto;           /* ext x sizeof(struct pin_ext) / 8 (pin_set_ext): PE(p) by a shift, not a multiply */
+    int16_t ix, iy;         /* x, y as ints (pin_xy_int's shadows): the value when x is a whole number in (-30000, 30000),
+                               PXY_NO when it is not, PXY_UNK when not known (every write of x stores it) */
     int32_t id;
     PIN_RO pos x, y;
     PIN_RO float depth;     /* a float in the runner (-99999991 reads -99999992) */
@@ -235,14 +238,31 @@ static inline int fne(float a, float b)
 #else
 #define POS_NE(a, b) fne((a), (b))
 #endif
-static inline void pin_setx(struct pin *p, pos v) { pos o = p->x; PIN_WR(pos, p->x) = v; if (POS_NE(o, v)) pin_changed_(p); }
-static inline void pin_sety(struct pin *p, pos v) { pos o = p->y; PIN_WR(pos, p->y) = v; if (POS_NE(o, v)) pin_changed_(p); }
+/* pin_xy_int's shadows (struct pin ix, iy): PXY_UNK until read after a change of the float (a value unchanged as POS_NE
+   sees it, +0 / -0, keeps the same int). PIN_SETX_RAW / PIN_SETY_RAW: a write of x / y without the dirty marks (moveTo's
+   walk, pin_add) */
+#define PXY_UNK (-32768)
+#define PXY_NO (-32767)
+#define PIN_SETX_RAW(p, v) ((void)(PIN_WR(pos, (p)->x) = (v)), (void)((p)->ix = PXY_UNK))
+#define PIN_SETY_RAW(p, v) ((void)(PIN_WR(pos, (p)->y) = (v)), (void)((p)->iy = PXY_UNK))
+static inline void pin_setx(struct pin *p, pos v)
+{
+    pos o = p->x;
+    PIN_WR(pos, p->x) = v;
+    if (POS_NE(o, v)) { p->ix = PXY_UNK; pin_changed_(p); }
+}
+static inline void pin_sety(struct pin *p, pos v)
+{
+    pos o = p->y;
+    PIN_WR(pos, p->y) = v;
+    if (POS_NE(o, v)) { p->iy = PXY_UNK; pin_changed_(p); }
+}
 static inline void pin_setxy(struct pin *p, pos x, pos y)
 {
     pos ox = p->x, oy = p->y;
     PIN_WR(pos, p->x) = x;
     PIN_WR(pos, p->y) = y;
-    if (POS_NE(ox, x) || POS_NE(oy, y)) pin_changed_(p);
+    if (POS_NE(ox, x) || POS_NE(oy, y)) { p->ix = p->iy = PXY_UNK; pin_changed_(p); }
 }
 static inline void pin_setspr(struct pin *p, int v)         /* sprite_index without pin_set_sprite's image rule */
 {
@@ -382,7 +402,11 @@ int collision_line_i(int32_t x1, int32_t y1, int32_t x2, int32_t y2, int obj, in
 int collision_rect_i(int32_t x1, int32_t y1, int32_t x2, int32_t y2, int obj, int prec, int notme_self);
 int solid_vline_any(int32_t x, int32_t y1, int32_t y2, int notme_self);   /* collision_line(x, y1, x, y2, oSolid, 1, notme) != NOONE */
 int solid_hline_any(int32_t y, int32_t x1, int32_t x2, int notme_self);   /* collision_line(x1, y, x2, y, oSolid, 1, notme) != NOONE */
-int solid_rect_any(int32_t l, int32_t t, int32_t r, int32_t b, int notme_self);   /* collision_rectangle(.., oSolid, 1, notme) != noone, whole */
+int solid_rect_any(int32_t l, int32_t t, int32_t r, int32_t b, int notme_self);
+/* isCollisionLeft / Right / Top / Bottom and the anyCollision lines on whole x, y: the answer, -1 when x or y is not
+   whole (nothing done) */
+enum { IK_LEFT = 0, IK_RIGHT = 1, IK_TOP = 2, IK_BOTTOM = 3, IK_ANYLEFT = 4, IK_ANYRIGHT = 5 };
+int ik_side(int i, int side, int d);   /* collision_rectangle(.., oSolid, 1, notme) != noone, whole */
 int (collision_rect_any)(double x1, double y1, double x2, double y2, int obj, int prec, int notme_self);   /* collision_rect_p(..) != NOONE */
 int (collision_rect_any_at)(int i, int32_t l, int32_t t, int32_t r, int32_t b, int obj);   /* at i's x, y; prec 0 */
 int (collision_point_any_at)(int i, int32_t dx, int32_t dy, int obj);                     /* at i's x, y; prec 0 */
@@ -402,9 +426,37 @@ static inline int pos_int(pos v, int32_t *o)
     return fwhole(v, o) && *o > -30000 && *o < 30000;
 #endif
 }
+/* pin_xy_int from the shadows ix, iy (struct pin): both known and whole, one known not whole (0), else pin_xy_fill
+   (pworld.c) decodes the floats and stores the shadows. The PLAY_STATS builds (PIN_SHADOW_CHECK) compare every answer
+   with the decode (pin_xy_check: aborts on a difference) */
+#ifdef PLAY_STATS
+#define PIN_SHADOW_CHECK 1
+#endif
+int pin_xy_fill(const struct pin *p, int32_t *x, int32_t *y);
+#ifdef PIN_SHADOW_CHECK
+int pin_xy_check(const struct pin *p, int r, int32_t x, int32_t y);
+#endif
+static inline int pin_xy_int_p(const struct pin *p, int32_t *x, int32_t *y)
+{
+    int32_t a = p->ix, b = p->iy;
+    if (a > -30000 && b > -30000) {
+#ifdef PIN_SHADOW_CHECK
+        pin_xy_check(p, 1, a, b);
+#endif
+        *x = a; *y = b;
+        return 1;
+    }
+    if (a == PXY_NO || b == PXY_NO) {
+#ifdef PIN_SHADOW_CHECK
+        pin_xy_check(p, 0, 0, 0);
+#endif
+        return 0;
+    }
+    return pin_xy_fill(p, x, y);
+}
 static inline int pin_xy_int(int i, int32_t *x, int32_t *y)
 {
-    return pos_int(PW.in[i].x, x) && pos_int(PW.in[i].y, y);
+    return pin_xy_int_p(&PW.in[i], x, y);
 }
 /* the resting-object skip (pobj.c): the solid summary's change clock, whether a region's cells kept still since a
    clock value, and a count of pw_changed calls on one instance */

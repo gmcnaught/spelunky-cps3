@@ -1,5 +1,6 @@
 /* Play world: instances and GameMaker 2024.14's collision functions (rules and evidence: play.h).
  * Searches return the oldest matching instance (P2: collision_point, instance_place, instance_find, obj.var). */
+#include <stddef.h>               /* offsetof: the reach checks below */
 #include "play.h"
 #include "pint.h"                 /* PL (pw_release) */
 #ifdef PLAY_STATS
@@ -19,6 +20,9 @@
 /* struct pin is 64 bytes (a shift indexes PW.in, not a mul.l) and struct inst 72: play slot i ends at byte 64 i + 64 <=
    72 (i + 1), inside the generator instances 0 .. i, which the loaders have read (play.h) */
 typedef char pin_size_is_64[sizeof(struct pin) == 64 ? 1 : -1];
+/* the reach of the SH-2's displacement loads (play.h): mov.w @(disp,Rn) to 30, mov.l to 60 */
+typedef char pin_int16_reach[offsetof(struct pin, iy) <= 30 && offsetof(struct pin, bb) <= 30 && offsetof(struct pin, obj) <= 30 ? 1 : -1];
+typedef char pin_int32_reach[offsetof(struct pin, angle) <= 60 ? 1 : -1];
 typedef char pin_ext_size_8[sizeof(struct pin_ext) % 8 == 0 && EXT_MAX * (sizeof(struct pin_ext) / 8) < 32768 ? 1 : -1];   /* exto */
 typedef char pin_size_le_inst_size[sizeof(struct pin) <= sizeof(struct inst) ? 1 : -1];
 #define INST_MEM_PIN ((PIN_MAX * sizeof(struct pin) + sizeof(struct inst) - 1) / sizeof(struct inst))
@@ -661,7 +665,8 @@ void pw_release(void)
 #ifdef PIN_EXT_CHECK
         {   /* the check build: a free slot read through an index kept elsewhere shows in the output */
             struct pin *d = &PW.in[s];
-            PIN_WR(pos, d->x) = PIN_WR(pos, d->y) = (pos)PI(8000);
+            PIN_SETX_RAW(d, (pos)PI(8000));
+            PIN_SETY_RAW(d, (pos)PI(8000));
             d->id = -7777;
         }
 #endif
@@ -761,9 +766,8 @@ int pin_add(int obj, pos x, pos y, int32_t id)
     PIN_WR(int16_t, p->mask) = -1;
     p->alive = 1;
     PIN_WR(uint8_t, p->visible) = pobj[obj].visible;
-    p->persistent = pobj[obj].persistent;
-    PIN_WR(pos, p->x) = x;
-    PIN_WR(pos, p->y) = y;
+    PIN_SETX_RAW(p, x);
+    PIN_SETY_RAW(p, y);
     PIN_WR(float, p->depth) = objdefs[obj].depth;
     PIN_WR(img_t, p->img) = 0;
     PIN_WR(img_t, p->ispd) = 1;
@@ -897,6 +901,34 @@ void pin_set_sprite(int i, int spr)
 
 /* pos_int: play.h */
 
+/* pin_xy_int's slow path (play.h): one shadow not known; both decoded from the floats and stored (the shadows are a
+   cache of x, y: written through a const pointer's object, which is PW.in's) */
+__attribute__((noinline)) int pin_xy_fill(const struct pin *p, int32_t *x, int32_t *y)
+{
+    struct pin *w = (struct pin *)p;
+    int32_t a, b;
+    w->ix = pos_int(p->x, &a) ? (int16_t)a : PXY_NO;
+    w->iy = pos_int(p->y, &b) ? (int16_t)b : PXY_NO;
+    if (w->ix == PXY_NO || w->iy == PXY_NO) return 0;
+    *x = a; *y = b;
+    return 1;
+}
+
+#ifdef PIN_SHADOW_CHECK
+/* the check build: the shadows' answer r (and x, y when 1) against pos_int on the floats */
+int pin_xy_check(const struct pin *p, int r, int32_t x, int32_t y)
+{
+    int32_t a = 0, b = 0;
+    int d = pos_int(p->x, &a) && pos_int(p->y, &b);
+    if (d != r || (r && (a != x || b != y))) {
+        fprintf(stderr, "pin_xy_int: shadows %d (%d %d) differ from the floats %d (%.9g %.9g), instance %d\n", r, (int)x,
+                (int)y, d, (double)p->x, (double)p->y, PIN_IDX(p));
+        abort();
+    }
+    return r;
+}
+#endif
+
 static void bbox_dbl(const struct pin *p, const struct gsprcol *c, double *l, double *t, double *r, double *b)
 {
     double xs = p->xscale, ys = p->yscale, x = PTOD(p->x), y = PTOD(p->y);
@@ -980,7 +1012,7 @@ static __attribute__((noinline)) int bbox_ints(struct pin *p, const struct gsprc
 {
     int32_t sx, sy, ax, ay, l, t, x, y;
     int k = spr_of(p);
-    if (!fzero(p->angle) || !pos_int(p->x, &x) || !pos_int(p->y, &y)) return 0;
+    if (!fzero(p->angle) || !pin_xy_int_p(p, &x, &y)) return 0;
     if (c->kind == 1 && psprite[k].nmasks > 0 && !mask_full(c, &psprite[k])) return 0;
     if (!fwhole(p->xscale, &sx) || !fwhole(p->yscale, &sy)) return 0;
     ax = sx < 0 ? -sx : sx; ay = sy < 0 ? -sy : sy;
@@ -1009,7 +1041,7 @@ static __attribute__((noinline)) int bbkind_set(int i)
         else {
             const struct gsprcol *c = &gsprcol[s];
             int xs = funit(p->xscale), ys = funit(p->yscale);
-            if (xs && ys && fzero(p->angle) && pos_int(p->x, &x) && pos_int(p->y, &y)) {
+            if (xs && ys && fzero(p->angle) && pin_xy_int_p(p, &x, &y)) {
                 int32_t l = xs > 0 ? x + (c->l - c->xo) : x - (c->r + 1 - c->xo);
                 int32_t t = ys > 0 ? y + (c->t - c->yo) : y - (c->b + 1 - c->yo);
                 PWST(bbox_int, 1);
@@ -1767,6 +1799,75 @@ static int xpoint_none(int f, const struct pq *q)
 }
 #endif
 
+/* ---- the integer kernel (PERF3 2.4): the oSolid summary of whole-number queries, one routine for the axis lines,
+   the rectangles and the points (ik_line, rect_any_i, solid_point_sum: their code and the grid's lines stay in the cache
+   across a Step's queries) ---------------------------------------------------------------------------------------- */
+
+/* the oSolid cell summary (after grid_flush) of the query [l, r) x [t, b) (half-open, whole): its cells l >> 4 ..
+   (r - c) >> 4 and t >> 4 .. (b - c) >> 4, clamped, c = nmf & 1. 1 when a cell block (an entry whose integer box is
+   exactly its cell) meets the query and is not notme, nor precise under prec; 0 when no block meets it and no other
+   entry reaches these cells (gother); -1 otherwise. nmf = notme * 4 + prec * 2 + c (no stack argument).
+   - an axis line [lx, hx] x [ly, hy] (line_hit's integer path, closed) is [lx, hx + 1) x [ly, hy + 1) with c 1: the
+     block cell [cl, cl + 16) meets [lx, hx] when lx <= cl + 15 and hx >= cl, which is max(lx, cl) < min(hx + 1, cl + 16),
+     and its cells lx >> 4 .. hx >> 4 are line_summary's (until 2026-10-06 its own loop);
+   - a rectangle (rect_hit on whole boxes) is itself with c 0: rect_any_i's loop, cells to r >> 4;
+   - a point (x, y) in the grid is [x, x + 1) x [y, y + 1) with c 1: its one cell, whose block always meets it:
+     solid_point_sum's tests (1: a block, not notme, not precise under prec; 0: no other entry and no block but notme) */
+static __attribute__((noinline)) int ik_sum(int32_t l, int32_t t, int32_t r, int32_t b, int nmf)
+{
+    int notme = nmf >> 2, prec = nmf & 2, c = nmf & 1, sure = 1, x, y, k;
+    int x0 = clampi(l >> 4, 0, GRID_W - 1), xe = clampi((r - c) >> 4, 0, GRID_W - 1);
+    int y0 = clampi(t >> 4, 0, GRID_H - 1), ye = clampi((b - c) >> 4, 0, GRID_H - 1);
+    for (y = y0; y <= ye; y++) {
+        int32_t ct = y * 16;
+        int yin = (t > ct ? t : ct) < (b < ct + 16 ? b : ct + 16);
+        for (x = x0; x <= xe; x++) {
+            int n = gfull[y][x];
+            int32_t cl = x * 16;
+            if (gother[y][x]) sure = 0;
+            if (n == 0) continue;
+            k = gfblk[y][x];
+            if (k == notme || !yin || !((l > cl ? l : cl) < (r < cl + 16 ? r : cl + 16))) {
+                if (n > 1) sure = 0;                      /* k is a miss; another block may not be */
+                continue;
+            }
+            if (!prec || !precise(k)) return 1;
+            sure = 0;
+        }
+    }
+    return sure ? 0 : -1;
+}
+#define IK_NMF(notme, prec, c) ((notme) * 4 + (prec) * 2 + (c))
+
+/* ik_sum on a query inside the grid that is one cell wide or tall (an axis line, a point): the n cells from cell
+   index i (y * GRID_W + x) by step (1: a row, GRID_W: a column), nm = notme * 2 + prec. Every one of these cells
+   meets the query (no clamping; the line's cells are its own), so a block misses only as notme: per cell, gother
+   makes the answer unsure, a block not notme is a hit unless precise under prec (then unsure), notme's block with
+   another block there is unsure. ik_sum's answers, without the clamps, the overlap tests and the spills of its 2-D
+   loop (four register arguments, a leaf) */
+static __attribute__((noinline)) int ik_cells(int i, int n, int step, int nm)
+{
+    const uint8_t *f = &gfull[0][0] + i;
+    const uint16_t *o = &gother[0][0] + i;
+    const int16_t *b = &gfblk[0][0] + i;
+    int notme = nm >> 1, sure = 1;
+    for (;;) {
+        int c = *f;
+        if (*o) sure = 0;
+        if (c) {
+            int k = *b;
+            if (k != notme) {
+                if (!(nm & 1) || !precise(k)) return 1;
+                sure = 0;
+            } else if (c > 1)
+                sure = 0;                                 /* notme's block; another block may hit */
+        }
+        if (--n == 0) break;
+        f += step; o += step; b += step;
+    }
+    return sure ? 0 : -1;
+}
+
 /* Command_CollisionPoint tests the object's instances in creation order (Collision_Point computes each stale box:
    pcol_touch) */
 int (collision_point_p)(double px, double py, int obj, int prec, int notme_self)
@@ -1878,15 +1979,32 @@ static int xstatic_any(int obj, int notme, const struct pq *q, int prec)
    iok, ix, iy only */
 static int solid_point_sum(const struct pq *q, int prec, int notme_self)
 {
-    int cx, cy, n, k;
-    if (q->iok && q->ix >= 0 && q->iy >= 0 && (cx = q->ix >> 4) < GRID_W && (cy = q->iy >> 4) < GRID_H) {
+    if (q->iok && q->ix >= 0 && q->iy >= 0 && (q->ix >> 4) < GRID_W && (q->iy >> 4) < GRID_H) {
         grid_flush();
-        n = gfull[cy][cx];
-        k = gfblk[cy][cx];
-        if (n > 0 && k != notme_self && (!prec || !precise(k))) return 1;
-        if (gother[cy][cx] == 0 && (n == 0 || (n == 1 && k == notme_self))) return 0;
+        return ik_cells((q->iy >> 4) * GRID_W + (q->ix >> 4), 1, 1, notme_self * 2 + (prec != 0));
     }
     return -1;
+}
+
+/* collision_point_any(x, y, obj, prec, notme) != noone for static family obj (xf_of) at a whole point (x, y) (or the
+   floors of a point, as xstatic_any reads them): xstatic_any's first answers on the ints - 0 when no entry of the
+   family reaches the point's cell (xpoint_none, after the same xflush_run), 1 when the cell's hint is alive, of obj,
+   not notme, has a cached whole box (BB_INT) holding the point and is not precise under prec (xhint_hit: point_hit's
+   integer test); -1 otherwise (out of the grid, no hint, a hint without a cached whole box or not holding the
+   point), and xstatic_any then repeats these tests, which change nothing more */
+static int ik_xpt(int obj, int notme, int prec, int32_t x, int32_t y)
+{
+    int f = xf_of[obj], cx, cy, k;
+    const struct pin *h;
+    if (x < 0 || y < 0 || (cx = x >> 4) >= GRID_W || (cy = y >> 4) >= GRID_H) return -1;
+    if (xdhead >= 0) xflush_run();
+    if (xfar[f] == 0 && !xsat[f] && xcnt[f][cy][cx] == 0) return 0;
+    k = xhint[cy][cx];
+    if (k < 0 || k == notme) return -1;
+    h = &PW.in[k];
+    if (!h->alive || h->bbk != BB_INT || !obj_is(h->obj, obj)) return -1;
+    if (!(x >= h->bl && x < h->br && y >= h->bt && y < h->bb) || (prec && precise(k))) return -1;
+    return 1;
 }
 #endif
 
@@ -1901,9 +2019,14 @@ int (collision_point_any)(double px, double py, int obj, int prec, int notme_sel
        pcol_quiet 0 every instance is synced). The host builds compare every answer with collision_point_p */
     if (obj >= 0 && obj != OBJ_oSolid && xf_of[obj] >= 0 && !pcol_quiet()) {
         int r;
+        int32_t a, b;
         if (fam_none(obj)) return 0;
-        pq_init(&q, px, py);
-        r = xstatic_any(obj, notme_self, &q, prec);
+        /* whole px, py: pq_init's ix, iy (dwhole), and the kernel's answer without the query struct */
+        r = dwhole(px, &a) && dwhole(py, &b) ? ik_xpt(obj, notme_self, prec, a, b) : -1;
+        if (r < 0) {
+            pq_init(&q, px, py);
+            r = xstatic_any(obj, notme_self, &q, prec);
+        }
 #ifdef PLAY_STATS
         if (r != (collision_point_p(px, py, obj, prec, notme_self) != NOONE)) {
             fprintf(stderr, "collision_point_any: static family %d answer %d differs (%.17g %.17g)\n", obj, r, px, py);
@@ -1914,9 +2037,18 @@ int (collision_point_any)(double px, double py, int obj, int prec, int notme_sel
     }
     if (obj == OBJ_oSolid && !gfar && !pcol_quiet()) {
         int r;
+        int32_t a, b;
         if (fam_none(obj)) return 0;
-        pq_init(&q, px, py);
-        r = solid_point_sum(&q, prec, notme_self);
+        if (dwhole(px, &a) && dwhole(py, &b)) {               /* pq_init's ix, iy: solid_point_sum on them */
+            r = -1;
+            if (a >= 0 && b >= 0 && (a >> 4) < GRID_W && (b >> 4) < GRID_H) {
+                grid_flush();
+                r = ik_cells((b >> 4) * GRID_W + (a >> 4), 1, 1, notme_self * 2 + (prec != 0));
+            }
+        } else {
+            pq_init(&q, px, py);
+            r = solid_point_sum(&q, prec, notme_self);
+        }
         if (r >= 0) {
 #ifdef PLAY_STATS
             if (r != (collision_point_p(px, py, obj, prec, notme_self) != NOONE)) {
@@ -1993,7 +2125,8 @@ int (collision_point_any_at)(int i, int32_t dx, int32_t dy, int obj)
             return r;
         }
         if (ok) {
-            int r = fam_none(obj) ? 0 : xstatic_any(obj, NOONE, &q, 0);
+            int r = fam_none(obj) ? 0 : q.iok ? ik_xpt(obj, NOONE, 0, q.ix, q.iy) : -1;
+            if (r < 0) r = xstatic_any(obj, NOONE, &q, 0);
 #ifdef PLAY_STATS
             {
                 struct pq c;
@@ -2498,31 +2631,6 @@ int collision_line_i(int32_t x1, int32_t y1, int32_t x2, int32_t y2, int obj, in
 #include <stdio.h>
 #include <stdlib.h>
 #endif
-/* the cell summary of the line's own cells (oSolid family, after grid_flush): 1 when a usable cell block is crossed
-   by the axis-aligned line (line_hit's integer path hits it), 0 when no other entry reaches these cells and every
-   cell block there is a sure miss (no instance is hit), -1 when the scan has to decide */
-static inline __attribute__((always_inline)) int line_summary(const struct lq *q, int obj, int prec, int notme_self)
-{
-    int sure = 1, x, y, k;
-    int x0 = clampi(q->lx >> 4, 0, GRID_W - 1), xe = clampi(q->hx >> 4, 0, GRID_W - 1);
-    int y0 = clampi(q->ly >> 4, 0, GRID_H - 1), ye = clampi(q->hy >> 4, 0, GRID_H - 1);
-    for (y = y0; y <= ye; y++)
-        for (x = x0; x <= xe; x++) {
-            int n = gfull[y][x];
-            if (gother[y][x]) sure = 0;
-            if (n == 0) continue;
-            k = gfblk[y][x];
-            if (k == notme_self || (obj != OBJ_oSolid && !obj_is(PW.in[k].obj, obj)) ||
-                q->hx < x * 16 || q->lx > x * 16 + 15 || q->hy < y * 16 || q->ly > y * 16 + 15) {
-                if (n > 1) sure = 0;                      /* k is a miss; another block may not be */
-                continue;
-            }
-            if (q->axis && (!prec || !precise(k))) return 1;
-            sure = 0;
-        }
-    return sure ? 0 : -1;
-}
-
 /* the grid scan: a box of [l, r] x [t, b] in cell (cx, cy) reaches cell cx + gmaxw at most; line_hit needs l <= hx
    and r > lx (and in y), so the hits are in the cells (lx >> 4) - gmaxw .. hx >> 4 (clamped as the cells are) */
 static int line_scan(struct qctx *c, int obj, int notme_self)
@@ -2570,41 +2678,37 @@ static __attribute__((noinline)) int any_scan(int32_t x1, int32_t y1, int32_t x2
     return line_scan(&c, obj, notme_self);
 }
 
-static inline __attribute__((always_inline)) int line_any(int32_t x1, int32_t y1, int32_t x2, int32_t y2, int obj,
-                                                          int prec, int notme_self)
+/* collision_line(a, lo, a, hi, oSolid, 1, notme) != noone (nm = notme * 2: solid_vline_any) or collision_line(lo, a,
+   hi, a, ...) (nm = notme * 2 + 1: solid_hline_any), four register arguments: pcol_query (the flush), then the summary
+   (ik_cells inside the grid, ik_sum else), else the scan; the tree's other answers take the search (any_run). The
+   ends keep the callers' order for any_run / any_scan */
+static __attribute__((noinline)) int ik_line(int32_t a, int32_t lo, int32_t hi, int nm)
 {
-    int q = pcol_query(obj), r;
-    struct lq lq;
+    int q = pcol_query(OBJ_oSolid), notme = nm >> 1, r;
+    int32_t l = lo < hi ? lo : hi, h = lo < hi ? hi : lo, x1, y1, x2, y2;
     PWST(line, 1);
+    if (nm & 1) { x1 = lo; y1 = a; x2 = hi; y2 = a; }
+    else { x1 = a; y1 = lo; x2 = a; y2 = hi; }
     if (q < 0) return 0;
-    if (q != 1 || obj < 0 || !obj_is(obj, OBJ_oSolid)) return any_run(q, x1, y1, x2, y2, obj, prec, notme_self);
+    if (q != 1) return any_run(q, x1, y1, x2, y2, OBJ_oSolid, 1, notme);
     grid_flush();
-    if (gfar) return any_run(q, x1, y1, x2, y2, obj, prec, notme_self);
-    lq.iok = 1;
-    lq.lx = x1 < x2 ? x1 : x2; lq.hx = x1 < x2 ? x2 : x1;
-    lq.ly = y1 < y2 ? y1 : y2; lq.hy = y1 < y2 ? y2 : y1;
-    lq.axis = x1 == x2 || y1 == y2;
-    r = line_summary(&lq, obj, prec, notme_self);
+    if (gfar) return any_run(q, x1, y1, x2, y2, OBJ_oSolid, 1, notme);
+    if (a < 0 || l < 0 || (nm & 1 ? a >= GRID_H * 16 || h >= GRID_W * 16 : a >= GRID_W * 16 || h >= GRID_H * 16))
+        r = ik_sum(x1 < x2 ? x1 : x2, y1 < y2 ? y1 : y2, (x1 < x2 ? x2 : x1) + 1, (y1 < y2 ? y2 : y1) + 1,
+                   IK_NMF(notme, 1, 1));                  /* (partly outside the grid: the clamped cells) */
+    else if (nm & 1)
+        r = ik_cells((a >> 4) * GRID_W + (l >> 4), (h >> 4) - (l >> 4) + 1, 1, notme * 2 + 1);
+    else
+        r = ik_cells((l >> 4) * GRID_W + (a >> 4), (h >> 4) - (l >> 4) + 1, GRID_W, notme * 2 + 1);
 #ifdef PLAY_STATS
-    if (r >= 0 && r != any_scan(x1, y1, x2, y2, obj, prec, notme_self)) {   /* the host builds check every summary answer */
-        fprintf(stderr, "line_summary %d differs from the scan: %d %d %d %d obj %d notme %d\n", r, (int)x1, (int)y1,
-                (int)x2, (int)y2, obj, notme_self);
-        {
-            int cx = clampi(lq.lx >> 4, 0, GRID_W - 1), cy = clampi(lq.ly >> 4, 0, GRID_H - 1), k = gfblk[cy][cx];
-            int32_t ib[4] = { 0, 0, 0, 0 };
-            int ok = pin_ibox(k, ib);
-            fprintf(stderr, "cell %d %d full %d other %d blk %d obj %s alive %d gcell %d gkind %d ibox %d %d %d %d %d\n",
-                    cx, cy, gfull[cy][cx], gother[cy][cx], k, objdefs[PW.in[k].obj].name, PW.in[k].alive, gcell[k],
-                    gkind[k], ok, ib[0], ib[1], ib[2], ib[3]);
-            fprintf(stderr, "blk cell %d %d; list:", gox0[k], goy0[k]);
-            for (k = ghead[cy][cx]; k >= 0; k = gnext[k]) fprintf(stderr, " %d(%s k%d)", k, objdefs[PW.in[k].obj].name, gkind[k]);
-            fprintf(stderr, "\n");
-        }
+    if (r >= 0 && r != any_scan(x1, y1, x2, y2, OBJ_oSolid, 1, notme)) {   /* the host builds check every summary answer */
+        fprintf(stderr, "ik_line %d differs from the scan: %d %d %d %d notme %d\n", r, (int)x1, (int)y1, (int)x2, (int)y2,
+                notme);
         abort();
     }
 #endif
     if (r >= 0) return r;
-    return any_scan(x1, y1, x2, y2, obj, prec, notme_self);
+    return any_scan(x1, y1, x2, y2, OBJ_oSolid, 1, notme);
 }
 
 /* collision_rectangle(l, t, r, b, oSolid, 1, notme) != noone for whole l <= r, t <= b (isCollisionSolid): the
@@ -2686,11 +2790,32 @@ int (collision_rect_any)(double x1, double y1, double x2, double y2, int obj, in
     return collision_rect_p(x1, y1, x2, y2, obj, prec, notme_self) != NOONE;
 }
 
+/* isCollisionLeft / Right / Top / Bottom (i, d) and getIdCollisionLeft / Right's line test (pscript.c anyCollision*)
+   on whole x, y (the shadows: pin_xy_int_p) and the setCollisionBounds offsets: calculateCollisionBounds' sides
+   lb = x + lbo, tb = y + tbo, rb = x + rbo, bb = y + bbo (whole: the rounding is the identity, as pscript.c ibounds
+   took them), the scripts' line from them, and ik_line. -1 (nothing done) when x or y is not whole: the scripts'
+   doubles then. side: bit 0 the right / bottom edge, bit 1 a horizontal line, bit 2 the line starts 5 px below
+   the top (IK_* in play.h) */
+__attribute__((noinline)) int ik_side(int i, int side, int d)
+{
+    const struct pin *p = &PW.in[i];
+    const struct pin_ext *e;
+    int32_t x, y, a;
+    if (!pin_xy_int_p(p, &x, &y)) return -1;
+    e = PE(p);
+    if (side & 2) {                               /* collision_line(lb, a, rb - 1, a): Top a = tb - d, Bottom bb + d - 1 */
+        a = side & 1 ? y + e->bbo + d - 1 : y + e->tbo - d;
+        return ik_line(a, x + e->lbo, x + e->rbo - 1, i * 2 + 1);
+    }
+    a = side & 1 ? x + e->rbo + d - 1 : x + e->lbo - d;   /* collision_line(a, tb (+ 5), a, bb - 1): Left lb - d, Right rb + d - 1 */
+    return ik_line(a, y + e->tbo + (side & 4 ? 5 : 0), y + e->bbo - 1, i * 2);
+}
+
 /* collision_line(x, y1, x, y2, oSolid, 1, notme) != noone and collision_line(x1, y, x2, y, ...): isCollisionLeft /
    Right / Top / Bottom with whole-number bounds (pscript.c); obj and prec constant, four arguments in registers */
 int solid_vline_any(int32_t x, int32_t y1, int32_t y2, int notme_self)
 {
-    return line_any(x, y1, x, y2, OBJ_oSolid, 1, notme_self);
+    return ik_line(x, y1, y2, notme_self * 2);
 }
 
 /* solid_vline_any(x, y1, y2, notme_self)'s answer as line_any finds it on the grid (pcol_query 1, gfar 0), without
@@ -2699,23 +2824,24 @@ int solid_vline_any(int32_t x, int32_t y1, int32_t y2, int notme_self)
 int pw_solid_vline_q(int32_t x, int32_t y1, int32_t y2, int notme_self)
 {
     int q = pcol_query_kind(OBJ_oSolid), r;
-    struct lq lq;
     if (q < 0) return 0;
     if (q != 1) return -1;
     grid_flush();
     if (gfar) return -1;
-    lq.iok = 1;
-    lq.lx = x; lq.hx = x;
-    lq.ly = y1 < y2 ? y1 : y2; lq.hy = y1 < y2 ? y2 : y1;
-    lq.axis = 1;
-    r = line_summary(&lq, OBJ_oSolid, 1, notme_self);
+    {
+        int32_t l = y1 < y2 ? y1 : y2, h = y1 < y2 ? y2 : y1;
+        if (x < 0 || l < 0 || x >= GRID_W * 16 || h >= GRID_H * 16)
+            r = ik_sum(x, l, x + 1, h + 1, IK_NMF(notme_self, 1, 1));   /* (line_summary's, clamped) */
+        else
+            r = ik_cells((l >> 4) * GRID_W + (x >> 4), (h >> 4) - (l >> 4) + 1, GRID_W, notme_self * 2 + 1);
+    }
     if (r >= 0) return r;
     return any_scan(x, y1, x, y2, OBJ_oSolid, 1, notme_self);
 }
 
 int solid_hline_any(int32_t y, int32_t x1, int32_t x2, int notme_self)
 {
-    return line_any(x1, y, x2, y, OBJ_oSolid, 1, notme_self);
+    return ik_line(y, x1, x2, notme_self * 2 + 1);
 }
 
 /* a rectangle query: its sides rounded (floor(v + 0.5)) once */
@@ -3009,8 +3135,10 @@ static void pci_of(int i, int32_t dx, int32_t dy, struct pci *q)
         q->bpr = 0; q->mask = 0;
         return;
     }
-    pos_int(p->x, &q->x);
-    pos_int(p->y, &q->y);
+    if (!pin_xy_int_p(p, &q->x, &q->y)) {         /* (a BB_INT box: whole x, y; else as pos_int leaves them) */
+        pos_int(p->x, &q->x);
+        pos_int(p->y, &q->y);
+    }
     q->x += dx; q->y += dy;
     q->sx = p->xscale > 0 ? 1 : -1;
     q->sy = p->yscale > 0 ? 1 : -1;

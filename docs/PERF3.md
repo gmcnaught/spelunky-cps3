@@ -538,3 +538,58 @@ Load-use stall (from spelunky-cps3-a6, low priority): jtcps3 stalls 1 cycle on a
     unchanged: their causes are elsewhere).
   - Both: 182 host route runs byte-identical (PCOL stats equal); playsh2 grid and SOFTFP 9,701/9,701; shell; capture
     428/428; tests/game link 0 compiler warnings, stack room 33,740 B. Trace gates pending (the retrace).
+
+### 2.1 integer shadows and 2.4 the integer collision kernel (branch ikernel, 2026-10-06)
+
+Six commits on 1f1815a, rebased onto 3dd5a2b (off-view deactivation on). No new .bss: tests/game stack room 32,892 B on 3dd5a2b, the same as main.
+
+- **2.1 (b76776d, 96a5f6a):** struct pin stays 64 bytes. `persistent` (written once, never read) is dropped,
+  `type` becomes int8, and cleanDeath / shopWall / treasure become bitfields. That frees 4 bytes for int16 `ix`, `iy`:
+  - the value when the float is whole in (-30000, 30000), PXY_NO when it is not, PXY_UNK when stale;
+  - every write of x / y marks it stale: the setters on a POS_NE change, and the raw writes through PIN_SETX_RAW /
+    PIN_SETY_RAW (moveTo's walk and restore, pobj.c's settle, characterStepEvent's slope loops, pin_add);
+  - pin_xy_int reads the shadows, and pin_xy_fill decodes lazily;
+  - the PLAY_STATS builds compare every read with pos_int on the floats (an injected off-by-one aborts).
+  The box shadow already existed (bl..bb, bbk).
+- **2.4 (a2d6acd .. 2602052):** one in-grid summary leaf, ik_cells(i, n, step, nm), with four register arguments.
+  Its users:
+  - ik_line (4 arguments) for solid_vline_any / solid_hline_any;
+  - ik_side for isCollisionLeft / Right / Top / Bottom and anyCollisionLeft / Right (one routine, tail call);
+  - solid_point_sum;
+  - collision_point_any's whole oSolid point.
+  ik_xpt answers the static-family whole points (xstatic_any's first two answers on ints). collision_point_any and
+  collision_point_any_at no longer build struct pq when the summary or the index answers. The first version, a 2-D
+  ik_sum with a stack argument, cost +3 % (about 140 instructions and 18 stores a call): measured, then replaced.
+- **jtcost (fit, no NC), model K, drain 61 / l5s37 201 / caveman 138 / p4_exit559 301:**
+  - 1f1815a: 400.6 / 441.6 / 407.9 / 354.9;
+  - 2.1: 377.4 / 418.0 / 393.2 / 341.5;
+  - 2.1 + 2.4: 379.6 / 420.6 / 394.8 / 335.9.
+  2.4 lowers the fully associative bound by 0.8-2.9 % beyond 2.1, but set conflicts rose by 100-250 lines in this
+  layout.
+- **jtcps3 (.62 / .81, NC link, route step means with step 1, K; base 1f1815a from LUSH 12.5):**
+
+  | route | 1f1815a | 2.1 (c81da62) | 2.1 + 2.4 (b069e58) |
+  |---|---|---|---|
+  | p5_lush_l5s11 | 467.7 | 446.3 (-4.6 %) | 434.4 (-7.1 %) |
+  | p5_lush_l6s23 | 407.4 | 396.0 (-2.8 %) | 386.0 (-5.3 %) |
+  | c_swamp_drain | 635.4 | 617.0 (-2.9 %) | 599.4 (-5.7 %) |
+  | c_swamp_swim | 491.1 | 477.7 (-2.7 %) | 461.5 (-6.0 %) |
+  | c_swamp_piranha | 390.5 | 374.1 (-4.2 %) | 363.5 (-6.9 %) |
+  | c_swamp_grave | 626.1 | 596.9 (-4.7 %) | 574.2 (-8.3 %) |
+
+- **Gates (b069e58):**
+  - make check (EQUIV 88/88), ctall 59/59;
+  - playsh2 9,701/9,701 grid and SOFTFP;
+  - shell 26/26 + 49/49;
+  - game_check p4_exit559 / p5_shop / p5_spider 0 px (13 frames);
+  - capture 422/422 and 6/6;
+  - SH-2 0 compiler warnings;
+  - stack room: tests/game 33,600 B, playsh2 JT (NC) 62,900 B.
+  Every commit: 182 host route runs byte-identical, stdout and stderr.
+  On 3dd5a2b:
+  - 182 runs byte-identical to 3dd5a2b's default build (PLAY_DEACT 32), with PIN_SHADOW_CHECK clean;
+  - DEACT=0: ctall 59/59, EQUIV 88/88;
+  - game_check p4_exit559 0 px.
+  pw_activate and pw_deactivate write no x / y, so the shadows of a deactivated instance stay valid.
+- **Not done:** the other-family queries (ladder / platform / water / moveable solid through pgrid_search) and
+  collision_rect_p's fractional queries.

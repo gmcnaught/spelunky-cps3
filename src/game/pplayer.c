@@ -699,7 +699,7 @@ static void characterStepEvent(int i)
                 pos o = p->y;
                 if (PL.colTop)
                     break;
-                PIN_WR(pos, p->y) = p->y - (PI(1));
+                PIN_SETY_RAW(p, p->y - (PI(1)));
                 if (POS_NE(o, p->y)) ch = 1;
             }
             if (ch) pin_changed_(p);
@@ -749,11 +749,11 @@ static void characterStepEvent(int i)
                 break;
             }
             o = p->y;
-            PIN_WR(pos, p->y) = p->y + (PI(1));
+            PIN_SETY_RAW(p, p->y + (PI(1)));
             if (POS_NE(o, p->y)) ch = 1;
         }
         o = p->y;
-        PIN_WR(pos, p->y) = upYPrev;
+        PIN_SETY_RAW(p, upYPrev);
         if (POS_NE(o, upYPrev)) ch = 1;
         if (ch) pin_changed_(p);
     }

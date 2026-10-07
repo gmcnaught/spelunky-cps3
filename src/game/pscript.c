@@ -53,9 +53,8 @@ static inline __attribute__((always_inline)) int ibounds(int i, int32_t *lb, int
 int isCollisionLeft(int i, int d)
 {
     double lb, tb, rb, bb;
-    int32_t il, it, ir, ib;
-    if (ibounds(i, &il, &it, &ir, &ib))
-        return solid_vline_any(il - d, it, ib - 1, i);
+    int r = ik_side(i, IK_LEFT, d);
+    if (r >= 0) return r;
     calcBounds(i, &lb, &tb, &rb, &bb);
     return collision_line_p(dround(lb - d), dround(tb), dround(lb - d), dround(bb - 1), OBJ_oSolid, 1, i) != NOONE;
 }
@@ -63,9 +62,8 @@ int isCollisionLeft(int i, int d)
 int isCollisionRight(int i, int d)
 {
     double lb, tb, rb, bb;
-    int32_t il, it, ir, ib;
-    if (ibounds(i, &il, &it, &ir, &ib))
-        return solid_vline_any(ir + d - 1, it, ib - 1, i);
+    int r = ik_side(i, IK_RIGHT, d);
+    if (r >= 0) return r;
     calcBounds(i, &lb, &tb, &rb, &bb);
     return collision_line_p(dround(rb + d - 1), dround(tb), dround(rb + d - 1), dround(bb - 1), OBJ_oSolid, 1, i) != NOONE;
 }
@@ -73,9 +71,8 @@ int isCollisionRight(int i, int d)
 int isCollisionTop(int i, int d)
 {
     double lb, tb, rb, bb;
-    int32_t il, it, ir, ib;
-    if (ibounds(i, &il, &it, &ir, &ib))
-        return solid_hline_any(it - d, il, ir - 1, i);
+    int r = ik_side(i, IK_TOP, d);
+    if (r >= 0) return r;
     calcBounds(i, &lb, &tb, &rb, &bb);
     return collision_line_p(dround(lb), dround(tb - d), dround(rb - 1), dround(tb - d), OBJ_oSolid, 1, i) != NOONE;
 }
@@ -83,9 +80,8 @@ int isCollisionTop(int i, int d)
 int isCollisionBottom(int i, int d)
 {
     double lb, tb, rb, bb;
-    int32_t il, it, ir, ib;
-    if (ibounds(i, &il, &it, &ir, &ib))
-        return solid_hline_any(ib + d - 1, il, ir - 1, i);
+    int r = ik_side(i, IK_BOTTOM, d);
+    if (r >= 0) return r;
     calcBounds(i, &lb, &tb, &rb, &bb);
     return collision_line_p(dround(lb), dround(bb + d - 1), dround(rb - 1), dround(bb + d - 1), OBJ_oSolid, 1, i) != NOONE;
 }
@@ -182,9 +178,8 @@ int getIdCollisionLeft(int i, int d)
 static int anyCollisionRight(int i, int d)
 {
     double lb, tb, rb, bb;
-    int32_t il, it, ir, ib;
-    if (ibounds(i, &il, &it, &ir, &ib))
-        return solid_vline_any(ir + d - 1, it + 5, ib - 1, i);
+    int r = ik_side(i, IK_ANYRIGHT, d);
+    if (r >= 0) return r;
     calcBounds(i, &lb, &tb, &rb, &bb);
     return collision_line_p(dround(rb + d - 1), dround(tb + 5), dround(rb + d - 1), dround(bb - 1), OBJ_oSolid, 1, i) != NOONE;
 }
@@ -192,9 +187,8 @@ static int anyCollisionRight(int i, int d)
 static int anyCollisionLeft(int i, int d)
 {
     double lb, tb, rb, bb;
-    int32_t il, it, ir, ib;
-    if (ibounds(i, &il, &it, &ir, &ib))
-        return solid_vline_any(il - d, it + 5, ib - 1, i);
+    int r = ik_side(i, IK_ANYLEFT, d);
+    if (r >= 0) return r;
     calcBounds(i, &lb, &tb, &rb, &bb);
     return collision_line_p(dround(lb - d), dround(tb + 5), dround(lb - d), dround(bb - 1), OBJ_oSolid, 1, i) != NOONE;
 }
@@ -274,8 +268,8 @@ void moveTo(int i, num a0, num a1, int32_t *xio, int32_t *yio)
     int32_t il, it, ir, ib;
 #endif
 /* a pixel step: the setter, or (raw) the field alone, the setter called once with the position reached (below) */
-#define MT_SETX(v) (raw ? (void)(PIN_WR(pos, p->x) = (v)) : pin_setx(p, (v)))
-#define MT_SETY(v) (raw ? (void)(PIN_WR(pos, p->y) = (v)) : pin_sety(p, (v)))
+#define MT_SETX(v) (raw ? PIN_SETX_RAW(p, (v)) : pin_setx(p, (v)))
+#define MT_SETY(v) (raw ? PIN_SETY_RAW(p, (v)) : pin_sety(p, (v)))
     vel_parts(a0, &vx);
     vel_parts(a1, &vy);
     if (vx.r != 0) xVelInteger = (int32_t)(play_time % (uint32_t)vx.r) == 0;
@@ -371,8 +365,8 @@ void moveTo(int i, num a0, num a1, int32_t *xio, int32_t *yio)
         /* pin_setx then pin_sety, with nothing between: their marks are one pw_changed's when either changed
            (consecutive pw_changed(i) leave what the last leaves: characterStepEvent's slope loops), so pin_setxy */
         pos fx = p->x, fy = p->y;
-        PIN_WR(pos, p->x) = mtXPrev;
-        PIN_WR(pos, p->y) = mtYPrev;
+        PIN_SETX_RAW(p, mtXPrev);
+        PIN_SETY_RAW(p, mtYPrev);
         pin_setxy(p, fx, fy);
     }
 #undef MT_SETX
