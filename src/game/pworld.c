@@ -1956,6 +1956,27 @@ static int solid_point_sum(const struct pq *q, int prec, int notme_self)
     }
     return -1;
 }
+
+/* collision_point_any(x, y, obj, prec, notme) != noone for static family obj (xf_of) at a whole point (x, y) (or the
+   floors of a point, as xstatic_any reads them): xstatic_any's first answers on the ints - 0 when no entry of the
+   family reaches the point's cell (xpoint_none, after the same xflush_run), 1 when the cell's hint is alive, of obj,
+   not notme, has a cached whole box (BB_INT) holding the point and is not precise under prec (xhint_hit: point_hit's
+   integer test); -1 otherwise (out of the grid, no hint, a hint without a cached whole box or not holding the
+   point), and xstatic_any then repeats these tests, which change nothing more */
+static int ik_xpt(int obj, int notme, int prec, int32_t x, int32_t y)
+{
+    int f = xf_of[obj], cx, cy, k;
+    const struct pin *h;
+    if (x < 0 || y < 0 || (cx = x >> 4) >= GRID_W || (cy = y >> 4) >= GRID_H) return -1;
+    if (xdhead >= 0) xflush_run();
+    if (xfar[f] == 0 && !xsat[f] && xcnt[f][cy][cx] == 0) return 0;
+    k = xhint[cy][cx];
+    if (k < 0 || k == notme) return -1;
+    h = &PW.in[k];
+    if (!h->alive || h->bbk != BB_INT || !obj_is(h->obj, obj)) return -1;
+    if (!(x >= h->bl && x < h->br && y >= h->bt && y < h->bb) || (prec && precise(k))) return -1;
+    return 1;
+}
 #endif
 
 int (collision_point_any)(double px, double py, int obj, int prec, int notme_self)
@@ -1969,9 +1990,14 @@ int (collision_point_any)(double px, double py, int obj, int prec, int notme_sel
        pcol_quiet 0 every instance is synced). The host builds compare every answer with collision_point_p */
     if (obj >= 0 && obj != OBJ_oSolid && xf_of[obj] >= 0 && !pcol_quiet()) {
         int r;
+        int32_t a, b;
         if (fam_none(obj)) return 0;
-        pq_init(&q, px, py);
-        r = xstatic_any(obj, notme_self, &q, prec);
+        /* whole px, py: pq_init's ix, iy (dwhole), and the kernel's answer without the query struct */
+        r = dwhole(px, &a) && dwhole(py, &b) ? ik_xpt(obj, notme_self, prec, a, b) : -1;
+        if (r < 0) {
+            pq_init(&q, px, py);
+            r = xstatic_any(obj, notme_self, &q, prec);
+        }
 #ifdef PLAY_STATS
         if (r != (collision_point_p(px, py, obj, prec, notme_self) != NOONE)) {
             fprintf(stderr, "collision_point_any: static family %d answer %d differs (%.17g %.17g)\n", obj, r, px, py);
@@ -1982,9 +2008,18 @@ int (collision_point_any)(double px, double py, int obj, int prec, int notme_sel
     }
     if (obj == OBJ_oSolid && !gfar && !pcol_quiet()) {
         int r;
+        int32_t a, b;
         if (fam_none(obj)) return 0;
-        pq_init(&q, px, py);
-        r = solid_point_sum(&q, prec, notme_self);
+        if (dwhole(px, &a) && dwhole(py, &b)) {               /* pq_init's ix, iy: solid_point_sum on them */
+            r = -1;
+            if (a >= 0 && b >= 0 && (a >> 4) < GRID_W && (b >> 4) < GRID_H) {
+                grid_flush();
+                r = ik_sum(a, b, a + 1, b + 1, IK_NMF(notme_self, prec != 0, 1));
+            }
+        } else {
+            pq_init(&q, px, py);
+            r = solid_point_sum(&q, prec, notme_self);
+        }
         if (r >= 0) {
 #ifdef PLAY_STATS
             if (r != (collision_point_p(px, py, obj, prec, notme_self) != NOONE)) {
@@ -2061,7 +2096,8 @@ int (collision_point_any_at)(int i, int32_t dx, int32_t dy, int obj)
             return r;
         }
         if (ok) {
-            int r = fam_none(obj) ? 0 : xstatic_any(obj, NOONE, &q, 0);
+            int r = fam_none(obj) ? 0 : q.iok ? ik_xpt(obj, NOONE, 0, q.ix, q.iy) : -1;
+            if (r < 0) r = xstatic_any(obj, NOONE, &q, 0);
 #ifdef PLAY_STATS
             {
                 struct pq c;
