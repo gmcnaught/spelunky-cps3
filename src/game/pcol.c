@@ -1228,21 +1228,57 @@ static void cupdate(int e) { cupdate_at(e, 0, 0); }
    in creation order (collision_point and the like) only changes the tree through these */
 static int16_t stk[ENT_MAX];
 static int nstk;
+#ifdef PLAY_STATS
+/* the host builds: the stack as it was before stk_clean (pushed as stk, cut back only when read or full); every read
+   compares the two compacted stacks */
+static int16_t ostk[ENT_MAX];
+static int onstk;
+#endif
+
+static int stk_compact_a(int16_t *s, int m)
+{
+    int k, j, n = 0;
+    for (k = 0; k < m; k++) {
+        int16_t e = s[k];
+        if (!(ef[e] & EF_STALE)) continue;
+        for (j = n; j > 0 && ekey(s[j - 1]) > ekey(e); j--) s[j] = s[j - 1];
+        if (j > 0 && s[j - 1] == e) {                   /* a repeat: undo the shift */
+            for (; j < n; j++) s[j] = s[j + 1];
+            continue;
+        }
+        s[j] = e;
+        n++;
+    }
+    return n;
+}
 
 static void stk_compact(void)
 {
-    int k, j, n = 0;
-    for (k = 0; k < nstk; k++) {
-        int16_t e = stk[k];
-        if (!(ef[e] & EF_STALE)) continue;
-        for (j = n; j > 0 && ekey(stk[j - 1]) > ekey(e); j--) stk[j] = stk[j - 1];
-        if (j > 0 && stk[j - 1] == e) {                 /* a repeat: undo the shift */
-            for (; j < n; j++) stk[j] = stk[j + 1];
-            continue;
+    nstk = stk_compact_a(stk, nstk);
+#ifdef PLAY_STATS
+    {
+        int k;
+        onstk = stk_compact_a(ostk, onstk);
+        for (k = 0; k < nstk && k < onstk && stk[k] == ostk[k]; k++) {}
+        if (k != nstk || k != onstk) {
+            fprintf(stderr, "stk_compact: the cleaned stack differs (%d of %d / %d)\n", k, nstk, onstk);
+            abort();
         }
-        stk[j] = e;
-        n++;
     }
+#endif
+}
+
+/* after a flush: the stack keeps only the entries still stale, in order (dead ones waiting for remove_marked). The
+   reads (stk_compact) are unchanged: they keep only the stale entries, and one dropped here that becomes stale again
+   is pushed again by mark_e (it pushes whenever it sets EF_STALE on a member; membership does not end within a room:
+   OI_DYN is only set, solid is the object's, and a reused slot starts at ef 0). Without this the stack held every
+   mark since its last read, up to ENT_MAX, and the next read (a creation-order scan of an oSolid child: a spear
+   trap's point test) sorted through them all */
+static void stk_clean(void)
+{
+    int k, n = 0;
+    for (k = 0; k < nstk; k++)
+        if (ef[stk[k]] & EF_STALE) stk[n++] = stk[k];
     nstk = n;
 }
 
@@ -1253,6 +1289,10 @@ static void mark_e(int e)
         if (!(ef[e] & EF_STALE)) {
             if (nstk == ENT_MAX) stk_compact();
             stk[nstk++] = (int16_t)e;
+#ifdef PLAY_STATS
+            if (onstk == ENT_MAX) onstk = stk_compact_a(ostk, onstk);
+            ostk[onstk++] = (int16_t)e;
+#endif
         }
         ef[e] |= EF_STALE;
         dlist_front(e);
@@ -1299,6 +1339,7 @@ static __attribute__((noinline)) void flush_run(void)
             cupdate(e);
         }
     }
+    if (nstk > 32) stk_clean();                   /* (a short stack is left for stk_compact) */
 }
 
 static inline void flush(void)
@@ -1388,6 +1429,9 @@ static void room_reset(void)
     dhead = tchead = -1;
     npend = 0;
     nstk = 0;
+#ifdef PLAY_STATS
+    onstk = 0;
+#endif
     for (o = 0; o < OBJ_COUNT; o++) {
         oinfo[o] &= (uint8_t)~OI_DYN;
         ocnt[o] = 0;
@@ -1476,6 +1520,9 @@ static void gen_load(void)
     for (e = n; e < ENT_MAX; e++) { ef[e] = 0; epass[e] = EPASS_NONE; }
     nstk = 0;                                     /* the stale stack, renamed: the stale ones in order */
     for (e = 0; e < n; e++) if ((ef[e] & (EF_STALE | EF_OND)) == (EF_STALE | EF_OND)) stk[nstk++] = (int16_t)e;
+#ifdef PLAY_STATS
+    for (onstk = 0; onstk < nstk; onstk++) ostk[onstk] = stk[onstk];
+#endif
     quiet_any = 1;
     gmode = 0;
     if (PCOL_GRID_ON) pgrid_load(n);

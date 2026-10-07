@@ -767,7 +767,10 @@ static int tree_or_leaves(double x, double y) { return CP(x, y, OBJ_oTree) || CP
    out of view runs only its sprite test: noted as such, it is skipped only while the instance stays out of view. The skipped
    queries' only other effects are caches and the stale touches the grid build's searches do not depend on
    (pobj.c PLAY_REST). The host builds check each skip against the Step's own tests (veg_acts). The spear traps'
-   support test (oSpearTrapBottom / Top Step :79, oSolid at (x, y + 16)) uses the same notes as oTree's */
+   support test (oSpearTrapBottom / Top Step :79, oSolid at (x, y + 16)) uses the same notes as oTree's, and so do
+   oSpearsLeft's (its Step: oSpearTrapTop and oSpearTrapBottom, both oSolid children, at (x + 16, y) for sSpearsLeft,
+   (x - 16, y) for sSpearsRight: an answer read from the oSolid-family entries holding the point, all of which are in
+   the point's cell) */
 #define VM_N 128                 /* vm[] entries (a power of 2): instance p's is vm[p->ext & (VM_N - 1)]; sprite RAM in
                                     tests/game and the JT build (one or two reads an instance a step) */
 struct vmemo { int32_t id; uint32_t clk; int16_t x, y, spr; uint8_t ok; };
@@ -803,6 +806,10 @@ static int veg_acts(int i, int inview)
     case OBJ_oTree: case OBJ_oSpearTrapBottom: case OBJ_oSpearTrapTop: case OBJ_oSpearTrapLit: case OBJ_oGrave:
         return !CP(x, y + 16, OBJ_oSolid);
     case OBJ_oTreeBranch: return !CP(x - 16, y, OBJ_oTree) && !CP(x + 16, y, OBJ_oTree);
+    case OBJ_oSpearsLeft:
+        if (p->spr == GSPR_sSpearsLeft) return !CP(x + 16, y, OBJ_oSpearTrapTop) && !CP(x + 16, y, OBJ_oSpearTrapBottom);
+        if (p->spr == GSPR_sSpearsRight) return !CP(x - 16, y, OBJ_oSpearTrapTop) && !CP(x - 16, y, OBJ_oSpearTrapBottom);
+        return 0;
     default:
         a = tree_or_leaves(x - 16, y); b = tree_or_leaves(x + 16, y);
         if (a && b && p->spr != GSPR_sLeavesTop) return 1;
@@ -819,12 +826,17 @@ static int veg_quiet(int i)
 {
     const struct pin *p = &PX(i);
     const struct vmemo *m = &vm[p->ext & (VM_N - 1)];
-    int32_t ix, iy;
+    int32_t ix, iy, px, py;
     int r;
     if (!m->ok || m->id != p->id || m->spr != p->spr || !veg_xy(i, &ix, &iy) || ix != m->x || iy != m->y ||
         (m->ok == 1 && eview(i, 16, 16)))
         return 0;
-    r = p->obj != OBJ_oTreeBranch && p->obj != OBJ_oLeaves ? pw_rest_still(ix, iy + 16, ix, iy + 16, m->clk) :
+    px = ix; py = iy + 16;                                            /* the support point */
+    if (p->obj == OBJ_oSpearsLeft) {                                  /* the trap's point, in the grid */
+        px = p->spr == GSPR_sSpearsLeft ? ix + 16 : ix - 16; py = iy;
+        if (px < 0 || px >= GRID_W * 16) return 0;
+    }
+    r = p->obj != OBJ_oTreeBranch && p->obj != OBJ_oLeaves ? pw_rest_still(px, py, px, py, m->clk) :
         m->clk == pw_static_clock();
 #ifdef PLAY_STATS
     if (r && (m->ok == 2 || !eview(i, 16, 16)) && veg_acts(i, m->ok == 2)) {
@@ -1013,13 +1025,17 @@ static int jungle_step(int i)
         return 1;
     case OBJ_oSpearTrapBottom: case OBJ_oSpearTrapTop: case OBJ_oSpearTrapLit: speartrap_step(i); return 1;
     case OBJ_oSpearsLeft:                                            /* objects/oSpearsLeft/Step_0.gml */
-        if (p->spr == GSPR_sSpearsLeft && !CP(X(i) + 16, Y(i), OBJ_oSpearTrapTop) &&
-            !CP(X(i) + 16, Y(i), OBJ_oSpearTrapBottom))
-            pin_destroy(i);
-        p = &PX(i);
-        if (p->spr == GSPR_sSpearsRight && !CP(X(i) - 16, Y(i), OBJ_oSpearTrapTop) &&
-            !CP(X(i) - 16, Y(i), OBJ_oSpearTrapBottom))
-            pin_destroy(i);
+        if ((p->spr == GSPR_sSpearsLeft || p->spr == GSPR_sSpearsRight) && !VEG_QUIET(i)) {
+            /* (the trap's point tests: the vegetation memo, noted when the spear stays) */
+            if (p->spr == GSPR_sSpearsLeft && !CP(X(i) + 16, Y(i), OBJ_oSpearTrapTop) &&
+                !CP(X(i) + 16, Y(i), OBJ_oSpearTrapBottom))
+                pin_destroy(i);
+            p = &PX(i);
+            if (p->spr == GSPR_sSpearsRight && !CP(X(i) - 16, Y(i), OBJ_oSpearTrapTop) &&
+                !CP(X(i) - 16, Y(i), OBJ_oSpearTrapBottom))
+                pin_destroy(i);
+            if (PX(i).alive) VEG_NOTE(i, pw_rest_clock(), 1);
+        }
         pin_setdepth(&PX(i), 995);
         return 1;
     case OBJ_oTrapBlock:                                             /* objects/oTrapBlock/Step_0.gml */

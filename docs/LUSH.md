@@ -488,3 +488,95 @@ Gates on 6839211: playsh2 9,701 / 9,701 grid and SOFTFP, shell 26/26 + 49/49, ca
 SH-2 0 compiler warnings (playsh2, tests/game; tests/game's ld "dot moved backwards before .sprbss_a" is on
 16ab24f too), tests/game stack room 33,796 B (16ab24f: 33,828 B). Not yet run, waiting for build/trace to be
 regenerated: make check (EQUIV), ctall, game_check.
+
+
+## 13. Spear traps near instances (2026-10-06, branch totem on 041d709)
+
+User report (MiSTer): jungle levels slow down whenever something is near a totem trap (oSpearTrapBottom / Top /
+Lit).
+
+### 13.1 What happens near a trap
+
+Host survey (a temporary print in speartrap_step, not committed): the three box tests (instance_box_maybe) run only
+on a step with fired == 0, so instance_nearest runs at most once per trap per 50 steps when something is in line.
+An instance that stays in line (an item, a man trap) makes the trap fire every 50 steps, for the whole route.
+Fires: p5_lush_l5s11 13 (trap 698, an item), l6s23 14, c_jungle_mantrap 18 (2 traps), c_jungle_monkey 9,
+l5s37 0. Each oSpearsLeft lives 31 steps (sSpearsLeft has 31 frames; the animation end destroys it). So the trap
+itself is not the cost. The cost is the spear, about 60 % of the steps while something stays in line.
+
+MAME SOFTFP step means (playsh2 ROUTES="p5_lush_l5s11 p5_lush_l6s23 c_jungle_mantrap c_jungle_monkey", steps 2+,
+grouped by step mod 50: 2 = the fire step, 3-32 = a spear alive, 33-49 and 0-1 = none):
+
+| Route | 041d709 fire / alive / none | totem fire / alive / none | route mean |
+|---|---|---|---|
+| p5_lush_l5s11 | 144.2 / 121.6 / 114.4 K | 129.5 / 117.5 / 114.3 K | 119.4 -> 116.6 K (-2.3 %) |
+| p5_lush_l6s23 | 122.7 / 113.6 / 110.2 K | 119.9 / 111.2 / 109.8 K | 112.5 -> 110.9 K (-1.4 %) |
+| c_jungle_mantrap | 108.0 / 97.1 / 87.1 K | 101.7 / 91.4 / 86.6 K | 93.6 -> 89.8 K (-4.1 %) |
+| c_jungle_monkey | 126.3 / 116.7 / 109.0 K | 121.9 / 114.6 / 108.7 K | 114.0 -> 112.5 K (-1.3 %) |
+
+(The monkey route's alive / none gap is partly the monkey's own activity, which follows the same timing.)
+
+jtcost fit, JTC_BYOBJ=1 (arguments are jtcost.sh's record counts: c_jungle_mantrap 203 / 212 / 242 = the fire step,
+a spear alive, none):
+
+| Step | 041d709 | totem (f217aaf) |
+|---|---|---|
+| c_jungle_mantrap 203 / 212 / 242 | 438.5 / 425.4 / 376.1 K | 429.5 / 407.5 / 380.4 K |
+| p5_lush_l5s11 303 / 312 / 342 | 617.5 / 500.4 / 478.9 K | 595.2 / 491.5 / 485.6 K |
+
+On 041d709, a step with a spear alive cost +49 K (mantrap 212, 2 spears) over one without. The spear-alive extra:
+- **The spear's Step** (oSpearsLeft: collision_point(x +- 16, y) for oSpearTrapTop and oSpearTrapBottom). Both are oSolid
+  children, so each test went through collision_point_p: grid_point, then touch_stale / stk_compact. About 10 K a
+  spear a step (mantrap 212: collision_point_p from collision_point_any 15.7 K incl., touch_stale 4.0 K).
+- **The rectangle tests against oSpearsLeft** once the family is non-empty: each enemy (pen_parent_step, Step :76),
+  the player (hurt_logic, :1599) and the damsel run rq_init on the doubles, then rect_run's walk with touches. About
+  3 K a call, 26 K on mantrap 212.
+
+The fire step's extra (l5s11 303, +96 K): stk_compact 27.5 K (the stale stack held every mark since its last read)
+and evnz_sync 13.8 K (the first oSpearsLeft rebuilt every key's event list; the step after the last spear dies does
+the same), plus the creation and the first point tests.
+
+Not the cost: instance_nearest_p. On l6s23 one trap has an item in its box every step (the tests then fail): one
+instance_nearest_p 4.5 K, and instance_box_maybe 8.5 K for 21 calls (the idle traps' flat cost: jl6, step 242).
+
+### 13.2 Fixes (branch totem)
+
+| Commit | Change | Exactness |
+|---|---|---|
+| 131ce3c | the spear's point tests through the vegetation memo: noted with pw_rest_clock, skipped while pw_rest_still holds at the trap's cell and the spear's x, y and sprite are unchanged | as the trap support test (every oSolid-family entry holding the point covers its cell); veg_acts re-runs the tests on every skip |
+| 09d2bd4, f217aaf | pcol.c flush_run drops the stale stack's entries that are no longer stale (when it holds more than 32) | stk_compact keeps only stale entries; an entry that becomes stale again is pushed again (membership does not end within a room) |
+| e02c249 | evnz_sync per key: an object's list going empty <-> non-empty invalidates only the keys it has (prun_onz, evobj_init's test) | only an object in key k's evobj range changes k's list; the host builds compare every kept list with a rebuild |
+| 874ebbb | collision_rect_p: a family of at most 4 instances whose integer boxes all lie off the query's floors gives NOONE without rq_init or the walk | rect_hit's integer and float tests both take corners in [floor(min), floor(max) + 1]; the host builds test every instance with rect_hit |
+
+131ce3c alone made the fire steps worse (l5s11 144 -> 161 K MAME): without the spear's reads, the stale stack grew
+until the next read. 09d2bd4 fixes that and bounds stk_compact everywhere. 4109f25 adds its host check: PLAY_STATS
+builds keep the uncleaned stack beside it and compare the two compacted stacks at every read (checked to fire: a
+stack that drops pushes aborts).
+
+The stack fix and the per-key event lists also help routes without spears. Full playsh2 SOFTFP, 041d709 -> 4109f25
+(9,598 route steps): 360 steps cheaper by more than 5 K MAME, 1 dearer (p4_exit559 595, the 21 M transition step, +7.7 K);
+the all-route mean is 90.9 -> 90.3 K, the median 78.0 -> 77.5 K. The largest drops are the stack-full compactions (a
+whole ENT_MAX stack sorted when mark_e found it full): p1_walk 198 160 -> 67 K MAME, where jtcost (p1_walk 199)
+shows stk_compact at 176 K of 475 K, and the step at 298 K after. Other large drops: l5s37 158 151 -> 104 K, p5_l4 170
+120 -> 77 K, p4_exit559 375 110 -> 74 K. Per route, the most steps improved are l5s37 (157), p5_reg_l14s16 (53), l5s11
+(33) and p5_l4 (32). An object type appearing or disappearing no longer rebuilds every event list: jtcost l5s37 559
+evnz_sync 13.5 K -> 0. p5_caveman: mean 96.5 -> 95.9 K, p99 124.4 K both (its large steps are not the stack).
+
+Every commit: 91 routes through playhost, playhost_grid and a playhost_grid built without PLAY_STATS / PLAY_RNGLOG
+(the SH-2 build's paths: the host checks re-run skipped queries, so the PLAY_STATS builds alone would not show a
+skipped touch), 273 outputs byte-identical to 041d709. playsh2 (the four routes) 2,086 / 2,086 checksums on each.
+
+Steps without a spear: instructions -0.4 % (mantrap 242: 95,357 -> 94,933) and the MAME means unchanged. jtcost
+moves by +1.1 % (mantrap 242) and +1.4 % (l5s11 342), with the fully associative bound +0.1 / +0.3 %. That is
+layout (131ce3c alone: same instructions, +4.9 K). PERF3's default steps: p4_exit559 301 +1.4 % (same instructions),
+p5_snakes 956 +0.3 % (-554 instructions). A jtcps3 run decides.
+
+What is left on a spear-alive step (mantrap 212 vs 242, about 27 K): the rectangle tests' call-site double sums
+(X(i) + 2, ...: about 280 instructions a call), veg_quiet, the spears' animation and dispatch. A trap that sees
+something keeps firing every 50 steps, as in HD.
+
+Gates on f217aaf: playsh2 9,701 / 9,701 grid and SOFTFP, shell 26/26 + 49/49, capture_check 428/428 steps and 6/6
+checkpoints, host builds and constcheck, SH-2 0 compiler warnings (playsh2, tests/game, capture; the make recipe and
+ld `.sprbss_a` notices are as on 041d709), tests/game stack room 33,740 B (041d709: 33,868; evnzk / evkn are
+128 B), ctall 53 of 53 routes run equal. Held until the reference traces are regenerated (main's build/trace was lost
+during the run): ctall's six c_temple routes, make check's P5 regress, EQUIV and snd, and game_check.

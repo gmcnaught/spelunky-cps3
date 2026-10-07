@@ -120,8 +120,8 @@ static uint32_t watch_n;
 /* ---- per-object instance lists: the alive instances of each object in creation order (index order), and the
    alive count of each object with its descendants. Linked at pin_add, unlinked when alive goes to 0 ------------ */
 int16_t pw_ohead[OBJ_COUNT], pw_inext[PIN_MAX];
-/* bumped when an object's list goes from empty to non-empty or back, and at a level start (prun.c: the event
-   lists of objects with instances) */
+/* bumped at a level start (prun.c: the event lists of objects with instances; an object's list going from empty
+   to non-empty or back bumps the counts of its event keys, prun_onz) */
 uint32_t pw_onz_gen = 1;
 int16_t pw_seq[PIN_MAX];
 int16_t pw_ord[PIN_MAX];
@@ -228,7 +228,7 @@ static void olink(int i)
     int o = PW.in[i].obj;
     pw_inext[i] = NOONE;
     iprev[i] = otail[o];
-    if (otail[o] >= 0) pw_inext[otail[o]] = (int16_t)i; else { pw_ohead[o] = (int16_t)i; pw_onz_gen++; }
+    if (otail[o] >= 0) pw_inext[otail[o]] = (int16_t)i; else { pw_ohead[o] = (int16_t)i; prun_onz(o); }
     otail[o] = (int16_t)i;
     olive_add(o, 1);
     pw_anext[i] = NOONE;
@@ -248,7 +248,7 @@ static void ounlink(int i)
     int o = PW.in[i].obj;
     if (iprev[i] >= 0) pw_inext[iprev[i]] = pw_inext[i]; else pw_ohead[o] = pw_inext[i];
     if (pw_inext[i] >= 0) iprev[pw_inext[i]] = iprev[i]; else otail[o] = iprev[i];
-    if (pw_ohead[o] < 0) pw_onz_gen++;
+    if (pw_ohead[o] < 0) prun_onz(o);
     olive_add(o, -1);
     grid_unlink(i);
     pw_ta_off(i);
@@ -2699,6 +2699,46 @@ static int rq_static_none(struct rq *rq, int obj, int prec, int notme_self)
 #endif
 }
 
+#if !defined(PCOL_EXACT) && !defined(PLAY_FIXED)
+static int dfloor14(double v, int32_t *o);
+/* a family of at most 4 alive instances whose integer boxes (pin_ibox) all lie off the query's floors: X0 = floor of
+   the lesser x corner, X1 of the greater (floor is monotonic), box right b[2] < X0 or left b[0] > X1 + 1, or the same
+   in y. Then rect_hit fails for each: its integer test takes corners floor(v + 0.5) in [X0, X1 + 1] (or v itself
+   when whole), so max(lx, l) < min(hx, r) cannot hold; its float test takes (float)v in [X0, X1 + 1] (rounding is
+   monotonic and X0, X1 + 1 are floats), so x0 >= r or l > x1 holds, and the precise test needs that overlap too.
+   So no instance is hit, whatever the search order. The skipped walk's only other effects are the stale touches
+   (pcol_touch), which the grid build's searches do not depend on (pobj.c PLAY_REST), and the tree search's caches
+   (pcol_query, which runs before, did the flush). The host builds test every instance with rect_hit */
+static int rect_far_none(double x1, double y1, double x2, double y2, int obj, int prec, int notme_self)
+{
+    int32_t a, b, c, d, X0, X1, Y0, Y1, ib[4];
+    int k;
+    struct fam it;
+    if (obj < 0 || olive[obj] > 4 || !dfloor14(x1, &a) || !dfloor14(x2, &c) || !dfloor14(y1, &b) || !dfloor14(y2, &d))
+        return 0;
+    X0 = a < c ? a : c; X1 = a < c ? c : a;
+    Y0 = b < d ? b : d; Y1 = b < d ? d : b;
+    fam_begin(&it, obj);
+    while ((k = fam_get(&it)) != NOONE)
+        if (!pin_ibox(k, ib) || !(ib[2] < X0 || ib[0] > X1 + 1 || ib[3] < Y0 || ib[1] > Y1 + 1)) return 0;
+#ifdef PLAY_STATS
+    {
+        struct rq rq;
+        rq_init(&rq, x1, y1, x2, y2);
+        fam_begin(&it, obj);
+        while ((k = fam_get(&it)) != NOONE)
+            if (match(k, obj, notme_self) && rect_hit(k, &rq, prec)) {
+                fprintf(stderr, "collision_rect_p: far answer misses %d (%.17g %.17g %.17g %.17g)\n", k, x1, y1, x2, y2);
+                abort();
+            }
+    }
+#else
+    (void)prec; (void)notme_self;
+#endif
+    return 1;
+}
+#endif
+
 int (collision_rect_p)(double x1, double y1, double x2, double y2, int obj, int prec, int notme_self)
 {
     int q = pcol_query(obj);
@@ -2706,6 +2746,9 @@ int (collision_rect_p)(double x1, double y1, double x2, double y2, int obj, int 
     float r[4];
     PWST(rect, 1);
     if (q < 0) return NOONE;
+#if !defined(PCOL_EXACT) && !defined(PLAY_FIXED)
+    if (rect_far_none(x1, y1, x2, y2, obj, prec, notme_self)) return NOONE;
+#endif
     rq_init(&rq, x1, y1, x2, y2);
     if (rq_static_none(&rq, obj, prec, notme_self)) return NOONE;
     if (!rq.fok) return rect_run(&rq, q, 0, obj, prec, notme_self);   /* whole corners: qrect's are the ints +-1 */

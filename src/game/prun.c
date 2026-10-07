@@ -6,6 +6,10 @@
 #include "pcontent.h"
 #include "../snd/sndgame.h"                     /* the GML sound calls (src/snd) */
 #include "front.h"                                     /* P8: the front end's hooks (src/front/front.h) */
+#ifdef PLAY_STATS
+#include <stdio.h>
+#include <stdlib.h>
+#endif
 static void start_music(int levelType);
 
 struct gamepad GP;
@@ -44,12 +48,23 @@ static uint16_t objev(int obj)
 static int16_t evobj[640];                    /* 617 entries with build/gen of 2026-10 */
 static int16_t evobj0[17];
 /* per key, the objects of evobj[evobj0[key] ..] whose list was non-empty when it was built: evnz[evobj0[key] ..
-   + evnzn[key]], valid while pw_onz_gen is evnzg[key] - 1 (no list went empty or non-empty since: the same objects
-   have instances). A walk over it visits the same instances as one over evobj's: an object it leaves out had an
-   empty list then and still has */
+   + evnzn[key]], valid while pw_onz_gen is evnzg[key] - 1 (no level start since) and evkn[key] is evnzk[key] (no
+   list of an object with the event `key` went empty or non-empty since: the same objects of evobj's range have
+   instances; prun_onz counts the keys an object has by evobj_init's test). A walk over it visits the same instances
+   as one over evobj's: an object it leaves out had an empty list then and still has */
 #define EVNZ_N 560                            /* keys 0-14 only (509 entries; the Draw objects are not walked) */
 static int16_t evnz[EVNZ_N], evnzn[16];
-static uint32_t evnzg[16];
+static uint32_t evnzg[16], evnzk[16], evkn[16];
+
+void prun_onz(int obj)
+{
+    unsigned m = (unsigned)(pobj[obj].alarms & 0xfff), ev = objev(obj), key;
+    if (ev & EV_STEP) m |= 1u << EVK_STEP;
+    if (ev & EV_OUTSIDE) m |= 1u << EVK_OUTSIDE;
+    if (ev & EV_END) m |= 1u << EVK_END;
+    for (key = 0; m; key++, m >>= 1)
+        if (m & 1) evkn[key]++;
+}
 
 static void evobj_init(void)
 {
@@ -75,11 +90,26 @@ static void evnz_sync(int k0, int k1)
 {
     int key, j, n;
     for (key = k0; key < k1; key++) {
-        if (evnzg[key] == pw_onz_gen + 1) continue;
+        if (evnzg[key] == pw_onz_gen + 1 && evnzk[key] == evkn[key]) {
+#ifdef PLAY_STATS
+            /* the host builds: the kept list is the one a rebuild gives */
+            for (j = evobj0[key], n = 0; j < evobj0[key + 1]; j++)
+                if (pw_ohead[evobj[j]] >= 0 && evobj0[key] + n < EVNZ_N) {
+                    if (n >= evnzn[key] || evnz[evobj0[key] + n] != evobj[j]) {
+                        fprintf(stderr, "evnz_sync: key %d kept a stale list (object %d)\n", key, evobj[j]);
+                        abort();
+                    }
+                    n++;
+                }
+            if (n != evnzn[key]) { fprintf(stderr, "evnz_sync: key %d kept a stale list\n", key); abort(); }
+#endif
+            continue;
+        }
         for (j = evobj0[key], n = 0; j < evobj0[key + 1]; j++)
             if (pw_ohead[evobj[j]] >= 0 && evobj0[key] + n < EVNZ_N) evnz[evobj0[key] + n++] = evobj[j];
         evnzn[key] = (int16_t)n;
         evnzg[key] = pw_onz_gen + 1;
+        evnzk[key] = evkn[key];
     }
 }
 
