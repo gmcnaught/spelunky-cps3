@@ -1,10 +1,12 @@
-/* tests/gametime: the results (hooks.c M, 6,384 bytes) in sprite RAM past tests/game's area A (sprbss.ld), not in
+/* tests/gametime: the results (hooks.c M, 6,384 bytes) and the boot-time vector table (vtab, 512 bytes) in sprite RAM past tests/game's area A (sprbss.ld), not in
    main RAM: the game program's .bss leaves no room for them above the 32 KB stack reserve (tests/ramcheck.ld).
    main_boot clears area A only up to __sprbss_a_end; hooks.c clears M. scripts/lua/gametime.lua reads them here. */
 SECTIONS
 {
     .gtmark 0x0402e000 (NOLOAD) : {
         KEEP(*(.gtmark))
+        . = ALIGN(1024);
+        KEEP(*(.gtvec))                     /* hooks.c vtab: the boot-time vector table (1 KB aligned) */
         . = ALIGN(4);
         __gtmark_end = .;
     }
