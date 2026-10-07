@@ -15,7 +15,8 @@ rm -rf "$G"; mkdir -p "$G"
 git archive "${GAME_REV:-HEAD}" src/game | tar -x -C "$G" --strip-components=2
 cp build/gen/objects.[ch] build/gen/gentables.[ch] build/gen/playtables.[ch] "$G/"
 sed -i '' "s/^#define PIN_MAX [0-9][0-9]*\$/#define PIN_MAX ${PIN:-1792}/" "$G/play.h"
-if [ "${EXACT:-1}" = 1 ]; then { echo "#define PCOL_EXACT 1"; cat "$G/pcol.c"; } > "$G/pcol.tmp" && mv "$G/pcol.tmp" "$G/pcol.c"; fi
+# PCOL_EXACT in every file of the snapshot (pworld, pobj, penemy, pdamsel, pk_jungle, pscript test it too), as test/host's -DPCOL_EXACT
+if [ "${EXACT:-1}" = 1 ]; then for f in "$G"/*.c; do { echo "#define PCOL_EXACT 1"; cat "$f"; } > "$f.tmp" && mv "$f.tmp" "$f"; done; fi
 SDK=../cps3-testgame/sdk/include
 cc -std=gnu99 -O2 -ffp-contract=off -w -DDRAW_HOST -DSND_LOG -Ibuild/snd -I$SDK -I$G -Ibuild/gen -Isrc/draw -Isrc/main -Isrc/hud \
   -Isrc/shell -Isrc/snd -Isrc/front -o $O/host tests/game/host.c src/main/game.c src/draw/draw.c src/hud/hud.c \

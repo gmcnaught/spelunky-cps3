@@ -19,7 +19,8 @@ sed -i '' "s/^#define PIN_MAX [0-9][0-9]*\$/#define PIN_MAX ${PIN:-1792}/" "$G/p
 grep -q "^#define PIN_MAX ${PIN:-1792}\$" "$G/play.h"
 # EXACT=1: the exact build (src/game/pcol.c with PCOL_EXACT: the runner's R-tree order in play); default the
 # shipping build's collision grid (src/game/pcolgrid.h). GRID_SHIFT=<n>: grid cells of 2^n px (default 4)
-if [ "${EXACT:-0}" = 1 ]; then { echo "#define PCOL_EXACT 1"; cat "$G/pcol.c"; } > "$G/pcol.tmp" && mv "$G/pcol.tmp" "$G/pcol.c"; fi
+# PCOL_EXACT in every file of the snapshot (pworld, pobj, penemy, pdamsel, pk_jungle, pscript test it too), as test/host's -DPCOL_EXACT
+if [ "${EXACT:-0}" = 1 ]; then for f in "$G"/*.c; do { echo "#define PCOL_EXACT 1"; cat "$f"; } > "$f.tmp" && mv "$f.tmp" "$f"; done; fi
 if [ -n "${GRID_SHIFT:-}" ]; then { echo "#define PCOL_GRID_SHIFT $GRID_SHIFT"; cat "$G/pcol.c"; } > "$G/pcol.tmp" && mv "$G/pcol.tmp" "$G/pcol.c"; fi
 scripts/unity.sh "$G"                                  # the hot play files as one TU (UNITY=0: separate)
 touch "$G/stamp"

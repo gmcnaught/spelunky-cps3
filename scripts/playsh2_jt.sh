@@ -14,7 +14,8 @@ rm -rf "$O" "$B/g" "$J/gA"; mkdir -p "$O/w" "$B/g" "$J/gA"
 git archive "${GAME_REV:-HEAD}" src/game | tar -x -C "$J/gA" --strip-components=2
 cp build/gen/objects.[ch] build/gen/gentables.[ch] build/gen/playtables.[ch] "$J/gA/"
 # EXACT=1: the exact build (PCOL_EXACT); default the shipping build's collision grid. GRID_SHIFT=<n>: 2^n px cells
-if [ "${EXACT:-0}" = 1 ]; then { echo "#define PCOL_EXACT 1"; cat "$J/gA/pcol.c"; } > "$J/pcol.tmp" && mv "$J/pcol.tmp" "$J/gA/pcol.c"; fi
+# PCOL_EXACT in every file of the snapshot (pworld, pobj, penemy, pdamsel, pk_jungle, pscript test it too), as test/host's -DPCOL_EXACT
+if [ "${EXACT:-0}" = 1 ]; then for f in "$J/gA"/*.c; do { echo "#define PCOL_EXACT 1"; cat "$f"; } > "$f.tmp" && mv "$f.tmp" "$f"; done; fi
 if [ -n "${GRID_SHIFT:-}" ]; then { echo "#define PCOL_GRID_SHIFT $GRID_SHIFT"; cat "$J/gA/pcol.c"; } > "$J/pcol.tmp" && mv "$J/pcol.tmp" "$J/gA/pcol.c"; fi
 # OPT=-Os O2FILES="pcol.c pworld.c ...": the build at OPT with those snapshot files kept at O2 by a pragma (a plain
 # O2 pragma emits memmove calls, which do not link: loop-distribute-patterns off)
