@@ -371,9 +371,7 @@ static void yetiking_step(int i)                                   /* objects/oY
                 PE(&PX(obj))->cost = 0;
                 PE(&PX(obj))->forSale = 0;
             }
-            {
-                PE(&PX(obj))->xVel = NI(rand_diff(0, 3));
-            }
+            PE(&PX(obj))->xVel = NI(rand_diff(0, 3));
             PE(&PX(obj))->yVel = NI(-RAND(1, 2));
         }
         kill_count(i);
@@ -794,9 +792,7 @@ static void alienboss_step(int i)                                  /* objects/oA
             int n = RAND(1, 3), gem;
             gem = pin_create(PX(i).x + PI(16), PX(i).y + PI(16),
                              n == 1 ? OBJ_oEmeraldBig : n == 2 ? OBJ_oSapphireBig : OBJ_oRubyBig);
-            {
-                PE(&PX(gem))->xVel = NI(rand_diff(0, 3));
-            }
+            PE(&PX(gem))->xVel = NI(rand_diff(0, 3));
             PE(&PX(gem))->yVel = N(-2);
         }
         kill_count(i);
@@ -1041,9 +1037,7 @@ static void darkfall_solid(int i)                                  /* objects/oD
     for (k = 0; k < 3; k++) {
         int yr = RAND(2, 14), xr = RAND(2, 14), obj;
         obj = pin_create(PX(i).x + PI(xr), PX(i).y + PI(yr), OBJ_oRubbleDark);
-        {
-            PE(&PX(obj))->xVel = NI(rand_diff(1, 3));
-        }
+        PE(&PX(obj))->xVel = NI(rand_diff(1, 3));
         PE(&PX(obj))->yVel = NI(-RAND(0, 3));
     }
     pin_destroy(i);

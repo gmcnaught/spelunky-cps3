@@ -86,9 +86,7 @@ int pitem_collision(int self, int other)
         pin_set_sprite(self, GSPR_sLockedChestOpen);
         snd_play(SND_xchestopen);                                      /* :11 */
         obj = pin_create(PX(self).x, PX(self).y, OBJ_oUdjatEye);
-        {
-            PE(&PX(obj))->xVel = NI(rand_diff(0, 3));
-        }
+        PE(&PX(obj))->xVel = NI(rand_diff(0, 3));
         PE(&PX(obj))->yVel = N(-2);
         obj = pin_create(PX(self).x, PX(self).y, OBJ_oPoof);
         PE(&PX(obj))->xVel = N(-0.4);

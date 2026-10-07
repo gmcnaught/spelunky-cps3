@@ -65,9 +65,7 @@ static void bones_and_skull(pos x, pos y, int skull_dy)
     for (k = 0; k < 3; k++) pin_create(x, y, OBJ_oBone);
     s = pin_create(x, y + PI(skull_dy), OBJ_oSkull);
     PE(&PX(s))->yVel = NI(-RAND(1, 3));
-    {
-        PE(&PX(s))->xVel = NI(rand_diff(0, 3));
-    }
+    PE(&PX(s))->xVel = NI(rand_diff(0, 3));
 }
 
 /* ---- Create ---------------------------------------------------------------------------------------------- */

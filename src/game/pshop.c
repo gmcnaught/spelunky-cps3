@@ -467,9 +467,7 @@ static void shopkeeper_step(int i)
             for (k = 0; k < n; k++) {
                 int obj = pin_create(PX(i).x + PI(8), PX(i).y + PI(8), OBJ_oGoldNugget);
                 PE(&PX(obj))->yVel = N(-1);
-                {
-                    PE(&PX(obj))->xVel = NI(rand_diff(1, 3));
-                }
+                PE(&PX(obj))->xVel = NI(rand_diff(1, 3));
             }
             snd_play(SND_xcavemandie);                                         /* :529 */
             p = &PX(i);

@@ -429,17 +429,13 @@ static void monkey_throw(int i)
         obj = pin_create(p->x, p->y, OBJ_oGoldNugget);
         PE(&PX(obj))->canCollect = 0;
         PE(&PX(obj))->alarm[0] = 20;
-        {
-            PE(&PX(obj))->xVel = NI(rand_diff(1, 3));
-        }
+        PE(&PX(obj))->xVel = NI(rand_diff(1, 3));
         PE(&PX(obj))->yVel = NI(-RAND(3, 4));
         snd_play(SND_xthrow);                                                         /* :241 */
     } else if (RAND(1, 2) == 1 && PG.rope > 0) {
         PG.rope -= 1;
         obj = pin_create(p->x, p->y, OBJ_oRopeThrow);
-        {
-            PE(&PX(obj))->xVel = NI(rand_diff(1, 3));
-        }
+        PE(&PX(obj))->xVel = NI(rand_diff(1, 3));
         PE(&PX(obj))->yVel = NI(-RAND(3, 4));
         snd_play(SND_xthrow);                                                         /* :253 */
     } else if (PG.bombs > 0) {
@@ -451,9 +447,7 @@ static void monkey_throw(int i)
             pin_setispd(&PX(obj), 1);
             PE(&PX(obj))->alarm[1] = 40;
         }
-        {
-            PE(&PX(obj))->xVel = NI(rand_diff(1, 3));
-        }
+        PE(&PX(obj))->xVel = NI(rand_diff(1, 3));
         PE(&PX(obj))->yVel = NI(-RAND(3, 4));
         snd_play(SND_xthrow);                                                         /* :272 */
     }

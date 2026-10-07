@@ -337,9 +337,7 @@ static void jetpack_alarm(int i)
     int xa = RAND(0, 3), xb = RAND(0, 3);
     int obj = pin_create(PX(i).x + PI(xa - xb), PX(i).y + PI(ya - yb), OBJ_oFlareSpark);
     PE(&PX(obj))->yVel = NI(RAND(1, 3));
-    {
-        PE(&PX(obj))->xVel = NI(rand_diff(0, 3));
-    }
+    PE(&PX(obj))->xVel = NI(rand_diff(0, 3));
     snd_play(SND_xjetpack);                                                    /* :4 */
 }
 
