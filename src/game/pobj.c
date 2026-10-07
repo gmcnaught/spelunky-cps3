@@ -312,8 +312,6 @@ void pobj_init_from_gen(int i)
 {
     struct pin *p = &PX(i);
     play_cur_obj = p->obj;
-    const struct inst *g = 0;
-    (void)g;
     if (pen_create(i, 1) || pdam_create(i, 1) || pshop_create(i, 1) || pitem_create(i, 1)) return;   /* P5 hook */
     switch (p->obj) {
     case OBJ_oArrowTrapLeft: case OBJ_oArrowTrapLeftLit: case OBJ_oArrowTrapRight: case OBJ_oArrowTrapRightLit:
@@ -914,13 +912,9 @@ static void jar_step(int i, int skull)
             ptemple_world(1036, i, skull);
         NOPS(12);
     }
-    {
-        double x = PTOD(p->x), y = PTOD(p->y);
-        if (pen_jar_hit(i, skull)) destroy = 1;                                /* P5 hook (:104) */
-        p = &PX(i);
-        if (pdam_jar_hit(i)) destroy = 1;                                      /* P5 hook (:148) */
-        (void)x; (void)y;
-    }
+    if (pen_jar_hit(i, skull)) destroy = 1;                                    /* P5 hook (:104) */
+    p = &PX(i);
+    if (pdam_jar_hit(i)) destroy = 1;                                          /* P5 hook (:148) */
     if (destroy) {
         if (PE(p)->held) {
             PL.holdItem = NOONE;

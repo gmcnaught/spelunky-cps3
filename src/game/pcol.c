@@ -949,7 +949,6 @@ static uint8_t epass[ENT_MAX];         /* the HandleCollision pass that entry se
 static uint8_t pass_no;
 static int16_t pend[ENT_MAX];
 static int npend;
-static int32_t gen_first_id;           /* the generator's first instance_create id (room instances are below) */
 static uint8_t gen_pending;            /* a level was generated: the next pw_reset loads it */
 
 static uint8_t quiet_any;              /* some entry has EF_NOSNAP */
@@ -1103,7 +1102,7 @@ void pcol_box(int i, float *o);
 
 static void ebbox(int e, float dx, float dy, float *o)
 {
-    float x, y, xs = 1, ys = 1, ang = 0, w, h, t0, t1;
+    float x, y, xs = 1, ys = 1, ang = 0, w, h, t0;
     int s;
     const struct gsprcol *c;
     if (fkey(dx) == 0 && fkey(dy) == 0) {
@@ -1158,7 +1157,6 @@ static void ebbox(int e, float dx, float dy, float *o)
             t = fmaf((float)(c->t - c->yo), ys, y);
             b = fmaf(h, ys, t);
         }
-        (void)t0; (void)t1;
         if (l > r) { float q = l; l = r; r = q; }
         if (t > b) { float q = t; t = b; b = q; }
         o[0] = l; o[1] = t; o[2] = r; o[3] = b;
@@ -2026,7 +2024,6 @@ void pcol_gen_hook(int op, int w, int a, int b, int c)
     case IH_RESET:                                /* StartRoom: RebuildTree(true) */
         room_reset();
         gmode = 1;
-        gen_first_id = a;
         gen_pending = 1;
         break;
     case IH_CREATE:

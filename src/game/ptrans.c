@@ -141,6 +141,7 @@ static void transition_alarm0(int i)
     }
     sp = pin_create(PI(TR.drawPosX), PI(TR.drawPosY), OBJ_oSprite);
     if (TR.drawLoot < 0) {
+        /* nothing (:19-22) */
     } else {
         if (PG.gold > 0) { cnt = &PG.gold; spr = GSPR_sGoldChunk; }
         else if (PG.emeralds > 0) { cnt = &PG.emeralds; spr = GSPR_sEmerald; }
@@ -205,11 +206,13 @@ static void transition_alarm0(int i)
         }
     }
     if (TR.drawLoot < 0) {
+        /* nothing (:277-280) */
     } else if (TR.drawLoot == 0)
         TR.drawPosX += 4;
     else
         TR.drawPosX += 8;
     if (TR.drawLoot == 2) {
+        /* nothing (:286-289) */
     } else if (TR.hurryup)
         PE(&PX(i))->alarm[0] = 1;
     else

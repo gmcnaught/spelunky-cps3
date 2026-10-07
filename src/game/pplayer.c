@@ -13,7 +13,6 @@
 
 struct player PL;
 
-#define ME (PX(PL.idx))
 #define GPd(k) ((GP.down & (k)) != 0)
 #define GPp(k) ((GP.pressed & (k)) != 0)
 #define GPr(k) ((GP.released & (k)) != 0)

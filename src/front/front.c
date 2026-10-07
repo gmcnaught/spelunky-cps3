@@ -1370,7 +1370,6 @@ void front_step(void)
     }
     room_steps++;
     if (PW.room == R_rTitle && room_steps >= FRONT_TITLE_STEPS) {
-        PW.next_id = PW.next_id;
         front_room(R_rHighscores);
     } else if (PW.room == R_rHighscores && room_steps >= FRONT_SCORES_STEPS)
         front_start();

@@ -2680,7 +2680,6 @@ int collision_line_i(int32_t x1, int32_t y1, int32_t x2, int32_t y2, int obj, in
 {
     int q = pcol_query(obj);
     struct qctx c;
-    float r[4];
     PWST(line, 1);
     if (q < 0) return NOONE;
     c.lq.iok = 1;
@@ -2689,7 +2688,6 @@ int collision_line_i(int32_t x1, int32_t y1, int32_t x2, int32_t y2, int obj, in
     c.lq.axis = x1 == x2 || y1 == y2;
     c.obj = obj; c.notme = notme_self; c.prec = prec;
     c.ix1 = x1; c.iy1 = y1; c.ix2 = x2; c.iy2 = y2; c.dbl = 0;
-    (void)r;
     return line_run(&c, q, 0);                  /* qrect: (float)min - 1.0f is these exactly */
 }
 
@@ -3144,14 +3142,12 @@ int collision_rect_i(int32_t x1, int32_t y1, int32_t x2, int32_t y2, int obj, in
 {
     int q = pcol_query(obj);
     struct rq rq;
-    float r[4];
     PWST(rect, 1);
     if (q < 0) return NOONE;
     rq.iok = 1;
     rq.ilx = x1 < x2 ? x1 : x2; rq.ihx = x1 < x2 ? x2 : x1;
     rq.ily = y1 < y2 ? y1 : y2; rq.ihy = y1 < y2 ? y2 : y1;
     rq.fok = 0;                                 /* (the float corners were left unset before 2026-10-04) */
-    (void)r;
     if (rq_static_none(&rq, obj, prec, notme_self)) return NOONE;
     return rect_run(&rq, q, 0, obj, prec, notme_self);
 }
