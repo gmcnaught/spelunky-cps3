@@ -86,7 +86,7 @@ static void treasure(int i, int type, int l, int t, int r, int b, int value, int
 {
     struct pin *p = &PX(i);
     create_treasure(p);
-    p->type = (int16_t)type;
+    p->type = (int8_t)type;
     make_active(p);
     setCollisionBounds(i, l, t, r, b);
     if (yOff) PE(p)->yOff = (int16_t)yOff;
@@ -99,7 +99,7 @@ static void item(int i, int type, int l, int t, int r, int b, int32_t cost)
 {
     struct pin *p = &PX(i);
     create_item(p);
-    p->type = (int16_t)type;
+    p->type = (int8_t)type;
     make_active(p);
     setCollisionBounds(i, l, t, r, b);
     if (cost >= 0) PE(p)->cost = cost;

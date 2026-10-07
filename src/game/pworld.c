@@ -1,5 +1,6 @@
 /* Play world: instances and GameMaker 2024.14's collision functions (rules and evidence: play.h).
  * Searches return the oldest matching instance (P2: collision_point, instance_place, instance_find, obj.var). */
+#include <stddef.h>               /* offsetof: the reach checks below */
 #include "play.h"
 #include "pint.h"                 /* PL (pw_release) */
 #ifdef PLAY_STATS
@@ -19,6 +20,9 @@
 /* struct pin is 64 bytes (a shift indexes PW.in, not a mul.l) and struct inst 72: play slot i ends at byte 64 i + 64 <=
    72 (i + 1), inside the generator instances 0 .. i, which the loaders have read (play.h) */
 typedef char pin_size_is_64[sizeof(struct pin) == 64 ? 1 : -1];
+/* the reach of the SH-2's displacement loads (play.h): mov.w @(disp,Rn) to 30, mov.l to 60 */
+typedef char pin_int16_reach[offsetof(struct pin, iy) <= 30 && offsetof(struct pin, bb) <= 30 && offsetof(struct pin, obj) <= 30 ? 1 : -1];
+typedef char pin_int32_reach[offsetof(struct pin, angle) <= 60 ? 1 : -1];
 typedef char pin_ext_size_8[sizeof(struct pin_ext) % 8 == 0 && EXT_MAX * (sizeof(struct pin_ext) / 8) < 32768 ? 1 : -1];   /* exto */
 typedef char pin_size_le_inst_size[sizeof(struct pin) <= sizeof(struct inst) ? 1 : -1];
 #define INST_MEM_PIN ((PIN_MAX * sizeof(struct pin) + sizeof(struct inst) - 1) / sizeof(struct inst))
@@ -761,7 +765,6 @@ int pin_add(int obj, pos x, pos y, int32_t id)
     PIN_WR(int16_t, p->mask) = -1;
     p->alive = 1;
     PIN_WR(uint8_t, p->visible) = pobj[obj].visible;
-    p->persistent = pobj[obj].persistent;
     PIN_WR(pos, p->x) = x;
     PIN_WR(pos, p->y) = y;
     PIN_WR(float, p->depth) = objdefs[obj].depth;

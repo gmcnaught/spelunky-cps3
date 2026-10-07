@@ -110,20 +110,22 @@ struct pin_en {
 /* field order for the SH-2's displacement reach (mov.b @(disp,Rn) 0-15, mov.w 0-30, mov.l 0-60): bytes, then int16,
    then the 32-bit fields; 64 bytes (pworld.c checks it) */
 struct pin {
-    uint8_t alive, persistent;
+    uint8_t alive;
     PIN_RO uint8_t visible;
     /* the bounding box cache (pworld.c pin_bbox): bbk 0 not computed since the last change of x / y / sprite /
        mask / scale (the setters clear it), BB_INT the box is bl, bt, br, bb exactly (BB_INTS too, pworld.c), BB_DBL computed in double
        each time, BB_NOSPR no sprite */
     uint8_t bbk;
-    uint8_t invincible, cleanDeath, shopWall, treasure;
+    int8_t type;            /* enum ptype (T_COUNT 83) */
+    uint8_t invincible;     /* 0, 1, or 20 (oFrozenCaveman's Destroy: the caveman it makes) */
+    uint8_t cleanDeath : 1, shopWall : 1, treasure : 3;   /* treasure: enum treasure (TR_*, inst.h) */
     int16_t obj;            /* OBJ_* */
     int16_t ext;            /* its struct pin_ext (0: the shared defaults) */
     PIN_RO int16_t spr;     /* sprite_index (GSPR_*, -1 none) */
     PIN_RO int16_t mask;    /* mask_index (-1: the sprite) */
     int16_t bl, bt, br, bb;
-    int16_t type;           /* enum ptype */
     int16_t exto;           /* ext x sizeof(struct pin_ext) / 8 (pin_set_ext): PE(p) by a shift, not a multiply */
+    int16_t ix, iy;         /* x, y as ints (pin_xy_int): not used yet */
     int32_t id;
     PIN_RO pos x, y;
     PIN_RO float depth;     /* a float in the runner (-99999991 reads -99999992) */
