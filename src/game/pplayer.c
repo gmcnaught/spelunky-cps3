@@ -689,10 +689,20 @@ static void characterStepEvent(int i)
         pos slopeYPrev = 0;
         int32_t slopeChangeInY;
         if (PL.maxSlope > 0 && platformCharacterIs(ON_GROUND) && NNE(PE(p)->xVel, N(0))) {
+            int ch = 0;
             slopeYPrev = p->y;
-            for (; p->y >= slopeYPrev - PI(PL.maxSlope); pin_sety(p, p->y - (PI(1))))
+            /* the pixel steps write the field alone and pw_changed runs once after them if any changed y: nothing
+               reads the collision state or the marks between them (the body reads PL.colTop, a flag), and
+               pw_changed's marks are those of its last call (the draw mark, bbk, grid_dirty, mark_e's dirty / test
+               list fronts, nc_moved's in-place entry; rest_end counts only whether a change happened) */
+            for (; p->y >= slopeYPrev - PI(PL.maxSlope); ) {
+                pos o = p->y;
                 if (PL.colTop)
                     break;
+                PIN_WR(pos, p->y) = p->y - (PI(1));
+                if (POS_NE(o, p->y)) ch = 1;
+            }
+            if (ch) pin_changed_(p);
             slopeChangeInY = PFLOOR(slopeYPrev - p->y);
         } else
             slopeChangeInY = 0;
@@ -729,13 +739,23 @@ static void characterStepEvent(int i)
             moveTo(i, PE(p)->xVel, PE(p)->yVel, &xVelInteger, &yVelInteger);           /* :1000 */
     }
     if (!PL.colBot && PL.maxDownSlope > 0 && xVelInteger != 0 && platformCharacterIs(ON_GROUND)) {   /* :1004 */
-        pos upYPrev = p->y;
-        for (; p->y <= upYPrev + PI(PL.maxDownSlope); pin_sety(p, p->y + (PI(1))))
+        pos upYPrev = p->y, o;
+        int ch = 0;
+        /* the field alone, one pw_changed at the end if any step or the final write changed y (as the slope loop
+           above: the body reads PL.colBot only) */
+        for (; p->y <= upYPrev + PI(PL.maxDownSlope); ) {
             if (PL.colBot) {
                 upYPrev = p->y;
                 break;
             }
-        pin_sety(p, upYPrev);
+            o = p->y;
+            PIN_WR(pos, p->y) = p->y + (PI(1));
+            if (POS_NE(o, p->y)) ch = 1;
+        }
+        o = p->y;
+        PIN_WR(pos, p->y) = upYPrev;
+        if (POS_NE(o, upYPrev)) ch = 1;
+        if (ch) pin_changed_(p);
     }
     characterSprite(i);                                                        /* :1018 */
     PL.statePrevPrev = PL.statePrev;
