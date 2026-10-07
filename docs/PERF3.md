@@ -516,3 +516,25 @@ Load-use stall (from spelunky-cps3-a6, low priority): jtcps3 stalls 1 cycle on a
     +1.9 %); a y-band mask before instance_box_maybe's scan (MAME +0.6 %); a creation-ordered list of the Draw
     instances for draw_and_view (MAME -1.7 to -2.1 %, jtcost +0.4 to +1.8 %, jtcps3 +0.5 to +1.4 %, and 7 KB of main
     RAM the tests/game link does not have).
+- Spikes (branch spikes on main 53c449c, 2026-10-06): the steps over ~200 K MAME (about 0.84 M jtcps3), traced with
+  jtcost fit and JTC_BYOBJ.
+  - Where they go: c_temple_hawkman every 6th step (step 7: 1,003 K, oHawkman 535 K): hawkman_sight's pcos_cr /
+    psin_cr(degtorad(0 or 180)) on the double-double path (sc_fast needs |a| >= 2^-6; sin(pi) fails Ziv's test).
+    p5_idol 250 (1,013 K): oBlood 499 K, its line tests against the rotating boulder (precise_line / pl_axis per pixel
+    in soft-float; pcinst_of is cached already). p4_bomb_drop 201 (913 K): spread (collision pass 229 K, rubble 17 x
+    ~7 K, flames, gold chunks). p5_reg_l12s13 45 (1,285 K; c_temple_xroom3x the same steps): oGame 585 K, the player
+    riding a falling oDarkFall (4 -> 11 px a step); each pixel moves the block +5, tests the player's bottom, moves the
+    player 1 px, moves the block -5 and +1 (pen_moving_solids' viscid-top branch; cct true on all 71 pixels). The one
+    exact cut, the bottom test with the block taken at y + 5 in place of the two moves (the grid build's searches do
+    not depend on when an entry is flushed), is ~12-15 % of the step and leaves it over 0.84 M: not done.
+    p5_reg_l14s16 21 (1,141 K): spread (oPlayer1 356 K, oTombLord 244 K). c_swamp_grave 186 / 351 (2.71 / 3.07 M):
+    oGame's check_water 1.87 M (114 instance_place_p, 411 collision_point_any on doubles, 914 __adddf3).
+  - 43d6d63: hawkman_sight through pen_sight_speed (the kept pair, as caveman's and pk_ice's sights). MAME SOFTFP:
+    c_temple_hawkman mean 140.3 -> 128.4 K, max 284 -> 187 K, steps over 200 K 30 -> 0 (step 7 277.7 -> 146.7 K);
+    c_temple_tomblord 154.3 -> 149.1 K (5 -> 1); c_temple_weblava 151.0 -> 146.0 K (5 -> 2).
+  - 1a38d1f: psin_cr / pcos_cr / psincos_cr keep the slow path's results for +-0, pi / 2, pi, 3 pi / 2 (632 of the
+    683 slow-path calls left over all routes' host runs). MAME SOFTFP route means: c_swamp_grave 165.3 -> 158.6 K,
+    vampire 140.8 -> 136.8 K, p5_buy 83.2 -> 77.0 K, p5_spider 66.8 -> 63.8 K, webwater 135.2 -> 131.1 K (maxima
+    unchanged: their causes are elsewhere).
+  - Both: 182 host route runs byte-identical (PCOL stats equal); playsh2 grid and SOFTFP 9,701/9,701; shell; capture
+    428/428; tests/game link 0 compiler warnings, stack room 33,740 B. Trace gates pending (the retrace).

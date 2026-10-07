@@ -85,9 +85,11 @@ static void hawkman_sight(int i)
     else {
         int s = pin_create(p->x, p->y, OBJ_oEnemySight);
         double dir = PE(&PX(i))->facing == E_LEFT ? 180 : 0;
+        double h, v;
         PE(&PX(s))->direction = dir;
-        PEN(&PX(s))->hspeed = 10 * pcos_cr(degtorad_d(dir));                  /* speed = 10 */
-        PEN(&PX(s))->vspeed = -10 * psin_cr(degtorad_d(dir));
+        pen_sight_speed(dir, &h, &v);                                  /* speed = 10 (the kept pcos_cr / psin_cr) */
+        PEN(&PX(s))->hspeed = h;
+        PEN(&PX(s))->vspeed = v;
         PEN(&PX(s))->owner = (int16_t)instance_place_p(i, X(i), Y(i), OBJ_oHawkman);
         PEN(&PX(i))->sightCounter = 5;
     }
