@@ -586,6 +586,23 @@ moves by +1.1 % (mantrap 242) and +1.4 % (l5s11 342), with the fully associative
 layout (131ce3c alone: same instructions, +4.9 K). PERF3's default steps: p4_exit559 301 +1.4 % (same instructions),
 p5_snakes 956 +0.3 % (-554 instructions). A jtcps3 run decides.
 
+jtcps3 (.62, jtcps3.rbf 2026-10-02, `JTV=_tt NC=nc_robust.txt JT_ROUTES=c_jungle_mantrap,p5_lush_l5s11,p5_lush_l5s37,
+p5_lush_l6s23,p5_caveman,p4_exit559 scripts/playsh2_jt.sh`, the same with GAME_REV=041d709; PASS 11/11, SPR OK on
+both). Route step means with step 1:
+
+| Route | 041d709 | totem (1b06a5d) | change |
+|---|---|---|---|
+| c_jungle_mantrap | 404,628 | 394,731 | -2.4 % |
+| p5_lush_l5s11 | 503,874 | 496,518 | -1.5 % |
+| p5_lush_l6s23 | 492,144 | 485,155 | -1.4 % |
+| p5_lush_l5s37 | 429,867 | 432,517 | +0.6 % |
+| p5_caveman | 430,608 | 432,971 | +0.5 % |
+| p4_exit559 | 312,837 | 314,291 | +0.5 % |
+
+The routes where traps fire gain 1.4-2.4 % on the mean, which includes about 40 % of steps with no spear. Routes
+with no fires lose 0.5-0.6 %, the code-placement cost jtcost showed (same or fewer instructions). The generation
+totals are within +-0.3 %.
+
 What is left on a spear-alive step (mantrap 212 vs 242, about 27 K): the rectangle tests' call-site double sums
 (X(i) + 2, ...: about 280 instructions a call), veg_quiet, the spears' animation and dispatch. A trap that sees
 something keeps firing every 50 steps, as in HD.
