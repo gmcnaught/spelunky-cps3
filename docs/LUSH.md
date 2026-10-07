@@ -472,7 +472,22 @@ MAME SOFTFP (steps 2+): c_swamp_drain 162.8 -> 154.8 K (-4.9 %; walking steps 2-
 route steps 90,423 -> 89,503 (-1.0 %): lush -1.4 to -5.4 %, other P5 -0.06 to -0.65 %, P4 / P1 +0.1 to +0.2 %,
 p5_snakes +0.5 % (the table lookup on each enemy dispatch).
 
+Then oPlayer1 (the swimming / running Step):
+
+| Commit | Change | effect |
+|---|---|---|
+| 5436eb3 | characterStepEvent's slope branch: the point_distance Newton loop (about 7 rounds of __divdf3 / __adddf3 / __muldf3 / __nedf2) skipped when d2 <= a * a, where its DGT(dist, a) is false (tests/slopedist: 186.7 M cases) | jtcost caveman 138 415.8 -> 410.1 K (-1.4 %), drain 161 831.3 -> 825.7 K, swim 201 698.2 -> 694.1 K; MAME SOFTFP every P1 / P4 / P5 route -0.1 to -1.05 % (mean 89,503 -> 89,142) |
+
+In swimming steps the loop's test usually holds (the player moves in x and y), so the loop still runs there. The
+player's swimming Step at swim 201 (pl_step 149 K incl.): characterStepEvent 111 K (its moveTo 31 K; isCollisionLadder,
+Platform, PlatformBottom, WaterTop, Left about 5 K each, through pcol_search_i -> pgrid_search; the Newton loop 8.8 K),
+hurt_logic's collision_rect_p 9.3 K, pl_step's collision_rect_p 7.6 K.
+
 Measured and not kept:
+- rq_static_none for prec 1 queries while no entry of the family is precise (isCollisionLadder's oLadderTop / oLadder
+  queries skip the grid search): MAME -0.5 to -1.2 % on most routes, but jtcost +0.7 to +1.9 % on drain 61 / 161,
+  swim 201, caveman 138, l5s37 201, p4_exit559 301 and p5_snakes 956 with the instructions unchanged. An unused
+  8-byte .bss pad alone moved drain 61 and l5s37 201 by +1.1 %: this layout noise is the size of the gain.
 - An integer path for anim_one (image_index + image_speed in 256ths when the sprite speed is 1.0f; exact,
   1.57 G cases checked against float): drain 61 492.5 -> 492.0 K. It removed 14 __mulsf3 calls but added 508
   instructions and 65 fetch misses to play_step: most swamp instances animate at 0.2 / 0.4, which are not
