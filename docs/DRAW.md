@@ -313,6 +313,66 @@ second, drawn positions blended between steps) on the CPS3's two frames a step.
   about 740 K, under 838.9 K. **Unknown:** the jtcps3 run (gametime SMOOTH=1 on the MiSTer), and whether jtcps3's
   list DMA reads sublists at the DMA or while it draws (either is safe here).
 
+## 8. Sprite entries by DMAC, the list DMA not waited for (2026-10-06, branch sprdma)
+
+PERF3 5.3: (a) `cps3v_vblank` spun on PPU status 0x0c bit 0 after starting the list DMA; (b) the entries were
+written by ~4 CPU stores each (up to ~680 a draw: p4_exit559 max 137 entries, c_swamp_drain 169) into uncached
+sprite RAM, and a main-RAM buffer sent by the SH-2 DMAC was proposed.
+
+- **List DMA (on):** `draw_list_send` writes cps3v_vblank's registers (8 global scrolls 0, 8 / 9 four times to 0x82);
+  `draw_list_sync` waits for bit 0 to clear and writes 0 to 0x82, at the next point that needs the copy done:
+  src/main/main.c after `snd_frame` (before the shell writes a list), `draw_frame`, `draw_vblank`, `draw_vbl_irq`,
+  `shell_video_stop`. tests/gametime counts both in "vbl".
+- **Word 3 (on):** an entry's word 3 is always 0: `draw_boot` writes it in every slot of the run and midpoint areas
+  (0x30000-0x3ffff), `ent_put` writes words 0-2. Smooth motion: the midpoint entry no longer reads word 0 back from
+  sprite RAM (an uncached load).
+- **DMAC (`DRAW_SPRDMA`, default 0; SPRDMA=1 in tests/game, tests/gametime and their scripts):** entries built in
+  `sbuf` (main RAM, 2 halves x 8 entries x run + midpoint = 512 B: tests/game had ~1 KB above the 32 KB stack floor),
+  a half sent when full and after the frame's last run by channel 0 (run area) / 1 (midpoint area), 16-byte units,
+  cycle steal (CHCR 0x5e01), TCR in longwords; the next transfer on a channel waits for the previous one; the list
+  send waits for both.
+
+**TCR counts longwords.** In 16-byte mode the SH7604's TCR is decremented once per longword (jtframe
+`sh7604/DMAC.sv`: TCR - 1 on every write beat, address + 4; MAME `sh7604.cpp`: `count &= ~3`, -4 per 16-byte unit).
+cps3-testgame's ttest (`src/ttest.c:329`) set TCR = bytes / 16, so its "DMAC 16" row moved 1 KB, not 4 KB: the 0.77
+clocks a byte quoted in PERF2 / PERF3 / REVIEW-SH2 was 4x low (corrected there).
+
+**jtcps3 (.62, `tests/dmac`, 4 KB, FRT at 8-clock resolution, interrupts masked):**
+
+| | main RAM -> main RAM | main RAM -> sprite RAM |
+|---|---|---|
+| DMAC 16-byte, cycle steal / burst | 13,200 / 12,840 | 12,736 / 12,736 |
+| DMAC longword, cycle steal / burst | 13,584 / 13,360 | 13,360 / 13,392 |
+| CPU 32-bit stores (1,024, unrolled by 8) | 6,984 | 6,928 |
+
+- DMAC ~3.1 clocks a byte (~8.0 MB/s at 25 MHz), CPU stores ~1.7 (~14.8 MB/s).
+- Readback into sprite RAM: 0 bad words of 1,024 in every mode, the word after the end unchanged (MAME the same).
+- A cached DT / BF loop of 48,040 clocks loses -8..+56 clocks while any of the four transfers runs (burst too): code
+  running from the cache is not slowed; only the CPU's own bus accesses contend.
+
+**jtcps3 tests/gametime (.62; attract / game 1 p4_push_rope / game 2 p5_snakes):**
+
+| | VB mean a frame | DR mean a step | pair mean |
+|---|---|---|---|
+| main before (16ab24f) | 3,118 / 3,178 / 4,430 | 164,415 / 104,803 / 93,854 | 304,876 / 415,203 / 442,817 |
+| list not waited for + word 3 (default) | 2,755 / 2,933 / 4,228 | 166,841 / 106,116 / 95,024 | 304,461 / 414,780 / 444,464 |
+| same + DMAC (SPRDMA=1) | 2,705 / 2,915 / 4,223 | 181,034 / 117,511 / 101,122 | 320,395 / 424,861 / 445,682 |
+
+- The list send: VB -200..-360 clocks a frame.
+- The DMAC: draw +7.3..+16.6 K a step (+8..+11 %): a DMAC byte costs ~2x a CPU-store byte, and the draw's own
+  loads and stores compete with it for the bus. It stays off.
+- Default vs main draw +1.2..+2.4 K with fewer stores; the step (unchanged code) moves by similar amounts between
+  builds: inferred code-layout / cache placement, not measured further (one run each).
+- MAME (tests/gametime game 2 draw mean): 41,306 / 41,179 / 41,695.
+
+**Frames:** MAME snapshots of main (16ab24f) and the branch byte-identical (p4_exit559 8, p5_shop 5, p5_spider 5,
+p8_boot attract 2, c_swamp_drain 4, smooth p4_exit559 own + midpoint 6; SPRDMA=0 18 of them too); host every step
+(5 routes, 2,432 frames) identical for main, DMAC and CPU paths; capture_check PASS. jtcps3 (`scripts/jt_frames.sh`
+on e8e67d3, .62): p4_exit559 30 / 300 / 520 / 800 and p5_shop 162 / 242 each with shots at 0 px against the model,
+the other shots 0-8 px plus jitter (PLAN.md P3's transient), or taken as a hold began or ended (696 / 712 px).
+Attract 1040: 153 px on jtcps3, where MAME vs model is 388 px on that build too (the regenerated g_p8_boot_s7 trace
+or merged src changes: not the draw, whose MAME frames equal 16ab24f's).
+
 ## Observed / Inferred / Unknown
 
 - **Observed:** entries max 214, records max 9 over 27,544 frames; 97.8 % of frame draws one-piece; no
