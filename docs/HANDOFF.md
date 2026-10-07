@@ -1,5 +1,14 @@
 # Handoff
 
+## 2026-10-07 01:07: piranha5 merged (42e0952); on .81 for the user's playtest (not pushed, not released)
+
+jtcps3 (NC, JTFAST, d0679ff = 42e0952's src): drain 526.7 K (+0.3 %, within board variance), grave 496.0, swim 419.0,
+piranha 331.7, l5s11 362.8, l6s23 338.5, caveman 378.8, exit559 290.4. Full batch set passes (hostident 184/184,
+gates.sh, ctall 59/59, EQUIV 88/88, playsh2 9,701 x2, shell, capture 422/422, game_check 0 px, gametime).
+.81: spelunky.zip and spelunkydev.zip from 42e0952 (previous kept as *.bak-f1d5950), MRAs in /media/fat/_Arcade/;
+the release boots into the attract mode. Next: the user's playtest, then a GitHub release on their go; the player's
+Step (~100 K a swamp step) for drain margin.
+
 ## 2026-10-07 00:30: batch end on main 5844252 (not pushed)
 
 Merged since 2e1c921: swamp3/swamp4 (swamp objects, direct enemy dispatch, player slope loops), totem (spear traps,
