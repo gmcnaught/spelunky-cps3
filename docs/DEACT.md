@@ -38,10 +38,10 @@ No velocity test: oItem / oTreasure / oEnemy freeze themselves outside their own
 out of view stops mid-air in stock HD), so a deactivated mover keeps exactly the state HD would leave it in.
 
 **The pass.**
-1. Activation: every instance on the pass's list (the ones it deactivated, with the (x, y) they had then) whose
-   (x, y) is inside the region is activated (`instance_activate_object(id)`), in list order; the rest stay listed.
+1. Activation: every instance on the pass's list (the ones it deactivated) whose (x, y), read through its id, is
+   inside the region is activated (`instance_activate_object(id)`), in list order; the rest stay listed.
 2. Deactivation: every active candidate outside the region, in `with (all)` order, is deactivated
-   (`instance_deactivate_object(id)`) and appended to the list with its (x, y).
+   (`instance_deactivate_object(id)`) and appended to the list.
 The list is emptied at each room's first Begin Step.
 
 **HD's legacy activation calls** (oLevel Step: `instance_activate_region` of the view + 96, `instance_activate_object`
@@ -72,14 +72,14 @@ seed 863, TRACE_DEACT=32 with TRACE_EVLOG / TRACE_TREE probes)
 
 ## 3. The port
 
-- `deact_pass` in play_step (prun.c), compiled with `-DPLAY_DEACT=32` (the CPS3 game and every host / SH-2 test
-  build of the option), off by default until the traces are regenerated with the patch. One option in both:
-  `TRACE_DEACT=32` on the HD side, `PLAY_DEACT=32` on the port side.
+- `deact_pass` in play_step (prun.c), compiled when PLAY_DEACT (play.h) is not 0. One option in both: TRACE_DEACT on
+  the HD side, PLAY_DEACT on the port side, both 32 by default (section 6).
 - Deactivate (pworld.c `pw_deactivate`): the structural half of pin_kill without removing the slot: `alive = 0`
   (every event loop, query, `with`, count and the recorder skip it, as in GM), unlinked from the object lists
   (ounlink: olive counts, nearest caches, the grid, the animation list), out of pw_ord, its collision entry kept in
   the tree (pcol_deactivated: off the dirty / test lists and the object count; the grid build takes it out of the
-  grid). The slot, pin_ext and pin_en stay. The list holds at most 320 (DL_MAX; more: untranslated 9010).
+  grid). The slot, pin_ext and pin_en stay. The list holds at most 320 ids (DL_MAX, 640 B; more: untranslated 9010);
+  the candidate objects are a bit table (58 B).
 - Activate (`pw_activate`): the structural half of pin_add on the kept record: a new creation number (pw_seq =
   PW.seq++, appended to pw_ord, the object lists and the animation list, so it is the newest), `alive = 1`, put in
   the collision tree as instance_create does (pcol_activated), marked for the drawing. A renumbering of the creation
@@ -188,3 +188,19 @@ from the step, so B, which counts the misses, is the likelier one.
 | p5_caveman | 428 K | 419 K | 417 K | met |
 
 A jtcps3 run on .62 (playsh2_jt.sh with DEACT=32) would replace these.
+
+## 6. Adoption (2026-10-06, on main 86b81a5)
+
+- **Defaults.** play.h `#define PLAY_DEACT 32` (every build: the game, tests/game, playsh2, test/host). tools/tracer.py
+  `TRACE_DEACT` defaults to 32, so scripts/hd_trace.sh and every caller (build/retrace_cmds.sh, p4_trace.sh,
+  snd_traces.sh, ...) make deactivating traces without a new variable. Stock HD: `TRACE_DEACT=0`; the port without
+  it: `make -C test/host DEACT=0 OUT=...`, `DEACT=0 scripts/playsh2_check.sh` / `playsh2_jt.sh` (they rewrite
+  play.h's line). Only route traces change: generator mode (--gen) and the RNG probe have no Begin Step pass, and
+  the pass runs only in rLevel / rLevel2 / rLevel3.
+- **Memory.** tests/game's main RAM: the list was 320 x (id, x, y) = 3.2 KB and broke the link (.bss leaves under
+  32 KB for the stack). Now ids only (the pass reads x, y through the id on both sides) and a bit table:
+  stack room 32,892 B (the limit is 32,768).
+- **tests/equiv_accept.txt:** `c_jungle_firefrog_s296 115`, the spike-blood order (section 5).
+- **Checks on 86b81a5 + this branch:** PLAY_DEACT 0 build vs 86b81a5: every tests/routes/*.txt run (94) and fullreg
+  (p5_caveman, p4_bomb_throw x levels 1-16 x seeds 1-20) byte-identical stdout. Default build: the 15 dz routes
+  record-equal; the 15 traces made again with the id-read GML byte-identical to the earlier ones.

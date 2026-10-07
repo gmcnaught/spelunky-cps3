@@ -64,6 +64,11 @@ Method from ../maldita.castilla-cps3/tools/tracer.py. Changes, all GML compiled 
   - TRACE_TREE=r1,r2,... (probe runs only): after record r, tree_<r>.txt lists collision_rectangle_list over the
     whole room (unordered) for each object of TRACE_TREE_OBJS (default oSolid): the runner's collision-tree
     search order (src/game/pcol.c). The query flushes the tree's dirty list (UpdateTree): playhost --tree-probe.
+  - TRACE_DEACT=<margin> (default 32; 0: off, stock HD 1.2.2): off-view deactivation (docs/DEACT.md, deact_gml):
+    oGamepad's Begin Step, every step of rLevel / rLevel2 / rLevel3 but the room's first, activates the instances
+    it deactivated that are back inside the view grown by the margin, then deactivates the off-view candidates
+    (oEnemy / oItem / oTreasure and descendants, DEACT_EXEMPT and held / forSale ones excepted); HD's legacy
+    instance_activate_* calls in oLevel / oGame Step become max(...). The port: play.h PLAY_DEACT (same default).
   - oGamepad End Step (new): a phase-1 record each step. The buffer is saved every 50 records as
     trc_<k>.bin (buffer_save_ext; then rewound). After route steps + TAIL (default 30) or MAX_STEPS records:
     last chunk saved, then trc_done.txt (scripts/hd_trace.sh stops the runner once it exists: game_end() can
@@ -175,7 +180,8 @@ TRACE_VARS = ['state', 'xAcc', 'yAcc', 'held', 'armed', 'status', 'fallTimer', '
 # included); oDamsel walks on her own; oFakeBones turns into a skeleton when the player comes near
 NOENEMY_OBJS = ['oEnemy', 'oDamsel', 'oFakeBones']
 # TRACE_DEACT=<margin> (docs/DEACT.md): off-view deactivation, the rule src/game/prun.c's deact pass applies
-DEACT = os.environ.get('TRACE_DEACT')
+DEACT = os.environ.get('TRACE_DEACT', '32')     # the default since 2026-10-06; TRACE_DEACT=0: stock HD
+DEACT = None if DEACT in ('', '0') else DEACT
 DEACT_ROOTS = ['oEnemy', 'oItem', 'oTreasure']            # these objects and their descendants are candidates,
 DEACT_EXEMPT = ['oShopkeeper', 'oShopkeeper2', 'oBomb', 'oRopeThrow', 'oFlare', 'oFireFrogArmed',   # except these
                 'oFireFrogBomb', 'oDamsel', 'oDice', 'oLampItem', 'oLampRedItem', 'oJaws']
@@ -690,7 +696,8 @@ SND_SCRIPTS = {'playSound': 'trcSnd(1, argument0, 0);', 'playMusic': 'trcSnd(2, 
 def deact_gml():
     """TRACE_DEACT=<margin> (docs/DEACT.md): the pass, inline in oGamepad's Begin Step (else-branch of the room's
     first Begin Step) of rLevel, rLevel2, rLevel3: (1) every instance it deactivated whose stored (x, y) is inside the
-    region is activated, in the order they were deactivated; (2) every active candidate whose (x, y) is outside it
+    region (read through its id: a deactivated instance's variables stay readable) is activated, in the order they
+    were deactivated; (2) every active candidate whose (x, y) is outside it
     is deactivated, in with (all) order. Region: the view the last draw left, grown by the margin on each side.
     (No new global script: one next to TRACE_SND's gml_GlobalScript_trcSnd hung the runner)"""
     m = int(DEACT)
@@ -700,9 +707,9 @@ def deact_gml():
     if (nc > 0 && !variable_global_exists("trc_dprobe"))
     {
         global.trc_dprobe = 1;
-        var s = "deact " + string(real(cand[0][0]));
-        try { s += " obj " + object_get_name(cand[0][0].object_index) + " x " + string(cand[0][0].x); } catch (e) { s += " read error: " + string(e.message); }
-        s += " exists " + string(instance_exists(cand[0][0]));
+        var s = "deact " + string(real(cand[0]));
+        try { s += " obj " + object_get_name(cand[0].object_index) + " x " + string(cand[0].x); } catch (e) { s += " read error: " + string(e.message); }
+        s += " exists " + string(instance_exists(cand[0]));
         var pf = file_text_open_write("deact_probe.txt"); file_text_write_string(pf, s); file_text_close(pf);
     }'''
     return f'''
@@ -715,8 +722,8 @@ else if (room == rLevel || room == rLevel2 || room == rLevel3)
     for (var k = 0; k < array_length(dl); k++)
     {{
         var e = dl[k];
-        if (e[1] < x0 || e[1] > x1 || e[2] < y0 || e[2] > y1) {{ keep[nk] = e; nk += 1; }}
-        else instance_activate_object(e[0]);
+        if (e.x < x0 || e.x > x1 || e.y < y0 || e.y > y1) {{ keep[nk] = e; nk += 1; }}
+        else instance_activate_object(e);
     }}
     var cand = [], nc = 0;
     with (all)
@@ -725,10 +732,10 @@ else if (room == rLevel || room == rLevel2 || room == rLevel3)
         {{
             var o = object_index;
             if (({roots}) && !({ex}) && !(variable_instance_exists(id, "held") && held) &&
-                !(variable_instance_exists(id, "forSale") && forSale)) {{ cand[nc] = [id, x, y]; nc += 1; }}
+                !(variable_instance_exists(id, "forSale") && forSale)) {{ cand[nc] = id; nc += 1; }}
         }}
     }}
-    for (var k = 0; k < nc; k++) {{ instance_deactivate_object(cand[k][0]); keep[nk] = cand[k]; nk += 1; }}
+    for (var k = 0; k < nc; k++) {{ instance_deactivate_object(cand[k]); keep[nk] = cand[k]; nk += 1; }}
     global.trc_dl = keep;{probe}
 }}
 '''

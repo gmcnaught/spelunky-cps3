@@ -9,7 +9,7 @@ OUT := $(ROOT)/build/host
 SRC := $(ROOT)/src/game/rng.c $(ROOT)/src/game/inst.c $(ROOT)/src/game/gen.c $(ROOT)/src/game/genroom.c \
        $(ROOT)/src/game/genobj.c $(ROOT)/src/game/genent.c $(GEN)/objects.c $(GEN)/gentables.c
 CFLAGS ?= -std=c99 -O2 -Wall -Wextra -Wno-unused-parameter
-# make -C test/host DEACT=32 OUT=...: the off-view deactivation build (docs/DEACT.md)
+# make -C test/host DEACT=0 OUT=...: without the off-view deactivation (play.h PLAY_DEACT, default 32; docs/DEACT.md)
 ifneq ($(DEACT),)
 CFLAGS += -DPLAY_DEACT=$(DEACT)
 endif
