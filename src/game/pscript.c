@@ -368,11 +368,12 @@ void moveTo(int i, num a0, num a1, int32_t *xio, int32_t *yio)
             if (isCollisionTop(i, 1))
                 break;
     if (raw) {                                     /* the setters, once: x then y, as the walks' last calls */
+        /* pin_setx then pin_sety, with nothing between: their marks are one pw_changed's when either changed
+           (consecutive pw_changed(i) leave what the last leaves: characterStepEvent's slope loops), so pin_setxy */
         pos fx = p->x, fy = p->y;
         PIN_WR(pos, p->x) = mtXPrev;
         PIN_WR(pos, p->y) = mtYPrev;
-        pin_setx(p, fx);
-        pin_sety(p, fy);
+        pin_setxy(p, fx, fy);
     }
 #undef MT_SETX
 #undef MT_SETY
