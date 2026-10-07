@@ -1,5 +1,11 @@
 # Handoff
 
+## 2026-10-07 08:15: v0.2.0 released (tag on 84dd6e6, game source = 42e0952)
+
+The user playtested the 42e0952 build on .81 and approved. main pushed (2e1c921..84dd6e6), tag v0.2.0 pushed; Actions run
+37619531854 succeeded and published https://github.com/gmcnaught/spelunky-cps3/releases/tag/v0.2.0 (spelunky.zip +
+the .mra).
+
 ## 2026-10-07 01:07: piranha5 merged (42e0952); on .81 for the user's playtest (not pushed, not released)
 
 jtcps3 (NC, JTFAST, d0679ff = 42e0952's src): drain 526.7 K (+0.3 %, within board variance), grave 496.0, swim 419.0,
