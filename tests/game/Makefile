@@ -11,7 +11,7 @@
 #   [SMOOTH=1: smooth motion on the route (scripts/smooth_check.sh: each held record's midpoint and own frames)]
 #   [NC=: the SDK's plain link; default tests/nc.mk's (docs/ICACHE.md: tests/playsh2/nc_robust.txt read past the cache)]
 #   [DPROF=1: src/draw's parts timed (draw_st.prof)] [DARK=a8: drawn as a dark level at alpha byte a8] [HUD=0: no HUD, as the runner's application_surface frames]
-#   [SPRDMA=0: src/draw writes the sprite entries with CPU stores, not the DMAC (docs/DRAW.md section 8)]
+#   [SPRDMA=1: src/draw sends the sprite entries with the SH-2 DMAC (default 0: CPU stores until checked on jtcps3; docs/DRAW.md section 8)]
 PROG   := $(if $(filter 1,$(PLAY)),spelunky,game)$(if $(filter 1,$(DEV)),dev)
 TITLE  := $(if $(filter 1,$(PLAY)),Spelunky Classic Arcade,Spelunky CPS3)$(if $(filter 1,$(DEV)), (Dev))
 ROOT   := ../..

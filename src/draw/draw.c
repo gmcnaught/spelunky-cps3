@@ -253,8 +253,10 @@ static uint32_t run_at, run_n, run_end, run_odd;  /* the open run's start (byte)
 static uint32_t w2tab[5][5];                      /* word 2 by width and height in tiles (1, 2, 4) */
 /* Word 3 of an entry is always 0: every entry slot of the run areas (16-byte steps from RUN_AREA - MID_OFF) has it
    written once (draw_boot), so ent_put writes words 0-2 only. */
+/* default 0 (CPU stores) until the DMAC's writes into sprite RAM are checked on jtcps3 (tests/dmac on MiSTer);
+   SPRDMA=1 builds the DMAC path */
 #ifndef DRAW_SPRDMA
-#define DRAW_SPRDMA 1
+#define DRAW_SPRDMA 0
 #endif
 #if DRAW_SPRDMA
 /* DRAW_SPRDMA: the entries are built in main RAM (sbuf, two halves of SB_ENT entries: the run area's next SB_ENT
