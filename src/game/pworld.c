@@ -1839,6 +1839,35 @@ static __attribute__((noinline)) int ik_sum(int32_t l, int32_t t, int32_t r, int
 }
 #define IK_NMF(notme, prec, c) ((notme) * 4 + (prec) * 2 + (c))
 
+/* ik_sum on a query inside the grid that is one cell wide or tall (an axis line, a point): the n cells from cell
+   index i (y * GRID_W + x) by step (1: a row, GRID_W: a column), nm = notme * 2 + prec. Every one of these cells
+   meets the query (no clamping; the line's cells are its own), so a block misses only as notme: per cell, gother
+   makes the answer unsure, a block not notme is a hit unless precise under prec (then unsure), notme's block with
+   another block there is unsure. ik_sum's answers, without the clamps, the overlap tests and the spills of its 2-D
+   loop (four register arguments, a leaf) */
+static __attribute__((noinline)) int ik_cells(int i, int n, int step, int nm)
+{
+    const uint8_t *f = &gfull[0][0] + i;
+    const uint16_t *o = &gother[0][0] + i;
+    const int16_t *b = &gfblk[0][0] + i;
+    int notme = nm >> 1, sure = 1;
+    for (;;) {
+        int c = *f;
+        if (*o) sure = 0;
+        if (c) {
+            int k = *b;
+            if (k != notme) {
+                if (!(nm & 1) || !precise(k)) return 1;
+                sure = 0;
+            } else if (c > 1)
+                sure = 0;                                 /* notme's block; another block may hit */
+        }
+        if (--n == 0) break;
+        f += step; o += step; b += step;
+    }
+    return sure ? 0 : -1;
+}
+
 /* Command_CollisionPoint tests the object's instances in creation order (Collision_Point computes each stale box:
    pcol_touch) */
 int (collision_point_p)(double px, double py, int obj, int prec, int notme_self)
@@ -1952,7 +1981,7 @@ static int solid_point_sum(const struct pq *q, int prec, int notme_self)
 {
     if (q->iok && q->ix >= 0 && q->iy >= 0 && (q->ix >> 4) < GRID_W && (q->iy >> 4) < GRID_H) {
         grid_flush();
-        return ik_sum(q->ix, q->iy, q->ix + 1, q->iy + 1, IK_NMF(notme_self, prec != 0, 1));
+        return ik_cells((q->iy >> 4) * GRID_W + (q->ix >> 4), 1, 1, notme_self * 2 + (prec != 0));
     }
     return -1;
 }
@@ -2014,7 +2043,7 @@ int (collision_point_any)(double px, double py, int obj, int prec, int notme_sel
             r = -1;
             if (a >= 0 && b >= 0 && (a >> 4) < GRID_W && (b >> 4) < GRID_H) {
                 grid_flush();
-                r = ik_sum(a, b, a + 1, b + 1, IK_NMF(notme_self, prec != 0, 1));
+                r = ik_cells((b >> 4) * GRID_W + (a >> 4), 1, 1, notme_self * 2 + (prec != 0));
             }
         } else {
             pq_init(&q, px, py);
@@ -2649,31 +2678,37 @@ static __attribute__((noinline)) int any_scan(int32_t x1, int32_t y1, int32_t x2
     return line_scan(&c, obj, notme_self);
 }
 
-/* collision_line(x1, y1, x2, y2, oSolid, 1, notme) != noone for an axis-aligned line (solid_vline_any,
-   solid_hline_any): pcol_query (the flush), then the summary (ik_sum), else the scan; the tree's other answers take
-   the search (any_run) */
-static __attribute__((noinline)) int ik_line(int32_t x1, int32_t y1, int32_t x2, int32_t y2, int notme_self)
+/* collision_line(a, lo, a, hi, oSolid, 1, notme) != noone (nm = notme * 2: solid_vline_any) or collision_line(lo, a,
+   hi, a, ...) (nm = notme * 2 + 1: solid_hline_any), four register arguments: pcol_query (the flush), then the summary
+   (ik_cells inside the grid, ik_sum else), else the scan; the tree's other answers take the search (any_run). The
+   ends keep the callers' order for any_run / any_scan */
+static __attribute__((noinline)) int ik_line(int32_t a, int32_t lo, int32_t hi, int nm)
 {
-    int q = pcol_query(OBJ_oSolid), r;
-    int32_t lx, hx, ly, hy;
+    int q = pcol_query(OBJ_oSolid), notme = nm >> 1, r;
+    int32_t l = lo < hi ? lo : hi, h = lo < hi ? hi : lo, x1, y1, x2, y2;
     PWST(line, 1);
+    if (nm & 1) { x1 = lo; y1 = a; x2 = hi; y2 = a; }
+    else { x1 = a; y1 = lo; x2 = a; y2 = hi; }
     if (q < 0) return 0;
-    if (q != 1) return any_run(q, x1, y1, x2, y2, OBJ_oSolid, 1, notme_self);
+    if (q != 1) return any_run(q, x1, y1, x2, y2, OBJ_oSolid, 1, notme);
     grid_flush();
-    if (gfar) return any_run(q, x1, y1, x2, y2, OBJ_oSolid, 1, notme_self);
-    lx = x1 < x2 ? x1 : x2; hx = x1 < x2 ? x2 : x1;
-    ly = y1 < y2 ? y1 : y2; hy = y1 < y2 ? y2 : y1;
-    r = ik_sum(lx, ly, hx + 1, hy + 1, IK_NMF(notme_self, 1, 1));
+    if (gfar) return any_run(q, x1, y1, x2, y2, OBJ_oSolid, 1, notme);
+    if (a < 0 || l < 0 || (nm & 1 ? a >= GRID_H * 16 || h >= GRID_W * 16 : a >= GRID_W * 16 || h >= GRID_H * 16))
+        r = ik_sum(x1 < x2 ? x1 : x2, y1 < y2 ? y1 : y2, (x1 < x2 ? x2 : x1) + 1, (y1 < y2 ? y2 : y1) + 1,
+                   IK_NMF(notme, 1, 1));                  /* (partly outside the grid: the clamped cells) */
+    else if (nm & 1)
+        r = ik_cells((a >> 4) * GRID_W + (l >> 4), (h >> 4) - (l >> 4) + 1, 1, notme * 2 + 1);
+    else
+        r = ik_cells((l >> 4) * GRID_W + (a >> 4), (h >> 4) - (l >> 4) + 1, GRID_W, notme * 2 + 1);
 #ifdef PLAY_STATS
-    if (x1 != x2 && y1 != y2) { fprintf(stderr, "ik_line: not an axis line\n"); abort(); }
-    if (r >= 0 && r != any_scan(x1, y1, x2, y2, OBJ_oSolid, 1, notme_self)) {   /* the host builds check every summary answer */
-        fprintf(stderr, "ik_sum %d differs from the scan: %d %d %d %d notme %d\n", r, (int)x1, (int)y1, (int)x2, (int)y2,
-                notme_self);
+    if (r >= 0 && r != any_scan(x1, y1, x2, y2, OBJ_oSolid, 1, notme)) {   /* the host builds check every summary answer */
+        fprintf(stderr, "ik_line %d differs from the scan: %d %d %d %d notme %d\n", r, (int)x1, (int)y1, (int)x2, (int)y2,
+                notme);
         abort();
     }
 #endif
     if (r >= 0) return r;
-    return any_scan(x1, y1, x2, y2, OBJ_oSolid, 1, notme_self);
+    return any_scan(x1, y1, x2, y2, OBJ_oSolid, 1, notme);
 }
 
 /* collision_rectangle(l, t, r, b, oSolid, 1, notme) != noone for whole l <= r, t <= b (isCollisionSolid): the
@@ -2683,23 +2718,38 @@ static __attribute__((noinline)) int ik_line(int32_t x1, int32_t y1, int32_t x2,
    host builds compare every summary answer with the search */
 static int rect_any_i(int32_t l, int32_t t, int32_t r, int32_t b, int prec, int notme_self)
 {
-    int q = pcol_query(OBJ_oSolid), sure;
+    int q = pcol_query(OBJ_oSolid), sure = 1, x, y, k;
+    int x0, xe, y0, ye;
     PWST(rect, 1);
     if (q < 0) return 0;
     if (q != 1 || l > r || t > b) return collision_rect_i(l, t, r, b, OBJ_oSolid, prec, notme_self) != NOONE;
     grid_flush();
     if (gfar) return collision_rect_i(l, t, r, b, OBJ_oSolid, prec, notme_self) != NOONE;
-    sure = ik_sum(l, t, r, b, IK_NMF(notme_self, prec != 0, 0));
-    if (sure == 1) {
+    x0 = clampi(l >> 4, 0, GRID_W - 1); xe = clampi(r >> 4, 0, GRID_W - 1);
+    y0 = clampi(t >> 4, 0, GRID_H - 1); ye = clampi(b >> 4, 0, GRID_H - 1);
+    for (y = y0; y <= ye; y++)
+        for (x = x0; x <= xe; x++) {
+            int n = gfull[y][x];
+            int32_t cl = x * 16, ct = y * 16;
+            if (gother[y][x]) sure = 0;
+            if (n == 0) continue;
+            k = gfblk[y][x];
+            if (k == notme_self || !((l > cl ? l : cl) < (r < cl + 16 ? r : cl + 16)) ||
+                !((t > ct ? t : ct) < (b < ct + 16 ? b : ct + 16))) {
+                if (n > 1) sure = 0;                      /* k is a miss; another block may not be */
+                continue;
+            }
+            if (!prec || !precise(k)) {
 #ifdef PLAY_STATS
-        if (collision_rect_i(l, t, r, b, OBJ_oSolid, prec, notme_self) == NOONE) {
-            fprintf(stderr, "solid_rect_any: summary hit, search none (%d %d %d %d)\n", (int)l, (int)t, (int)r, (int)b);
-            abort();
-        }
+                if (collision_rect_i(l, t, r, b, OBJ_oSolid, prec, notme_self) == NOONE) {
+                    fprintf(stderr, "solid_rect_any: summary hit, search none (%d %d %d %d)\n", (int)l, (int)t, (int)r, (int)b);
+                    abort();
+                }
 #endif
-        return 1;
-    }
-    sure = sure == 0;
+                return 1;
+            }
+            sure = 0;
+        }
 #ifdef PLAY_STATS
     if (sure && collision_rect_i(l, t, r, b, OBJ_oSolid, prec, notme_self) != NOONE) {
         fprintf(stderr, "solid_rect_any: summary miss, search hit (%d %d %d %d)\n", (int)l, (int)t, (int)r, (int)b);
@@ -2755,17 +2805,17 @@ __attribute__((noinline)) int ik_side(int i, int side, int d)
     e = PE(p);
     if (side & 2) {                               /* collision_line(lb, a, rb - 1, a): Top a = tb - d, Bottom bb + d - 1 */
         a = side & 1 ? y + e->bbo + d - 1 : y + e->tbo - d;
-        return ik_line(x + e->lbo, a, x + e->rbo - 1, a, i);
+        return ik_line(a, x + e->lbo, x + e->rbo - 1, i * 2 + 1);
     }
     a = side & 1 ? x + e->rbo + d - 1 : x + e->lbo - d;   /* collision_line(a, tb (+ 5), a, bb - 1): Left lb - d, Right rb + d - 1 */
-    return ik_line(a, y + e->tbo + (side & 4 ? 5 : 0), a, y + e->bbo - 1, i);
+    return ik_line(a, y + e->tbo + (side & 4 ? 5 : 0), y + e->bbo - 1, i * 2);
 }
 
 /* collision_line(x, y1, x, y2, oSolid, 1, notme) != noone and collision_line(x1, y, x2, y, ...): isCollisionLeft /
    Right / Top / Bottom with whole-number bounds (pscript.c); obj and prec constant, four arguments in registers */
 int solid_vline_any(int32_t x, int32_t y1, int32_t y2, int notme_self)
 {
-    return ik_line(x, y1, x, y2, notme_self);
+    return ik_line(x, y1, y2, notme_self * 2);
 }
 
 /* solid_vline_any(x, y1, y2, notme_self)'s answer as line_any finds it on the grid (pcol_query 1, gfar 0), without
@@ -2778,14 +2828,20 @@ int pw_solid_vline_q(int32_t x, int32_t y1, int32_t y2, int notme_self)
     if (q != 1) return -1;
     grid_flush();
     if (gfar) return -1;
-    r = ik_sum(x, y1 < y2 ? y1 : y2, x + 1, (y1 < y2 ? y2 : y1) + 1, IK_NMF(notme_self, 1, 1));   /* (line_summary's) */
+    {
+        int32_t l = y1 < y2 ? y1 : y2, h = y1 < y2 ? y2 : y1;
+        if (x < 0 || l < 0 || x >= GRID_W * 16 || h >= GRID_H * 16)
+            r = ik_sum(x, l, x + 1, h + 1, IK_NMF(notme_self, 1, 1));   /* (line_summary's, clamped) */
+        else
+            r = ik_cells((l >> 4) * GRID_W + (x >> 4), (h >> 4) - (l >> 4) + 1, GRID_W, notme_self * 2 + 1);
+    }
     if (r >= 0) return r;
     return any_scan(x, y1, x, y2, OBJ_oSolid, 1, notme_self);
 }
 
 int solid_hline_any(int32_t y, int32_t x1, int32_t x2, int notme_self)
 {
-    return ik_line(x1, y, x2, y, notme_self);
+    return ik_line(y, x1, x2, notme_self * 2 + 1);
 }
 
 /* a rectangle query: its sides rounded (floor(v + 0.5)) once */
