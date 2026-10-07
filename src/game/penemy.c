@@ -523,6 +523,27 @@ static void bat_step(int i)
     }
 }
 
+/* a dead giant spider's drops (oGiantSpiderHang Step :11, oGiantSpider Step :16: the same statements): 1-3 big gems,
+   the paste, its blood, the kill */
+static void giant_spider_loot(int i)
+{
+    int n = RAND(1, 3), k;
+    for (k = 0; k < n; k++) {
+        int r = RAND(1, 3), gem;
+        gem = pin_create(PX(i).x + PI(16), PX(i).y + PI(24),
+                         r == 1 ? OBJ_oEmeraldBig : r == 2 ? OBJ_oSapphireBig : OBJ_oRubyBig);
+        PE(&PX(gem))->xVel = NI(rand_diff(0, 3));
+        PE(&PX(gem))->yVel = N(-2);
+    }
+    {
+        int obj = pin_create(PX(i).x + PI(16), PX(i).y + PI(24), OBJ_oPaste);
+        PE(&PX(obj))->cost = 0;
+        PE(&PX(obj))->forSale = 0;
+    }
+    blood(i, X(i) + 16, Y(i) + 24, 4);
+    kill_count(i);
+}
+
 /* ---- oSpiderHang / oGiantSpiderHang: objects/oSpiderHang/Step_0.gml, objects/oGiantSpiderHang/Step_0.gml --- */
 static void spiderhang_step(int i, int giant)
 {
@@ -533,25 +554,9 @@ static void spiderhang_step(int i, int giant)
     dist = distance_to_object_p(i, OBJ_oCharacter);
     if (CP(X(i) + (giant ? 16 : 8), Y(i) + (giant ? 8 : 4), OBJ_oSolid)) PE(p)->hp = 0;
     if (PE(p)->hp < 1) {
-        if (giant) {                                                   /* :11 */
-            int n = RAND(1, 3), k;
-            for (k = 0; k < n; k++) {
-                int r = RAND(1, 3), gem;
-                gem = pin_create(PX(i).x + PI(16), PX(i).y + PI(24),
-                                 r == 1 ? OBJ_oEmeraldBig : r == 2 ? OBJ_oSapphireBig : OBJ_oRubyBig);
-                {
-                    PE(&PX(gem))->xVel = NI(rand_diff(0, 3));
-                }
-                PE(&PX(gem))->yVel = N(-2);
-            }
-            {
-                int obj = pin_create(PX(i).x + PI(16), PX(i).y + PI(24), OBJ_oPaste);
-                PE(&PX(obj))->cost = 0;
-                PE(&PX(obj))->forSale = 0;
-            }
-            blood(i, X(i) + 16, Y(i) + 24, 4);
-            kill_count(i);
-        } else {
+        if (giant)                                                     /* :11 */
+            giant_spider_loot(i);
+        else {
             blood(i, X(i) + 8, Y(i) + 8, 3);
             PG.spiders += 1;                                           /* no countsAsKill test here */
             PG.kills += 1;
@@ -629,23 +634,7 @@ static void giantspider_step(int i)
     if (PEN(p)->whipped > 0) PEN(p)->whipped -= 1;
     if (CP(X(i) + 16, Y(i) + 24, OBJ_oSolid)) PE(p)->hp = 0;
     if (PE(p)->hp < 1) {                                                   /* :16 */
-        int n = RAND(1, 3), k;
-        for (k = 0; k < n; k++) {
-            int r = RAND(1, 3), gem;
-            gem = pin_create(PX(i).x + PI(16), PX(i).y + PI(24),
-                             r == 1 ? OBJ_oEmeraldBig : r == 2 ? OBJ_oSapphireBig : OBJ_oRubyBig);
-            {
-                PE(&PX(gem))->xVel = NI(rand_diff(0, 3));
-            }
-            PE(&PX(gem))->yVel = N(-2);
-        }
-        {
-            int obj = pin_create(PX(i).x + PI(16), PX(i).y + PI(24), OBJ_oPaste);
-            PE(&PX(obj))->cost = 0;
-            PE(&PX(obj))->forSale = 0;
-        }
-        blood(i, X(i) + 16, Y(i) + 24, 4);
-        kill_count(i);
+        giant_spider_loot(i);
         pin_destroy(i);
     }
     p = &PX(i);
@@ -873,9 +862,7 @@ static void skeleton_step(int i)
         for (k = 0; k < 3; k++) pin_create(PX(i).x + PI(8), PX(i).y + PI(8), OBJ_oBone);
         skull = pin_create(PX(i).x + PI(8), PX(i).y + PI(8), OBJ_oSkull);
         PE(&PX(skull))->yVel = NI(-RAND(1, 3));
-        {
-            PE(&PX(skull))->xVel = NI(rand_diff(0, 3));
-        }
+        PE(&PX(skull))->xVel = NI(rand_diff(0, 3));
         kill_count(i);
         pin_destroy(i);
     }
