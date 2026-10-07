@@ -3079,12 +3079,12 @@ static int place_cb(int k, void *v)
    (xfar and xemp 0: no other kind is placed) sharing a pixel with it, so it reaches one of its cells. -2: the index
    cannot tell; NOONE: no entry of obj's family reaches them; else the only entry that does (the counts are 1 in all,
    and the cell's hint is a placed entry of the family in that cell, so it is the counted one) */
-static int xplace_one(int self, double dx, double dy, int obj)
+static int xplace_one_i(int self, int32_t idx, int32_t idy, int obj)
 {
-    int32_t ia[4], idx, idy, l, t, r, b;
+    int32_t ia[4], l, t, r, b;
     int f, x, y, n = 0, cx = 0, cy = 0, k;
     if (obj < 0 || (f = xf_of[obj]) < 0 || pcol_quiet()) return -2;
-    if (!pin_ibox_s(self, ia) || !whole(dx, &idx) || !whole(dy, &idy)) return -2;
+    if (!pin_ibox_s(self, ia)) return -2;
     l = ia[0] + idx; t = ia[1] + idy; r = ia[2] + idx; b = ia[3] + idy;
     if (r <= l || b <= t || l < 0 || t < 0 || ((r - 1) >> 4) >= GRID_W || ((b - 1) >> 4) >= GRID_H) return -2;
     if (xdhead >= 0) xflush_run();
@@ -3104,15 +3104,19 @@ static int xplace_one(int self, double dx, double dy, int obj)
         return -2;
     return k;
 }
+
+static int xplace_one(int self, double dx, double dy, int obj)
+{
+    int32_t idx, idy;
+    if (!whole(dx, &idx) || !whole(dy, &idy)) return -2;
+    return xplace_one_i(self, idx, idy, obj);
+}
 #endif
 
 /* Command_InstancePlace: SetPosition(px, py) (a real move marks self dirty), the search, SetPosition back */
-int instance_place_p(int self, double px, double py, int obj)
+static int place_after_query(int self, int q, double px, double py, double dx, double dy, int moved, int obj)
 {
-    PWST(place, 1);
-    int k, q = pcol_query(obj);
-    double dx = px - PTOD(PW.in[self].x), dy = py - PTOD(PW.in[self].y);
-    int moved = (float)px != (float)PTOD(PW.in[self].x) || (float)py != (float)PTOD(PW.in[self].y);
+    int k;
     if (q < 0) return NOONE;
     if (q == 1) {
         struct qctx c;
@@ -3162,6 +3166,65 @@ int instance_place_p(int self, double px, double py, int obj)
     }
     if (moved) pcol_place_marks(self);
     return NOONE;
+}
+
+int instance_place_p(int self, double px, double py, int obj)
+{
+    PWST(place, 1);
+    int q = pcol_query(obj);
+    double dx = px - PTOD(PW.in[self].x), dy = py - PTOD(PW.in[self].y);
+    int moved = (float)px != (float)PTOD(PW.in[self].x) || (float)py != (float)PTOD(PW.in[self].y);
+    return place_after_query(self, q, px, py, dx, dy, moved, obj);
+}
+
+/* instance_place_p(self, x + idx, y + idy, obj) for self at whole x, y (|.| < 29900) and |idx|, |idy| <= 16, without
+   the doubles where self's box is cached whole (BB_INT / BB_INTS): px, py are whole, so dx, dy are idx, idy exactly,
+   moved is idx || idy (whole values below 2^24 are their floats), pin_bbox's box is the ints and the query's floats
+   (l + dx, ...) are (float)(int); overlap_at's integer path is taken as it would be (whole dx, dy). Otherwise, and
+   off the grid path, instance_place_p's own code on the same values (place_after_query) */
+int instance_place_ixy(int self, int32_t x, int32_t y, int32_t idx, int32_t idy, int obj)
+{
+    PWST(place, 1);
+    int q = pcol_query(obj), moved = idx != 0 || idy != 0;
+    int32_t ia[4];
+    if (q == 1 && pin_ibox_s(self, ia)) {
+        struct qctx c;
+        float fl = (float)(ia[0] + idx), ft = (float)(ia[1] + idy), fr = (float)(ia[2] + idx), fb = (float)(ia[3] + idy);
+        pcol_touch(self);
+        if (moved) pcol_place_marks(self);
+        c.obj = obj; c.self = self; c.hit = NOONE; c.dx = idx; c.dy = idy;
+#ifndef PCOL_EXACT
+        {
+            int k = xplace_one_i(self, idx, idy, obj);
+            if (k != -2) {
+                if (k >= 0) {
+                    int32_t ib[4];
+                    int ov;
+                    if (pin_ibox_s(k, ib)) {                   /* overlap_at's integer path */
+                        ov = ia[0] + idx < ib[2] && ib[0] < ia[2] + idx && ia[1] + idy < ib[3] && ib[1] < ia[3] + idy;
+                        if (ov && (precise(self) || precise(k))) ov = precise_collision_int(self, idx, idy, ia, k, ib);
+                    } else
+                        ov = -1;
+                    if (!(pcol_search_has(k, fl, ft, fr, fb) && match(k, obj, self) &&
+                          (ov >= 0 ? ov : overlap_at(self, idx, idy, k))))
+                        k = NOONE;
+                }
+#ifdef PLAY_STATS
+                pcol_search(fl, ft, fr, fb, place_cb, &c);
+                if (c.hit != k) {
+                    fprintf(stderr, "instance_place_ixy: static-family answer %d differs from %d (%d %d)\n", k, c.hit,
+                            self, obj);
+                    abort();
+                }
+#endif
+                return k;
+            }
+        }
+#endif
+        pcol_search(fl, ft, fr, fb, place_cb, &c);
+        return c.hit;
+    }
+    return place_after_query(self, q, (double)(x + idx), (double)(y + idy), idx, idy, moved, obj);
 }
 
 #ifndef PLAY_FIXED

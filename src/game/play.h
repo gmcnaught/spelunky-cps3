@@ -407,6 +407,7 @@ uint32_t pw_static_clock(void);                     /* pworld.c (grid build): st
 void pw_watch(int i);
 uint32_t pw_watch_end(void);
 int instance_place_p(int self, double px, double py, int obj);
+int instance_place_ixy(int self, int32_t x, int32_t y, int32_t idx, int32_t idy, int obj);   /* at whole x, y + idx, idy */
 #define place_meeting_p(self, px, py, obj) (instance_place_p((self), (px), (py), (obj)) != NOONE)
 int instance_nearest_p(double px, double py, int obj);
 int instance_box_maybe(int obj, int32_t x0, int32_t x1, int32_t y0, int32_t y1);
