@@ -75,7 +75,7 @@ static void frog_create(int i, int fromgen)
 {
     struct pin *p = &PX(i);
     pen_enemy_create(i);
-    make_active(p);
+    en_make_active(p);
     setCollisionBounds(i, 4, 4, 12, 16);
     PE(p)->xVel = 0;
     PE(p)->yVel = 0;
@@ -95,7 +95,7 @@ static void mantrap_create(int i)                                    /* objects/
 {
     struct pin *p = &PX(i);
     pen_enemy_create(i);
-    make_active(p);
+    en_make_active(p);
     setCollisionBounds(i, 2, 0, sprw(i) - 2, sprh(i));
     PE(p)->xVel = N(2.5);
     pin_setispd(p, (img_t)0.5);
@@ -117,7 +117,7 @@ static void monkey_create(int i, int fromgen)                        /* objects/
     struct jx *j;
     pen_enemy_create(i);
     p->type = T_MONKEY;                                               /* "Monkey" */
-    make_active(p);
+    en_make_active(p);
     setCollisionBounds(i, 4, 6, 12, 16);
     PE(p)->xVel = 0;
     PE(p)->yVel = 0;
@@ -168,7 +168,7 @@ static int jungle_create(int i, int fromgen)
     case OBJ_oFireFrogBomb:                                          /* objects/oFireFrogBomb/Create_0.gml */
         create_item(p);
         p->type = T_OTHER;
-        make_active(p);
+        en_make_active(p);
         setCollisionBounds(i, -6, -4, 6, 8);
         PE(p)->alarm[1] = 120;
         PE(p)->heavy = 1;

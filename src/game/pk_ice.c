@@ -74,7 +74,7 @@ static void kill_count(int i)
 static void yeti_create(int i)        /* objects/oYeti/Create_0.gml (oEnemy's ran: penemy.c pen_create) */
 {
     struct pin *p = &PX(i);
-    make_active(p);
+    en_make_active(p);
     setCollisionBounds(i, 2, 0, sprw(i) - 2, sprh(i));
     PE(p)->xVel = N(2.5);
     pin_setispd(p, (img_t)0.5);
@@ -320,7 +320,7 @@ static void yeti_whipped(int i, int w)
 static void yetiking_create(int i)    /* objects/oYetiKing/Create_0.gml (oEnemy's: pen_create) */
 {
     struct pin *p = &PX(i);
-    make_active(p);
+    en_make_active(p);
     setCollisionBounds(i, 6, 0, 26, 32);
     PE(p)->xVel = N(2.5);
     pin_setispd(p, (img_t)0.25);
@@ -626,7 +626,7 @@ static void alien_create(int i)                                    /* objects/oA
 {
     struct pin *p = &PX(i);
     pen_enemy_create(i);
-    make_active(p);
+    en_make_active(p);
     setCollisionBounds(i, 2, 6, 14, 16);
     PE(p)->xVel = N(2.5);
     pin_setispd(p, (img_t)0.5);
@@ -689,7 +689,7 @@ static void alieneject_create(int i)
 {
     struct pin *p = &PX(i);
     p->type = T_NONE;
-    make_active(p);
+    en_make_active(p);
     setCollisionBounds(i, -4, -4, 4, 4);
     PE(p)->xVel = 0;
     PE(p)->yVel = N(-6);
@@ -763,7 +763,7 @@ static void alienboss_create(int i)                                /* objects/oA
 {
     struct pin *p = &PX(i);
     pen_enemy_create(i);
-    make_active(p);
+    en_make_active(p);
     setCollisionBounds(i, 0, 0, 32, 32);
     PE(p)->xVel = N(2.5);
     pin_setispd(p, (img_t)0.25);
@@ -1230,7 +1230,7 @@ static int ev_create_ice(int i, int fromgen)
         PE(p)->xVel = 0;                                               /* oMovingSolid */
         PE(p)->yVel = 0;
         PE(p)->myGrav = N(0.6);
-        make_active(p);
+        en_make_active(p);
         setCollisionBounds(i, 0, 0, 16, 8);
         p->invincible = 0;
         PE(p)->grav = NI(1);
@@ -1248,7 +1248,7 @@ static int ev_create_ice(int i, int fromgen)
     case OBJ_oCrown:                                                   /* objects/oCrown/Create_0.gml */
         create_item(p);
         p->type = T_CROWN;
-        make_active(p);
+        en_make_active(p);
         setCollisionBounds(i, -6, -6, 6, 8);
         PE(p)->cost = 999999;
         return 1;

@@ -20,8 +20,9 @@ PENHELP int sprw(int i) { int s = PX(i).spr; return s >= 0 ? spr_dim(psprite[s].
 PENHELP int sprh(int i) { int s = PX(i).spr; return s >= 0 ? spr_dim(psprite[s].h, PX(i).yscale) : 0; }
 PENHELP double dabs(double d) { return d < 0 ? -d : d; }
 PENHELP int pl(void) { return PL.idx; }
-/* oEnemy Create's active state: xVel = yVel = xAcc = yAcc = 0 */
-PENHELP void make_active(struct pin *p) { PE(p)->xVel = PE(p)->yVel = PE(p)->xAcc = PE(p)->yAcc = 0; }
+/* oEnemy Create's active state: xVel = yVel = xAcc = yAcc = 0 (en_: pobj.c has its own make_active, and penemy.c
+   shares the SH-2 build's unity TU with it, scripts/unity.sh) */
+PENHELP void en_make_active(struct pin *p) { PE(p)->xVel = PE(p)->yVel = PE(p)->xAcc = PE(p)->yAcc = 0; }
 
 /* the enemies' view test: x > xview - l and x < xview + 320 + r (same for y) */
 PENHELP int eview(int i, int l, int r)

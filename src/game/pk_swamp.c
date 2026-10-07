@@ -97,7 +97,7 @@ static int create(int i, int fromgen)
         CANBITE(p) = 1;
         return 1;
     case OBJ_oZombie:                                          /* objects/oZombie/Create_0.gml */
-        make_active(p);
+        en_make_active(p);
         setCollisionBounds(i, 4, 4, 12, 16);
         PE(p)->xVel = 0;
         PE(p)->yVel = 0;
@@ -116,7 +116,7 @@ static int create(int i, int fromgen)
             PEN(p)->swimming = 1;                              /* :33 */
         return 1;
     case OBJ_oVampire:                                         /* objects/oVampire/Create_0.gml */
-        make_active(p);
+        en_make_active(p);
         setCollisionBounds(i, 2, 0, sprw(i) - 2, sprh(i));
         PE(p)->xVel = N(2.5);
         pin_setispd(p, (img_t)0.5);

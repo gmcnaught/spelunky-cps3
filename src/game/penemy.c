@@ -70,7 +70,7 @@ int pen_create(int i, int fromgen)
     switch (p->obj) {
     case OBJ_oSnake:                                                   /* objects/oSnake/Create_0.gml */
         pen_enemy_create(i);
-        make_active(p);
+        en_make_active(p);
         setCollisionBounds(i, 2, 0, 14, 16);
         PE(p)->xVel = N(2.5);
         pin_setispd(p, (img_t)0.4);
@@ -97,7 +97,7 @@ int pen_create(int i, int fromgen)
         return 1;
     case OBJ_oSpiderHang:                                              /* objects/oSpiderHang/Create_0.gml */
         pen_enemy_create(i);
-        make_active(p);
+        en_make_active(p);
         setCollisionBounds(i, 4, 0, 12, 12);
         pin_setispd(p, (img_t)0.4);
         PE(p)->hp = 1;
@@ -107,7 +107,7 @@ int pen_create(int i, int fromgen)
     case OBJ_oSpider:                                                  /* objects/oSpider/Create_0.gml */
         pen_enemy_create(i);
         p->type = T_SPIDER;
-        make_active(p);
+        en_make_active(p);
         setCollisionBounds(i, 1, 5, 15, 16);
         PE(p)->myGrav = N(0.2);
         PEN(p)->myGravNorm = N(0.2);
@@ -118,7 +118,7 @@ int pen_create(int i, int fromgen)
         return 1;
     case OBJ_oGiantSpiderHang:                                         /* objects/oGiantSpiderHang/Create_0.gml */
         pen_enemy_create(i);
-        make_active(p);
+        en_make_active(p);
         setCollisionBounds(i, 0, 0, 32, 16);
         pin_setispd(p, (img_t)0.4);
         PE(p)->hp = 10;
@@ -132,7 +132,7 @@ int pen_create(int i, int fromgen)
     case OBJ_oGiantSpider:                                             /* objects/oGiantSpider/Create_0.gml */
         pen_enemy_create(i);
         p->type = T_GIANTSPIDER;
-        make_active(p);
+        en_make_active(p);
         setCollisionBounds(i, 2, 16, 30, 32);
         PE(p)->myGrav = N(0.3);
         PEN(p)->myGravNorm = N(0.3);
@@ -146,7 +146,7 @@ int pen_create(int i, int fromgen)
         return 1;
     case OBJ_oCaveman:                                                 /* objects/oCaveman/Create_0.gml */
         pen_enemy_create(i);
-        make_active(p);
+        en_make_active(p);
         setCollisionBounds(i, 2, 0, sprw(i) - 2, sprh(i));
         PE(p)->xVel = N(2.5);
         pin_setispd(p, (img_t)0.5);
@@ -164,7 +164,7 @@ int pen_create(int i, int fromgen)
         return 1;
     case OBJ_oSkeleton:                                                /* objects/oSkeleton/Create_0.gml */
         pen_enemy_create(i);
-        make_active(p);
+        en_make_active(p);
         setCollisionBounds(i, 2, 0, 14, 16);
         PE(p)->xVel = 0;
         pin_setispd(p, (img_t)0.5);
@@ -191,7 +191,7 @@ int pen_create(int i, int fromgen)
         create_detritus(i);
         p = &PX(i);
         pin_setispd(p, (img_t)0.3);
-        make_active(p);
+        en_make_active(p);
         setCollisionBounds(i, -4, -4, 4, 4);
         {
             double a = prandom(4);
@@ -222,7 +222,7 @@ int pen_create(int i, int fromgen)
         p->shopWall = 0;
         p->type = T_NONE;
         p->cleanDeath = 0;
-        make_active(p);
+        en_make_active(p);
         setCollisionBounds(i, -14, -16, 14, 16);
         PE(p)->myGrav = N(0.6);
         p->invincible = 1;
