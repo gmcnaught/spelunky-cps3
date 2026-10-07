@@ -31,11 +31,11 @@ if [ -n "${GRID_SHIFT:-}" ]; then { echo "#define PCOL_GRID_SHIFT $GRID_SHIFT"; 
 scripts/unity.sh "$G"                                  # the hot play files as one TU (UNITY=0: separate)
 touch "$G/stamp"
 python3 tools/drawtables.py refs/hd/src build/gen >/dev/null
-scripts/dmake.sh $T OUT=build/$R${HUD:+_hud$HUD}${DARK:+_dark$DARK}${ATTRACT:+_attract$ATTRACT}${HOLD:+_hold}/elf HUD=${HUD:-1} ROUTE=$R SEED=$S SNAPS=$RECS LEVEL=$L MONEY=$M ENEMIES=$E OPT="${OPT:--O2}" DPROF=${DPROF:-0} ${DARK:+DARK=$DARK} ${ATTRACT:+ATTRACT=$ATTRACT} ${HOLD:+HOLD=$HOLD} \
+scripts/dmake.sh $T OUT=build/$R${HUD:+_hud$HUD}${DARK:+_dark$DARK}${ATTRACT:+_attract$ATTRACT}${HOLD:+_hold}/elf HUD=${HUD:-1} ROUTE=$R SEED=$S SNAPS=$RECS LEVEL=$L MONEY=$M ENEMIES=$E OPT="${OPT:--O2}" DPROF=${DPROF:-0} ${SPRDMA:+SPRDMA=$SPRDMA} ${DARK:+DARK=$DARK} ${ATTRACT:+ATTRACT=$ATTRACT} ${HOLD:+HOLD=$HOLD} \
   >"$O/make.log" 2>&1 || { tail -20 "$O/make.log"; exit 1; }
 # HOLD=n (jtcps3 frame check, scripts/jt_frames.sh): the SNAPS frames are held n frames each by the program itself;
 # the MiSTer set (zip + MRA) is built and kept in $O/elf/mister
-[ -n "$HOLD" ] && { scripts/dmake.sh $T OUT=build/$R${HUD:+_hud$HUD}${DARK:+_dark$DARK}${ATTRACT:+_attract$ATTRACT}_hold/elf HUD=${HUD:-1} ROUTE=$R SEED=$S SNAPS=$RECS LEVEL=$L MONEY=$M ENEMIES=$E OPT="${OPT:--O2}" DPROF=${DPROF:-0} ${ATTRACT:+ATTRACT=$ATTRACT} HOLD=$HOLD TITLE="Spelunky frame check $R" mister >>"$O/make.log" 2>&1 || { tail -20 "$O/make.log"; exit 1; }; }
+[ -n "$HOLD" ] && { scripts/dmake.sh $T OUT=build/$R${HUD:+_hud$HUD}${DARK:+_dark$DARK}${ATTRACT:+_attract$ATTRACT}_hold/elf HUD=${HUD:-1} ROUTE=$R SEED=$S SNAPS=$RECS LEVEL=$L MONEY=$M ENEMIES=$E OPT="${OPT:--O2}" DPROF=${DPROF:-0} ${SPRDMA:+SPRDMA=$SPRDMA} ${ATTRACT:+ATTRACT=$ATTRACT} HOLD=$HOLD TITLE="Spelunky frame check $R" mister >>"$O/make.log" 2>&1 || { tail -20 "$O/make.log"; exit 1; }; }
 n=$(echo "$RECS" | tr ',' '\n' | grep -c .)
 GAME_OUT="$O/out.txt" GAME_NSNAPS=$n scripts/mame.sh sfiii3na -rompath "$O/elf/mame" -skip_gameinfo -nothrottle -sound none \
   -video none -seconds_to_run ${SECONDS_TO_RUN:-20000} -cfg_directory "$O/w/cfg" -nvram_directory "$O/w/nvram" \
