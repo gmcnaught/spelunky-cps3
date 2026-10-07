@@ -692,10 +692,10 @@ static void jaws_step(int i)
     /* :34 dist = point_distance(x, y, oPlayer1.x, oPlayer1.y): not read */
     if (PE(p)->status == J_IDLE) {                             /* :36 */
         if (DEQ(DIR(p), 0)) {
-            if (collision_point_any_at(i, 18, 16, OBJ_oWater) && !CP(X(i) + 18, Y(i) + 16, OBJ_oSolid)) moveTo(i, N(2), 0, 0, 0);
+            if (collision_point_any_at(i, 18, 16, OBJ_oWater) && !collision_point_any_at(i, 18, 16, OBJ_oSolid)) moveTo(i, N(2), 0, 0, 0);
             else if (collision_rect_p(X(i) - 32, Y(i), X(i), Y(i) + 32, OBJ_oSolid, 0, NOONE) == NOONE) jaws_turn_left(i);
         } else {
-            if (collision_point_any_at(i, -2, 16, OBJ_oWater) && !CP(X(i) - 2, Y(i) + 16, OBJ_oSolid)) moveTo(i, N(-2), 0, 0, 0);
+            if (collision_point_any_at(i, -2, 16, OBJ_oWater) && !collision_point_any_at(i, -2, 16, OBJ_oSolid)) moveTo(i, N(-2), 0, 0, 0);
             else if (collision_rect_p(X(i) + 16, Y(i), X(i) + 48, Y(i) + 32, OBJ_oSolid, 0, NOONE) == NOONE)
                 jaws_turn_right(i);
         }
@@ -720,7 +720,7 @@ static void jaws_step(int i)
                     turn = 1;
                 }
             } else {
-                if (p->spr == GSPR_sJawsLeft && !CP(X(i) - 2, Y(i) + 16, OBJ_oSolid)) {
+                if (p->spr == GSPR_sJawsLeft && !collision_point_any_at(i, -2, 16, OBJ_oSolid)) {
                     jaws_turn_right(i);
                     turn = 1;
                 }
@@ -761,7 +761,7 @@ static void zombie_step(int i)
     moveTo(i, PE(p)->xVel, PE(p)->yVel, 0, 0);
     PE(p)->yVel += PE(p)->myGrav;
     if (NGT(PE(p)->yVel, PEN(p)->yVelLimit)) PE(p)->yVel = PEN(p)->yVelLimit;
-    if (CP(X(i) + 8, Y(i) + 8, OBJ_oSolid)) PE(p)->hp = -999;
+    if (collision_point_any_at(i, 8, 8, OBJ_oSolid)) PE(p)->hp = -999;
     if (PE(p)->hp < 1) {                                       /* :12 */
         scrCreateBlood(i, p->x + PI(8), p->y + PI(8), 1);
         bones_and_skull(PX(i).x + PI(8), PX(i).y + PI(8), 0);
@@ -847,13 +847,13 @@ static void vampire_step(int i)
     if (!PE(p)->held && PE(p)->status != V_HANG && PE(p)->status != V_FLY) PE(p)->yVel += PE(p)->myGrav;
     if (NGT(PE(p)->yVel, PEN(p)->yVelLimit)) PE(p)->yVel = PEN(p)->yVelLimit;
     if (PE(p)->status >= E_STUNNED) {                          /* :22 */
-        if (CP(X(i) + 8, Y(i) + 12, OBJ_oSolid)) {
+        if (collision_point_any_at(i, 8, 12, OBJ_oSolid)) {
             pin_create(p->x + PI(8), p->y + PI(8), OBJ_oSmokePuff);
             snd_play(SND_xcavemandie);                         /* :27 */
             pin_destroy(i);
         }
     } else if (!PE(p)->held) {
-        if (CP(X(i) + 8, Y(i) + 8, OBJ_oSolid)) {
+        if (collision_point_any_at(i, 8, 8, OBJ_oSolid)) {
             pin_create(p->x + PI(8), p->y + PI(8), OBJ_oSmokePuff);
             snd_play(SND_xcavemandie);                         /* :36 */
             pin_destroy(i);
@@ -876,7 +876,7 @@ static void vampire_step(int i)
     switch (PE(p)->status) {
     case V_IDLE:                                               /* :57 */
         PEN(p)->bounced = 0;
-        if (PE(p)->colBot && (CP(X(i) - 1, Y(i), OBJ_oSolid) || CP(X(i) + 16, Y(i), OBJ_oSolid))) {
+        if (PE(p)->colBot && (collision_point_any_at(i, -1, 0, OBJ_oSolid) || collision_point_any_at(i, 16, 0, OBJ_oSolid))) {
             PE(p)->yVel = N(-6);
             PE(p)->xVel = PE(p)->facing == E_LEFT ? N(-1) : N(1);
             PE(p)->counter -= 10;
@@ -902,7 +902,7 @@ static void vampire_step(int i)
             PE(p)->xVel = 0;
         } else if (PE(p)->facing == E_LEFT) {
             PE(p)->xVel = N(-1.5);
-            if (!CP(X(i) - 1, Y(i) + 16, OBJ_oSolid)) {
+            if (!collision_point_any_at(i, -1, 16, OBJ_oSolid)) {
                 PE(p)->status = V_IDLE;
                 PE(p)->counter = (int16_t)RAND(20, 50);
                 PE(p)->xVel = 0;
@@ -910,7 +910,7 @@ static void vampire_step(int i)
             }
         } else if (PE(p)->facing == E_RIGHT) {
             PE(p)->xVel = N(1.5);
-            if (!CP(X(i) + 16, Y(i) + 16, OBJ_oSolid)) {
+            if (!collision_point_any_at(i, 16, 16, OBJ_oSolid)) {
                 PE(p)->status = V_IDLE;
                 PE(p)->counter = (int16_t)RAND(20, 50);
                 PE(p)->xVel = 0;
@@ -928,9 +928,9 @@ static void vampire_step(int i)
             if (isCollisionTop(i, 1)) PE(p)->facing = E_LEFT;
             else PE(p)->status = V_BOUNCE;
         } else if (PE(p)->facing == E_LEFT) {
-            if (!CP(X(i) - 8, Y(i) + 16, OBJ_oSolid)) PE(p)->status = V_BOUNCE;
+            if (!collision_point_any_at(i, -8, 16, OBJ_oSolid)) PE(p)->status = V_BOUNCE;
         } else if (PE(p)->facing == E_RIGHT) {
-            if (!CP(X(i) + 8, Y(i) + 16, OBJ_oSolid)) PE(p)->status = V_BOUNCE;
+            if (!collision_point_any_at(i, 8, 16, OBJ_oSolid)) PE(p)->status = V_BOUNCE;
         }
         if (DLT(dabs(plx - X(i)), 32) && DLT(ply, Y(i) + 8) && !collision_point_any_at(i, 8, 8, OBJ_oWater))
             PE(p)->status = V_FLY;
@@ -993,7 +993,7 @@ static void vampire_step(int i)
     case V_HANG:                                               /* :262 */
         PE(p)->xVel = 0;
         PE(p)->yVel = 0;
-        if (!PL.dead && !PL.swimming && ((DLT(dist, 90) && DGT(ply, Y(i) + 16)) || !CP(X(i) + 8, Y(i) - 1, OBJ_oSolid))) {
+        if (!PL.dead && !PL.swimming && ((DLT(dist, 90) && DGT(ply, Y(i) + 16)) || !collision_point_any_at(i, 8, -1, OBJ_oSolid))) {
             PE(p)->status = V_FLY;
             snd_play(SND_xbat);                                /* :271 */
         }
@@ -1012,7 +1012,7 @@ static void vampire_step(int i)
                 if (CP(x + 8, y + 16, OBJ_oWater) && DGT(DIR(p), 180) && DLT(DIR(p), 360)) DIR(p) = 90;
                 if (!CP(x, y + 12, OBJ_oWater) || DLT(ply, y)) vampire_fly(p, 2, DIR(p));
             } else {
-                if (CP(X(i) + 8, Y(i) - 1, OBJ_oSolid)) PE(p)->status = V_HANG;
+                if (collision_point_any_at(i, 8, -1, OBJ_oSolid)) PE(p)->status = V_HANG;
                 else {
                     DIR(p) = 90;
                     vampire_fly(p, 2, DIR(p));
@@ -1023,7 +1023,7 @@ static void vampire_step(int i)
         } else {                                               /* :333 */
             PE(p)->xVel = 0;
             PE(p)->yVel = 0;
-            if (CP(X(i) + 8, Y(i) - 1, OBJ_oSolid)) PE(p)->status = V_HANG;
+            if (collision_point_any_at(i, 8, -1, OBJ_oSolid)) PE(p)->status = V_HANG;
             else {
                 DIR(p) = 90;
                 vampire_fly(p, 1, DIR(p));
@@ -1252,7 +1252,7 @@ int pswamp_ev(int ev, int i, int arg)
             return 1;
         case OBJ_oGrave:                                       /* objects/oGrave/Step_0.gml */
             if (eview(i, 20, 4) && !pveg_quiet(i)) {           /* (oTree's test: pk_jungle.c's notes) */
-                if (!CP(X(i), Y(i) + 16, OBJ_oSolid)) pin_destroy(i);
+                if (!collision_point_any_at(i, 0, 16, OBJ_oSolid)) pin_destroy(i);
                 else pveg_note_solid(i);
             }
             return 1;
