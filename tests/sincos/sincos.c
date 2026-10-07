@@ -26,8 +26,6 @@ static double sc2_eps_s = 0x1p-86, sc2_eps_c = 0x1p-86;
 
 #pragma STDC FP_CONTRACT OFF
 
-double patan(double x) { return x; }                /* pscript.c's (patan2 only; unused here) */
-
 #define NE 4
 static const double EPS[NE] = { 0x1p-86, 0x1p-92, 0x1p-98, 0x1p-104 };
 

@@ -1,5 +1,5 @@
-/* Real functions the enemies use (no libm on the SH-2): sqrt, sin, cos, atan2, point_distance, point_direction.
- * sin / cos / atan are fdlibm's (s_sin.c, s_cos.c, k_sin.c, k_cos.c, e_rem_pio2.c medium path, e_atan2.c); the
+/* Real functions the enemies use (no libm on the SH-2): sqrt, sin, cos, atan2f, point_distance, point_direction.
+ * sqrt and sin / cos are correctly rounded (the runner's glibc sin / cos are); atan2f is glibc's (fdlibm float). The
  * runner calls its C library's, so a last-bit difference shows as an xVel / yVel difference in tools/playcmp.py. */
 #include "pmath.h"
 #ifdef PLAY_STATS
@@ -119,149 +119,8 @@ double psqrt(double d)
     return s;
 }
 
-/* ---- fdlibm sin / cos ---------------------------------------------------------------------------------- */
-static const double
-    S1 = -1.66666666666666324348e-01, S2 = 8.33333333332248946124e-03, S3 = -1.98412698298579493134e-04,
-    S4 = 2.75573137070700676789e-06, S5 = -2.50507602534068634195e-08, S6 = 1.58969099521155010221e-10,
-    C1 = 4.16666666666666019037e-02, C2 = -1.38888888888741095749e-03, C3 = 2.48015872894767294178e-05,
-    C4 = -2.75573143513906633035e-07, C5 = 2.08757232129817482790e-09, C6 = -1.13596475577881948265e-11;
-
-static double k_sin(double x, double y, int iy)
-{
-    double z, r, v;
-    int32_t ix = hiw(x) & 0x7fffffff;
-    if (ix < 0x3e400000 && (int)x == 0) return x;
-    z = x * x;
-    v = z * x;
-    r = S2 + z * (S3 + z * (S4 + z * (S5 + z * S6)));
-    if (iy == 0) return x + v * (S1 + z * r);
-    return x - ((z * (0.5 * y - v * r) - y) - v * S1);
-}
-
-static double k_cos(double x, double y)
-{
-    double a, hz, z, r, qx;
-    int32_t ix = hiw(x) & 0x7fffffff;
-    if (ix < 0x3e400000 && (int)x == 0) return 1.0;
-    z = x * x;
-    r = z * (C1 + z * (C2 + z * (C3 + z * (C4 + z * (C5 + z * C6)))));
-    if (ix < 0x3FD33333) return 1.0 - (0.5 * z - (z * r - x * y));
-    if (ix > 0x3fe90000) qx = 0.28125;
-    else qx = mkd(ix - 0x00200000, 0);
-    hz = 0.5 * z - qx;
-    a = 1.0 - qx;
-    return a - (hz - (z * r - x * y));
-}
-
-static const double
-    invpio2 = 6.36619772367581382433e-01, pio2_1 = 1.57079632673412561417e+00, pio2_1t = 6.07710050650619224932e-11,
-    pio2_2 = 6.07710050630396597660e-11, pio2_2t = 2.02226624879595063154e-21, pio2_3 = 2.02226624871116645580e-21,
-    pio2_3t = 8.47842766036889956997e-32;
-
-/* e_rem_pio2.c for |x| < 2^19 * pi/2 (the medium case; the enemies' angles are below 2 pi) */
-static int rem_pio2(double x, double *y)
-{
-    double z, w, t, r, fn;
-    int32_t ix = hiw(x) & 0x7fffffff, hx = hiw(x);
-    int n, i, j;
-    if (ix <= 0x3fe921fb) { y[0] = x; y[1] = 0; return 0; }
-    if (ix < 0x4002d97c) {                                 /* |x| < 3pi/4 */
-        if (hx > 0) {
-            z = x - pio2_1;
-            if (ix != 0x3ff921fb) { y[0] = z - pio2_1t; y[1] = (z - y[0]) - pio2_1t; }
-            else { z -= pio2_2; y[0] = z - pio2_2t; y[1] = (z - y[0]) - pio2_2t; }
-            return 1;
-        }
-        z = x + pio2_1;
-        if (ix != 0x3ff921fb) { y[0] = z + pio2_1t; y[1] = (z - y[0]) + pio2_1t; }
-        else { z += pio2_2; y[0] = z + pio2_2t; y[1] = (z - y[0]) + pio2_2t; }
-        return -1;
-    }
-    t = x < 0 ? -x : x;
-    n = (int)(t * invpio2 + 0.5);
-    fn = (double)n;
-    r = t - fn * pio2_1;
-    w = fn * pio2_1t;
-    j = ix >> 20;
-    y[0] = r - w;
-    i = j - ((hiw(y[0]) >> 20) & 0x7ff);
-    if (i > 16) {
-        t = r;
-        w = fn * pio2_2;
-        r = t - w;
-        w = fn * pio2_2t - ((t - r) - w);
-        y[0] = r - w;
-        i = j - ((hiw(y[0]) >> 20) & 0x7ff);
-        if (i > 49) {
-            t = r;
-            w = fn * pio2_3;
-            r = t - w;
-            w = fn * pio2_3t - ((t - r) - w);
-            y[0] = r - w;
-        }
-    }
-    y[1] = (r - y[0]) - w;
-    if (hx < 0) { y[0] = -y[0]; y[1] = -y[1]; return -n; }
-    return n;
-}
-
-double psin(double x)
-{
-    double y[2];
-    int n;
-    if ((hiw(x) & 0x7fffffff) <= 0x3fe921fb) return k_sin(x, 0, 0);
-    n = rem_pio2(x, y);
-    switch (n & 3) {
-    case 0: return k_sin(y[0], y[1], 1);
-    case 1: return k_cos(y[0], y[1]);
-    case 2: return -k_sin(y[0], y[1], 1);
-    default: return -k_cos(y[0], y[1]);
-    }
-}
-
-double pcos(double x)
-{
-    double y[2];
-    int n;
-    if ((hiw(x) & 0x7fffffff) <= 0x3fe921fb) return k_cos(x, 0);
-    n = rem_pio2(x, y);
-    switch (n & 3) {
-    case 0: return k_cos(y[0], y[1]);
-    case 1: return -k_sin(y[0], y[1], 1);
-    case 2: return -k_cos(y[0], y[1]);
-    default: return k_sin(y[0], y[1], 1);
-    }
-}
-
-/* ---- fdlibm atan2 (e_atan2.c) on pscript.c's atan ------------------------------------------------------- */
-double patan2(double y, double x)
-{
-    static const double pi_o_2 = 1.5707963267948965580E+00,
-                        pi = 3.1415926535897931160E+00, pi_lo = 1.2246467991473531772E-16;
-    double z;
-    int32_t hx = hiw(x), ix = hx & 0x7fffffff, hy = hiw(y), iy = hy & 0x7fffffff, k, m;
-    uint32_t lx = low(x), ly = low(y);
-    if (((hx - 0x3ff00000) | (int32_t)lx) == 0) return patan(y);  /* x = 1.0 */
-    m = ((hy >> 31) & 1) | ((hx >> 30) & 2);
-    if ((iy | (int32_t)ly) == 0) {
-        switch (m) {
-        case 0: case 1: return y;
-        case 2: return pi;
-        default: return -pi;
-        }
-    }
-    if ((ix | (int32_t)lx) == 0) return hy < 0 ? -pi_o_2 : pi_o_2;
-    k = (iy - ix) >> 20;
-    if (k > 60) z = pi_o_2 + 0.5 * pi_lo;
-    else if (hx < 0 && k < -60) z = 0.0;
-    else z = patan((y / x) < 0 ? -(y / x) : (y / x));
-    switch (m) {
-    case 0: return z;
-    case 1: return -z;
-    case 2: return pi - (z - pi_lo);
-    default: return (z - pi_lo) - pi;
-    }
-}
+/* 2 / pi (cr_trig_dd, cr_reduce) */
+static const double invpio2 = 6.36619772367581382433e-01;
 
 /* ---- sin / cos correctly rounded (the runner's glibc sin / cos are; fdlibm's and the host's miss by an ulp:
    build/trace/p5_spider_s121, the bat's velocities): reduction by a three-part pi / 2 and the Taylor series in
@@ -325,21 +184,12 @@ static ddbl dd_sincos(ddbl x, int odd)
 
 /* the double-double series of the reduced argument, rounded once: the reference (tests/sincos); psin_cr and pcos_cr
    below give its bits through sincos_r, which reaches this series only when its two error tests both fail */
+static ddbl cr_reduce(double a, int *q);
 static __attribute__((unused)) double cr_trig_dd(double a, int want_sin)
 {
-    static const double P1 = 1.57079632673412561417e+00, P2 = 6.07710050630396597660e-11,
-                        P3 = 2.02226624871116645580e-21, P4 = 8.47842766036889956997e-32;
-    double k = (double)(int32_t)(a * invpio2 + (a < 0 ? -0.5 : 0.5));
-    ddbl r, t;
+    ddbl t;
     int q;
-    r = two_sum(a, -k * P1);                                   /* k * P1 exact (P1: 33 bits, |k| small) */
-    r = dd_add(r, two_sum(-k * P2, 0));                        /* k * P2 exact */
-    two_prod(-k, P3, &t.hi, &t.lo);
-    r = dd_add(r, t);
-    t.hi = -k * P4;
-    t.lo = 0;
-    r = dd_add(r, t);
-    q = ((int)k) & 3;
+    ddbl r = cr_reduce(a, &q);
     if (want_sin) {
         switch (q) {
         case 0: t = dd_sincos(r, 1); break;
@@ -499,8 +349,8 @@ static ddbl cr_reduce(double a, int *q)
                         P3 = 2.02226624871116645580e-21, P4 = 8.47842766036889956997e-32;
     double k = (double)(int32_t)(a * invpio2 + (a < 0 ? -0.5 : 0.5));
     ddbl r, t;
-    r = two_sum(a, -k * P1);
-    r = dd_add(r, two_sum(-k * P2, 0));
+    r = two_sum(a, -k * P1);                                   /* k * P1 exact (P1: 33 bits, |k| small) */
+    r = dd_add(r, two_sum(-k * P2, 0));                        /* k * P2 exact */
     two_prod(-k, P3, &t.hi, &t.lo);
     r = dd_add(r, t);
     t.hi = -k * P4;
@@ -795,7 +645,7 @@ double point_distance_d(double x1, double y1, double x2, double y2)
 /* point_direction in single precision (Observed: build/trace/p5_spider_s121 records 176 and 180, the bat's xVel /
    yVel = cos / -sin of 191.44105529785156 and 210.46554565429688): a = atan2f(y2 - y1, x2 - x1),
    dd = 180.f * a / (float)pi, then dd <= 0 ? -dd : 360.f - dd, all in float (the double formula and the float
-   one with a * (180 / pi) each miss one of the two). atan2f here: fdlibm's double atan2 rounded to float */
+   one with a * (180 / pi) each miss one of the two). atan2f here: patan2f, glibc's (fdlibm float) */
 double point_direction_d(double x1, double y1, double x2, double y2)
 {
     float a = patan2f((float)(y2 - y1), (float)(x2 - x1));
