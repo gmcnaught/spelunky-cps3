@@ -57,4 +57,5 @@ PSH2_OUT="$O/sh2.txt" scripts/mame.sh sfiii3na -rompath "$E/mame" -skip_gameinfo
   -snapshot_directory "$O/w/snap" -diff_directory "$O/w/diff" -state_directory "$O/w/sta" -inipath "$O/w" \
   -autoboot_script scripts/lua/playsh2.lua >"$O/mame.log" 2>&1 || true
 docker run --rm -v "$PWD":/p -w /p cps3-dev:latest sh-elf-nm -n $E/main.elf > "$O/nm.txt"
-PSH2_G=$G PSH2_JOBS=${ROUTES:+$E/jobs/jobs.h}${ROUTES:-$B/jobs.h} python3 $T/report.py "$O/host.txt" "$O/sh2.txt" "$O/nm.txt"
+PJ=$B/jobs.h; [ -n "${ROUTES:-}" ] && PJ=$E/jobs/jobs.h       # the job table the build used
+PSH2_G=$G PSH2_JOBS=$PJ python3 $T/report.py "$O/host.txt" "$O/sh2.txt" "$O/nm.txt"

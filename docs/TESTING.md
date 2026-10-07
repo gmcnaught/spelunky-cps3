@@ -48,7 +48,23 @@ drawtab.* with the same content) and the mdiff images game_check writes next to 
 
 ## jtcps3 timing runs
 
-Measured on jtcps3 (2026-10-06, main 86b81a5, `scripts/jt_time.sh`; times from load to the screenshot that read the
+**Link: NC by default.** Since 2026-10-07 `scripts/playsh2_jt.sh` links with `NC=nc_robust.txt` unless told
+otherwise (`NC=none`: the plain cached link; `LAYOUT=1` builds stay plain unless NC is given): the link the game
+build and the release use, and the one every jtcps3 table in docs/ assumes. A/B on f800d8e (jtcps3, step means, K):
+
+| Route | NC, default mode (.81) | NC, JTFAST (.62) | plain link, JTFAST (.62) |
+|---|---|---|---|
+| p5_lush_l5s11 | 378.8 | 377.3 | 415.5 |
+| p5_lush_l6s23 | 353.7 | 352.7 | 387.7 |
+| c_swamp_drain | 555.8 | 554.9 | 599.0 |
+| c_swamp_swim | 437.2 | 436.2 | 471.9 |
+| c_swamp_piranha | 347.6 | 346.8 | 379.1 |
+| c_swamp_grave | 531.2 | 531.8 | 581.0 |
+
+JTFAST against the default mode: within 0.4 % (two boards); the plain link: 8-10 % slower. The default-mode run
+took 621 s on jtcps3, the JTFAST run 126 s (6 routes, JT_NOGEN).
+
+Measured before the NC default (plain link), on jtcps3 (2026-10-06, main 86b81a5, `scripts/jt_time.sh`; times from load to the screenshot that read the
 results, 30 s polls, so within 30 s above the true time):
 
 | Set | Board | Result | Time |

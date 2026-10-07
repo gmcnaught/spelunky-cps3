@@ -60,7 +60,11 @@ LO=; [ "${LAYOUT:-0}" = 1 ] && { python3 $T/mklayout.py $T/hot.txt $J/link$V.ld;
 # NC=<list> (relative to tests/playsh2, e.g. NC=nc_robust.txt): code and arrays read past the SH-2 cache
 # (tests/playsh2/mknc.py, docs/ICACHE.md); MAME then runs the set with -nodrc (MAME 0.264's SH-2 recompiler does not
 # run code from SIMM 1's cache-through mirror)
-ND=; [ -n "${NC:-}" ] && { LO="NC=$NC"; ND=-nodrc; }
+# default NC=nc_robust.txt: the link the game build and the release use (tests/nc.mk), which every jtcps3 table in
+# docs assumes; the plain cached link measured 8-10 % slower on the swamp / lush routes (TESTING.md). NC=none: plain
+[ "${LAYOUT:-0}" = 1 ] && NC=${NC:-none}                 # LAYOUT=1: its own link (NC only when given)
+NC=${NC:-nc_robust.txt}; [ "$NC" = none ] && NC=
+ND=; [ -n "$NC" ] && { LO="NC=$NC"; ND=-nodrc; }
 VN=$(echo "${V:-BASE}" | tr a-z_ A-Z-)${FASTD:+-FAST}
 scripts/dmake.sh $T W=$BD OUT=$BD/jt/elf$V JT=1 SOFTFP=1 OPT="${OPT:--O2}" OSFILES="${OSFILES:-}" $LO JTFAST=${JTFAST:-0} JTNAME=$VN >/dev/null
 scripts/dmake.sh $T W=$BD OUT=$BD/jt/elf$V JT=1 SOFTFP=1 OPT="${OPT:--O2}" OSFILES="${OSFILES:-}" $LO JTFAST=${JTFAST:-0} JTNAME=$VN PROG=pjt$V \
