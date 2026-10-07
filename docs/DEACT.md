@@ -98,7 +98,10 @@ seed 863, TRACE_DEACT=32 with TRACE_EVLOG / TRACE_TREE probes)
 4. Cost: MAME SOFTFP and jtcost on c_swamp_drain, c_swamp_swim, p5_lush_l5s11 / l6s23, p5_caveman.
 5. The full retrace (build/retrace_cmds.sh with TRACE_DEACT=32) and all gates: a lead decision.
 
-## 5. Results (branch deact2, 2026-10-06; main 5e7974c + the deact commits)
+## 5. Results (branch deact2, 2026-10-06)
+
+First on main 5e7974c, then rebased onto 1f1815a (swamp3, totem, spikes, sprdma, piranha4 merged): the exactness and
+grid results below are the same on both bases; the costs are given for both (5.1 on 1f1815a).
 
 **Exactness.** 15 routes regenerated with TRACE_DEACT=32 as build/trace/dz_<route>_s<seed> (build/retrace_cmds.sh's
 commands; existing traces untouched). The exact build with PLAY_DEACT=32 (build/host_dz/playhost) is record-equal
@@ -115,7 +118,7 @@ order: the grid's newest first against the tree's order after an activation's re
 at 235; RNG equal throughout. Without deact the route passes both. Needs an accept line after the retrace:
 `c_jungle_firefrog_s296 115 spike blood order (collision order after an activation's re-insert); RNG equal`.
 
-**MAME SOFTFP** (playsh2 ROUTES="c_swamp_drain c_swamp_swim p5_lush_l5s11 p5_lush_l6s23 p5_caveman", checksums
+**MAME SOFTFP, 5e7974c** (playsh2 ROUTES="c_swamp_drain c_swamp_swim p5_lush_l5s11 p5_lush_l6s23 p5_caveman", checksums
 2349 / 2349 equal), route mean step:
 
 | Route | PLAY_DEACT 0 | PLAY_DEACT 32 | change |
@@ -127,7 +130,7 @@ at 235; RNG equal throughout. Without deact the route passes both. Needs an acce
 | p5_caveman | 99,638 | 96,815 | -2.8 % |
 | all 2344 steps | 124,664 | 110,168 | -11.6 % |
 
-**jtcost** (fit constants; one call over the five routes, steps by record count as jtcost.sh numbers them):
+**jtcost, 5e7974c** (fit constants; one call over the five routes, steps by record count as jtcost.sh numbers them):
 
 | Step | instructions | model jtcps3 | change |
 |---|---|---|---|
@@ -140,3 +143,48 @@ at 235; RNG equal throughout. Without deact the route passes both. Needs an acce
 | p5_caveman 2196 (step 138) | 108,789 -> 101,771 | 425,119 -> 393,478 | -7.4 % |
 
 The jtcps3 run on .62 was not made (the lead hands out the device).
+
+### 5.1 Costs on 1f1815a (the speed branches merged)
+
+The merged branches already cut the off-view enemies' cost (swamp3's off-view pre-check, piranha4's idle piranha
+path), so deactivation saves less than on 5e7974c.
+
+MAME SOFTFP (same routes, checksums 2349 / 2349 equal), route mean step with step 1:
+
+| Route | PLAY_DEACT 0 | PLAY_DEACT 32 | change |
+|---|---|---|---|
+| c_swamp_drain | 147,776 | 138,944 | -6.0 % |
+| c_swamp_swim | 114,598 | 108,690 | -5.2 % |
+| p5_lush_l5s11 | 113,155 | 102,190 | -9.7 % |
+| p5_lush_l6s23 | 100,826 | 93,084 | -7.7 % |
+| p5_caveman | 98,375 | 96,276 | -2.1 % |
+| all 2344 steps | 113,735 | 105,971 | -6.8 % |
+
+jtcost fit, the same steps:
+
+| Step | instructions | model jtcps3 | change |
+|---|---|---|---|
+| c_swamp_drain 61 | 105,200 -> 86,881 | 400,135 -> 343,852 | -14.1 % |
+| c_swamp_drain 161 | 196,568 -> 179,731 | 779,390 -> 711,413 | -8.7 % |
+| c_swamp_swim 571 | 161,856 -> 143,043 | 615,379 -> 566,444 | -8.0 % |
+| c_swamp_swim 721 | 121,922 -> 98,781 | 472,610 -> 402,662 | -14.8 % |
+| p5_lush_l5s11 991 | 117,460 -> 104,891 | 447,198 -> 410,466 | -8.2 % |
+| p5_lush_l6s23 1628 | 120,243 -> 103,948 | 447,746 -> 403,287 | -9.9 % |
+| p5_caveman 2196 | 103,713 -> 98,123 | 404,903 -> 394,660 | -2.5 % |
+
+**Projected jtcps3 route means** (with step 1; not measured on 1f1815a). Base: the MAME mean times the route's last
+measured jtcps3 / MAME ratio (drain 763.2 / 167.5 = 4.56, swim 611.3 / 131.2 = 4.66, l5s11 504.4 / 120.0 = 4.20,
+l6s23 481.5 / 111.5 = 4.32: cc1b94f's jtcps3 run, LUSH.md 10.4, against 5e7974c's MAME, the same game code;
+caveman 433.0 / 99.6 = 4.35, totem's run). A: the same ratio for the deact build (its MAME change). B: the base
+scaled by the route's jtcost change (mean of its steps). Deactivation removes whole instances' code and data
+from the step, so B, which counts the misses, is the likelier one.
+
+| Route | base (est.) | A: MAME change | B: jtcost change | vs 0.525 M |
+|---|---|---|---|---|
+| c_swamp_drain | 674 K | 634 K | 597 K | over (+14-21 %) |
+| c_swamp_swim | 534 K | 507 K | 473 K | met |
+| p5_lush_l5s11 | 475 K | 429 K | 436 K | met |
+| p5_lush_l6s23 | 436 K | 402 K | 393 K | met |
+| p5_caveman | 428 K | 419 K | 417 K | met |
+
+A jtcps3 run on .62 (playsh2_jt.sh with DEACT=32) would replace these.
