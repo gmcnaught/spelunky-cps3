@@ -50,7 +50,7 @@ static int pg_bsearch(rk k, const rk *bd, int n)
     return lo;
 }
 
-/* the unclamped cell span of a rectangle (x0, y0, x1, y1), then clamped; returns 1 when it fits a cell entry */
+/* the cell span of a rectangle (x0, y0, x1, y1), clamped to the grid */
 static void pg_cells(const rk *r, int w, int *c)
 {
     if (w) {

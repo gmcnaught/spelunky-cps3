@@ -6,9 +6,9 @@
 #endif
 #include "../snd/sndgame.h"                     /* the GML sound calls (src/snd) */
 #include "pmsg.h"                                /* the HUD messages (trMessages) */
-#include "pcontent.h"
+#include "pcontent.h"                            /* P7 content packages (docs/CONTENT.md) */
 #include "prand.h"                              /* prandom: u * 2^-32 * n from the bits */
-#include "precip.h"                             /* moveTo: round(1 / frac(|v|)) from the bits */                            /* P7 content packages (docs/CONTENT.md) */
+#include "precip.h"                             /* moveTo: round(1 / frac(|v|)) from the bits */
 
 /* (double)u * (1.0 / 4294967296.0) * n, from u's bits (prand.h: the same double) */
 double prandom(double n)

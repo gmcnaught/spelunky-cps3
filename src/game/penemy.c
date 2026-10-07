@@ -11,11 +11,11 @@
 #include "../snd/sndgame.h"                     /* the GML sound calls (src/snd) */
 #include "pmath.h"
 #include "pcontent.h"                            /* P7 content packages (docs/CONTENT.md) */
-#include "pcol.h"
+#include "pcol.h"                                /* pcol_query / pcol_touch (line_solid) */
 #ifdef PLAY_STATS
 #include <stdio.h>
 #include <stdlib.h>
-#endif                                /* pcol_query / pcol_touch (line_solid) */
+#endif
 
 enum { E_STUNNED = 98, E_DEAD = 99, E_LEFT = 0, E_RIGHT = 1 };
 
@@ -353,7 +353,7 @@ int pen_hit_common(int e, int kind)
     return 0;
 }
 
-/* returns 0 if the instance is gone */
+/* objects/oEnemy/Step_0.gml */
 void pen_parent_step(int i)
 {
     struct pin *p = &PX(i);

@@ -2693,18 +2693,8 @@ int collision_line_i(int32_t x1, int32_t y1, int32_t x2, int32_t y2, int obj, in
     return line_run(&c, q, 0);                  /* qrect: (float)min - 1.0f is these exactly */
 }
 
-/* collision_line_i(...) != NOONE (isCollision*: only whether some instance is hit). pcol_query flushes the tree
-   (UpdateTree) as for collision_line_i, so the tree's history is the same; with the tree (q == 1) the search only
-   picks which hit comes first, and every alive instance of obj is in the tree with its current box then. For the
-   oSolid family the solid grid holds the same instances (alive, with a sprite: those without one never hit), so it
-   answers whether one is hit with the same line_hit test. A box of [l, r] x [t, b] in cell (cx, cy) reaches cell
-   cx + gmaxw at most; line_hit needs l <= hx and r > lx (and in y), so the hits are in the cells
-   (lx >> 4) - gmaxw .. hx >> 4 (clamped as the cells are). q == 2 keeps the creation-order scan (its touches) */
-#ifdef PLAY_STATS
-#include <stdio.h>
-#include <stdlib.h>
-#endif
-/* the grid scan: a box of [l, r] x [t, b] in cell (cx, cy) reaches cell cx + gmaxw at most; line_hit needs l <= hx
+/* the grid scan (whether some instance of obj is hit, as collision_line_i(...) != NOONE: the oSolid family's grid
+   holds its alive instances with a sprite, those without one never hit): a box of [l, r] x [t, b] in cell (cx, cy) reaches cell cx + gmaxw at most; line_hit needs l <= hx
    and r > lx (and in y), so the hits are in the cells (lx >> 4) - gmaxw .. hx >> 4 (clamped as the cells are) */
 static int line_scan(struct qctx *c, int obj, int notme_self)
 {
@@ -2723,7 +2713,7 @@ static int line_scan(struct qctx *c, int obj, int notme_self)
     return 0;
 }
 
-/* the paths of line_any that need the whole query context (kept out of line: the summary's answer, the
+/* the paths of ik_line that need the whole query context (kept out of line: the summary's answer, the
    common case, then builds no struct qctx on the stack) */
 static void any_ctx(struct qctx *c, int32_t x1, int32_t y1, int32_t x2, int32_t y2, int obj, int prec, int notme_self)
 {

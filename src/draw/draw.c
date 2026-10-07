@@ -82,7 +82,7 @@ uint8_t draw_smooth;
 #define S_BLOODLEVEL (PMSG.bloodLevel)             /* global.bloodLevel */
 #define S_MSGTIMER   (PMSG.timer)                  /* global.messageTimer */
 #define S_MSG1       (PMSG.m1)                     /* global.message1 / 2 as drawn */
-#define S_MSG2       (PMSG.m2)              /* oLevel.darkness: src/game does not compute it yet (0) */
+#define S_MSG2       (PMSG.m2)
 
 /* ---- float helpers (no soft-float) ------------------------------------------------------------------------ */
 static inline uint32_t fbits(float f) { union { float f; uint32_t u; } c; c.f = f; return c.u; }
@@ -113,7 +113,6 @@ static inline uint32_t dr_lo(double d)
 static inline int scale_is_pm1(double d) { uint32_t h = dr_hi(d); return dr_lo(d) == 0 && (h == D_ONE_HI || h == D_MONE_HI); }
 static inline int dr_neg(double d) { return (dr_hi(d) & 0x80000000u) != 0; }
 static inline int dr_zero(double d) { return (dr_hi(d) & 0x7fffffffu) == 0 && dr_lo(d) == 0; }
-/* a float that holds a whole number: its integer (truncation otherwise; the soft-float conversion) */
 /* (int32_t)f, truncation toward 0, by integer operations (no soft-float call) */
 static int32_t ftoi(float f)
 {
@@ -726,7 +725,6 @@ static const uint8_t dk_local[DK_FRONT + 1] = { [DK_SELF] = 1, [DK_DAMSEL] = 1, 
 static int32_t img_of(int pi) { return ftoi(I_IMG(pi)); }
 static int is_exit_spr(int s) { return s == GSPR_sPExit || s == GSPR_sDamselExit || s == GSPR_sTunnelExit; }
 
-/* draw_self: image_xscale mirrors; other transforms counted */
 /* draw_self (flip = image_xscale -1) or draw_sprite(sprite_index, -1, x, y) (flip 0) of instance pi, through the
    slot cache (kind 2) when the transform is plain */
 static void cached_out(int pi, int mirror)

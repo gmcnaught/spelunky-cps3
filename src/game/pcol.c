@@ -311,7 +311,6 @@ static float fms(float w, float h, float a)
     return fmaf(w, h, -a);
 }
 
-/* the area of the combined rectangle less area (fused: one rounding) */
 /* the union of two rectangles not both whole: as keys */
 static PCOL_NOINLINE void rcomb_slow(struct rbr *o, const struct rbr *a, const struct rbr *b)
 {
@@ -472,13 +471,14 @@ static void choose_partition(void)
     }
 }
 
-/* AddBranch: 1 when the node split (*newn the new node) */
+/* br's link to node n: the leaf of an entry (eleaf), the parent of a node (npar) */
 static void link_in(int n, const struct rbr *br)
 {
     if (rn[n].level == 0) eleaf[br->id] = (int16_t)n;
     else npar[br->id] = (int16_t)n;
 }
 
+/* AddBranch: 1 when the node split (*newn the new node) */
 static int add_branch(const struct rbr *br, int n, int *newn)
 {
     struct rnode *p = &rn[n];
@@ -1215,7 +1215,6 @@ static int remove_fast(int e)
     return 1;
 }
 
-/* CollisionUpdate: take the entry out (if in) and put it in with its current box */
 /* pm_e: an entry whose tree rectangle (er, erw, its grid cell) is its current box. pcol_place_marks_kept sets it on an
    entry in the tree and not stale (pcol_handle's premise: a tree member that is not stale has its box as its tree
    rectangle; outside an instance_place_p fam scan, the only place cupdate_at puts a shifted box); every change of the
@@ -1224,6 +1223,7 @@ static int remove_fast(int e)
    (pgrid_put returns on an unchanged cell): it is left as it is (the PLAY_STATS builds compute it and compare) */
 static int16_t pm_e = -1;
 
+/* CollisionUpdate: take the entry out (if in) and put it in with its current box (shifted by dx, dy) */
 static void cupdate_at(int e, float dx, float dy)
 {
     struct rbr b;
@@ -1274,7 +1274,6 @@ static void cupdate(int e)
     cupdate_at(e, 0, 0);
 }
 
-/* CollisionMarkDirty (with the stale bounding box flag its callers set) */
 /* the stale tree members (EF_STALE, on the dirty list): pushed when they become stale; entries no longer stale and
    repeats are dropped when the stack is read (stk_compact). A scan that computes the boxes of an object's instances
    in creation order (collision_point and the like) only changes the tree through these */
@@ -1334,6 +1333,7 @@ static void stk_clean(void)
     nstk = n;
 }
 
+/* CollisionMarkDirty (with the stale bounding box flag its callers set) */
 static void mark_e(int e)
 {
     int o = eobj(e);
@@ -1412,10 +1412,8 @@ static void touch_e(int e)
 
 void pcol_touch(int i) { touch_e(i); }
 
-/* the touches of a creation-order scan of obj's instances (but notme) up to and including `upto` (NOONE: all) that
-   do something: those of stale tree members, which all are on the dirty list; in creation order (the scans of
-   pworld.c that find their hit another way). Not exact while some entry is quiet (quiet_any: sync1 there clears
-   EF_NOSNAP too): the caller scans then */
+/* 1 while some entry is quiet (quiet_any): pcol_touch_stale's touches are not exact then (sync1 there clears
+   EF_NOSNAP too), so the scans of pworld.c that find their hit another way scan in creation order instead */
 int pcol_quiet(void) { return quiet_any; }
 
 /* the level is loaded (play_level_start): the loader's writes are done; from here every change is a mark */

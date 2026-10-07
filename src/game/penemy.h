@@ -51,10 +51,10 @@ int pitem_collision(int self, int other);
 void pen_enemy_create(int i);
 void pen_parent_step(int i);                  /* objects/oEnemy/Step_0.gml */
 void scrCheckCollisions(int i);
-int pen_hit_common(int e, int kind);
+int pen_hit_common(int e, int kind);          /* oItem (kind 0) / oEnemy (kind 1) projectile hits on enemy e */
 /* oWhip / oWhipPre and their children: other.damage (oSlash, oMachetePre, oMattockHit, oMattockPre: 2) and
    other.type == "Machete" (oSlash, oMachetePre) */
 static inline int whip_damage(int w) { return PX(w).type == T_MACHETE || PX(w).type == T_MATTOCK ? 2 : 1; }
-static inline int whip_machete(int w) { return PX(w).type == T_MACHETE; }          /* oItem / oEnemy projectile hits on enemy e (see penemy.c) */
+static inline int whip_machete(int w) { return PX(w).type == T_MACHETE; }
 
 #endif

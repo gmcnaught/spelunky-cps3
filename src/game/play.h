@@ -483,11 +483,11 @@ int pw_with(int obj, int16_t *out, int max);
 /* pdist2_lt(pdist2(PTOD(x1) + ox, PTOD(y1) + oy, PTOD(x2), PTOD(y2)), c), mostly without the doubles */
 int pdist_lt_at(pos x1, pos y1, int32_t ox, int32_t oy, pos x2, pos y2, double c);
 int pw_static_xy(int obj, int32_t x, int32_t y);   /* collision_point_any_at's common answers at its whole query, else -1 */
-void pw_xstep(int i, int32_t x, int d);
+void pw_xstep(int i, int32_t x, int d);           /* pin_setx(x + d) of a whole x, the whole box cache kept */
 int pw_solid_vline_q(int32_t x, int32_t y1, int32_t y2, int notme_self);   /* solid_vline_any without its flush, else -1 */
 #ifdef PLAY_STATS
 extern uint32_t pw_muts;                          /* pw_draw_mark calls (every field change marks) */
-#endif            /* pin_setx(x + d) of a whole x, the whole box cache kept */
+#endif
 int pw_filled_xy(int obj, int32_t px, int32_t py);   /* CP(px, py, oSolid) || CP(px, py, obj): whole point of a whole position */
 int pw_solid_pt(int32_t x, int32_t y);              /* collision_point_any(x, y, oSolid, 0, noone)'s summary, else -1 */
 int pw_fam_swims(const int16_t *objs, int n);       /* an alive instance of the families swims (PEN swimming) */
@@ -505,7 +505,6 @@ void view_read(void);
 void view_set_y(int32_t y);
 void view_set_x(int32_t x);
 extern int16_t play_view_obj, play_hborder;      /* view_object[0], view_hborder[0] (oOlmec changes them) */
-/* one step with the key mask; record_cb is called at the trace's record point (oGamepad's End Step) */
 /* one frame with the route's key mask; record_cb(phase) is called where the tracer writes its records (phase 0:
    the first Begin Step in a room; phase 1: oGamepad's End Step). Returns 0; PLAY_ROOM_EARLY when an Animation
    End event changed the room before the frame's Step (the route step was not used: give it again); or a room
