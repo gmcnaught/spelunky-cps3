@@ -65,6 +65,7 @@ VN=$(echo "${V:-BASE}" | tr a-z_ A-Z-)${FASTD:+-FAST}
 scripts/dmake.sh $T W=$BD OUT=$BD/jt/elf$V JT=1 SOFTFP=1 OPT="${OPT:--O2}" OSFILES="${OSFILES:-}" $LO JTFAST=${JTFAST:-0} JTNAME=$VN >/dev/null
 scripts/dmake.sh $T W=$BD OUT=$BD/jt/elf$V JT=1 SOFTFP=1 OPT="${OPT:--O2}" OSFILES="${OSFILES:-}" $LO JTFAST=${JTFAST:-0} JTNAME=$VN PROG=pjt$V \
   TITLE="Spelunky SH-2 timing $VN" mister >/dev/null
+cp "$J/jobs.h" "$J/elf$V/jobs.h"                       # the set's job table (scripts/jt_time.sh names the rows)
 PSH2_OUT="$O/jt.txt" PSH2_NJOBS=$NJ scripts/mame.sh sfiii3na $ND -rompath "$J/elf$V/mame" -skip_gameinfo -nothrottle -sound none \
   -video none -seconds_to_run 3000 -cfg_directory "$O/w/cfg" -nvram_directory "$O/w/nvram" -snapshot_directory "$O/snap" \
   -diff_directory "$O/w/diff" -state_directory "$O/w/sta" -inipath "$O/w" -autoboot_script scripts/lua/playsh2_jt.lua \

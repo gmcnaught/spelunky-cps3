@@ -40,7 +40,8 @@ wall=$(( $(date +%s) - start ))
 menu; trap - EXIT
 [ $rc = 2 ] && { echo "no results screen after $wall s (last: $O/last.png)"; exit 2; }
 # the jobs' names in order (jobs.h: generation cases G<level>, routes by name)
-python3 - "$J/jobs.h" "$O/read.txt" "$wall" > "$O/results.txt" <<'PY'
+JH=$J/elf${JTV:-}/jobs.h; [ -f "$JH" ] || JH=$J/jobs.h
+python3 - "$JH" "$O/read.txt" "$wall" > "$O/results.txt" <<'PY'
 import re, sys
 h = open(sys.argv[1]).read()
 names = re.findall(r'\{\s*"([^"]+)"', h)          # routes[] in job order

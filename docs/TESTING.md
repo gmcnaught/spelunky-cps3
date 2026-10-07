@@ -1,6 +1,8 @@
 # Testing: what to run when
 
-Timings measured 2026-10-06 on the development Mac (8 cores), branch testspeed (main 86b81a5). Host checks need
+Trace-based checks need the build the traces were made with: since 3dd5a2b PLAY_DEACT is 32 by default, so until the
+traces are regenerated with TRACE_DEACT=32, run them on a DEACT=0 build (`make -C test/host DEACT=0`, `DEACT=0` for
+playsh2_check / playsh2_jt). Timings measured 2026-10-06 on the development Mac (8 cores), branch testspeed (main 86b81a5). Host checks need
 `make -C test/host`; trace checks need build/trace (the HD runner's references, scripts/hd_trace.sh); MAME checks
 run headless in docker (scripts/mame.sh).
 
@@ -46,6 +48,17 @@ drawtab.* with the same content) and the mdiff images game_check writes next to 
 
 ## jtcps3 timing runs
 
+Measured on jtcps3 (2026-10-06, main 86b81a5, `scripts/jt_time.sh`; times from load to the screenshot that read the
+results, 30 s polls, so within 30 s above the true time):
+
+| Set | Board | Result | Time |
+|---|---|---|---|
+| default build, 9 routes + 5 generation cases (ikernel / deact2 runs) | .62 / .81 | PASS | 20-26 min |
+| JTFAST, 6 routes + 5 generation cases | .62 | PASS 11/11 | 128 s |
+| JTFAST JT_NOGEN, the same 6 routes | .62 | PASS 6/6 | 124 s |
+| p4_exit559 alone, default build | .81 | PASS 1/1, step mean 337,455 | 169 s |
+| p4_exit559 alone, JTFAST | .62 | PASS 1/1, step mean 338,898 (+0.4 %; the same set on one board twice: 0.2 %) | 58 s |
+
 `scripts/playsh2_jt.sh` times the jobs on the SH-2 (FRT clocks) and shows the results on screen. Measured in MAME
 (6 routes + 5 generation cases, the routes of LUSH.md batch 24): of 10.6 G clocks, 0.8 G were the timed work; the
 rest was the per-step state checksum (sum_play: FNV over every instance, ~2.9 M clocks a step). At jtcps3's ~4x
@@ -54,6 +67,11 @@ MAME's clocks that is the 20-26 min of a hardware run.
 - `JTFAST=1`: no per-step checksum; one of the end state per route (host and SH-2 alike: PASS still means the same
   play). MAME 425 -> 34 emulated s, PASS 11/11, step means unchanged.
 - `JT_NOGEN=1`: no generation cases: 26 emulated s.
+- What a JTFAST PASS covers: every step's instance count and the route's end state (sum_play: every live instance's
+  fields, the globals, the player, the RNG state), so a divergence that changes an instance count at any step or
+  survives to the end fails it. A divergence that re-converges before the end with the same instance counts would
+  pass; the per-record checks (`scripts/playsh2_check.sh` in MAME, 9,701 checksums; the default jtcps3 build) catch
+  that. Use JTFAST for timing, not as the equivalence check.
 - `scripts/jt_time.sh`: installs the newest built set on the MiSTer (default .62), loads it, screenshots every 30 s,
   reads the screen with `tools/jtresult.py` (the SDK font and bigtext glyphs matched cell by cell, no OCR), stops
   at the results, returns the MiSTer to the menu and prints the table with the jobs' names.
