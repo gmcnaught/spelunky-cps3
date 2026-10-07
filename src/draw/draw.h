@@ -61,10 +61,16 @@ void draw_new_game(void);
 /* the display list for the play state (between cps3v_begin / cps3v_end); tilemap cells and scrolls are prepared
    for draw_vblank */
 void draw_frame(void);
-/* at the next VBlank, before cps3v_vblank sends the list: tilemap scrolls and the changed cells; with smooth motion
+/* at the next VBlank, before draw_list_send sends the list: tilemap scrolls and the changed cells; with smooth motion
    the midpoint list is put in place of the frame's (sprite RAM's main list) and its scrolls */
 void draw_vblank(void);
-/* after that cps3v_vblank: with smooth motion, the frame's own list is due at the next VBlank (draw_vbl_irq) */
+/* after draw_vblank: the list DMA (cps3v_vblank's register writes; the DMAC's entry transfers waited for first),
+   not waiting for its copy */
+void draw_list_send(void);
+/* the list DMA started by draw_list_send has copied the list (waited for if not; then 0 to 0x82, as cps3v_vblank):
+   before the main list is written again (src/main after snd_frame; draw_frame; draw_vblank) */
+void draw_list_sync(void);
+/* after that draw_list_send: with smooth motion, the frame's own list is due at the next VBlank (draw_vbl_irq) */
 void draw_vblank_end(void);
 /* from the VBlank interrupt: the frame's own list and scrolls when due (the main list being built is put back after
    the list DMA); nothing otherwise */

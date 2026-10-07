@@ -250,8 +250,105 @@ typedef uint32_t spr_word;
 typedef volatile uint32_t spr_word;
 #endif
 static uint32_t run_at, run_n, run_end, run_odd;  /* the open run's start (byte), entries; the area's end */
-static spr_word *run_p;                           /* the next entry */
 static uint32_t w2tab[5][5];                      /* word 2 by width and height in tiles (1, 2, 4) */
+/* Word 3 of an entry is always 0: every entry slot of the run areas (16-byte steps from RUN_AREA - MID_OFF) has it
+   written once (draw_boot), so ent_put writes words 0-2 only. */
+#ifndef DRAW_SPRDMA
+#define DRAW_SPRDMA 1
+#endif
+#if DRAW_SPRDMA
+/* DRAW_SPRDMA: the entries are built in main RAM (sbuf, two halves of SB_ENT entries: the run area's next SB_ENT
+   slots, and with smooth motion the midpoint list's) and sent to sprite RAM by the SH-2 DMAC in 16-byte units (CHCR
+   0x5e01: destination and source incrementing, 16-byte units, auto request, cycle steal; TCR counts longwords: MAME
+   sh7604.cpp count &= ~3, -4 a unit; jtframe sh7604 DMAC.sv one count a longword beat), channel 0 the run area,
+   channel 1 the midpoint area. A half is sent when full (the other is written meanwhile; its own transfer, started
+   a half earlier, is waited for first) and at the end of the frame's runs (draw_sprdma_end); draw_list_send waits
+   for the last transfer before the list DMA. The SH-2 cache is write-through, so the DMAC reads what was stored.
+   Slots skipped by run_close's 256-byte alignment are sent with whatever the half held (they are not in a run). */
+#define SB_ENT       8
+#define SB_BYTES     (SB_ENT * 16u)
+static uint32_t sbuf[2][2][SB_ENT * 4] __attribute__((aligned(16)));   /* [half][run, midpoint][words] */
+static uint32_t *run_p, *sb_lim;                  /* the next entry in the half being written; its end */
+static uint32_t sb_base;                          /* the sprite RAM byte its first slot goes to */
+static int sb_h;                                  /* the half being written */
+static uint8_t sb_mid;                            /* this frame's halves have midpoint entries (mid_on) */
+#define SB_MIDW      (SB_ENT * 4)                 /* words from a run entry to its midpoint entry */
+#ifndef DRAW_HOST
+#define DMAC_SAR(c)  (*(volatile uint32_t *)(0xffffff80u + 0x10u * (c)))
+#define DMAC_DAR(c)  (*(volatile uint32_t *)(0xffffff84u + 0x10u * (c)))
+#define DMAC_TCR(c)  (*(volatile uint32_t *)(0xffffff88u + 0x10u * (c)))
+#define DMAC_CHCR(c) (*(volatile uint32_t *)(0xffffff8cu + 0x10u * (c)))
+#define DMAC_DMAOR   (*(volatile uint32_t *)0xffffffb0u)
+static uint8_t ch_busy[2];
+static void dmac_wait(int c)                      /* the channel's transfer has ended (TE); DE and TE cleared */
+{
+    if (!ch_busy[c]) return;
+    while (!(DMAC_CHCR(c) & 2)) ;
+    DMAC_CHCR(c) = 0;
+    ch_busy[c] = 0;
+}
+static void dmac_start(int c, const uint32_t *src, uint32_t spr, uint32_t bytes)
+{
+    dmac_wait(c);
+    DMAC_SAR(c) = (uint32_t)src;
+    DMAC_DAR(c) = 0x04000000u + spr;
+    DMAC_TCR(c) = bytes / 4;
+    DMAC_CHCR(c) = 0x5e01u;
+    ch_busy[c] = 1;
+}
+#endif
+#ifdef DRAW_HOST
+static void sb_host_copy(uint32_t n)              /* the host's transfer: n bytes of the half to host_sprram */
+{
+    uint32_t k;
+    for (k = 0; k < n / 4; k++) {
+        host_sprram[sb_base / 4 + k] = sbuf[sb_h][0][k];
+        if (sb_mid) host_sprram[(sb_base - MID_OFF) / 4 + k] = sbuf[sb_h][1][k];
+    }
+}
+#endif
+/* sends the half being written, slots [sb_base, top), and goes on in the other half from sprite RAM byte next */
+static void sb_send(uint32_t top, uint32_t next)
+{
+    uint32_t n = top - sb_base;
+    if (n) {
+        __asm__ volatile("" ::: "memory");       /* the entries are stored before the transfer starts */
+#ifdef DRAW_HOST
+        sb_host_copy(n);
+#else
+        dmac_start(0, sbuf[sb_h][0], sb_base, n);
+        if (sb_mid) dmac_start(1, sbuf[sb_h][1], sb_base - MID_OFF, n);
+#endif
+        sb_h ^= 1;
+    }
+    sb_base = next;
+    run_p = sbuf[sb_h][0];
+    sb_lim = run_p + SB_ENT * 4;
+}
+static void sb_full(void) { sb_send(sb_base + SB_BYTES, sb_base + SB_BYTES); }
+/* the next entry goes to sprite RAM byte a (a run's start: at or past the last entry's end) */
+static void sb_seek(uint32_t a)
+{
+    if (a - sb_base >= SB_BYTES) sb_send(sb_base + 4 * (uint32_t)(run_p - sbuf[sb_h][0]), a);
+    else run_p = sbuf[sb_h][0] + (a - sb_base) / 4;
+}
+static void draw_sprdma_end(void)                 /* after the frame's last run: what is left is sent */
+{
+    uint32_t top = sb_base + 4 * (uint32_t)(run_p - sbuf[sb_h][0]);
+    sb_send(top, top);
+}
+static void draw_sprdma_sync(void)                /* every transfer has ended */
+{
+#ifndef DRAW_HOST
+    dmac_wait(0);
+    dmac_wait(1);
+#endif
+}
+#else
+static spr_word *run_p;                           /* the next entry */
+static void draw_sprdma_end(void) {}
+static void draw_sprdma_sync(void) {}
+#endif
 
 static void run_begin(void)
 {
@@ -259,37 +356,59 @@ static void run_begin(void)
     run_at = RUN_AREA + (run_odd ? RUN_SIZE : 0);
     run_end = run_at + RUN_SIZE;
     run_n = 0;
+#if DRAW_SPRDMA
+    sb_base = run_at;
+    run_p = sbuf[sb_h][0];
+    sb_lim = run_p + SB_ENT * 4;
+#else
     run_p = SPR_AT(run_at);
+#endif
 }
 static void run_close(void)
 {
     if (!run_n) return;
+#if DRAW_SPRDMA && defined(DRAW_HOST)
+    sb_host_copy(4 * (uint32_t)(run_p - sbuf[sb_h][0]));   /* the host's cps3v_object decodes the run at once */
+#endif
     cps3v_object(run_at, run_n, 0, 0, -1);
     run_at = (run_at + run_n * 16 + 255) & ~255u;
     run_n = 0;
+#if DRAW_SPRDMA
+    sb_seek(run_at);
+#else
     run_p = SPR_AT(run_at);
+#endif
 }
-/* the sprite cps3v_sprite(px, py, w, h, tile, pal, flip) would write */
+/* the sprite cps3v_sprite(px, py, w, h, tile, pal, flip) would write (word 3, 0, is already there) */
 static inline __attribute__((always_inline)) void ent_put(int px, int py, unsigned w, unsigned h, uint32_t tile,
                                                           uint32_t pal, uint32_t flip)
 {
-    spr_word *e;
+    uint32_t w0, w2;
     if (ent_n >= DRAW_ENTRIES_MAX || run_at + run_n * 16 + 16 > run_end) {
         draw_st.dropped++;
         return;
     }
     if (run_n == 511) run_close();
-    e = run_p;
-    e[0] = tile << 17 | flip | pal;
+#if DRAW_SPRDMA
+    if (run_p == sb_lim) sb_full();
+    uint32_t *e = run_p;
+#else
+    spr_word *e = run_p;
+#endif
+    w0 = tile << 17 | flip | pal;
+    w2 = w2tab[w][h];
+    e[0] = w0;
     e[1] = ((uint32_t)(px + 8 * (int)w - 1) & 0x3ff) << 16 | ((uint32_t)(1006 - py - 8 * (int)h) & 0x3ff);
-    e[2] = w2tab[w][h];
-    e[3] = 0;
+    e[2] = w2;
     if (mid_on) {
+#if DRAW_SPRDMA
+        uint32_t *m = e + SB_MIDW;
+#else
         spr_word *m = e - MID_OFF / 4;
-        m[0] = e[0];
+#endif
+        m[0] = w0;
         m[1] = ((uint32_t)(px + mdx + 8 * (int)w - 1) & 0x3ff) << 16 | ((uint32_t)(1006 - py - mdy - 8 * (int)h) & 0x3ff);
-        m[2] = w2tab[w][h];
-        m[3] = 0;
+        m[2] = w2;
     }
     run_p = e + 4;
     run_n++;
@@ -1101,6 +1220,15 @@ void draw_boot(void)
     }
     bg_shown = -1;
     built_rooms = -1;
+    {                                             /* word 3 of every run and midpoint entry slot: 0 (ent_put) */
+        uint32_t a;
+        for (a = RUN_AREA - MID_OFF; a < RUN_AREA + 2 * RUN_SIZE; a += 16) SPR_AT(a)[3] = 0;
+    }
+#if DRAW_SPRDMA && !defined(DRAW_HOST)
+    (void)DMAC_DMAOR;                             /* the DMAC on (DME; AE / NMIF read, then cleared) */
+    DMAC_DMAOR = 0;
+    DMAC_DMAOR = 1;
+#endif
 }
 
 void draw_frame(void)
@@ -1108,6 +1236,7 @@ void draw_frame(void)
     int k, n = 0, band = 0, q, ncand;
     uint32_t xlo, xhi, ylo, yhi;
     PROF0();
+    draw_list_sync();                             /* the last list DMA has copied the main list */
     draw_st.frames++;
     draw_st.todo = draw_st.unsup = draw_st.noart = 0;
     ent_n = 0;
@@ -1140,6 +1269,9 @@ void draw_frame(void)
     vmx = 16 + (ocx < 0 ? -ocx : ocx);
     vmy = 16 + (ocy < 0 ? -ocy : ocy);
     set_mid(-ocx, -ocy);
+#if DRAW_SPRDMA
+    sb_mid = mid_on;                              /* before the first entry */
+#endif
     ZOOM_X = DRAW_ZOOM_X;
     /* tilemaps: base + terrain in the screen's cells; first claimant of a cell by creation order keeps it, the
        others are sprites */
@@ -1319,6 +1451,7 @@ void draw_frame(void)
     while (band < nmaps) band_out(1 + band++);
     run_close();
     }
+    draw_sprdma_end();                            /* the DMAC sends the rest while the HUD is drawn */
     set_mid(0, 0);
     frame_mid = mid_on;
     PROF(3);
@@ -1332,6 +1465,7 @@ void draw_frame(void)
     }
     if (front_on) front_draw_gui();
     PROF(4);
+    draw_sprdma_end();                            /* (nothing: no entries after the runs) */
     draw_st.entries = ent_n;
     frame_pending = 1;
     if (ent_n > draw_st.entries_max) draw_st.entries_max = ent_n;
@@ -1366,10 +1500,42 @@ static int mid_present(void)
     return 1;
 }
 
+/* the list DMA: cps3v_vblank's register writes (Red Earth's sequence: the 8 global scrolls 0, 8 / 9 four times to
+   0x82), without its wait for the copy (status 0x0c bit 0) and its last write (0 to 0x82): draw_list_sync does those
+   at the next point that needs the copy done (the next draw's main list, the next VBlank's work), by then long
+   ended, so the CPU does not wait for the DMA. The DMAC's entry transfers end first (draw_sprdma_sync). */
+#define PPU_REG(o)   (*(volatile uint16_t *)(0x040c0000u + (o)))
+static uint8_t list_open;
+void draw_list_sync(void)
+{
+#ifndef DRAW_HOST
+    int t;
+    if (!list_open) return;
+    for (t = 0; t < 10000 && (PPU_STATUS & 1); t++) ;
+    PPU_REG(0x82) = 0;
+    list_open = 0;
+#endif
+}
+void draw_list_send(void)
+{
+#ifndef DRAW_HOST
+    int k;
+    draw_list_sync();
+    draw_sprdma_sync();
+    for (k = 0; k < 16; k++) PPU_REG(2 * k) = 0;
+    for (k = 0; k < 4; k++) {
+        PPU_REG(0x82) = 8;
+        PPU_REG(0x82) = 9;
+    }
+    list_open = 1;
+#endif
+}
+
 void draw_vblank(void)
 {
     int m, r, c, k;
     uint32_t cells = 0;
+    draw_list_sync();
     if (built_rooms < 0 || !frame_pending) return;
     frame_pending = 0;
     if (bg_dirty && bg_spr >= 0) {                /* the background sprite's 4 x 4 cells over the whole map */
@@ -1475,6 +1641,7 @@ void draw_vbl_irq(void)
     int k, j, n, t;
     if (!irq_due) return;
     irq_due = 0;
+    draw_list_sync();                             /* (the step frame's list: long copied) */
     n = frec_n + 1;
     for (k = 0; k < n; k++)
         for (j = 0; j < 4; j++) {

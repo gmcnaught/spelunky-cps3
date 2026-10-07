@@ -85,7 +85,7 @@ static void vbl_irq_install(void)
 }
 
 /* the settings screen takes the display (src/shell/shell.c) */
-void shell_video_stop(void) { draw_irq_off(); }
+void shell_video_stop(void) { draw_irq_off(); draw_list_sync(); }
 
 int main(void)
 {
@@ -114,10 +114,11 @@ int main(void)
             main_vblank_begin();
             draw_vblank();
             main_vblank_end();
-            cps3v_vblank();
+            draw_list_send();                     /* the list DMA, not waited for: */
             draw_vblank_end();
         }
         snd_frame();
+        draw_list_sync();                         /* its end checked here, before the shell writes a list */
         if (!late) main_frame_done();
         main_inputs(&p0, &p1, &lines);
         shell_frame(p0, p1, lines);
