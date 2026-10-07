@@ -1399,32 +1399,66 @@ int pswamp_player(int site, int i, int arg)
 /* ---- the items' and world's sites (pobj.c, pitem.c) ------------------------------------------------------- */
 /* oGame Step :71-126: with oWater, the surface sprites and the water that has lost its walls */
 static int32_t waterLoopSafety;
+/* CP(x + dx, y + dy, obj) for water j at whole x, y (|.| < 29900), |dx|, |dy| <= 16: the same query on ints
+   (collision_point_any_at's for oWater; the solid summary's, pw_solid_pt, for oSolid; else CP on the doubles) */
+static int water_cp(int j, int32_t x, int32_t y, int32_t dx, int32_t dy, int obj)
+{
+    int r;
+    if (obj != OBJ_oSolid) return collision_point_any_at(j, dx, dy, obj);
+    r = pw_solid_pt(x + dx, y + dy);
+#ifdef PLAY_STATS
+    if (r >= 0 && r != (CP(X(j) + dx, Y(j) + dy, OBJ_oSolid) != 0)) {
+        fprintf(stderr, "water_cp: solid %d differs (%d)\n", r, j);
+        abort();
+    }
+#endif
+    return r >= 0 ? r : CP(X(j) + dx, Y(j) + dy, OBJ_oSolid);
+}
+
 static void check_water(void)
 {
     int16_t w[PIN_MAX];
     int n = pw_with(OBJ_oWater, w, PIN_MAX), k, waterCounter = 0;
     for (k = 0; k < n; k++) {
         int j = w[k], obj, lava;
-        double x, y;
+        int32_t ix, iy;
         if (!PX(j).alive) continue;
         if (isRoomIs(R_rOlmec)) continue;
-        x = X(j);
-        y = Y(j);
-        if (!(y < 512)) continue;
         lava = obj_is(PX(j).obj, OBJ_oLava);                   /* type == "Lava" */
-        if (!CP(x, y - 16, OBJ_oSolid) && !CP(x, y - 16, OBJ_oWater))
-            pin_set_sprite(j, lava ? GSPR_sLavaTop : GSPR_sWaterTop);
-        obj = instance_place_p(j, x - 16, y, OBJ_oWater);
-        if (obj != NOONE && (PX(obj).spr == GSPR_sWaterTop || PX(obj).spr == GSPR_sLavaTop))
-            pin_set_sprite(j, lava ? GSPR_sLavaTop : GSPR_sWaterTop);
-        obj = instance_place_p(j, x + 16, y, OBJ_oWater);
-        if (obj != NOONE && (PX(obj).spr == GSPR_sWaterTop || PX(obj).spr == GSPR_sLavaTop))
-            pin_set_sprite(j, lava ? GSPR_sLavaTop : GSPR_sWaterTop);
-        if ((!CP(x - 16, y, OBJ_oSolid) && !CP(x - 16, y, OBJ_oWater)) ||
-            (!CP(x + 16, y, OBJ_oSolid) && !CP(x + 16, y, OBJ_oWater)) ||
-            (!CP(x, y + 16, OBJ_oSolid) && !CP(x, y + 16, OBJ_oWater))) {
-            pin_destroy(j);
-            waterCounter += 1;
+        if (pin_xy_int(j, &ix, &iy) && ix > -29900 && ix < 29900 && iy > -29900 && iy < 29900) {
+            /* whole x, y: the same tests on ints (y < 512 is iy < 512; x +- 16 and y +- 16 are whole) */
+            if (!(iy < 512)) continue;
+            if (!water_cp(j, ix, iy, 0, -16, OBJ_oSolid) && !water_cp(j, ix, iy, 0, -16, OBJ_oWater))
+                pin_set_sprite(j, lava ? GSPR_sLavaTop : GSPR_sWaterTop);
+            obj = instance_place_ixy(j, ix, iy, -16, 0, OBJ_oWater);
+            if (obj != NOONE && (PX(obj).spr == GSPR_sWaterTop || PX(obj).spr == GSPR_sLavaTop))
+                pin_set_sprite(j, lava ? GSPR_sLavaTop : GSPR_sWaterTop);
+            obj = instance_place_ixy(j, ix, iy, 16, 0, OBJ_oWater);
+            if (obj != NOONE && (PX(obj).spr == GSPR_sWaterTop || PX(obj).spr == GSPR_sLavaTop))
+                pin_set_sprite(j, lava ? GSPR_sLavaTop : GSPR_sWaterTop);
+            if ((!water_cp(j, ix, iy, -16, 0, OBJ_oSolid) && !water_cp(j, ix, iy, -16, 0, OBJ_oWater)) ||
+                (!water_cp(j, ix, iy, 16, 0, OBJ_oSolid) && !water_cp(j, ix, iy, 16, 0, OBJ_oWater)) ||
+                (!water_cp(j, ix, iy, 0, 16, OBJ_oSolid) && !water_cp(j, ix, iy, 0, 16, OBJ_oWater))) {
+                pin_destroy(j);
+                waterCounter += 1;
+            }
+        } else {
+            double x = X(j), y = Y(j);
+            if (!(y < 512)) continue;
+            if (!CP(x, y - 16, OBJ_oSolid) && !CP(x, y - 16, OBJ_oWater))
+                pin_set_sprite(j, lava ? GSPR_sLavaTop : GSPR_sWaterTop);
+            obj = instance_place_p(j, x - 16, y, OBJ_oWater);
+            if (obj != NOONE && (PX(obj).spr == GSPR_sWaterTop || PX(obj).spr == GSPR_sLavaTop))
+                pin_set_sprite(j, lava ? GSPR_sLavaTop : GSPR_sWaterTop);
+            obj = instance_place_p(j, x + 16, y, OBJ_oWater);
+            if (obj != NOONE && (PX(obj).spr == GSPR_sWaterTop || PX(obj).spr == GSPR_sLavaTop))
+                pin_set_sprite(j, lava ? GSPR_sLavaTop : GSPR_sWaterTop);
+            if ((!CP(x - 16, y, OBJ_oSolid) && !CP(x - 16, y, OBJ_oWater)) ||
+                (!CP(x + 16, y, OBJ_oSolid) && !CP(x + 16, y, OBJ_oWater)) ||
+                (!CP(x, y + 16, OBJ_oSolid) && !CP(x, y + 16, OBJ_oWater))) {
+                pin_destroy(j);
+                waterCounter += 1;
+            }
         }
         waterLoopSafety += 1;
         if (waterLoopSafety > 100000) G.checkWater = 0;
