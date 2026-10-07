@@ -2572,9 +2572,12 @@ static int precise_line(int k, const float *o)
     return 0;
 }
 
+static int line_hit_vi(int k, int32_t X, int32_t lo, int32_t hi);
+static int line_hit_hi(int k, int32_t Y, int32_t lo, int32_t hi);
+static int line_hit_f(int k, struct qctx *c);
+
 static int line_hit(int k, struct qctx *c)
 {
-    double l, t, r, b, x1, y1, x2, y2;
     const struct lq *q = &c->lq;
     int prec = c->prec;
     int32_t ib[4];
@@ -2583,7 +2586,27 @@ static int line_hit(int k, struct qctx *c)
             return 0;
         if (q->axis && (!prec || !precise(k)))
             return 1;
+        if (q->axis) {                            /* an axis-aligned line against a precise entry: line_hit_vi */
+            int r = q->lx == q->hx ? line_hit_vi(k, q->lx, q->ly, q->hy) : line_hit_hi(k, q->ly, q->lx, q->hx);
+            if (r >= 0) {
+#ifdef PLAY_STATS
+                if (r != line_hit_f(k, c)) {
+                    fprintf(stderr, "line_hit_vi: %d differs (%d: %d %d %d)\n", r, k, (int)q->lx, (int)q->ly, (int)q->hy);
+                    abort();
+                }
+#endif
+                return r;
+            }
+        }
     }
+    return line_hit_f(k, c);
+}
+
+/* line_hit past its integer tests: the doubles and floats of CInstance::Collision_Line */
+static int line_hit_f(int k, struct qctx *c)
+{
+    double l, t, r, b, x1, y1, x2, y2;
+    int prec = c->prec;
     if (!pin_bbox(k, &l, &t, &r, &b))
         return 0;
     if (!c->dbl) {
@@ -3220,6 +3243,63 @@ static int pci_bit(const struct pci *q, int cx, int cy)
     cx -= q->ml;
     cy -= q->mt;
     return (q->mask[cy * q->bpr + (cx >> 3)] & bit[cx & 7]) != 0;
+}
+
+/* line_hit's precise test of the vertical whole line x = X, y = lo .. hi (lo < hi) against entry k with an integer box
+   (BB_INT: angle 0, scales +-1, whole x, y) and a mask, on ints. line_box_f: a miss when X is outside [l, r) or the
+   segment outside [t, b] in y; otherwise it keeps the segment (X <= r - 1 < r - 1e-5: no clip). precise_line's
+   vertical branch (slope 0): v = max(t, lo) .. min(b, hi) in steps of 1 (floats of ints: exact), the mask column
+   floor((X - x) / xs + xo) = xo + (X - x) xs and row floor((v - y) / ys + yo) = yo + (v - y) ys (angle 0: cs 1, sn
+   and ns signed zeros), inside the mask box, the bit (pci_bit as pc_bit). -1: another case (the floats) */
+static int line_hit_vi(int k, int32_t X, int32_t lo, int32_t hi)
+{
+    struct pci A;
+    const struct pin *p = &PW.in[k];
+    int32_t v, v1, tx;
+    if (p->bbk != BB_INT || lo >= hi) return -1;
+    pci_of(k, 0, 0, &A);
+    if (!A.mask) return -1;
+    if (X < p->bl || X >= p->br || lo >= p->bb || hi < p->bt) return 0;
+    tx = A.xo + (X - A.x) * A.sx;
+    if (tx < A.ml || tx > A.mr) return 0;
+    v = lo > p->bt ? lo : p->bt;
+    v1 = hi < p->bb ? hi : p->bb;
+    for (; v <= v1; v++) {
+        int32_t ty = A.yo + (v - A.y) * A.sy;
+        if (ty >= A.mt && ty <= A.mb && pci_bit(&A, tx, ty)) return 1;
+    }
+    return 0;
+}
+
+/* the same for the horizontal whole line y = Y, x = lo .. hi (lo < hi). line_box_f: a miss when Y is outside [t, b) or
+   the segment outside [l, r] in x; otherwise the segment from xa = max(l, lo) (the clip at l: y unchanged, slope 0)
+   to xb = hi, or to r' = (float)r + -1e-5f when hi > r'. For 0 < r < 2^14, r' < r when r <= 256 (the float spacing
+   just below r is at most 2^-16 < 2 x 1e-5 there; at 256 it is 2^-16 too) and r' = r above 256 (spacing below r at
+   least 2^-15 > 2 x 1e-5), so the last whole x <= xb is min(hi, r <= 256 ? r - 1 : r). precise_line's horizontal
+   branch (slope 0) walks v = xa .. that x, column xo + (v - x) xs, row yo + (Y - y) ys; where the clipped segment is
+   one point (xa = xb) it takes precise_point, whose column and row at whole x, y and angle 0 are the same
+   (floor((px - x) / xs + xo), ...) with the same frame and mask box: one step of the walk. -1: r outside (0, 2^14),
+   not BB_INT, no mask */
+static int line_hit_hi(int k, int32_t Y, int32_t lo, int32_t hi)
+{
+    struct pci A;
+    const struct pin *p = &PW.in[k];
+    int32_t v, v1, ty, r = p->br;
+    if (p->bbk != BB_INT || lo >= hi || r <= 0 || r >= 16384) return -1;
+    pci_of(k, 0, 0, &A);
+    if (!A.mask) return -1;
+    if (Y < p->bt || Y >= p->bb || lo >= r || hi < p->bl) return 0;
+    v = lo > p->bl ? lo : p->bl;
+    v1 = r <= 256 ? r - 1 : r;
+    if (hi < v1) v1 = hi;
+    if (v > v1) return 0;
+    ty = A.yo + (Y - A.y) * A.sy;
+    if (ty < A.mt || ty > A.mb) return 0;
+    for (; v <= v1; v++) {
+        int32_t tx = A.xo + (v - A.x) * A.sx;
+        if (tx >= A.ml && tx <= A.mr && pci_bit(&A, tx, ty)) return 1;
+    }
+    return 0;
 }
 
 static int precise_collision_int(int a, int32_t dx, int32_t dy, const int32_t *ia, int b, const int32_t *ib)
