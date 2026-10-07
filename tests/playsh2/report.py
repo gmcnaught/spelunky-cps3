@@ -109,7 +109,8 @@ def main():
 
 
 def attribution(path, sh2, js):
-    hdr = open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'build', 'g', 'objects.h')).read()
+    hdr = open(os.path.join(os.environ.get('PSH2_G') or os.path.join(os.path.dirname(os.path.abspath(__file__)), 'build', 'g'),
+                            'objects.h')).read()   # $PSH2_G: the snapshot (scripts/playsh2_check.sh RUNTAG)
     names = re.findall(r'^    OBJ_(\w+),', hdr, re.M)
     steps = [(k, v) for k, v in sh2.items() if k[1] in (3, 4) and js[k[0]][2] >= 0]
     tot = sum(v['clk'] for _, v in steps)

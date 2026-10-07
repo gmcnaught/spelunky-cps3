@@ -11,9 +11,10 @@
 set -e
 cd "$(dirname "$0")/.."
 R=$1; S=$2; N=$3; RECS=$4; L=${5:-1}; M=${6:-0}; E=${7:-0}
-T=tests/game; B=$T/build; O=$B/${R}${ATTRACT:+_attract$ATTRACT}_smooth; rm -rf "$O"; mkdir -p "$O/w"
+BD=build${RUNTAG:+/t_$RUNTAG}   # RUNTAG: game_check.sh RUNTAG's snapshot and build dir
+T=tests/game; B=$T/$BD; O=$B/${R}${ATTRACT:+_attract$ATTRACT}_smooth; rm -rf "$O"; mkdir -p "$O/w"
 [ -f "$B/g/stamp" ] || { echo "no src/game snapshot: run scripts/game_check.sh first"; exit 1; }
-scripts/dmake.sh $T OUT=build/${R}${ATTRACT:+_attract$ATTRACT}_smooth/elf HUD=1 SMOOTH=1 ${SPRDMA:+SPRDMA=$SPRDMA} ${ATTRACT:+ATTRACT=$ATTRACT} ROUTE=$R SEED=$S SNAPS=$RECS LEVEL=$L MONEY=$M ENEMIES=$E \
+scripts/dmake.sh $T W=$BD OUT=$BD/${R}${ATTRACT:+_attract$ATTRACT}_smooth/elf HUD=1 SMOOTH=1 ${SPRDMA:+SPRDMA=$SPRDMA} ${ATTRACT:+ATTRACT=$ATTRACT} ROUTE=$R SEED=$S SNAPS=$RECS LEVEL=$L MONEY=$M ENEMIES=$E \
   >"$O/make.log" 2>&1 || { tail -20 "$O/make.log"; exit 1; }
 n=$(echo "$RECS" | tr ',' '\n' | grep -c .)
 GAME_OUT="$O/out.txt" GAME_NSNAPS=$n GAME_MIDSNAP=1 scripts/mame.sh sfiii3na -rompath "$O/elf/mame" -skip_gameinfo \

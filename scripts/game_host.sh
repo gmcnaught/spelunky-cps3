@@ -10,15 +10,15 @@
 set -e
 cd "$(dirname "$0")/.."
 R=$1; S=$2; N=$3; L=${4:-1}; M=${5:-0}; E=${6:-0}
-G=tests/game/build/g
+G=tests/game/build${RUNTAG:+/t_$RUNTAG}/g; HD=build/game/host${RUNTAG:+/t_$RUNTAG}   # RUNTAG: game_check.sh RUNTAG's snapshot, own output
 [ -f "$G/stamp" ] || { echo "no src/game snapshot: run scripts/game_check.sh first"; exit 1; }
 SDK=../cps3-testgame/sdk/include
-mkdir -p build/game/host
+mkdir -p $HD
 cc -std=gnu99 -O2 -ffp-contract=off -w -DDRAW_HOST -DSND_LOG -Ibuild/snd -I$SDK -I$G -Ibuild/gen -Isrc/draw -Isrc/main -Isrc/hud -Isrc/shell \
-  -Isrc/snd -Isrc/front -o build/game/host/host tests/game/host.c src/main/game.c src/draw/draw.c src/hud/hud.c build/gen/sprites.c \
+  -Isrc/snd -Isrc/front -o $HD/host tests/game/host.c src/main/game.c src/draw/draw.c src/hud/hud.c build/gen/sprites.c \
   src/front/front.c build/gen/fronttables.c src/snd/snd.c src/shell/hiscore.c \
   build/gen/drawtab.c $G/*.c -lm
 if [ "${HUD:-0}" = 1 ]; then H=hud; F=--hud; else H=nohud; F=; fi
-build/game/host/host tests/routes/$R.txt $S $L $M $E 30 build/gen - all $H ${DARK:+$DARK} 2>build/game/host/stderr.txt |
+$HD/host tests/routes/$R.txt $S $L $M $E 30 build/gen - all $H ${DARK:+$DARK} 2>$HD/stderr.txt |
   python3 tools/drawmodel.py hostcmp build/trace/$N.bin build/trace/$N.names build/gen - $F ${DARK:+--dark $DARK}
-grep -h "^draw: " build/game/host/stderr.txt | sort | uniq -c | head -5
+grep -h "^draw: " $HD/stderr.txt | sort | uniq -c | head -5

@@ -13,7 +13,9 @@
 # BUILD_ONLY=1: stop after the SH-2 build (build/<VARIANT>/main.elf, out/nm.txt): scripts/jtcost.sh.
 set -e
 cd "$(dirname "$0")/.."
-T=tests/playsh2; B=$T/build; V=${VARIANT:-run${PROF:+_prof}}; E=$B/$V; O=$E/out; rm -rf "$O"; mkdir -p "$O/w"
+# RUNTAG=<tag>: snapshot, build and output in tests/playsh2/build/t_<tag> (two checks side by side)
+BD=build${RUNTAG:+/t_$RUNTAG}
+T=tests/playsh2; B=$T/$BD; V=${VARIANT:-run${PROF:+_prof}}; E=$B/$V; O=$E/out; rm -rf "$O"; mkdir -p "$O/w"
 # the code under test: src/game at GAME_REV (default HEAD: other work in the tree stays out; WORKTREE: as it is) and build/gen, PIN_MAX
 # set to PIN (main RAM)
 G=$B/g; rm -rf "$G"; mkdir -p "$G"
@@ -39,9 +41,9 @@ sed -n '/^struct pin_ext {/,/^};/p' "$G/play.h" | grep -q "alpha" && echo "#defi
 JD=; JI=
 if [ -n "${ROUTES:-}" ]; then
   mkdir -p "$E/jobs"; python3 $T/mkjobs.py "$E/jobs/jobs.h" tests/routes --routes "$(echo $ROUTES | tr ' ' ,)"
-  JD="JOBSDIR=build/$V/jobs"; JI="-I$E/jobs"
+  JD="JOBSDIR=$BD/$V/jobs"; JI="-I$E/jobs"
 fi
-scripts/dmake.sh $T OUT=build/$V $JD OPT="${OPT:--O2}" PROF=${PROF:-0} PROF_KIND=${PROF_KIND:-3} PROF_SKIP=${PROF_SKIP:-1} PROF_WRAP=${PROF_WRAP:-0} SOFTFP=${SOFTFP:-0} ATTR=${ATTR:-0} FPCHECK=${FPCHECK:-0} >/dev/null
+scripts/dmake.sh $T W=$BD OUT=$BD/$V $JD OPT="${OPT:--O2}" PROF=${PROF:-0} PROF_KIND=${PROF_KIND:-3} PROF_SKIP=${PROF_SKIP:-1} PROF_WRAP=${PROF_WRAP:-0} SOFTFP=${SOFTFP:-0} ATTR=${ATTR:-0} FPCHECK=${FPCHECK:-0} >/dev/null
 if [ "${BUILD_ONLY:-0}" = 1 ]; then
   docker run --rm -v "$PWD":/p -w /p cps3-dev:latest sh-elf-nm -n $E/main.elf > "$O/nm.txt"; exit 0
 fi
@@ -55,4 +57,4 @@ PSH2_OUT="$O/sh2.txt" scripts/mame.sh sfiii3na -rompath "$E/mame" -skip_gameinfo
   -snapshot_directory "$O/w/snap" -diff_directory "$O/w/diff" -state_directory "$O/w/sta" -inipath "$O/w" \
   -autoboot_script scripts/lua/playsh2.lua >"$O/mame.log" 2>&1 || true
 docker run --rm -v "$PWD":/p -w /p cps3-dev:latest sh-elf-nm -n $E/main.elf > "$O/nm.txt"
-PSH2_JOBS=${ROUTES:+$E/jobs/jobs.h} python3 $T/report.py "$O/host.txt" "$O/sh2.txt" "$O/nm.txt"
+PSH2_G=$G PSH2_JOBS=${ROUTES:+$E/jobs/jobs.h}${ROUTES:-$B/jobs.h} python3 $T/report.py "$O/host.txt" "$O/sh2.txt" "$O/nm.txt"

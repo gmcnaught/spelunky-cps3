@@ -11,7 +11,9 @@
 #   still means the same play; tests/playsh2/core.h); JT_NOGEN=1: no generation cases (routes only)
 set -e
 cd "$(dirname "$0")/.."
-T=tests/playsh2; B=$T/build; J=$B/jt; V=${JTV:-}; O=$J/out$V; N=${PIN:-1792}
+# RUNTAG=<tag>: snapshot, build and output in tests/playsh2/build/t_<tag> (two checks side by side)
+BD=build${RUNTAG:+/t_$RUNTAG}
+T=tests/playsh2; B=$T/$BD; J=$B/jt; V=${JTV:-}; O=$J/out$V; N=${PIN:-1792}
 rm -rf "$O" "$B/g" "$J/gA"; mkdir -p "$O/w" "$B/g" "$J/gA"
 git archive "${GAME_REV:-HEAD}" src/game | tar -x -C "$J/gA" --strip-components=2
 cp build/gen/objects.[ch] build/gen/gentables.[ch] build/gen/playtables.[ch] "$J/gA/"
@@ -54,14 +56,14 @@ done
   echo "#define JT_LABEL \"\""; } >> "$J/jt_expect.h"
 # JTV=<name>: a code-layout variant (build/jt/elf<name>, out<name>): OSFILES (-Os files), LAYOUT=1 (mklayout.py
 # from tests/playsh2/hot.txt), NC=<list>
-LO=; [ "${LAYOUT:-0}" = 1 ] && { python3 $T/mklayout.py $T/hot.txt $J/link$V.ld; LO=LAYOUT=build/jt/link$V.ld; }
+LO=; [ "${LAYOUT:-0}" = 1 ] && { python3 $T/mklayout.py $T/hot.txt $J/link$V.ld; LO=LAYOUT=$BD/jt/link$V.ld; }
 # NC=<list> (relative to tests/playsh2, e.g. NC=nc_robust.txt): code and arrays read past the SH-2 cache
 # (tests/playsh2/mknc.py, docs/ICACHE.md); MAME then runs the set with -nodrc (MAME 0.264's SH-2 recompiler does not
 # run code from SIMM 1's cache-through mirror)
 ND=; [ -n "${NC:-}" ] && { LO="NC=$NC"; ND=-nodrc; }
 VN=$(echo "${V:-BASE}" | tr a-z_ A-Z-)${FASTD:+-FAST}
-scripts/dmake.sh $T OUT=build/jt/elf$V JT=1 SOFTFP=1 OPT="${OPT:--O2}" OSFILES="${OSFILES:-}" $LO JTFAST=${JTFAST:-0} JTNAME=$VN >/dev/null
-scripts/dmake.sh $T OUT=build/jt/elf$V JT=1 SOFTFP=1 OPT="${OPT:--O2}" OSFILES="${OSFILES:-}" $LO JTFAST=${JTFAST:-0} JTNAME=$VN PROG=pjt$V \
+scripts/dmake.sh $T W=$BD OUT=$BD/jt/elf$V JT=1 SOFTFP=1 OPT="${OPT:--O2}" OSFILES="${OSFILES:-}" $LO JTFAST=${JTFAST:-0} JTNAME=$VN >/dev/null
+scripts/dmake.sh $T W=$BD OUT=$BD/jt/elf$V JT=1 SOFTFP=1 OPT="${OPT:--O2}" OSFILES="${OSFILES:-}" $LO JTFAST=${JTFAST:-0} JTNAME=$VN PROG=pjt$V \
   TITLE="Spelunky SH-2 timing $VN" mister >/dev/null
 PSH2_OUT="$O/jt.txt" PSH2_NJOBS=$NJ scripts/mame.sh sfiii3na $ND -rompath "$J/elf$V/mame" -skip_gameinfo -nothrottle -sound none \
   -video none -seconds_to_run 3000 -cfg_directory "$O/w/cfg" -nvram_directory "$O/w/nvram" -snapshot_directory "$O/snap" \

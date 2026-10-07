@@ -17,7 +17,7 @@ set -e
 cd "$(dirname "$0")/.."
 [ $# -eq 0 ] && set -- p4_exit559 301 p5_snakes 956
 [ $(($# % 2)) -eq 0 ] || { echo "usage: scripts/jtcost.sh [<route> <step>]..." >&2; exit 2; }
-V=${VARIANT:-jtcost}; E=tests/playsh2/build/$V; O=$E/out; TD=$PWD/$E/trace
+V=${VARIANT:-jtcost}; E=tests/playsh2/build${RUNTAG:+/t_$RUNTAG}/$V; O=$E/out; TD=$PWD/$E/trace
 ROUTES=; PAIRS=; last=0
 while [ $# -gt 0 ]; do
   case " $ROUTES " in *" $1 "*) ;; *) ROUTES="${ROUTES:+$ROUTES }$1" ;; esac

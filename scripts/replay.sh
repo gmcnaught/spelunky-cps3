@@ -8,13 +8,13 @@
 # Output in build/replay/<build>/: host, steps.log (HOST_STEPLOG: game_probe after each step), host.err.
 set -e
 cd "$(dirname "$0")/.."
-C=$1; RECS=$2; FR=${3:-build/replay/frames}
+C=$1; RECS=$2; FR=${3:-build/replay${RUNTAG:+_$RUNTAG}/frames}   # RUNTAG=<tag>: build/replay_<tag>
 [ -f "$C" ] || { echo "usage: scripts/replay.sh <capture.txt> [recs|all [frames dir]]"; exit 2; }
 REV=$(sed -n 's/^# game capture: build \([0-9a-f]*\).*/\1/p' "$C")
 SEED=$(sed -n 's/^# seed \([0-9]*\)$/\1/p' "$C")
 FLAGS=$(sed -n 's/^# flags \([0-9a-f]*\) .*/\1/p' "$C")
 [ -n "$REV" ] && [ -n "$SEED" ] && [ -n "$FLAGS" ] || { echo "$C: not a capture (tools/capture.py decode)"; exit 2; }
-D=build/replay/$REV; rm -rf "$D"; mkdir -p "$D/t"
+D=build/replay${RUNTAG:+_$RUNTAG}/$REV; rm -rf "$D"; mkdir -p "$D/t"
 if [ "$REV" != 00000000 ] && [ $((0x$FLAGS & 0x80)) = 0 ] && git cat-file -e "$REV^{commit}" 2>/dev/null; then
   git archive "$REV" src tests/game/host.c build/gen build/snd/snd.h scripts/unity.sh | tar -x -C "$D/t"
   echo "replay: build $REV"

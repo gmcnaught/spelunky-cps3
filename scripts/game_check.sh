@@ -11,11 +11,13 @@
 # ATTRACT=1 (or 5: from rHighscores): the attract mode (src/front), no coin / start; the route only gives the seed
 # and the length. DPROF=1: the draw's parts timed. DARK=a8: the program and the model draw a dark level at that alpha byte (the fade
 # path on a level that is not dark; the runner frames then differ, as expected). --host is done by scripts/game_host.sh (every step, on the host).
-# Output: tests/game/build/<route>/ (snapshots, out.txt: per-snapshot draw stats, diff masks).
+# Output: tests/game/build[/t_<RUNTAG>]/<route>/ (snapshots, out.txt: per-snapshot draw stats, diff masks).
 set -e
 cd "$(dirname "$0")/.."
 R=$1; S=$2; N=$3; RECS=$4; L=${5:-1}; M=${6:-0}; E=${7:-0}
-T=tests/game; B=$T/build; O=$B/$R${HUD:+_hud$HUD}${DARK:+_dark$DARK}${ATTRACT:+_attract$ATTRACT}${HOLD:+_hold}; rm -rf "$O"; mkdir -p "$O/w"
+# RUNTAG=<tag>: snapshot, build and output in tests/game/build/t_<tag> (two checks side by side; default tests/game/build)
+BD=build${RUNTAG:+/t_$RUNTAG}
+T=tests/game; B=$T/$BD; O=$B/$R${HUD:+_hud$HUD}${DARK:+_dark$DARK}${ATTRACT:+_attract$ATTRACT}${HOLD:+_hold}; rm -rf "$O"; mkdir -p "$O/w"
 G=$B/g; rm -rf "$G"; mkdir -p "$G"
 git archive "${GAME_REV:-HEAD}" src/game | tar -x -C "$G" --strip-components=2
 # GAME_FILES="pplayer.c penemy.c ...": those src/game files from the working tree over the snapshot (uncommitted
@@ -32,11 +34,11 @@ if [ -n "${GRID_SHIFT:-}" ]; then { echo "#define PCOL_GRID_SHIFT $GRID_SHIFT"; 
 scripts/unity.sh "$G"                                  # the hot play files as one TU (UNITY=0: separate)
 touch "$G/stamp"
 python3 tools/drawtables.py refs/hd/src build/gen >/dev/null
-scripts/dmake.sh $T OUT=build/$R${HUD:+_hud$HUD}${DARK:+_dark$DARK}${ATTRACT:+_attract$ATTRACT}${HOLD:+_hold}/elf HUD=${HUD:-1} ROUTE=$R SEED=$S SNAPS=$RECS LEVEL=$L MONEY=$M ENEMIES=$E OPT="${OPT:--O2}" DPROF=${DPROF:-0} ${SPRDMA:+SPRDMA=$SPRDMA} ${DARK:+DARK=$DARK} ${ATTRACT:+ATTRACT=$ATTRACT} ${HOLD:+HOLD=$HOLD} \
+scripts/dmake.sh $T W=$BD OUT=$BD/$R${HUD:+_hud$HUD}${DARK:+_dark$DARK}${ATTRACT:+_attract$ATTRACT}${HOLD:+_hold}/elf HUD=${HUD:-1} ROUTE=$R SEED=$S SNAPS=$RECS LEVEL=$L MONEY=$M ENEMIES=$E OPT="${OPT:--O2}" DPROF=${DPROF:-0} ${SPRDMA:+SPRDMA=$SPRDMA} ${DARK:+DARK=$DARK} ${ATTRACT:+ATTRACT=$ATTRACT} ${HOLD:+HOLD=$HOLD} \
   >"$O/make.log" 2>&1 || { tail -20 "$O/make.log"; exit 1; }
 # HOLD=n (jtcps3 frame check, scripts/jt_frames.sh): the SNAPS frames are held n frames each by the program itself;
 # the MiSTer set (zip + MRA) is built and kept in $O/elf/mister
-[ -n "$HOLD" ] && { scripts/dmake.sh $T OUT=build/$R${HUD:+_hud$HUD}${DARK:+_dark$DARK}${ATTRACT:+_attract$ATTRACT}_hold/elf HUD=${HUD:-1} ROUTE=$R SEED=$S SNAPS=$RECS LEVEL=$L MONEY=$M ENEMIES=$E OPT="${OPT:--O2}" DPROF=${DPROF:-0} ${SPRDMA:+SPRDMA=$SPRDMA} ${ATTRACT:+ATTRACT=$ATTRACT} HOLD=$HOLD TITLE="Spelunky frame check $R" mister >>"$O/make.log" 2>&1 || { tail -20 "$O/make.log"; exit 1; }; }
+[ -n "$HOLD" ] && { scripts/dmake.sh $T W=$BD OUT=$BD/$R${HUD:+_hud$HUD}${DARK:+_dark$DARK}${ATTRACT:+_attract$ATTRACT}_hold/elf HUD=${HUD:-1} ROUTE=$R SEED=$S SNAPS=$RECS LEVEL=$L MONEY=$M ENEMIES=$E OPT="${OPT:--O2}" DPROF=${DPROF:-0} ${SPRDMA:+SPRDMA=$SPRDMA} ${ATTRACT:+ATTRACT=$ATTRACT} HOLD=$HOLD TITLE="Spelunky frame check $R" mister >>"$O/make.log" 2>&1 || { tail -20 "$O/make.log"; exit 1; }; }
 n=$(echo "$RECS" | tr ',' '\n' | grep -c .)
 GAME_OUT="$O/out.txt" GAME_NSNAPS=$n scripts/mame.sh sfiii3na -rompath "$O/elf/mame" -skip_gameinfo -nothrottle -sound none \
   -video none -seconds_to_run ${SECONDS_TO_RUN:-20000} -cfg_directory "$O/w/cfg" -nvram_directory "$O/w/nvram" \

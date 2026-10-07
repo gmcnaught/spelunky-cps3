@@ -4,7 +4,8 @@
 #   scripts/snd_check.sh [route ...]      PLAYHOST=<binary> as scripts/p4_trace.sh; MAX=N differences shown
 cd "$(dirname "$0")/.."
 make -s -C test/host >/dev/null || exit 1
-mkdir -p build/snd_check
+SC=build/snd_check${RUNTAG:+_$RUNTAG}                    # RUNTAG=<tag>: build/snd_check_<tag> (two checks side by side)
+mkdir -p $SC
 for t in build/trace/s_*_s*.bin; do
   n=$(basename "$t" .bin); rs=${n#s_}; r=${rs%_s*}; s=${rs##*_s}
   [ $# -gt 0 ] && ! echo " $* " | grep -q " $r " && continue
@@ -14,10 +15,10 @@ for t in build/trace/s_*_s*.bin; do
         A="--enemies --level ${L:-1} --money ${M:-0}" ;;
   *)    A= ;;
   esac
-  ${PLAYHOST:-build/host/playhost} "tests/routes/$r.txt" "$s" $A > "build/snd_check/$n.c.txt" 2>/dev/null
-  st=$(python3 tools/playcmp.py "$t" "build/trace/$n.names" "build/snd_check/$n.c.txt" --max 1 2>&1 | grep -E '^ROUTE (equal|DIFF)' | head -1)
-  sn=$(python3 tools/sndcmp.py "$t" "build/snd_check/$n.c.txt" --max ${MAX:-3})
+  ${PLAYHOST:-build/host/playhost} "tests/routes/$r.txt" "$s" $A > "$SC/$n.c.txt" 2>/dev/null
+  st=$(python3 tools/playcmp.py "$t" "build/trace/$n.names" "$SC/$n.c.txt" --max 1 2>&1 | grep -E '^ROUTE (equal|DIFF)' | head -1)
+  sn=$(python3 tools/sndcmp.py "$t" "$SC/$n.c.txt" --max ${MAX:-3})
   printf '%-20s %s | sound: %s\n' "$r" "$st" "$(echo "$sn" | tail -1)"
   [ -n "$VERBOSE" ] && echo "$sn" | sed '$d'
 done
-rm -rf build/snd_check
+rm -rf $SC
