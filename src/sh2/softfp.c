@@ -29,7 +29,7 @@
 #else
 #define SF(n) __##n
 #endif
-#define HOT __attribute__((used))
+#define KEEP __attribute__((used))       /* the symbol is kept (libgcc names the compiler calls; --wrap links): not "hot" */
 #ifndef SOFTFP_HOST
 #define SOFTFP_DIVU 1
 #endif
@@ -184,7 +184,7 @@ f64 SF(adddf3)(f64 a, f64 b);
 #else
 #define ADD_C SF(adddf3)
 #endif
-HOT f64 ADD_C(f64 a, f64 b)
+KEEP f64 ADD_C(f64 a, f64 b)
 {
     uint32_t ah = HI(a), al = LO(a), bh = HI(b), bl = LO(b);
     int ea = (ah >> 20) & 0x7ff, eb = (bh >> 20) & 0x7ff;
@@ -263,7 +263,7 @@ HOT f64 ADD_C(f64 a, f64 b)
 }
 
 #ifndef SOFTFP_ASM
-HOT f64 SF(subdf3)(f64 a, f64 b) { return SF(adddf3)(a, b ^ D_SIGN); }
+KEEP f64 SF(subdf3)(f64 a, f64 b) { return SF(adddf3)(a, b ^ D_SIGN); }
 #endif
 
 static f64 mul_gen(f64 a, f64 b)                   /* finite, neither zero */
@@ -282,7 +282,7 @@ static f64 mul_gen(f64 a, f64 b)                   /* finite, neither zero */
     return pack_d(s, ea + eb - 1023, m);
 }
 
-HOT f64 SF(muldf3)(f64 a, f64 b)
+KEEP f64 SF(muldf3)(f64 a, f64 b)
 {
     uint32_t ah = HI(a), bh = HI(b), al = LO(a), bl = LO(b);
     uint32_t ea = (ah >> 20) & 0x7ff, eb = (bh >> 20) & 0x7ff;
@@ -359,7 +359,7 @@ static inline uint32_t div_step(uint64_t *R, uint64_t B, uint32_t bt)
     return q;
 }
 
-HOT f64 SF(divdf3)(f64 a, f64 b)
+KEEP f64 SF(divdf3)(f64 a, f64 b)
 {
     uint32_t ah = HI(a), bh = HI(b);
     uint32_t s = (ah ^ bh) >> 31;
@@ -418,16 +418,16 @@ static inline int cmp_d(f64 a, f64 b, int nanres)
 }
 
 #ifndef SOFTFP_ASM                                  /* SOFTFP_ASM: softfp_sh2.S's */
-HOT int SF(eqdf2)(f64 a, f64 b) { return cmp_d(a, b, 1); }
-HOT int SF(nedf2)(f64 a, f64 b) { return cmp_d(a, b, 1); }
-HOT int SF(ltdf2)(f64 a, f64 b) { return cmp_d(a, b, 1); }
-HOT int SF(ledf2)(f64 a, f64 b) { return cmp_d(a, b, 1); }
-HOT int SF(gtdf2)(f64 a, f64 b) { return cmp_d(a, b, -1); }
-HOT int SF(gedf2)(f64 a, f64 b) { return cmp_d(a, b, -1); }
+KEEP int SF(eqdf2)(f64 a, f64 b) { return cmp_d(a, b, 1); }
+KEEP int SF(nedf2)(f64 a, f64 b) { return cmp_d(a, b, 1); }
+KEEP int SF(ltdf2)(f64 a, f64 b) { return cmp_d(a, b, 1); }
+KEEP int SF(ledf2)(f64 a, f64 b) { return cmp_d(a, b, 1); }
+KEEP int SF(gtdf2)(f64 a, f64 b) { return cmp_d(a, b, -1); }
+KEEP int SF(gedf2)(f64 a, f64 b) { return cmp_d(a, b, -1); }
 #endif
-HOT int SF(unorddf2)(f64 a, f64 b) { return isnan_d(a) || isnan_d(b); }
+KEEP int SF(unorddf2)(f64 a, f64 b) { return isnan_d(a) || isnan_d(b); }
 
-HOT f64 SF(floatsidf)(int32_t v)                   /* exact */
+KEEP f64 SF(floatsidf)(int32_t v)                   /* exact */
 {
     if (v == 0) return 0;
     uint32_t s = v < 0 ? 0x80000000u : 0, m = v < 0 ? -(uint32_t)v : (uint32_t)v;
@@ -436,7 +436,7 @@ HOT f64 SF(floatsidf)(int32_t v)                   /* exact */
     return MK(s | ((uint32_t)(1023 + 31 - z) << 20) | ((m >> 11) & 0xfffff), m << 21);
 }
 
-HOT f64 SF(floatunsidf)(uint32_t m)
+KEEP f64 SF(floatunsidf)(uint32_t m)
 {
     if (m == 0) return 0;
     int z = clz32(m);
@@ -444,7 +444,7 @@ HOT f64 SF(floatunsidf)(uint32_t m)
     return MK(((uint32_t)(1023 + 31 - z) << 20) | ((m >> 11) & 0xfffff), m << 21);
 }
 
-HOT int32_t SF(fixdfsi)(f64 a)                     /* toward zero; fp-bit's NaN / range answers */
+KEEP int32_t SF(fixdfsi)(f64 a)                     /* toward zero; fp-bit's NaN / range answers */
 {
     uint32_t h = HI(a);
     int ex = (h >> 20) & 0x7ff;
@@ -485,7 +485,7 @@ static f32 pack_f(uint32_t s, int e, uint64_t m)
     return sign | (((uint32_t)(e - 1) << 23) + q);
 }
 
-HOT f64 SF(extendsfdf2)(f32 a)                     /* exact */
+KEEP f64 SF(extendsfdf2)(f32 a)                     /* exact */
 {
     uint32_t e8 = (a >> 23) & 0xff, s = a & 0x80000000u, m = a & 0x7fffff;
     if (e8 != 0 && e8 != 0xff)
@@ -500,7 +500,7 @@ HOT f64 SF(extendsfdf2)(f32 a)                     /* exact */
     return MK(s | ((uint32_t)(1023 - 126 - z) << 20) | ((m & 0x7fffff) >> 3), m << 29);
 }
 
-HOT f32 SF(truncdfsf2)(f64 a)
+KEEP f32 SF(truncdfsf2)(f64 a)
 {
     uint32_t h = HI(a), l = LO(a), s = h & 0x80000000u;
     int ex = (h >> 20) & 0x7ff;
@@ -536,7 +536,7 @@ static f32 add_f_wide(f32 a, f32 b) { return SF(truncdfsf2)(SF(adddf3)(SF(extend
 #else
 #define ADDF_C SF(addsf3)
 #endif
-HOT f32 ADDF_C(f32 a, f32 b)
+KEEP f32 ADDF_C(f32 a, f32 b)
 {
     uint32_t ua = a & 0x7fffffffu, ub = b & 0x7fffffffu;
     if (ua > F_INF) return qnan_f(a);
@@ -579,10 +579,10 @@ HOT f32 ADDF_C(f32 a, f32 b)
     return (a & 0x80000000u) | ((uint32_t)e << 23) | (m & 0x7fffffu);
 }
 #ifndef SOFTFP_ASM
-HOT f32 SF(subsf3)(f32 a, f32 b) { return SF(addsf3)(a, b ^ 0x80000000u); }
+KEEP f32 SF(subsf3)(f32 a, f32 b) { return SF(addsf3)(a, b ^ 0x80000000u); }
 #endif
 
-HOT f32 SF(mulsf3)(f32 a, f32 b)
+KEEP f32 SF(mulsf3)(f32 a, f32 b)
 {
     uint32_t s = (a ^ b) & 0x80000000u;
     if (isnan_f(a)) return (qnan_f(a) & 0x7fffffffu) | s;
@@ -606,7 +606,7 @@ HOT f32 SF(mulsf3)(f32 a, f32 b)
     return s | ((uint32_t)e << 23) | (q & 0x7fffffu);
 }
 
-HOT f32 SF(divsf3)(f32 a, f32 b)
+KEEP f32 SF(divsf3)(f32 a, f32 b)
 {
     if (isnan_f(a)) return qnan_f(a);
     if (isnan_f(b)) return qnan_f(b);
@@ -650,15 +650,15 @@ static inline int cmp_f(f32 a, f32 b, int nanres)
     return ((a > b) ^ sa) ? 1 : -1;
 }
 
-HOT int SF(eqsf2)(f32 a, f32 b) { return cmp_f(a, b, 1); }
-HOT int SF(nesf2)(f32 a, f32 b) { return cmp_f(a, b, 1); }
-HOT int SF(ltsf2)(f32 a, f32 b) { return cmp_f(a, b, 1); }
-HOT int SF(lesf2)(f32 a, f32 b) { return cmp_f(a, b, 1); }
-HOT int SF(gtsf2)(f32 a, f32 b) { return cmp_f(a, b, -1); }
-HOT int SF(gesf2)(f32 a, f32 b) { return cmp_f(a, b, -1); }
-HOT int SF(unordsf2)(f32 a, f32 b) { return isnan_f(a) || isnan_f(b); }
+KEEP int SF(eqsf2)(f32 a, f32 b) { return cmp_f(a, b, 1); }
+KEEP int SF(nesf2)(f32 a, f32 b) { return cmp_f(a, b, 1); }
+KEEP int SF(ltsf2)(f32 a, f32 b) { return cmp_f(a, b, 1); }
+KEEP int SF(lesf2)(f32 a, f32 b) { return cmp_f(a, b, 1); }
+KEEP int SF(gtsf2)(f32 a, f32 b) { return cmp_f(a, b, -1); }
+KEEP int SF(gesf2)(f32 a, f32 b) { return cmp_f(a, b, -1); }
+KEEP int SF(unordsf2)(f32 a, f32 b) { return isnan_f(a) || isnan_f(b); }
 
-HOT f32 SF(floatsisf)(int32_t v)
+KEEP f32 SF(floatsisf)(int32_t v)
 {
     if (v == 0) return 0;
     uint32_t s = v < 0 ? 0x80000000u : 0, m = v < 0 ? -(uint32_t)v : (uint32_t)v;
@@ -673,7 +673,7 @@ HOT f32 SF(floatsisf)(int32_t v)
     return s | ((uint32_t)e << 23) | (q & 0x7fffff);
 }
 
-HOT int32_t SF(fixsfsi)(f32 a)
+KEEP int32_t SF(fixsfsi)(f32 a)
 {
     int ex = (a >> 23) & 0xff;
     if (isnan_f(a)) return 0;

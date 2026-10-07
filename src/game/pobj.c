@@ -745,8 +745,8 @@ void item_step(int i)
         if (PL.holdItem == NOONE) PE(p)->held = 0;
     } else if (p->type != T_BOMB && p->type != T_ARROW && rest_skip(i, &br)) {
         /* the terrain part as its last full run (rest_skip); the lava tests below still run */
-    } else if (rest = p->type != T_BOMB && p->type != T_ARROW, rest ? rest_begin(i) : (void)0,
-               !collision_point_any(PTOD(p->x), PTOD(p->y), OBJ_oSolid, 0, NOONE)) {   /* :69 */
+    } else if (rest = p->type != T_BOMB && p->type != T_ARROW, rest ? rest_begin(i) : (void)0,   /* (comma: only on */
+               !collision_point_any(PTOD(p->x), PTOD(p->y), OBJ_oSolid, 0, NOONE)) {   /* :69   reaching here) */
         br = 1;
         moveTo(i, PE(p)->xVel, PE(p)->yVel, 0, 0);
         PE(p)->colLeft = PE(p)->colRight = PE(p)->colBot = PE(p)->colTop = 0;
