@@ -96,7 +96,7 @@ void play_transition_start(int room)
         pin_setdepth(&PX(i), g->depth);
         if (obj_is(g->obj, OBJ_oSolid)) PX(i).invincible = (g->flags & IF_INVINCIBLE) != 0;
     }
-    pin_add(OBJ_oGamepad, 0, 0, 110219);
+    pin_add(OBJ_oGamepad, 0, 0, RUNNER_ID_GAMEPAD);
     {
     int n0 = PW.n;                                     /* instances the Creates make ran their Create already */
     for (k = 0; k < n0; k++) {                                                 /* the other Create events, in order */

@@ -7,7 +7,7 @@
 #include "pmsg.h"
 #include "game.h"
 
-struct game_cfg game_cfg = { 0, 0, 30, 0, 1, 0, 1, -1, -1, 0, 0 };
+struct game_cfg game_cfg = { .tail = 30, .level = 1, .enemies = 1, .nodark = -1, .room = -1 };
 int32_t game_rec, game_rec1 = -1, game_steps;
 void (*game_rec_hook)(int32_t rec);               /* tests: called at each record point with its number */
 uint8_t game_over;
@@ -305,14 +305,14 @@ void game_begin(void)
         rng_seed(&g_rng, seed);
     }
     gen_room_force = game_cfg.room <= 3 ? game_cfg.room : -1;
-    play_level_start(110325);                     /* the runner's instance id counter at rLevel (playhost) */
+    play_level_start(RUNNER_ID_LEVEL);                     /* the runner's instance id counter at rLevel (playhost) */
     gen_room_force = -1;
     if (game_cfg.room == R_rEnd) {                /* a route from the ending's first room (tools/tracer.py
                                                      TRACE_ROOM=rEnd): the play loop goes there at its first step,
                                                      as rOlmec's oXEnd does; the RNG and the instance id counter as
                                                      the title flow leaves them (random_set_seed(SEED)) */
         rng_seed(&g_rng, game_cfg.seed);
-        PW.next_id = 110325;
+        PW.next_id = RUNNER_ID_LEVEL;
         play_goto_room = R_rEnd;
     }
     game_rec = 0;

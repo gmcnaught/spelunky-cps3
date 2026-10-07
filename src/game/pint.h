@@ -43,6 +43,10 @@ extern struct player PL;
    every value read is the one HD computes, and the search costs nothing on the other levels */
 #define LIGHT_ON() (G.darkLevel || instance_exists_p(OBJ_oSacAltarLeft))
 
+/* the runner's instance ids (Observed in the traces): oGamepad (the tracer's persistent instance), the id counter
+   after it (the front rooms), the counter at rLevel's start */
+enum { RUNNER_ID_GAMEPAD = 110219, RUNNER_ID_FRONT = 110220, RUNNER_ID_LEVEL = 110325 };
+
 /* GML constants (characterCreateEvent) */
 enum { STANDING = 10, RUNNING = 11, DUCKING = 12, LOOKING_UP = 13, CLIMBING = 14, JUMPING = 15, FALLING = 16,
        DYING = 17, LEFT = 18, RIGHT = 19, ON_GROUND = 20, IN_AIR = 21, ON_LADDER = 22, HANGING = 23,

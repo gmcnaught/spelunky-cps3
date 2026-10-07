@@ -63,10 +63,11 @@ __attribute__((weak)) void main_boot(void) {}
 /* The VBlank interrupt (IRL 12): the SDK's handler (crt0.S: count, acknowledge) plus src/draw's second list of a
    step (smooth motion, draw_vbl_irq). The vector table in use is copied to RAM with this handler in vectors 70-71
    and VBR pointed at it */
+#define IRL12_ACK (*(volatile uint32_t *)0x05100000u)   /* any write acknowledges IRL 12 (the VBlank) */
 static void __attribute__((interrupt_handler)) vbl_irq(void)
 {
     vbl_count++;
-    *(volatile uint32_t *)0x05100000u = vbl_count;   /* acknowledges IRL 12 (any write) */
+    IRL12_ACK = vbl_count;
     draw_vbl_irq();
 }
 static uint32_t vectors[128];                     /* all of them: on-chip peripherals' vectors too (tests: FRT, 72) */

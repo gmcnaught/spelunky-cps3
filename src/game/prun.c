@@ -425,7 +425,7 @@ void play_level_start(int32_t next_id)
         }
     }
     /* the persistent tracer instance (oGamepad: inputs in its Step, the record in its End Step) */
-    pin_add(OBJ_oGamepad, 0, 0, 110219);
+    pin_add(OBJ_oGamepad, 0, 0, RUNNER_ID_GAMEPAD);
     /* oLevel Create: global.xmoney = global.xtime = 0, shake 0; scrHoldItem(global.pickupItem) for oPlayer1 */
     PG.xmoney = 0;
     PG.xtime = 0;

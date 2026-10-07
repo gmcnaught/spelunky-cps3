@@ -161,7 +161,7 @@ static void title_create_w(void)
             for (cy = 32; cy < 160; cy += 16) instance_create(cx, cy, OBJ_oBrick);
     }
     if (SH.hs.value[HS_MONEY] >= 200000 && SH.hs.value[HS_TIME] > 0 && SH.hs.value[HS_TIME] <= 600 &&
-        SH.hs.value[3] >= 120 && SH.hs.value[4] >= 8) {                       /* :103 */
+        SH.hs.value[HS_KILLS] >= 120 && SH.hs.value[HS_SAVES] >= 8) {                       /* :103 */
         instance_create(32, 112, OBJ_oMultiTrophy);
         instance_create(32, 128, OBJ_oXChange2);
     } else
@@ -173,8 +173,8 @@ static void title_create_w(void)
    global.scoresStart 0 */
 static void scores_create_w(void)
 {
-    int32_t tMoney = SH.hs.value[HS_MONEY], tTime = SH.hs.value[HS_TIME], tKills = SH.hs.value[3];
-    int32_t tSaves = SH.hs.value[4];
+    int32_t tMoney = SH.hs.value[HS_MONEY], tTime = SH.hs.value[HS_TIME], tKills = SH.hs.value[HS_KILLS];
+    int32_t tSaves = SH.hs.value[HS_SAVES];
     int t;
     G.currLevel = 1;                                                           /* :13 */
     G.darkLevel = 0;
@@ -322,7 +322,7 @@ int front_room(int room)
             play_gen_inst = 0;
         }
     }
-    pin_add(OBJ_oGamepad, 0, 0, 110219);                                       /* the tracer's (persistent) */
+    pin_add(OBJ_oGamepad, 0, 0, RUNNER_ID_GAMEPAD);                                       /* the tracer's (persistent) */
     n0 = PW.n;
     for (k = 0; k < PIN_MAX; k++) lpos_id[k] = -1;
     {
@@ -1342,7 +1342,7 @@ void front_start_at(int room)                     /* tests: the attract cycle fr
     front_on = 1;
     front_ending = 0;
     gen_new_game();
-    PW.next_id = 110220;
+    PW.next_id = RUNNER_ID_FRONT;
     rng_seed(&g_rng, front_seed);                 /* the traces' random_set_seed(SEED) in the title flow */
     front_room(room);
 }
@@ -1353,9 +1353,9 @@ void front_start(void)
     front_ending = 0;
     front_new = 0;
     gen_new_game();                                                            /* oGlobals: scrClearGlobals */
-    PW.next_id = 110220 - 0;                                                   /* the runner's: oGamepad 110219 */
+    PW.next_id = RUNNER_ID_FRONT;                                             /* the runner's: after oGamepad */
     front_room(R_rIntro);
-    PW.next_id = 110220;
+    PW.next_id = RUNNER_ID_FRONT;
 }
 
 void front_step(void)
@@ -1384,7 +1384,7 @@ static void scores_text(void)
 {
     char b[40], *e;
     int pl = instance_first_p(OBJ_oPlayer1), blk = instance_nearest_p(160, 240, OBJ_oPushBlock), but;
-    int32_t v1 = SH.hs.value[1], v3 = SH.hs.value[3], v4 = SH.hs.value[4];
+    int32_t v1 = SH.hs.value[HS_MONEY], v3 = SH.hs.value[HS_KILLS], v4 = SH.hs.value[HS_SAVES];
     if (pl == NOONE) return;
     if (DLT(PTOD(PX(pl).y), 156)) {
         hud_text("SECRET CHALLENGES", HUD_FONT_SMALL, 1, 112 + (192 - 17 * 8) / 2, 32);
@@ -1394,17 +1394,17 @@ static void scores_text(void)
         e = b; { const char *t = "MONEY:   "; while (*t) *e++ = *t++; } hud_itoa(v1, e); hud_text(b, HUD_FONT_SMALL, 0, 120, 48);
         e = b; { const char *t = "KILLS:   "; while (*t) *e++ = *t++; } hud_itoa(v3, e); hud_text(b, HUD_FONT_SMALL, 0, 120, 64);
         e = b; { const char *t = "SAVES:   "; while (*t) *e++ = *t++; } hud_itoa(v4, e); hud_text(b, HUD_FONT_SMALL, 0, 120, 80);
-        if (SH.hs.value[6] > 0) {                                             /* only display time if won */
-            int32_t sec = SH.hs.value[2], m = sec / 60;
+        if (SH.hs.value[HS_WINS] > 0) {                                             /* only display time if won */
+            int32_t sec = SH.hs.value[HS_TIME], m = sec / 60;
             sec %= 60;
             e = b; { const char *t = "TIME:    "; while (*t) *e++ = *t++; }
             e += 0; hud_itoa(m, e); while (*e) e++; *e++ = ':'; if (sec < 10) *e++ = '0'; hud_itoa(sec, e);
             hud_text(b, HUD_FONT_SMALL, 0, 120, 96);
         }
         hud_text("STATISTICS", HUD_FONT_SMALL, 1, 112 + (192 - 10 * 8) / 2, 112);
-        e = b; { const char *t = "PLAYS:   "; while (*t) *e++ = *t++; } hud_itoa(SH.hs.value[5], e); hud_text(b, HUD_FONT_SMALL, 0, 120, 128);
-        e = b; { const char *t = "DEATHS:  "; while (*t) *e++ = *t++; } hud_itoa(SH.hs.value[7], e); hud_text(b, HUD_FONT_SMALL, 0, 120, 144);
-        e = b; { const char *t = "WINS:    "; while (*t) *e++ = *t++; } hud_itoa(SH.hs.value[6], e); hud_text(b, HUD_FONT_SMALL, 0, 120, 160);
+        e = b; { const char *t = "PLAYS:   "; while (*t) *e++ = *t++; } hud_itoa(SH.hs.value[HS_PLAYS], e); hud_text(b, HUD_FONT_SMALL, 0, 120, 128);
+        e = b; { const char *t = "DEATHS:  "; while (*t) *e++ = *t++; } hud_itoa(SH.hs.value[HS_DEATHS], e); hud_text(b, HUD_FONT_SMALL, 0, 120, 144);
+        e = b; { const char *t = "WINS:    "; while (*t) *e++ = *t++; } hud_itoa(SH.hs.value[HS_WINS], e); hud_text(b, HUD_FONT_SMALL, 0, 120, 160);
     }
     but = instance_first_p(OBJ_oButtonHighscore);
     if (blk != NOONE && but != NOONE && !PE(&PX(but))->armed && DGT(PTOD(PX(blk).x), 160))
