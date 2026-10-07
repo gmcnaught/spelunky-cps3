@@ -704,10 +704,17 @@ static void characterStepEvent(int i)
             moveTo(i, PE(p)->xVel, PE(p)->yVel + NI(slopeChangeInY), &xVelInteger, &yVelInteger);
             {
                 double dx = PTOD(p->x) - PTOD(xPrev2), dy = PTOD(p->y) - PTOD(yPrev2), d2 = dx * dx + dy * dy;
-                double s = d2, prev = 0;
+                double s = d2, prev = 0, a = xVelInteger < 0 ? -xVelInteger : xVelInteger;
                 int it;
-                for (it = 0; it < 64 && s != prev && d2 > 0; it++) { prev = s; s = 0.5 * (s + d2 / s); }
-                dist = d2 > 0 ? s : 0;                                         /* point_distance */
+                /* dist is read only by the test below (and the ratio when it holds). d2 <= a * a (a a whole number,
+                   exact): sqrt(d2) <= a, and the loop's result s (a fixed point of the rounded step, reached in
+                   under 64 iterations for these d2) is within a few ulps of sqrt(d2), so s - a <= eps and DGT is
+                   false: the loop is skipped (tests/slopedist) */
+                if (d2 <= a * a) dist = 0;
+                else {
+                    for (it = 0; it < 64 && s != prev && d2 > 0; it++) { prev = s; s = 0.5 * (s + d2 / s); }
+                    dist = d2 > 0 ? s : 0;                                     /* point_distance */
+                }
             }
             if (DGT(dist, (xVelInteger < 0 ? -xVelInteger : xVelInteger))) {
                 double ratio;
