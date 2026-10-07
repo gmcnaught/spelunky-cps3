@@ -1,5 +1,6 @@
 /* GML scripts of the play loop (refs/hd/src/scripts/<name>/<name>.gml; line numbers in comments). */
 #include "pint.h"
+#include "pmath.h"                               /* patan, patan_deg (defined here) */
 #ifdef PLAY_STATS
 #include <stdio.h>
 #include <stdlib.h>

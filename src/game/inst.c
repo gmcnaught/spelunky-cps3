@@ -14,7 +14,6 @@
  */
 #include "inst.h"
 
-extern struct inst inst_mem[];
 struct world W = { .in = inst_mem };
 int gen_untranslated;
 void (*inst_hook)(int op, int i, int a, int b, int c);

@@ -18,6 +18,10 @@
 #include "credit.h"
 #include "hiscore.h"
 
+/* stops the game's VBlank interrupt work before the shell takes the video (src/main main.c; a weak no-op in shell.c
+   for the shell's own tests) */
+void shell_video_stop(void);
+
 enum shell_mode { SHELL_ATTRACT, SHELL_PLAY };
 
 struct shell {

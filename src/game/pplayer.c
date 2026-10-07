@@ -13,6 +13,8 @@
 
 struct player PL;
 
+void scrUseItem(void);                           /* below (oPlayer1 Step :1319) */
+
 #define GPd(k) ((GP.down & (k)) != 0)
 #define GPp(k) ((GP.pressed & (k)) != 0)
 #define GPr(k) ((GP.released & (k)) != 0)
@@ -1550,7 +1552,6 @@ void pl_step(int i)
         }
     } else if (PL.kAttackPressed) {                                            /* :1319 */
         if (PL.holdItem != NOONE) {
-            extern void scrUseItem(void);
             scrUseItem();
         }
     }

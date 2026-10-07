@@ -16,6 +16,7 @@ __attribute__((weak)) int front_room(int room) { (void)room; return 0; }
 #include "penemy.h"                  /* P5 hooks: enemies, damsel, shop (each marked "P5 hook") */
 #include "pcontent.h"                            /* P7 content packages (docs/CONTENT.md) */
 #include "pcol.h"                                /* pcol_quiet (the resting-object skip) */
+#include "pmath.h"                               /* patan_deg */
 #include "pcmpc.h"                               /* jar_step's compares against constants on the bits */
 
 struct pgame PGAME;
@@ -1069,7 +1070,6 @@ static void arrow_step(int i)
     p = &PX(i);
     {
         double xv = NTOD(PE(p)->xVel), yv = NTOD(PE(p)->yVel);
-        extern double patan_deg(double a);
         if (xv > 0 && yv < 0) PE(p)->direction = patan_deg(-yv / xv);
         else if (xv < 0 && yv < 0) PE(p)->direction = 180 - patan_deg(-yv / -xv);
         else if (xv > 0 && yv > 0) PE(p)->direction = patan_deg(yv / xv);

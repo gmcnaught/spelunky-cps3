@@ -76,7 +76,7 @@ struct inst {
 };
 
 struct world {
-    struct inst *in;        /* INST_MAX of them (inst_mem: pworld.c, test/host/genhost.c) */
+    struct inst *in;        /* INST_MAX of them (inst_mem) */
     int16_t n;              /* instances created (alive or not), index = creation order */
     int32_t next_id;        /* id of the next instance_create */
     /* point-test grids (inst.c collision_point): cell, per cell the alive oSolid-family instances whose bbox is
@@ -92,6 +92,7 @@ struct world {
 };
 
 extern struct world W;
+extern struct inst inst_mem[];  /* W.in's memory (pworld.c; test/host/genhost.c), also PW.in (play.h) */
 
 void inst_reset(int32_t next_id);
 /* the play loop's collision tree follows the generator (src/game/pcol.c pcol_gen_hook; NULL in genhost):

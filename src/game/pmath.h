@@ -4,6 +4,7 @@
 #include <stdint.h>
 double psqrt(double d);
 double patan(double x);                       /* pscript.c (fdlibm s_atan.c) */
+double patan_deg(double a);                   /* pscript.c: patan in degrees */
 double point_distance_d(double x1, double y1, double x2, double y2);
 double point_direction_d(double x1, double y1, double x2, double y2);
 double degtorad_d(double d);

@@ -910,9 +910,6 @@ static uint8_t hud_held_of(int t)
     }
 }
 
-/* oTransition's drawLoot, moneyCount, isLoot, isKills: src/game/ptrans.c (0: no oTransition) */
-int ptrans_gui(int32_t *v);
-
 static char *cat(char *d, const char *s) { while (*s) *d++ = *s++; *d = 0; return d; }
 static char *catn(char *d, int32_t n) { char b[12]; return cat(d, hud_itoa(n, b)); }
 

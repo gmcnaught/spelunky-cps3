@@ -2,6 +2,7 @@
  * trap (penemy.c). Each entry returns 1 when the instance's object is one of theirs (the event was handled). */
 #ifndef PENEMY_H
 #define PENEMY_H
+#include "pint.h"                               /* uint8_t, PX, T_MACHETE */
 
 int pen_create(int i, int fromgen);           /* Create (fromgen: the generator ran it; only its variables) */
 int pen_step(int i);                            /* 0 not claimed, 1 run, 2 run through pcontent_ev */
@@ -22,6 +23,9 @@ void pen_item_hit_damsel(int item);
 int pen_jar_hit(int jar, int skull);          /* 1: destroy the jar */
 void pen_sight_speed(double dir, double *h, double *v);   /* oEnemySight's speed 10 at dir 0 / 180 (kept) */
 void pen_player_pickup_enemy(int pl);         /* oPlayer1 Step :1306 */
+/* oEnemy's collision events, for the P7 enemies that inherit them */
+void enemy_hit_player(int i, int c);          /* objects/oEnemy/Collision_oCharacter.gml */
+void enemy_whipped(int i, int w);             /* objects/oEnemy/Collision_oWhip.gml (and oWhipPre) */
 
 int pdam_create(int i, int fromgen);
 int pdam_step(int i);

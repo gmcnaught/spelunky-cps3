@@ -28,6 +28,7 @@ struct game_cfg {
     int32_t scores;              /* a route: 1 stores scores in the EEPROM as the cabinet does (tests); 0 leaves it */
 };
 extern struct game_cfg game_cfg;
+extern void (*game_rec_hook)(int32_t rec);    /* tests: called at each record point with its number */
 
 /* the record counter, as test/host/playhost.c and tools/tracer.py count them (phase 0 at a room's first Begin
    Step, phase 1 at oGamepad's End Step) */

@@ -98,9 +98,6 @@ void destroy_solid(int i);                    /* pobj.c: objects/oSolid/Destroy_
    handlers with fromgen 1 read: dir, facing, flags, counter, ...); 0 otherwise */
 extern const struct inst *play_gen_inst;
 extern int play_gen_created;                  /* a package's FEV_CREATE ran for it (its xVel / yVel are kept) */
-/* penemy.c: oEnemy's collision events, for the P7 enemies that inherit them */
-void enemy_hit_player(int i, int c);          /* objects/oEnemy/Collision_oCharacter.gml */
-void enemy_whipped(int i, int w);             /* objects/oEnemy/Collision_oWhip.gml (and oWhipPre) */
 
 /* room indices (names file R lines) */
 enum { R_rCredits2 = 3, R_rTitle = 4, R_rHighscores = 5, R_rSun = 6, R_rMoon = 7, R_rStars = 8, R_rTutorial = 9, R_rLevelEditor = 10,

@@ -599,7 +599,6 @@ static void deadfish_step(int i)                               /* objects/oDeadF
 static void fishbone_step(int i)
 {
     struct pin *p;
-    extern double patan_deg(double a);
     item_step(i);
     p = &PX(i);
     {
