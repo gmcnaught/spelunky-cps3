@@ -588,6 +588,27 @@ On drain 61 the run batches all six: phase T 15.3 K for the six (4.5 K instructi
 oPiranha's share of the step 176 K (041d709) -> 48 K (plain). Host: 182 route runs byte-identical; batches of 2-6
 on the swamp routes.
 
+
+### 12.4 check_water on ints, and on main 2dbe55e
+
+check_water (oGame Step, the drain event and c_swamp_grave's spikes): for a water at whole x, y its ten point tests
+are collision_point_any_at's (the oWater index, and the oSolid summary since swamp3's 0c37d52) and the two
+instance_place_p are instance_place_ixy (the same calls with side effects in the same order; the static-family answer
+and overlap_at's integer path on ints, no doubles). jtcost c_swamp_grave records 187 / 352: 2.68 / 3.05 M ->
+2.03 / 2.38 M (-24 / -22 %); MAME grave spikes 613-677 K -> 457-521 K, drain 273 1,088 -> 857 K.
+
+Rebased on main 2dbe55e (swamp3, totem, pphase spikes, sprdma): the batch's guard follows swamp3's direct package
+Step (ev_step_is_pkg), one prey walk (pw_fam_swims) serves piranha_step, piranha_idle and the batch, pw_solid_pt is
+solid_point_sum's wrapper. 182 host route runs byte-identical to pre-merge main 5e7974c; playsh2 grid and SOFTFP
+9,701 / 9,701; batches on drain 6 x 122, 5 x 156.
+
+| | main 2dbe55e | piranha4 (46b3bca) | change |
+|---|---|---|---|
+| drain 61 (plain / NC) | 472 / 405 K | 401 / 343 K | -15 / -15 % |
+| swim 300 (plain / NC) | 537 / 455 K | 469 / 398 K | -13 / -13 % |
+| MAME SOFTFP drain / swim / grave means | 150.9 / 115.7 / 153.3 K | 143.6 / 110.8 / 152.7 K | -4.8 / -4.2 / -0.4 % |
+| MAME max step drain / grave | 1,091 / 678 K | 887 / 544 K | -19 / -20 % |
+
 ## 13. Spear traps near instances (2026-10-06, branch totem on 041d709)
 
 User report (MiSTer): jungle levels slow down whenever something is near a totem trap (oSpearTrapBottom / Top /
