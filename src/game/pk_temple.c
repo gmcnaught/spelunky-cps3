@@ -362,6 +362,10 @@ static void lava_enemy(int i, int arg)
     pin_setdepth(p, 999);
 }
 
+#undef spurt
+#undef spurtTime
+#undef spurtCounter
+
 /* ==== oMagma, oMagmaTrail, oLavaDrip ============================================================================= */
 /* objects/oMagma/Create_0.gml (oDetritus Create first; GML goes on after its instance_destroy) */
 static void magma_create(int i)
@@ -821,6 +825,8 @@ static void golddoor_sceptre(int self, int s)
         pmsg_str("THE SCEPTRE FITS...", "BUT NOTHING IS HAPPENING!", 100);
 }
 
+#undef attackTimer
+
 /* ==== oSmashTrap / oSmashTrapLit, oCeilingTrap, oDoor ============================================================= */
 /* oSmashTrap's xv, yv, xa, ya, dir, hit */
 #define xv px
@@ -913,13 +919,20 @@ static void smashtrap_step(int i)
     if (collision_rect_any_at(i, 1, 1, 15, 15, OBJ_oLava)) PE(p)->status = 99;
 }
 
+#undef xv
+#undef yv
+#undef xa
+#undef ya
+#undef sdir
+#undef hit
+
 /* the rubble of oSmashTrap / oCeilingTrap Destroy (sRubbleTan) and oDoor Destroy (k = 4, small only) */
 static void rubble_tan(int i, int obj, int kx, int spr)
 {
     struct pin *p = &PX(i);
     int ya = RAND(0, 8), yb = RAND(0, 8);
-    int xa_ = RAND(0, kx), xb = RAND(0, kx);
-    int r = pin_create(p->x + PI(8 + xa_ - xb), p->y + PI(8 + ya - yb), obj);
+    int xa = RAND(0, kx), xb = RAND(0, kx);
+    int r = pin_create(p->x + PI(8 + xa - xb), p->y + PI(8 + ya - yb), obj);
     pin_set_sprite(r, spr);
 }
 
@@ -1014,8 +1027,8 @@ static void gold_piece(int i, int obj)
 {
     struct pin *p = &PX(i);
     int ya = RAND(0, 4), yb = RAND(0, 4);
-    int xa_ = RAND(0, 4), xb = RAND(0, 4);
-    int g = pin_create(p->x + PI(8 + xa_ - xb), p->y + PI(8 + ya - yb), obj);
+    int xa = RAND(0, 4), xb = RAND(0, 4);
+    int g = pin_create(p->x + PI(8 + xa - xb), p->y + PI(8 + ya - yb), obj);
     int a = RAND(0, 3), b = RAND(0, 3);
     PE(&PX(g))->xVel = NI(a - b);
     PE(&PX(g))->yVel = NI(RAND(2, 4) * 1);
@@ -1050,7 +1063,7 @@ static void player_smashtrap(int i)
     if (DLT(X(obj) + 8, X(i))) PE(p)->xVel = NI(-RAND(4, 6));
     else PE(p)->xVel = NI(RAND(4, 6));
     PE(p)->yVel = N(-6);
-    if (obj != NOONE && PE(&PX(obj))->sdir == SM_DOWN) PE(p)->yVel = N(4);
+    if (obj != NOONE && PE(&PX(obj))->state == SM_DOWN) PE(p)->yVel = N(4);   /* the trap's dir (sdir) */
     scrCreateBlood(i, p->x, p->y, 1);
     if (PL.holdItem != NOONE) {
         PE(&PX(PL.holdItem))->held = 0;
@@ -1290,8 +1303,8 @@ static void olmec_step(int i)
         int k;
         for (k = 0; k < 6; k++) {
             int ya = RAND(0, 32), yb = RAND(0, 32);
-            int xa_ = RAND(0, 32), xb = RAND(0, 32);
-            pin_create(PX(i).x + PI(32 + xa_ - xb), PX(i).y + PI(14 + ya - yb), OBJ_oPsychicCreate2);
+            int xa = RAND(0, 32), xb = RAND(0, 32);
+            pin_create(PX(i).x + PI(32 + xa - xb), PX(i).y + PI(14 + ya - yb), OBJ_oPsychicCreate2);
         }
         for (k = 0; k < 3; k++) pin_create(PX(i).x + PI(32), PX(i).y + PI(16), OBJ_oYellowBall);
         snd_play(SND_xpsychic);                                                /* :88 */
@@ -1452,6 +1465,10 @@ static void olmec_alarm(int i, int a)
         break;
     }
 }
+
+#undef carryPlayer
+#undef slammed
+#undef toggle
 
 /* ==== oOlmecDebris, oOlmecSlam, oYellowBall, oPsychicCreate2, oFinalBoss ============================================ */
 /* objects/oOlmecDebris/Create_0.gml */
