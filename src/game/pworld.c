@@ -665,7 +665,8 @@ void pw_release(void)
 #ifdef PIN_EXT_CHECK
         {   /* the check build: a free slot read through an index kept elsewhere shows in the output */
             struct pin *d = &PW.in[s];
-            PIN_WR(pos, d->x) = PIN_WR(pos, d->y) = (pos)PI(8000);
+            PIN_SETX_RAW(d, (pos)PI(8000));
+            PIN_SETY_RAW(d, (pos)PI(8000));
             d->id = -7777;
         }
 #endif
@@ -765,8 +766,8 @@ int pin_add(int obj, pos x, pos y, int32_t id)
     PIN_WR(int16_t, p->mask) = -1;
     p->alive = 1;
     PIN_WR(uint8_t, p->visible) = pobj[obj].visible;
-    PIN_WR(pos, p->x) = x;
-    PIN_WR(pos, p->y) = y;
+    PIN_SETX_RAW(p, x);
+    PIN_SETY_RAW(p, y);
     PIN_WR(float, p->depth) = objdefs[obj].depth;
     PIN_WR(img_t, p->img) = 0;
     PIN_WR(img_t, p->ispd) = 1;
@@ -900,6 +901,34 @@ void pin_set_sprite(int i, int spr)
 
 /* pos_int: play.h */
 
+/* pin_xy_int's slow path (play.h): one shadow not known; both decoded from the floats and stored (the shadows are a
+   cache of x, y: written through a const pointer's object, which is PW.in's) */
+__attribute__((noinline)) int pin_xy_fill(const struct pin *p, int32_t *x, int32_t *y)
+{
+    struct pin *w = (struct pin *)p;
+    int32_t a, b;
+    w->ix = pos_int(p->x, &a) ? (int16_t)a : PXY_NO;
+    w->iy = pos_int(p->y, &b) ? (int16_t)b : PXY_NO;
+    if (w->ix == PXY_NO || w->iy == PXY_NO) return 0;
+    *x = a; *y = b;
+    return 1;
+}
+
+#ifdef PIN_SHADOW_CHECK
+/* the check build: the shadows' answer r (and x, y when 1) against pos_int on the floats */
+int pin_xy_check(const struct pin *p, int r, int32_t x, int32_t y)
+{
+    int32_t a = 0, b = 0;
+    int d = pos_int(p->x, &a) && pos_int(p->y, &b);
+    if (d != r || (r && (a != x || b != y))) {
+        fprintf(stderr, "pin_xy_int: shadows %d (%d %d) differ from the floats %d (%.9g %.9g), instance %d\n", r, (int)x,
+                (int)y, d, (double)p->x, (double)p->y, PIN_IDX(p));
+        abort();
+    }
+    return r;
+}
+#endif
+
 static void bbox_dbl(const struct pin *p, const struct gsprcol *c, double *l, double *t, double *r, double *b)
 {
     double xs = p->xscale, ys = p->yscale, x = PTOD(p->x), y = PTOD(p->y);
@@ -983,7 +1012,7 @@ static __attribute__((noinline)) int bbox_ints(struct pin *p, const struct gsprc
 {
     int32_t sx, sy, ax, ay, l, t, x, y;
     int k = spr_of(p);
-    if (!fzero(p->angle) || !pos_int(p->x, &x) || !pos_int(p->y, &y)) return 0;
+    if (!fzero(p->angle) || !pin_xy_int_p(p, &x, &y)) return 0;
     if (c->kind == 1 && psprite[k].nmasks > 0 && !mask_full(c, &psprite[k])) return 0;
     if (!fwhole(p->xscale, &sx) || !fwhole(p->yscale, &sy)) return 0;
     ax = sx < 0 ? -sx : sx; ay = sy < 0 ? -sy : sy;
@@ -1012,7 +1041,7 @@ static __attribute__((noinline)) int bbkind_set(int i)
         else {
             const struct gsprcol *c = &gsprcol[s];
             int xs = funit(p->xscale), ys = funit(p->yscale);
-            if (xs && ys && fzero(p->angle) && pos_int(p->x, &x) && pos_int(p->y, &y)) {
+            if (xs && ys && fzero(p->angle) && pin_xy_int_p(p, &x, &y)) {
                 int32_t l = xs > 0 ? x + (c->l - c->xo) : x - (c->r + 1 - c->xo);
                 int32_t t = ys > 0 ? y + (c->t - c->yo) : y - (c->b + 1 - c->yo);
                 PWST(bbox_int, 1);
@@ -3012,8 +3041,10 @@ static void pci_of(int i, int32_t dx, int32_t dy, struct pci *q)
         q->bpr = 0; q->mask = 0;
         return;
     }
-    pos_int(p->x, &q->x);
-    pos_int(p->y, &q->y);
+    if (!pin_xy_int_p(p, &q->x, &q->y)) {         /* (a BB_INT box: whole x, y; else as pos_int leaves them) */
+        pos_int(p->x, &q->x);
+        pos_int(p->y, &q->y);
+    }
     q->x += dx; q->y += dy;
     q->sx = p->xscale > 0 ? 1 : -1;
     q->sy = p->yscale > 0 ? 1 : -1;

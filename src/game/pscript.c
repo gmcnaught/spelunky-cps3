@@ -274,8 +274,8 @@ void moveTo(int i, num a0, num a1, int32_t *xio, int32_t *yio)
     int32_t il, it, ir, ib;
 #endif
 /* a pixel step: the setter, or (raw) the field alone, the setter called once with the position reached (below) */
-#define MT_SETX(v) (raw ? (void)(PIN_WR(pos, p->x) = (v)) : pin_setx(p, (v)))
-#define MT_SETY(v) (raw ? (void)(PIN_WR(pos, p->y) = (v)) : pin_sety(p, (v)))
+#define MT_SETX(v) (raw ? PIN_SETX_RAW(p, (v)) : pin_setx(p, (v)))
+#define MT_SETY(v) (raw ? PIN_SETY_RAW(p, (v)) : pin_sety(p, (v)))
     vel_parts(a0, &vx);
     vel_parts(a1, &vy);
     if (vx.r != 0) xVelInteger = (int32_t)(play_time % (uint32_t)vx.r) == 0;
@@ -371,8 +371,8 @@ void moveTo(int i, num a0, num a1, int32_t *xio, int32_t *yio)
         /* pin_setx then pin_sety, with nothing between: their marks are one pw_changed's when either changed
            (consecutive pw_changed(i) leave what the last leaves: characterStepEvent's slope loops), so pin_setxy */
         pos fx = p->x, fy = p->y;
-        PIN_WR(pos, p->x) = mtXPrev;
-        PIN_WR(pos, p->y) = mtYPrev;
+        PIN_SETX_RAW(p, mtXPrev);
+        PIN_SETY_RAW(p, mtYPrev);
         pin_setxy(p, fx, fy);
     }
 #undef MT_SETX
