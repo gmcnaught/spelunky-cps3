@@ -841,9 +841,28 @@ void pw_deactivate(int i)
 #ifndef PCOL_EXACT
     if (xmask[i] && !xond[i]) xdirty(i);
 #endif
-    for (k = j = 0; k < PW.nord; k++)
-        if (pw_ord[k] != i) pw_ord[j++] = pw_ord[k];
-    PW.nord = (int16_t)j;
+    /* pw_ord without i: pw_ord holds distinct slots in creation order, so pw_seq rises along it (pw_activate appends
+       with the next number; the renumbering keeps the order) and i's place is found by a binary search on pw_seq;
+       the entries after it move down one. The linear filter where the search does not land on i */
+    {
+        int lo = 0, hi = PW.nord - 1, s0 = pw_seq[i];
+        while (lo < hi) {
+            int m = (lo + hi) >> 1;
+            if (pw_seq[pw_ord[m]] < s0) lo = m + 1; else hi = m;
+        }
+        if (PW.nord > 0 && pw_ord[lo] == i) {
+            for (k = lo; k < PW.nord - 1; k++) pw_ord[k] = pw_ord[k + 1];
+            PW.nord = (int16_t)(PW.nord - 1);
+        } else {
+#ifdef PLAY_STATS
+            fprintf(stderr, "pw_deactivate: %d not found by creation number\n", i);
+            abort();
+#endif
+            for (k = j = 0; k < PW.nord; k++)
+                if (pw_ord[k] != i) pw_ord[j++] = pw_ord[k];
+            PW.nord = (int16_t)j;
+        }
+    }
     pcol_deactivated(i);
 }
 
