@@ -1,5 +1,23 @@
 # Handoff
 
+## 2026-10-07 00:30: batch end on main 5844252 (not pushed)
+
+Merged since 2e1c921: swamp3/swamp4 (swamp objects, direct enemy dispatch, player slope loops), totem (spear traps,
+stale-stack flush, per-key event lists), spikes (hawkman sight, sin/cos kept at multiples of 90), sprdma (deferred
+list-DMA check, entry word 3 once; DMAC path off: 3.1 clocks/byte on jtcps3, DRAW.md 8), piranha4 (compact idle
+piranha path, phase-split batch, check_water on ints, re-put skip), ikernel (PERF3 2.1 integer shadows, 2.4 integer
+kernel), **off-view deactivation on by default (user-approved, docs/DEACT.md; PLAY_DEACT 32 / TRACE_DEACT 32)**,
+testspeed (docs/TESTING.md: hostident, parallel ctall/equiv, RUNTAG, jt_time.sh JTFAST ~2 min, NC default), gtfix.
+- Reference traces regenerated with deactivation (117 jobs); the stock-HD set is in build/trace_stock_20261006 and
+  on the NAS archive. All gates pass on f800d8e (+ gtfix: gametime links, snd 19/19 with runner-audio-timed calls).
+- jtcps3 (NC, JTFAST) on f800d8e: drain 554.9 K (+5.7 % over 0.525 M), grave 531.8 K (+1.3 %), swim 436.2,
+  piranha 346.8, l5s11 377.3, l6s23 352.7 (all under).
+- tests/game stack room ~124 B above 32 KB: any .bss growth must be paid for.
+- In progress: branch piranha5 (check_water neighbourhood query, deactivation pass on ints + binary search,
+  integer place keys: MAME drain -8.2 %, grave -7.6 %; then zombie / vampire / attacking piranha). Next candidate:
+  the player's Step (~100 K a swamp step).
+- Process (memory: test-turnaround): fast host set per commit, MAME/jtcps3 once per batch; boards .62 and .81.
+
 ## 2026-10-06 14:45: nc-default (f1d5950, branch, not merged); on .81
 
 The game program links docs/ICACHE.md's nc_robust.txt past the SH-2 cache by default (tests/nc.mk; jtcps3 route
