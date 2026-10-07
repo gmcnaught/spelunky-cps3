@@ -83,9 +83,12 @@ void play_transition_start(int room)
     PW.step = 0;
     PL.idx = NOONE;
     for (k = 0; k < W.n; k++) {
-        const struct inst gk = W.in[k];                /* PX(i), i <= k, is the same memory (play.h) */
+        struct inst gk;                                /* PX(i), i <= k, is the same memory (play.h) */
         const struct inst *g = &gk;
         int i;
+        PIN_INST_BARRIER();
+        gk = W.in[k];
+        PIN_INST_BARRIER();
         if (!g->alive) continue;
         i = pin_add(g->obj, PI(g->x), PI(g->y), g->id);
         if (i == PIN_DEAD) continue;                   /* full (PUNTR 9001) */

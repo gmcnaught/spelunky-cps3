@@ -138,7 +138,12 @@ struct pin {
 
 /* PW.in and the generator's W.in are the same memory (pworld.c inst_mem): struct pin (64 bytes) is not larger than
    struct inst (72) and the loaders (play_level_start, play_transition_start) write play instance i only after reading generator instance k
-   >= i. Nothing reads W during play */
+   >= i. Nothing reads W during play.
+   The two views of one memory break C's aliasing rule (struct inst and struct pin lvalues; GCC/clang -O2 assume they
+   never overlap). PIN_INST_BARRIER, around each loader's copy of W.in[k], keeps the copy after the earlier struct pin
+   writes and before the later ones whatever the compiler inlines (-fno-strict-aliasing instead grew the hot SH-2
+   objects by 2-6.5 %) */
+#define PIN_INST_BARRIER() __asm__ volatile("" ::: "memory")
 struct pworld {
     struct pin *in;
     int16_t n;              /* slots used (the high-water mark: every slot below it was used in this room) */

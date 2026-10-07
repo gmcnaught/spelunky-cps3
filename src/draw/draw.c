@@ -1481,7 +1481,10 @@ void draw_frame(void)
 static uint32_t frec[MREC_MAX + 1][4];
 static int frec_n, irq_vx, irq_vy, irq_nmaps;
 static uint8_t pres_mid;
+/* irq_due hands frec / frec_n / irq_* to draw_vbl_irq: they are plain, so a compiler barrier orders their writes
+   before irq_due = 1 (main loop) and their reads after the test of irq_due (interrupt) */
 static volatile uint8_t irq_due;
+#define DRAW_BARRIER() __asm__ volatile("" ::: "memory")
 static int mid_present(void)
 {
     spr_word *s = SPR_AT(0);
@@ -1507,7 +1510,7 @@ static int mid_present(void)
    at the next point that needs the copy done (the next draw's main list, the next VBlank's work), by then long
    ended, so the CPU does not wait for the DMA. The DMAC's entry transfers end first (draw_sprdma_sync). */
 #define PPU_REG(o)   (*(volatile uint16_t *)(0x040c0000u + (o)))
-static uint8_t list_open;
+static volatile uint8_t list_open;                /* the main loop and draw_vbl_irq both sync */
 void draw_list_sync(void)
 {
 #ifndef DRAW_HOST
@@ -1626,6 +1629,7 @@ void draw_vblank_end(void)
 {
     if (!pres_mid) return;
     pres_mid = 0;
+    DRAW_BARRIER();
     irq_due = 1;
 }
 
@@ -1643,6 +1647,7 @@ void draw_vbl_irq(void)
     int k, j, n, t;
     if (!irq_due) return;
     irq_due = 0;
+    DRAW_BARRIER();
     draw_list_sync();                             /* (the step frame's list: long copied) */
     n = frec_n + 1;
     for (k = 0; k < n; k++)
