@@ -88,31 +88,13 @@ uint8_t draw_smooth;
 static inline uint32_t fbits(float f) { union { float f; uint32_t u; } c; c.f = f; return c.u; }
 /* a key that orders as the float does (NaN aside) */
 static inline uint32_t fkey(float f) { uint32_t u = fbits(f); return (u & 0x80000000u) ? ~u : (u | 0x80000000u); }
-static inline uint32_t dr_hi(double d)
-{
-    union { double d; uint32_t w[2]; } c;
-    c.d = d;
-#if defined(__BYTE_ORDER__) && __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
-    return c.w[1];
-#else
-    return c.w[0];
-#endif
-}
-static inline uint32_t dr_lo(double d)
-{
-    union { double d; uint32_t w[2]; } c;
-    c.d = d;
-#if defined(__BYTE_ORDER__) && __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
-    return c.w[0];
-#else
-    return c.w[1];
-#endif
-}
-#define D_ONE_HI  0x3ff00000u
-#define D_MONE_HI 0xbff00000u
-static inline int scale_is_pm1(double d) { uint32_t h = dr_hi(d); return dr_lo(d) == 0 && (h == D_ONE_HI || h == D_MONE_HI); }
-static inline int dr_neg(double d) { return (dr_hi(d) & 0x80000000u) != 0; }
-static inline int dr_zero(double d) { return (dr_hi(d) & 0x7fffffffu) == 0 && dr_lo(d) == 0; }
+/* image_xscale / yscale / angle are floats (struct pin): tested on their bit patterns, as the doubles they convert to
+   would be (float -> double is exact: +-1, +-0 and the sign carry over), with no ___extendsfdf2 call */
+#define F_ONE   0x3f800000u
+#define F_MONE  0xbf800000u
+static inline int scale_is_pm1(float f) { uint32_t u = fbits(f); return u == F_ONE || u == F_MONE; }
+static inline int fl_neg(float f) { return (fbits(f) & 0x80000000u) != 0; }
+static inline int fl_zero(float f) { return (fbits(f) & 0x7fffffffu) == 0; }
 /* (int32_t)f, truncation toward 0, by integer operations (no soft-float call) */
 static int32_t ftoi(float f)
 {
@@ -523,8 +505,7 @@ static uint16_t terrain_cell(int pi, int *c)
     const struct piecedef *pc;
     uint32_t f = 0;
     if (!(draw_kind[I_OBJ(pi)] & DK_SOLID) || I_SPR(pi) < 0 || (s = draw_spr[I_SPR(pi)]) < 0) return 0;
-    if (dr_hi(I_XSCALE(pi)) != D_ONE_HI || dr_lo(I_XSCALE(pi)) || dr_hi(I_YSCALE(pi)) != D_ONE_HI || dr_lo(I_YSCALE(pi)) ||
-        !dr_zero(I_ANGLE(pi)))
+    if (fbits(I_XSCALE(pi)) != F_ONE || fbits(I_YSCALE(pi)) != F_ONE || !fl_zero(I_ANGLE(pi)))
         return 0;
     sd = &sprdefs[s];
     if (sd->nframes > 1) {
@@ -551,11 +532,10 @@ static uint16_t terrain_cell(int pi, int *c)
    *flip), image_angle 0, by bit patterns */
 static inline __attribute__((always_inline)) int plain_transform(int pi, int *flip)
 {
-    uint32_t xh = dr_hi(I_XSCALE(pi));
-    if (dr_lo(I_XSCALE(pi)) || (xh != D_ONE_HI && xh != D_MONE_HI) || dr_hi(I_YSCALE(pi)) != D_ONE_HI ||
-        dr_lo(I_YSCALE(pi)) || !dr_zero(I_ANGLE(pi)))
+    uint32_t xh = fbits(I_XSCALE(pi));
+    if ((xh != F_ONE && xh != F_MONE) || fbits(I_YSCALE(pi)) != F_ONE || !fl_zero(I_ANGLE(pi)))
         return 0;
-    *flip = xh == D_MONE_HI;
+    *flip = xh == F_MONE;
     return 1;
 }
 
@@ -735,7 +715,7 @@ static void cached_out(int pi, int mirror)
     if (!plain_transform(pi, &flip)) {
         if (mirror) draw_st.unsup++;
         s = draw_spr[I_SPR(pi)];
-        spr_out(s, img_of(pi), fpix(I_X(pi)), fpix(I_Y(pi)), mirror && dr_neg(I_XSCALE(pi)));
+        spr_out(s, img_of(pi), fpix(I_X(pi)), fpix(I_Y(pi)), mirror && fl_neg(I_XSCALE(pi)));
         return;
     }
     flip &= mirror;
@@ -765,9 +745,9 @@ static void cached_out(int pi, int mirror)
 static void self_out(int pi, int x, int y)
 {
     if (I_SPR(pi) < 0) return;
-    if (!scale_is_pm1(I_XSCALE(pi)) || dr_hi(I_YSCALE(pi)) != D_ONE_HI || dr_lo(I_YSCALE(pi)) || !dr_zero(I_ANGLE(pi)))
+    if (!scale_is_pm1(I_XSCALE(pi)) || fbits(I_YSCALE(pi)) != F_ONE || !fl_zero(I_ANGLE(pi)))
         draw_st.unsup++;
-    spr_out(draw_spr[I_SPR(pi)], img_of(pi), x, y, dr_neg(I_XSCALE(pi)));
+    spr_out(draw_spr[I_SPR(pi)], img_of(pi), x, y, fl_neg(I_XSCALE(pi)));
 }
 static void plain_out(int pi, int x, int y)
 {
