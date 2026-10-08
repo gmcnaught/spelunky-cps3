@@ -2258,13 +2258,19 @@ int (collision_point_any_at)(int i, int32_t dx, int32_t dy, int obj)
 #ifndef PCOL_EXACT
 /* collision_point_any_at(i, 0, 0, obj) for a static family (xf_of[obj] >= 0) on its query q of i's position: its
    static-family branch (the macro's pw_noinst_point test first; pcol_quiet: the function itself) */
-static int piece_static(int i, int obj, const struct pq *q)
+static int piece_static(int i, int obj, struct pq *q)
 {
     int r;
     if (pw_noinst_point(obj)) return 0;
     if (xf_of[obj] < 0 || pcol_quiet()) return (collision_point_any_at)(i, 0, 0, obj);
     r = fam_none(obj) ? 0 : q->iok ? ik_xpt(obj, NOONE, 0, q->ix, q->iy) : -1;
-    if (r < 0) r = xstatic_any(obj, NOONE, q, 0);
+    if (r < 0) {
+        if (q->nodbl == 2) {                     /* pw_piece_tests' floats, made when first read */
+            q->px = TOD(PW.in[i].x); q->py = TOD(PW.in[i].y);
+            q->nodbl = 0;
+        }
+        r = xstatic_any(obj, NOONE, q, 0);
+    }
     return r;
 }
 
@@ -2296,8 +2302,7 @@ int pw_piece_tests(int i)
         q.iok = 1; q.ix = x; q.iy = y;
         q.nodbl = 1;
     } else {
-        q.px = TOD(PW.in[i].x); q.py = TOD(PW.in[i].y);       /* (fwiden: the conversion on the bits) */
-        q.nodbl = 0;
+        q.nodbl = 2;              /* px, py: the floats (fwiden), set by piece_static before xstatic_any reads them */
         q.iok = pfloor_int(PW.in[i].x, &q.ix) && pfloor_int(PW.in[i].y, &q.iy);
     }
     if (piece_static(i, OBJ_oWaterSwim, &q)) r = 1;
