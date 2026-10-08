@@ -1049,7 +1049,7 @@ __attribute__((noinline)) void rubblepiece_step(int i, int nops)
     if (!dzero(PE(p)->xVel) || !fnormal(p->x))
 #endif
         pin_setx(p, PADDV(p->x, PE(p)->xVel));
-    pin_sety(p, PADDV(p->y, PE(p)->yVel));
+    pin_sety(p, (pos)(TOD(p->y) + NTOD(PE(p)->yVel)));                /* PADDV, y widened by fwiden */
     PE(p)->yVel += PE(p)->yAcc;
     NOPS(nops);
     px = p->x;

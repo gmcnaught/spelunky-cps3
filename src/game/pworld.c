@@ -2296,7 +2296,7 @@ int pw_piece_tests(int i)
         q.iok = 1; q.ix = x; q.iy = y;
         q.nodbl = 1;
     } else {
-        q.px = PW.in[i].x; q.py = PW.in[i].y;
+        q.px = TOD(PW.in[i].x); q.py = TOD(PW.in[i].y);       /* (fwiden: the conversion on the bits) */
         q.nodbl = 0;
         q.iok = pfloor_int(PW.in[i].x, &q.ix) && pfloor_int(PW.in[i].y, &q.iy);
     }
