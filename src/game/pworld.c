@@ -1027,6 +1027,34 @@ int gcmp_fi(float x, int32_t v)
     return (b.u >> 31) ? -r : r;
 }
 
+/* PLTI(x, lo) || PGTI(x, hi) with x decoded once: gcmp_fi's steps for both bounds (a negative x compares |x| with
+   -lo and -hi, the signs swapped); either bound outside gcmp_fi's integer range, or x outside its exponents: the two
+   gcmp_fi calls */
+int gout_fi(float x, int32_t lo, int32_t hi)
+{
+    union { float f; uint32_t u; } b;
+    uint32_t e, l;
+    uint64_t p;
+    int32_t h, k;
+    b.f = x;
+    e = ((b.u >> 23) & 0xffu) - 118u;
+    if (e > 31u || (uint32_t)lo + (1u << 30) >= (1u << 31) || (uint32_t)hi + (1u << 30) >= (1u << 31))
+        return gcmp_fi(x, lo) < 0 || gcmp_fi(x, hi) > 0;
+    p = (uint64_t)((b.u & 0x7fffffu) | 0x800000u) * ffix32_mul[e];
+    l = (uint32_t)p;
+    h = (int32_t)(p >> 32);
+    if (b.u >> 31) {
+        k = h + lo;                                   /* x < lo: |x| > -lo */
+        if (k > 0 || (k == 0 && l >= 42950u)) return 1;
+        k = h + hi;                                   /* x > hi: |x| < -hi */
+        return k < -1 || (k == -1 && l <= 0u - 42950u);
+    }
+    k = h - lo;                                       /* x < lo */
+    if (k < -1 || (k == -1 && l <= 0u - 42950u)) return 1;
+    k = h - hi;                                       /* x > hi */
+    return k > 0 || (k == 0 && l >= 42950u);
+}
+
 /* 1 / -1 when f is exactly 1.0f / -1.0f, else 0 (bits: the same answer as for (double)f) */
 static int funit(float f)
 {

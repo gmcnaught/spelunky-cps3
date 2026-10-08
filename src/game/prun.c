@@ -523,7 +523,7 @@ static __attribute__((noinline)) int doutside_slow(const struct pin *p, int32_t 
 #endif
         return r;
     }
-    return PLTI(p->x, x0) || PGTI(p->x, x1) || PLTI(p->y, y0) || PGTI(p->y, y1);
+    return POUTI(p->x, x0, x1) || POUTI(p->y, y0, y1);
 }
 
 /* doutside_slow's first case (both shadows known and whole: pin_xy_int_p's first branch) inline in the pass's loops,
