@@ -1517,13 +1517,20 @@ void draw_frame(void)
         static uint32_t keys[32];
         static uint16_t cnt[33];
         static uint8_t kx[ENT_MAX];
-        int nk = 0, j;
+        int nk = 0, j, lj = -1;
+        uint32_t ld = 0;
         for (k = 0; k < n; k++) {
             uint32_t d = ents[k].dkey;
-            for (j = 0; j < nk && keys[j] != d; j++) ;
-            if (j == nk) {
-                if (nk == 32) { nk = -1; break; }     /* more than 32 depths: insertion sort alone */
-                keys[nk++] = d;
+            if (lj >= 0 && d == ld)               /* the last entry's key (keys[lj]; the keys are distinct) */
+                j = lj;
+            else {
+                for (j = 0; j < nk && keys[j] != d; j++) ;
+                if (j == nk) {
+                    if (nk == 32) { nk = -1; break; }     /* more than 32 depths: insertion sort alone */
+                    keys[nk++] = d;
+                }
+                ld = d;
+                lj = j;
             }
             kx[k] = (uint8_t)j;
         }
