@@ -237,13 +237,13 @@ static void olink(int i)
     }
 }
 
-static void ounlink(int i)
+/* ounlink without the alive count (olive_add(obj, -1)): pw_deactivate_n counts its instances by object */
+static void ounlink_nc(int i)
 {
     int o = PW.in[i].obj;
     if (iprev[i] >= 0) pw_inext[iprev[i]] = pw_inext[i]; else pw_ohead[o] = pw_inext[i];
     if (pw_inext[i] >= 0) iprev[pw_inext[i]] = iprev[i]; else otail[o] = iprev[i];
     if (pw_ohead[o] < 0) prun_onz(o);
-    olive_add(o, -1);
     grid_unlink(i);
     pw_ta_off(i);
     if (aprev[i] >= 0) pw_anext[aprev[i]] = pw_anext[i]; else pw_ahead = pw_anext[i];
@@ -252,6 +252,12 @@ static void ounlink(int i)
         if (ntprev[i] >= 0) pw_ntnext[ntprev[i]] = pw_ntnext[i]; else pw_nthead = pw_ntnext[i];
         if (pw_ntnext[i] >= 0) ntprev[pw_ntnext[i]] = ntprev[i]; else pw_nttail = ntprev[i];
     }
+}
+
+static void ounlink(int i)
+{
+    ounlink_nc(i);
+    olive_add(PW.in[i].obj, -1);
 }
 
 /* the alive instances of obj (with its descendants) in creation order: a merge of the objects' lists. More than
@@ -836,11 +842,23 @@ void pin_kill(int i)
    only) and listed once */
 void pw_deactivate_n(const int16_t *ids, int n)
 {
-    int k, j, m;
+    int k, j, m, ng = 0;
+    int16_t go[8], gn[8];                            /* alive counts to take off: up to 8 objects at a time */
     if (n <= 0) return;
     for (k = 0; k < n; k++) {
-        int i = ids[k];
-        ounlink(i);
+        int i = ids[k], o = PW.in[i].obj;
+        ounlink_nc(i);
+        for (j = 0; j < ng && go[j] != o; j++) {}
+        if (j == ng) {
+            if (ng == 8) {
+                for (j = 0; j < 8; j++) olive_add(go[j], -gn[j]);
+                ng = j = 0;
+            }
+            go[j] = (int16_t)o;
+            gn[j] = 0;
+            ng++;
+        }
+        gn[j]++;
         PW.in[i].alive = 0;
         pw_draw_mark(i);
 #ifndef PCOL_EXACT
@@ -848,6 +866,7 @@ void pw_deactivate_n(const int16_t *ids, int n)
 #endif
         pcol_deactivated(i);
     }
+    for (j = 0; j < ng; j++) olive_add(go[j], -gn[j]);
     /* pw_ord without the ids, in one pass (nothing above reads pw_ord: the order left is the one removing them one by
        one gives). pw_ord holds distinct slots in creation order, so pw_seq rises along it (pw_activate appends with the
        next number; the renumbering keeps the order); the ids, oldest (ids[n - 1]) first, are met in that order: the
