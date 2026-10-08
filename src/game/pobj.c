@@ -1011,7 +1011,13 @@ int detritus_step(int i)
     if (collision_point_any_at(i, 0, -4, OBJ_oLava)) ptemple_world(1040, i, 0);
     if (PE(p)->bounce) {
         if (NLT(PE(p)->yVel, N(6))) PE(p)->yVel += PE(p)->grav;
+#if !defined(PCOL_EXACT) && !defined(NUM_IS_CLASS)
+        /* yVel < 0 first: the query writes nothing the compare reads, and skipping it skips only flushes, which the
+           grid build's searches do not depend on (the count build keeps the order: its compare count) */
+        if (NLT(PE(p)->yVel, N(0)) && isCollisionTop(i, 1)) PE(p)->yVel = NMUL(-PE(p)->yVel, N(0.8));
+#else
         if (isCollisionTop(i, 1) && NLT(PE(p)->yVel, N(0))) PE(p)->yVel = NMUL(-PE(p)->yVel, N(0.8));
+#endif
         if (isCollisionLeft(i, 1) || isCollisionRight(i, 1)) PE(p)->xVel = NMUL(-PE(p)->xVel, N(0.5));
         if ((bot = isCollisionBottom(i, 1)) != 0) {
             if (NGT(PE(p)->yVel, N(1))) PE(p)->yVel = NMUL(-PE(p)->yVel, N(0.5));
