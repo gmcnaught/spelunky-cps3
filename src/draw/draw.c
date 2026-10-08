@@ -651,14 +651,19 @@ static void inst_mid(int i, uint16_t stamp)       /* stamp: dstamp (a local: his
     struct hist *h = &hist[i];
     int32_t id = I_ID(i);
     int x = fpix(I_X(i)), y = fpix(I_Y(i)), dx = 0, dy = 0;
-    if (h->id == id && h->stamp == (uint16_t)(stamp - 1)) {
-        dx = h->x - x;
+    if (h->id == id && h->stamp == (uint16_t)(stamp - 1)) {   /* (stores only what changes: h->id is id, and */
+        dx = h->x - x;                                          /* with dx, dy 0 h->x, h->y are x, y) */
         dy = h->y - y;
+        if (dx | dy) {
+            h->x = (int16_t)x;
+            h->y = (int16_t)y;
+        }
         if (dx < -DRAW_MID_JUMP || dx > DRAW_MID_JUMP || dy < -DRAW_MID_JUMP || dy > DRAW_MID_JUMP) dx = dy = 0;
+    } else {
+        h->id = id;
+        h->x = (int16_t)x;
+        h->y = (int16_t)y;
     }
-    h->id = id;
-    h->x = (int16_t)x;
-    h->y = (int16_t)y;
     h->stamp = stamp;
     if (EW.mid_on) set_mid(dx / 2 - ocx, dy / 2 - ocy);
 }
