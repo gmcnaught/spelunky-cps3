@@ -645,12 +645,13 @@ static uint16_t dstamp;                           /* draw_frame calls (smooth mo
 static int pvx = -1000, pvy = -1000;              /* the last draw's camera */
 /* instance i is drawn now: its midpoint offset (halfway back to its last draw's place: dx / 2, as the camera's ocx)
    when mid_on, and its place kept for the next draw */
-static void inst_mid(int i)
+static void inst_mid(int i, uint16_t stamp)       /* stamp: dstamp (a local: hist's uint16_t stores would make GCC
+                                                     load dstamp again for each instance) */
 {
     struct hist *h = &hist[i];
     int32_t id = I_ID(i);
     int x = fpix(I_X(i)), y = fpix(I_Y(i)), dx = 0, dy = 0;
-    if (h->id == id && h->stamp == (uint16_t)(dstamp - 1)) {
+    if (h->id == id && h->stamp == (uint16_t)(stamp - 1)) {
         dx = h->x - x;
         dy = h->y - y;
         if (dx < -DRAW_MID_JUMP || dx > DRAW_MID_JUMP || dy < -DRAW_MID_JUMP || dy > DRAW_MID_JUMP) dx = dy = 0;
@@ -658,7 +659,7 @@ static void inst_mid(int i)
     h->id = id;
     h->x = (int16_t)x;
     h->y = (int16_t)y;
-    h->stamp = dstamp;
+    h->stamp = stamp;
     if (EW.mid_on) set_mid(dx / 2 - ocx, dy / 2 - ocy);
 }
 
@@ -1504,6 +1505,7 @@ void draw_frame(void)
     {
         static int lvl = -1;
         int dark = 0;
+        uint16_t stamp;
         uint32_t lkey = 0;
         int32_t lid = 0;
         if (lvl < 0 || lvl >= PW.n || !I_ALIVE(lvl) || I_OBJ(lvl) != OBJ_oLevel)
@@ -1532,13 +1534,13 @@ void draw_frame(void)
         spr_out(SPR_bgClouds, 0, 160, 0, 0);              /* rEnd3's tiled vertically (rCredits2's not); rEnd2: */
         if (PW.room == R_rEnd3) spr_out(SPR_bgClouds, 0, 160, 200, 0);   /* its colour layer, under oEnd2BG */
     }
-    for (k = 0; k < n; k++) {
+    for (k = 0, stamp = dstamp; k < n; k++) {
         const struct ent *e = &ents[ord[k]];
         if (dark && EW.cur_pal == DRAW_PAL && (e->dkey < lkey || (e->dkey == lkey && e->id < lid)))
             EW.cur_pal = DRAW_PAL_LIT;               /* after oLevel's rectangle */
         while (band < nmaps && mdepth_key[band] >= e->dkey) band_out(1 + band++);
         if (e->i >= 0) {
-            if (draw_smooth) inst_mid(e->i);
+            if (draw_smooth) inst_mid(e->i, stamp);
             inst_out(e->i);
         } else {
             const struct tspr *t = &tspr[-1 - e->i];
