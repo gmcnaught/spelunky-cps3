@@ -1370,12 +1370,15 @@ static uint32_t ifkey(int v)
    not on a cell or in a block, the cell claimants drawn as sprites (a cell's tile is drawn by its tilemap), and the
    blocks' instances around the screen (a local sprite shows only for its origin within (vx - 16, vx + 336) x
    (vy - 8, vy + 248)) */
+/* v >> 6 (floor division by 64) without GCC's arithmetic-shift helper chain (___ashiftrt_r4_6 .. _1: the SH-2 shifts
+   by 1, 2, 8 and 16 only): logical shifts of v or of -1 - v, which is the same floor for every int32 v */
+static inline int asr6(int32_t v) { return v < 0 ? -1 - (int)((uint32_t)(-1 - v) >> 6) : (int)((uint32_t)v >> 6); }
 static void scan_candidates(void)
 {
     const int16_t *dl;
     int nd = pw_draw_dirty(&dl), k, bx, by;
-    int bx0 = (vx - vmx) >> 6, bx1 = (vx + VIEW_W + vmx) >> 6, by0 = (vy + DRAW_CROP - vmy) >> 6;
-    int by1 = (vy + DRAW_CROP + SCREEN_H + vmy) >> 6;
+    int bx0 = asr6(vx - vmx), bx1 = asr6(vx + VIEW_W + vmx), by0 = asr6(vy + DRAW_CROP - vmy);
+    int by1 = asr6(vy + DRAW_CROP + SCREEN_H + vmy);
     for (k = 0; k < nd; k++) claim_update(dl[k]);
     pw_draw_dirty_clear();
 #ifdef DRAW_HOST
