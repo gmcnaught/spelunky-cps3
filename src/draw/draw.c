@@ -1353,6 +1353,19 @@ static void claims_refix(void)
         for (k = 0; k < ncells; k++) cell_fix(m, k);
 }
 
+/* fkey((float)v) without the soft-float conversion: below 2^24 in magnitude an int is a float exactly (exponent
+   the highest set bit e, mantissa |v| x 2^(23 - e)); larger values (rounded) by the conversion. Needs hb8 (draw_boot) */
+static uint32_t ifkey(int v)
+{
+    uint32_t a = v < 0 ? 0u - (uint32_t)v : (uint32_t)v, u;
+    int e;
+    if (a >= 1u << 24) return fkey((float)v);
+    if (!a) return 0x80000000u;                   /* fkey(0.0f) */
+    e = a >> 16 ? 16 + hb8[a >> 16] : a >> 8 ? 8 + hb8[a >> 8] : hb8[a];
+    u = (uint32_t)(e + 127) << 23 | ((a * bit32[23 - e]) & 0x7fffffu);
+    return v < 0 ? ~(u | 0x80000000u) : u | 0x80000000u;
+}
+
 /* the instances the frame looks at (cand bits; draw_frame takes them newest, highest slot, first): the drawables
    not on a cell or in a block, the cell claimants drawn as sprites (a cell's tile is drawn by its tilemap), and the
    blocks' instances around the screen (a local sprite shows only for its origin within (vx - 16, vx + 336) x
@@ -1560,15 +1573,15 @@ void draw_frame(void)
     PROF(0);
     /* coarse view test on the float bits: x in [vx - 320, vx + 640), y in [vy - 240, vy + 480); terrain only in the
        screen's cells */
-    xlo = fkey((float)(vx - 320));
-    xhi = fkey((float)(vx + 640));
-    ylo = fkey((float)(vy - 240));
-    yhi = fkey((float)(vy + 480));
+    xlo = ifkey(vx - 320);
+    xhi = ifkey(vx + 640);
+    ylo = ifkey(vy - 240);
+    yhi = ifkey(vy + 480);
     {
     /* sprites of at most 16 x 16 with the origin inside them draw within x - 16 .. x + 16: in view only for x in
        (vx - 16, vx + 336), y in (vy + 8 - 16, vy + 248) (smooth motion: wider by the camera's half step) */
-    uint32_t sxlo = fkey((float)(vx - vmx)), sxhi = fkey((float)(vx + VIEW_W + vmx));
-    uint32_t sylo = fkey((float)(vy + DRAW_CROP - vmy)), syhi = fkey((float)(vy + DRAW_CROP + SCREEN_H + vmy));
+    uint32_t sxlo = ifkey(vx - vmx), sxhi = ifkey(vx + VIEW_W + vmx);
+    uint32_t sylo = ifkey(vy + DRAW_CROP - vmy), syhi = ifkey(vy + DRAW_CROP + SCREEN_H + vmy);
     for (k = 0; k < ntspr; k++) {                 /* tile sprites in view (first: their ids are the largest) */
         const struct tspr *t = &tspr[k];
         if (t->x <= vx - vmx || t->x >= vx + VIEW_W + vmx - 16 || t->y <= vy - vmy || t->y >= vy + VIEW_H + vmy - 16)
