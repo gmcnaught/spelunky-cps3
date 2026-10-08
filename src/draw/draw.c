@@ -449,32 +449,38 @@ static __attribute__((noipa)) void piece_out(int px, int py, const struct pieced
     ent_put(px, py, pc->w, pc->h, pc->tile, EW.cur_pal, flip ? CPS3V_FLIPX : 0);
     ent_room();
 }
-static inline __attribute__((always_inline)) void piece_put(int px, int py, const struct piecedef *pc, int flip)
+#if !DRAW_SPRDMA
+/* the entry (w x h tiles at screen (px, py)) as ent_put writes it, when EW.run_p < EW.ent_lim */
+static inline __attribute__((always_inline)) void ent_words(int px, int py, unsigned w, unsigned h, uint32_t tile,
+                                                            int flip)
 {
-#if DRAW_SPRDMA
-    piece_out(px, py, pc, flip);
-#else
     spr_word *e = EW.run_p;
-    unsigned w = pc->w, h = pc->h;
-    uint32_t w0, w2;
-    if (e >= EW.ent_lim) {
-        piece_out(px, py, pc, flip);
-        return;
-    }
-    w0 = (uint32_t)pc->tile << 17 | (flip ? CPS3V_FLIPX : 0) | EW.cur_pal;
-    w2 = w2tab[w][h];
+    uint32_t w0 = tile << 17 | (flip ? CPS3V_FLIPX : 0) | EW.cur_pal, w2 = w2tab[w][h];
     e[0] = w0;
     e[1] = ((uint32_t)(px + 8 * (int)w - 1) & 0x3ff) << 16 | ((uint32_t)(1006 - py - 8 * (int)h) & 0x3ff);
     e[2] = w2;
     if (EW.mid_on) {
         spr_word *m = e - MID_OFF / 4;
         m[0] = w0;
-        m[1] = ((uint32_t)(px + EW.mdx + 8 * (int)w - 1) & 0x3ff) << 16 | ((uint32_t)(1006 - py - EW.mdy - 8 * (int)h) & 0x3ff);
+        m[1] = ((uint32_t)(px + EW.mdx + 8 * (int)w - 1) & 0x3ff) << 16 |
+               ((uint32_t)(1006 - py - EW.mdy - 8 * (int)h) & 0x3ff);
         m[2] = w2;
     }
     EW.run_p = e + 4;
     EW.run_n++;
     EW.ent_n++;
+}
+#endif
+static inline __attribute__((always_inline)) void piece_put(int px, int py, const struct piecedef *pc, int flip)
+{
+#if DRAW_SPRDMA
+    piece_out(px, py, pc, flip);
+#else
+    if (EW.run_p >= EW.ent_lim) {
+        piece_out(px, py, pc, flip);
+        return;
+    }
+    ent_words(px, py, pc->w, pc->h, pc->tile, flip);
 #endif
 }
 
@@ -633,11 +639,17 @@ static inline __attribute__((always_inline)) int plain_transform(int pi, int *fl
 }
 
 /* per slot, a draw_self frame computed from fields that rarely change, with those fields as bit patterns (x, y,
-   image_index, depth, sprite; the transform checked as plain_transform each time): kind 2 (cx, cy = room position,
-   c = framedefs index, m = flip, tile = 1 when the sprite has art) */
-struct tcache { uint32_t xb, yb, ib, db; int16_t spr, cx, cy, c; uint16_t tile; int8_t m; };
+   image_index, sprite; the transform checked as plain_transform each time; m = flip). kind: 0 none; TC_NOART the
+   sprite has no art; TC_FRAME frame c (framedefs) at room (cx, cy), drawn by frame_out; TC_PIECE the same, frame c
+   being one piece: its place as frame_out gives it (rx = cx + dx, or cx - dx - 16 pw mirrored; ry = cy + dy; when
+   they fit int16), pw x ph tiles, tile. 32 bytes (an index is a shift); the bytes before the int16s (mov.b reaches
+   15 bytes, mov.w 30) */
+#define TC_NOART 1
+#define TC_FRAME 2
+#define TC_PIECE 3
+struct tcache { uint32_t xb, yb, ib; uint8_t kind, pw, ph; int8_t m; int16_t spr, cx, cy, rx, ry, c; uint16_t tile; };
+typedef char tcache_size[sizeof(struct tcache) == 32 ? 1 : -1];
 static struct tcache tcache[PIN_MAX] DRAW_CACHE_SECTION;
-static uint8_t tcache_ok[PIN_MAX];                /* the kind cached (0 none) */
 
 /* smooth motion: per slot, the instance drawn there at the last draw (id, whole-pixel x / y, draw count) */
 struct hist { int32_t id; int16_t x, y; uint16_t stamp; };
@@ -772,7 +784,7 @@ static void build_room(void)
     maps_cleared = 0;
     built_rooms = play_rooms_entered;
     built_room = PW.room;
-    for (k = 0; k < PIN_MAX; k++) tcache_ok[k] = 0;
+    for (k = 0; k < PIN_MAX; k++) tcache[k].kind = 0;
     claims_reset();
     draw_st.room_builds++;
 }
@@ -808,13 +820,31 @@ static int is_exit_spr(int s) { return s == GSPR_sPExit || s == GSPR_sDamselExit
    slot cache (kind 2) when the transform is plain */
 /* (cached_out's paths that call: kept out of it, so that a cache hit, every call made a tail call, saves no
    registers) */
-static inline __attribute__((always_inline)) void cached_draw(const struct tcache *e)
+static __attribute__((noinline)) void cached_frame(const struct tcache *e)   /* TC_NOART, TC_FRAME */
 {
-    if (!e->tile) {
+    if (e->kind == TC_NOART) {
         draw_st.noart++;
         return;
     }
     frame_out(e->c, e->cx - EW.ox, e->cy - EW.oy, e->m);
+}
+static inline __attribute__((always_inline)) void cached_draw(const struct tcache *e)
+{
+    int px, py;
+    if (e->kind != TC_PIECE) {
+        cached_frame(e);
+        return;
+    }
+    px = e->rx - EW.ox;                           /* frame_out's one-piece path on the cached place */
+    py = e->ry - EW.oy;
+    if (px >= EW.cxh || py >= EW.cyh || px + 16 * e->pw <= EW.cxl || py + 16 * e->ph <= EW.cyl) return;
+#if !DRAW_SPRDMA
+    if (EW.run_p < EW.ent_lim) {
+        ent_words(px, py, e->pw, e->ph, e->tile, e->m);
+        return;
+    }
+#endif
+    piece_out(px, py, &piecedefs[framedefs[e->c].piece], e->m);
 }
 static __attribute__((noinline)) void cached_odd(int pi, int mirror)   /* not plain_transform */
 {
@@ -832,14 +862,28 @@ static __attribute__((noinline)) void cached_fill(int pi, int flip)   /* the slo
     e->cx = (int16_t)fpix(I_X(pi));
     e->cy = (int16_t)fpix(I_Y(pi));
     s = draw_spr[I_SPR(pi)];
-    e->tile = s >= 0;
+    e->kind = TC_NOART;
     if (s >= 0) {
         const struct sprdef *sd = &sprdefs[s];
+        const struct framedef *fd;
         if (img < 0) img = 0;
         if ((uint32_t)img >= sd->nframes) img = (int32_t)((uint32_t)img % sd->nframes);
         e->c = (int16_t)(sd->frame + img);
+        e->kind = TC_FRAME;
+        fd = &framedefs[e->c];
+        if (fd->npieces == 1) {
+            const struct piecedef *pc = &piecedefs[fd->piece];
+            int rx = flip ? e->cx - pc->dx - 16 * pc->w : e->cx + pc->dx, ry = e->cy + pc->dy;
+            if (rx == (int16_t)rx && ry == (int16_t)ry) {
+                e->rx = (int16_t)rx;
+                e->ry = (int16_t)ry;
+                e->pw = pc->w;
+                e->ph = pc->h;
+                e->tile = pc->tile;
+                e->kind = TC_PIECE;
+            }
+        }
     }
-    tcache_ok[pi] = 2;
     cached_draw(e);
 }
 static void cached_out(int pi, int mirror)
@@ -851,7 +895,7 @@ static void cached_out(int pi, int mirror)
         return;
     }
     flip &= mirror;
-    if (tcache_ok[pi] != 2 || e->xb != fbits(I_X(pi)) || e->yb != fbits(I_Y(pi)) || e->ib != fbits(I_IMG(pi)) ||
+    if (!e->kind || e->xb != fbits(I_X(pi)) || e->yb != fbits(I_Y(pi)) || e->ib != fbits(I_IMG(pi)) ||
         e->spr != I_SPR(pi) || e->m != flip) {
         cached_fill(pi, flip);
         return;
