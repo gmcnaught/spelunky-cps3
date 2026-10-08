@@ -31,19 +31,24 @@ local function entry(offset, data, mask)
 end
 
 local TAP = tonumber(os.getenv("JTC_TAP") or "04100008", 16)
+local function open(win)
+  dbg:command("trace " .. win[2] .. ",maincpu,noloop," .. act)
+  etap = ops:install_read_tap(STEP & ~3, (STEP & ~3) + 3, "jtce", entry)
+  state = 1
+end
 ctap = space:install_write_tap(TAP, TAP + 3, "jtc", function(offset, data, mask)
   if w > #wins then return end
   local win = wins[w]
   if state == 0 and data == win[1] then
-    dbg:command("trace " .. win[2] .. ",maincpu,noloop," .. act)
-    etap = ops:install_read_tap(STEP & ~3, (STEP & ~3) + 3, "jtce", entry)
-    state = 1
+    open(win)
   elseif state ~= 0 and data == win[1] + 1 then   -- the traced step's record: play_step has returned
     if state == 1 then print("jtcost: window " .. w .. ": play_step not entered"); dbg:command("trace off,maincpu") end
     if etap then etap:remove(); etap = nil end
     print("jtcost: window " .. w .. " done")
     state = 0
     w = w + 1
+    -- consecutive records (the next window starts at this count): open it on this same write
+    if w <= #wins and data == wins[w][1] then open(wins[w]) end
   end
 end)
 emu.register_periodic(function() if w > #wins then manager.machine:exit() end end)
