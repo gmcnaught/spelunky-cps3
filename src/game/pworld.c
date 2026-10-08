@@ -3444,6 +3444,29 @@ static int xplace_one_i(int self, int32_t idx, int32_t idy, int obj)
     return k;
 }
 
+/* xplace_one_i(self, idx, idy, obj) given self's box ia (pin_ibox_s): when the moved box is one 16 x 16 cell of the
+   index (check_water's neighbours), its tests on that cell inline (the loop's one count: 0 NOONE, over 1 -2; the hint's
+   checks), in the same order after the same checks; otherwise xplace_one_i */
+static inline int xplace_cell(int self, const int32_t *ia, int32_t idx, int32_t idy, int obj)
+{
+    int32_t l = ia[0] + idx, t = ia[1] + idy;
+    int f, cx, cy, n, k;
+    if (ia[2] + idx != l + 16 || ia[3] + idy != t + 16 || (l & 15) || (t & 15) || l < 0 || t < 0 ||
+        (cx = l >> 4) >= GRID_W || (cy = t >> 4) >= GRID_H || obj < 0 || (f = xf_of[obj]) < 0)
+        return xplace_one_i(self, idx, idy, obj);
+    if (pcol_quiet()) return -2;
+    if (xdhead >= 0) xflush_run();
+    if (xfar[f] || xsat[f] || xemp[f]) return -2;
+    n = xcnt[f][cy][cx];
+    if (n == 0) return NOONE;
+    if (n > 1) return -2;
+    k = xhint[cy][cx];
+    if (k < 0 || !PW.in[k].alive || !(xmask[k] & xf_bit[f]) || xisfar[k] || cx < xx0[k] || cx > xx1[k] ||
+        cy < xy0[k] || cy > xy1[k])
+        return -2;
+    return k;
+}
+
 static int xplace_one(int self, double dx, double dy, int obj)
 {
     int32_t idx, idy;
@@ -3536,7 +3559,7 @@ int instance_place_ixy(int self, int32_t x, int32_t y, int32_t idx, int32_t idy,
         c.obj = obj; c.self = self; c.hit = NOONE;            /* (c.dx, c.dy: set where a search reads them) */
 #ifndef PCOL_EXACT
         {
-            int k = xplace_one_i(self, idx, idy, obj);
+            int k = xplace_cell(self, ia, idx, idy, obj);
             if (k != -2) {
                 if (k >= 0) {
                     int32_t ib[4];
