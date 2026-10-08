@@ -1031,6 +1031,30 @@ int gcmp_fi(float x, int32_t v)
     return (b.u >> 31) ? -r : r;
 }
 
+/* pnum.h pfr: gcmp_fi's scaling (the mantissa times 2^(e - 118) has floor(|x|) in its high word and the fraction
+   times 2^32 in its low word, for biased exponents 126 .. 148); a negative x with a fraction is -floor(|x|) - 1 with
+   the fraction 1 - l / 2^32 */
+int pfr(float x, int32_t *o)
+{
+    union { float f; uint32_t u; } b;
+    uint32_t e, l;
+    uint64_t p;
+    int32_t f;
+    int c;
+    b.f = x;
+    e = (b.u >> 23) & 0xffu;
+    if (e < 126) { *o = 0; return 1; }
+    if (e > 148) return 0;
+    p = (uint64_t)((b.u & 0x7fffffu) | 0x800000u) * ffix32_mul[e - 118];
+    f = (int32_t)(uint32_t)(p >> 32);
+    l = (uint32_t)p;
+    if (!(b.u >> 31)) c = l == 0 ? 0 : l < 0x80000000u ? 1 : l == 0x80000000u ? 2 : 3;
+    else if (l == 0) { f = -f; c = 0; }
+    else { f = -f - 1; c = l > 0x80000000u ? 1 : l == 0x80000000u ? 2 : 3; }
+    *o = f * 4 + c;
+    return 1;
+}
+
 /* PLTI(x, lo) || PGTI(x, hi) with x decoded once: gcmp_fi's steps for both bounds (a negative x compares |x| with
    -lo and -hi, the signs swapped); either bound outside gcmp_fi's integer range, or x outside its exponents: the two
    gcmp_fi calls */
