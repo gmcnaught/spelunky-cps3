@@ -992,12 +992,27 @@ void detritus_step(int i)
     }
 }
 
+/* a normal float f (not zero, subnormal, infinite or NaN): (float)((double)f + d) for d = +-0 is f, the same bits */
+static inline int fnormal(float f)
+{
+    union { float f; uint32_t u; } v;
+    uint32_t e;
+    v.f = f;
+    e = (v.u >> 23) & 0xffu;
+    return e != 0 && e != 0xffu;
+}
+
 /* objects/oRubblePiece/Step_0.gml: oRubble, oRubbleSmall (nops 3), oDrip, oRubbleDarkSmall, oLavaDrip (0) */
 __attribute__((noinline)) void rubblepiece_step(int i, int nops)
 {
     struct pin *p = &PX(i);
     pos px, py;
-    pin_setx(p, PADDV(p->x, PE(p)->xVel));
+#if !defined(NUM_IS_CLASS)
+    /* x += xVel with xVel +-0 (the drips, the rubble): x + 0 is x for a normal x, so the setter would store the same
+       bits and mark nothing */
+    if (!dzero(PE(p)->xVel) || !fnormal(p->x))
+#endif
+        pin_setx(p, PADDV(p->x, PE(p)->xVel));
     pin_sety(p, PADDV(p->y, PE(p)->yVel));
     PE(p)->yVel += PE(p)->yAcc;
     NOPS(nops);
@@ -1005,7 +1020,7 @@ __attribute__((noinline)) void rubblepiece_step(int i, int nops)
     py = p->y;
     if (collision_point_any_at(i, 0, 0, OBJ_oWaterSwim)) pswamp_world(1041, i, 0);
     else if (collision_point_any_at(i, 0, 0, OBJ_oLava)) pin_destroy(i);
-    if (collision_point_any_at(i, 0, 0, OBJ_oSolid)) pin_destroy(i);   /* (x, y: px, py; site 1041 sets yVel only) */
+    if (collision_point_any_at(i, 0, 0, OBJ_oSolid)) pin_destroy(i);   /* (x, y: px, py; site 1041 moves nothing) */
     view_read();
     if (PLTI(px, PW.xview - 32) || PGTI(px, PW.xview + 320 + 32) || PLTI(py, PW.yview - 32) || PGTI(py, PW.yview + 240 + 32))
         pin_destroy(i);
