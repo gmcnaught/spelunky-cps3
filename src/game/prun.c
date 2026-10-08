@@ -493,7 +493,10 @@ static void gamepad_step(uint16_t m)
 static int16_t dl_i[DL_MAX];                      /* the instances the pass deactivated, in that order */
 static int dl_n;
 static uint8_t dbits[(OBJ_COUNT + 7) / 8], dbits_ok;   /* the candidate objects */
-#define DCAND(o) (dbits[(o) >> 3] & (1 << ((o) & 7)))
+/* the bit by a table: GCC compiled 1 << (o & 7) as a variable right shift of the byte (libgcc __ashrsi3 a call, one
+   per instance of the pass) */
+static const uint8_t dbit8[8] = { 1, 2, 4, 8, 16, 32, 64, 128 };
+#define DCAND(o) (dbits[(o) >> 3] & dbit8[(o) & 7])
 
 static void dcand_init(void)
 {
