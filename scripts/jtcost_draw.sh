@@ -6,6 +6,7 @@
 # tools/jtcost.py (JTC_FN=_draw_frame) reduces each trace; the traces are deleted.
 #   [GAME_REV=<rev>] [SMOOTH=0] [RUNTAG=<tag>] scripts/jtcost_draw.sh <route> <seed> <level> <money> <enemies> <step>...
 #   e.g. scripts/jtcost_draw.sh c_swamp_drain 113 5 0 1 150 271
+# JTD_FN=<symbol>: trace that function instead (e.g. _play_step: the game program's step, against scripts/jtcost.sh's)
 # Output: tests/game/build[/t_<RUNTAG>]/jtd_<route>/jtcost_draw_<route>_<step>.txt; the JTCOST lines on stdout.
 set -e
 cd "$(dirname "$0")/.."
@@ -25,8 +26,9 @@ scripts/dmake.sh $T W=$BD OUT=$BD/jtd_$R/elf HUD=1 ROUTE=$R SEED=$S SNAPS= LEVEL
   SMOOTH=${SMOOTH:-1} >"$O/make.log" 2>&1 || { tail -20 "$O/make.log"; exit 1; }
 NM=$O/nm.txt
 docker run --rm -v "$PWD":/p -w /p cps3-dev:latest sh-elf-nm -n "$O/elf/main.elf" > "$NM"
-FN=$(awk '$3 == "_draw_frame" { print $1 }' "$NM")
-[ -n "$FN" ] || { echo "jtcost_draw.sh: no _draw_frame in $NM" >&2; exit 1; }
+JF=${JTD_FN:-_draw_frame}
+FN=$(awk -v f="$JF" '$3 == f { print $1 }' "$NM")
+[ -n "$FN" ] || { echo "jtcost_draw.sh: no $JF in $NM" >&2; exit 1; }
 rm -rf "$TD"; mkdir -p "$TD"; trap 'rm -rf "$TD"' EXIT INT TERM
 WIN=; k=0; last=0
 for s in "$@"; do
@@ -39,9 +41,9 @@ JTC_TAP=02000050 JTC_STEP=$FN JTC_WIN=$WIN scripts/mame.sh sfiii3na -rompath "$O
   -inipath "$O/w" -autoboot_script scripts/lua/jtcost.lua >"$O/mame.log" 2>&1 || true
 k=0
 for s in "$@"; do
-  k=$((k + 1)); f=$O/jtcost_draw_${R}_$s.txt
+  k=$((k + 1)); f=$O/jtcost${JF}_${R}_$s.txt
   if [ ! -s "$TD/t$k.tr" ]; then echo "jtcost_draw.sh: no trace for $R $s (see $O/mame.log)" >&2; exit 1; fi
-  JTC_FN=_draw_frame python3 tools/jtcost.py --route "$R" --step "$s" "$TD/t$k.tr" "$NM" > "$f"
+  JTC_FN=$JF python3 tools/jtcost.py --route "$R" --step "$s" "$TD/t$k.tr" "$NM" > "$f"
   rm -f "$TD/t$k.tr"
   grep '^JTCOST ' "$f"
 done
