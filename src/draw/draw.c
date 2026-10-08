@@ -95,6 +95,15 @@ static inline uint32_t fkey(float f) { uint32_t u = fbits(f); return (u & 0x8000
 static inline int scale_is_pm1(float f) { uint32_t u = fbits(f); return u == F_ONE || u == F_MONE; }
 static inline int fl_neg(float f) { return (fbits(f) & 0x80000000u) != 0; }
 static inline int fl_zero(float f) { return (fbits(f) & 0x7fffffffu) == 0; }
+/* 2^(9 + e) for e = -1 .. 22 (index e + 1): for a float of unbiased exponent e and mantissa m (implicit bit set),
+   the 64-bit product m x 2^(9 + e) holds m >> (23 - e) in its high word and the bits shifted out, left-aligned, in
+   its low word. One dmulu.l in place of GCC's variable shifts (___lshrsi3 / ___ashlsi3: the SH-2 has no barrel
+   shifter) */
+static const uint32_t pw2e[24] = {
+    1u << 8, 1u << 9, 1u << 10, 1u << 11, 1u << 12, 1u << 13, 1u << 14, 1u << 15, 1u << 16, 1u << 17, 1u << 18,
+    1u << 19, 1u << 20, 1u << 21, 1u << 22, 1u << 23, 1u << 24, 1u << 25, 1u << 26, 1u << 27, 1u << 28, 1u << 29,
+    1u << 30, 1u << 31,
+};
 /* (int32_t)f, truncation toward 0, by integer operations (no soft-float call) */
 static int32_t ftoi(float f)
 {
@@ -102,28 +111,29 @@ static int32_t ftoi(float f)
     int e = (int)((u >> 23) & 255) - 127;
     int32_t v;
     if (e < 0) return 0;
-    v = e >= 23 ? (int32_t)(m << (e - 23 > 7 ? 7 : e - 23)) : (int32_t)(m >> (23 - e));
+    v = e >= 23 ? (int32_t)(m << (e - 23 > 7 ? 7 : e - 23)) : (int32_t)(((uint64_t)m * pw2e[e + 1]) >> 32);
     return (u & 0x80000000u) ? -v : v;
 }
 /* the pixel a sprite at float coordinate f starts on: GameMaker's quad covers the pixels whose centre is at or after
    f, i.e. ceil(f - 0.5) (round half down; build/trace/g_p7_dark_s18: oFlareSpark at y 112.8 on row 113). Integer
-   operations only */
+   operations only: for e < 23, ip = m >> (23 - e) and the fraction's bits left-aligned in lo (the half is
+   0x80000000) */
 static int32_t fpix(float f)
 {
-    uint32_t u = fbits(f), m = (u & 0x7fffffu) | 0x800000u, frac, half;
-    int e = (int)((u >> 23) & 255) - 127, sh;
+    uint32_t u = fbits(f), m = (u & 0x7fffffu) | 0x800000u, lo;
+    int e = (int)((u >> 23) & 255) - 127;
     int32_t ip;
+    uint64_t p;
     if (e < -1) return 0;                         /* |f| < 0.5 */
-    if (e >= 23) ip = (int32_t)(m << (e - 23 > 7 ? 7 : e - 23));
-    else {
-        sh = 23 - e;                              /* 1 .. 24 */
-        ip = (int32_t)(m >> sh);
-        frac = m & ((1u << sh) - 1);
-        half = 1u << (sh - 1);
-        if (u & 0x80000000u) return -(ip + (frac >= half));
-        return ip + (frac > half);
+    if (e >= 23) {
+        ip = (int32_t)(m << (e - 23 > 7 ? 7 : e - 23));
+        return (u & 0x80000000u) ? -ip : ip;
     }
-    return (u & 0x80000000u) ? -ip : ip;
+    p = (uint64_t)m * pw2e[e + 1];
+    ip = (int32_t)(p >> 32);
+    lo = (uint32_t)p;
+    if (u & 0x80000000u) return -(ip + (lo >= 0x80000000u));
+    return ip + (lo > 0x80000000u);
 }
 
 /* ---- the frame's state ------------------------------------------------------------------------------------ */
