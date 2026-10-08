@@ -1222,33 +1222,12 @@ static void cell_fix(int m, int c)
         else texc[k >> 5] |= bit32[k & 31];
 }
 
-/* the claim of instance i from its current fields: a terrain cell of a tilemap (terrain_cell: a solid's single
-   16 x 16 tile, unscaled, on a cell; its depth one of the maps') when visible, else a drawable in a block (blk_local)
-   or not (tother); none when not drawn. An instance holds at most one claim. When the claim is the one it holds,
-   nothing is unlinked: a block or tother claim needs no change (no list's order is used: cell_fix's choice and the
-   candidate bits do not depend on it), a cell claim keeps its place and the cell is fixed again with the tile (the
-   slot may hold a new instance: another draw key); cell_fix(m, c) after an unlink and relink in the same cell gave
-   the same mwant, texc bits and queue */
-static void claim_update(int i)
+/* claim_update's unlink and link, the claim having changed: cellt the new cell | its tile << 16 (cell < 7,200:
+   never 0xffffffff) or 0xffffffff none, blk the new block or -1 */
+static __attribute__((noinline)) void claim_move(int i, int drawn, uint32_t cellt, int blk)
 {
     uint32_t bit = bit32[i & 31];
-    int c = 0, m = -1, cell = -1, blk = -1, drawn;
-    uint16_t t = 0;
-    drawn = i < PW.n && I_ALIVE(i) && I_VISIBLE(i) && draw_kind[I_OBJ(i)] != DK_NONE;
-    if (drawn) {
-        if (nmaps && (t = terrain_cell(i, &c)) != 0 && (m = map_of_depth(I_DEPTH(i))) >= 0)
-            cell = m * MAPC_MAX + c;
-        else if (blk_local(i))
-            blk = blk_of(I_Y(i), BLK_H) * BLK_W + blk_of(I_X(i), BLK_W);
-    }
-    if (cell >= 0 ? ccell[i] == cell : blk >= 0 ? bpos[i] == blk :
-        ccell[i] < 0 && bpos[i] < 0 && (tother[i >> 5] & bit ? drawn : !drawn)) {
-        if (cell >= 0) {
-            ctile[i] = t;
-            cell_fix(m, c);
-        }
-        return;
-    }
+    int cell = cellt == 0xffffffffu ? -1 : (int)(cellt & 0xffff);
     if (ccell[i] >= 0) {
         int om = (uint16_t)ccell[i] / MAPC_MAX, oc = (uint16_t)ccell[i] % MAPC_MAX;   /* ccell >= 0 */
         int16_t *pp = &chead[om][oc];
@@ -1267,10 +1246,11 @@ static void claim_update(int i)
     }
     if (!drawn) return;
     if (cell >= 0) {
+        int m = cell / MAPC_MAX, c = cell % MAPC_MAX;
         cnext[i] = chead[m][c];
         chead[m][c] = (int16_t)i;
         ccell[i] = (int16_t)cell;
-        ctile[i] = t;
+        ctile[i] = (uint16_t)(cellt >> 16);
         cell_fix(m, c);
     } else if (blk >= 0) {
         bnext[i] = bhead[(uint16_t)blk / BLK_W][(uint16_t)blk % BLK_W];
@@ -1278,6 +1258,36 @@ static void claim_update(int i)
         bpos[i] = (int16_t)blk;
     } else
         tother[i >> 5] |= bit;
+}
+
+/* the claim of instance i from its current fields: a terrain cell of a tilemap (terrain_cell: a solid's single
+   16 x 16 tile, unscaled, on a cell; its depth one of the maps') when visible, else a drawable in a block (blk_local)
+   or not (tother); none when not drawn. An instance holds at most one claim. When the claim is the one it holds,
+   nothing is unlinked: a block or tother claim needs no change (no list's order is used: cell_fix's choice and the
+   candidate bits do not depend on it), a cell claim keeps its place and the cell is fixed again with the tile (the
+   slot may hold a new instance: another draw key); cell_fix(m, c) after an unlink and relink in the same cell gave
+   the same mwant, texc bits and queue */
+static void claim_update(int i)
+{
+    uint32_t bit = bit32[i & 31];
+    int c = 0, m = -1, cell = -1, blk = -1, drawn, dk = DK_NONE;
+    uint16_t t = 0;
+    drawn = i < PW.n && I_ALIVE(i) && I_VISIBLE(i) && (dk = draw_kind[I_OBJ(i)]) != DK_NONE;
+    if (drawn) {                                  /* (terrain_cell is 0 when dk has no DK_SOLID: tested first) */
+        if (nmaps && (dk & DK_SOLID) && (t = terrain_cell(i, &c)) != 0 && (m = map_of_depth(I_DEPTH(i))) >= 0)
+            cell = m * MAPC_MAX + c;
+        else if (blk_local(i))
+            blk = blk_of(I_Y(i), BLK_H) * BLK_W + blk_of(I_X(i), BLK_W);
+    }
+    if (cell >= 0 ? ccell[i] == cell : blk >= 0 ? bpos[i] == blk :
+        ccell[i] < 0 && bpos[i] < 0 && (tother[i >> 5] & bit ? drawn : !drawn)) {
+        if (cell >= 0) {
+            ctile[i] = t;
+            cell_fix(m, c);
+        }
+        return;
+    }
+    claim_move(i, drawn, cell >= 0 ? (uint32_t)cell | (uint32_t)t << 16 : 0xffffffffu, blk);
 }
 
 /* a room was built: every instance claimed again */
