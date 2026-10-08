@@ -82,8 +82,12 @@ static int xbits_ok;
 static uint8_t xcnt[XF_N][GRID_H][GRID_W];
 static uint16_t xfar[XF_N];
 static uint8_t xsat[XF_N];
-static uint16_t xemp[XF_N];                      /* entries placed with an empty integer box (xisfar 2): in no cell */
-static uint8_t xmask[PIN_MAX], xisfar[PIN_MAX], xond[PIN_MAX], xx0[PIN_MAX], xy0[PIN_MAX], xx1[PIN_MAX], xy1[PIN_MAX];
+static uint16_t xemp[XF_N];                      /* entries placed with an empty integer box (isfar 2): in no cell */
+static uint8_t xmask[PIN_MAX], xond[PIN_MAX];
+/* an entry's place in the index (xflush_run): isfar 1 a box not cached whole, 2 an empty one, else its cells x0 .. x1,
+   y0 .. y1 (clamped); one record of 5 bytes (the five arrays' RAM), as a lookup (xplace_cell, xpoint_any) reads
+   them together */
+static struct xrec { int8_t isfar, x0, x1, y0, y1; } xr[PIN_MAX];
 static int16_t xdnext[PIN_MAX], xdhead = NOONE;
 /* per cell, the last entry placed (xflush_run) whose integer box covers the whole cell, any family, or NOONE: a hint
    only. collision_point_any's static path tests it with point_hit before walking the family (xhint_hit), so a stale
@@ -1564,7 +1568,7 @@ static void grid_reset(void)
         }
         xbits_ok = 1;
     }
-    for (x = 0; x < PIN_MAX; x++) xmask[x] = xisfar[x] = xond[x] = 0;
+    for (x = 0; x < PIN_MAX; x++) { xmask[x] = xond[x] = 0; xr[x].isfar = 0; }
     for (x = 0; x < XF_N; x++) {
         xfar[x] = 0;
         xemp[x] = 0;
@@ -1758,10 +1762,10 @@ static void xplace(int i, int d)
     int f, x, y;
     for (f = 0; f < XF_N; f++) {
         if (!(xmask[i] >> f & 1)) continue;
-        if (xisfar[i] == 1) { xfar[f] += d; continue; }
-        if (xisfar[i] == 2) { xemp[f] += d; continue; }
-        for (y = xy0[i]; y <= xy1[i]; y++)
-            for (x = xx0[i]; x <= xx1[i]; x++) {
+        if (xr[i].isfar == 1) { xfar[f] += d; continue; }
+        if (xr[i].isfar == 2) { xemp[f] += d; continue; }
+        for (y = xr[i].y0; y <= xr[i].y1; y++)
+            for (x = xr[i].x0; x <= xr[i].x1; x++) {
                 if (d > 0 && xcnt[f][y][x] == 255) xsat[f] = 1;   /* (then the counts are not read until the reset) */
                 xcnt[f][y][x] += d;
             }
@@ -1776,17 +1780,18 @@ static __attribute__((noinline)) void xflush_run(void)
         xdhead = xdnext[i];
         xond[i] = 0;
         xplace(i, -1);
-        xmask[i] = xisfar[i] = 0;
+        xmask[i] = 0;
+        xr[i].isfar = 0;
         if (!PW.in[i].alive || !(b = xbits[PW.in[i].obj]) || bbkind(i) == BB_NOSPR) continue;
         xmask[i] = (uint8_t)b;
         if (pin_ibox(i, ib)) {
             if (ib[2] <= ib[0] || ib[3] <= ib[1]) {                  /* empty: never hit by a point; counted in xemp */
-                xisfar[i] = 2;                                       /* (xpoint_any tests it with point_hit: a miss) */
+                xr[i].isfar = 2;                                     /* (xpoint_any tests it with point_hit: a miss) */
                 xplace(i, 1);
                 continue;
             }
-            xx0[i] = (uint8_t)clampi(ib[0] >> 4, 0, GRID_W - 1); xx1[i] = (uint8_t)clampi((ib[2] - 1) >> 4, 0, GRID_W - 1);
-            xy0[i] = (uint8_t)clampi(ib[1] >> 4, 0, GRID_H - 1); xy1[i] = (uint8_t)clampi((ib[3] - 1) >> 4, 0, GRID_H - 1);
+            xr[i].x0 = (int8_t)clampi(ib[0] >> 4, 0, GRID_W - 1); xr[i].x1 = (int8_t)clampi((ib[2] - 1) >> 4, 0, GRID_W - 1);
+            xr[i].y0 = (int8_t)clampi(ib[1] >> 4, 0, GRID_H - 1); xr[i].y1 = (int8_t)clampi((ib[3] - 1) >> 4, 0, GRID_H - 1);
             {
                 int x, y, fx0 = clampi((ib[0] + 15) >> 4, 0, GRID_W), fx1 = clampi(ib[2] >> 4, 0, GRID_W);
                 int fy0 = clampi((ib[1] + 15) >> 4, 0, GRID_H), fy1 = clampi(ib[3] >> 4, 0, GRID_H);
@@ -1794,7 +1799,7 @@ static __attribute__((noinline)) void xflush_run(void)
                     for (x = fx0; x < fx1; x++) xhint[y][x] = (int16_t)i;
             }
         } else
-            xisfar[i] = 1;
+            xr[i].isfar = 1;
         xplace(i, 1);
     }
 }
@@ -1952,8 +1957,8 @@ static int xpoint_any(int obj, int notme, const struct pq *q, int prec)
         if (olive[o] == 0) continue;
         for (k = pw_ohead[o]; k >= 0; k = pw_inext[k]) {
             if (k == notme) continue;
-            if (cx >= 0 && !xisfar[k] && (!(xmask[k] & xf_bit[f]) || cx < xx0[k] || cx > xx1[k] || cy < xy0[k] ||
-                                          cy > xy1[k]))
+            if (cx >= 0 && !xr[k].isfar && (!(xmask[k] & xf_bit[f]) || cx < xr[k].x0 || cx > xr[k].x1 || cy < xr[k].y0 ||
+                                          cy > xr[k].y1))
                 continue;
             if (point_hit(k, q, prec)) return 1;
         }
@@ -2137,6 +2142,52 @@ static int point_at_xy(int obj, int32_t px, int32_t py)
    and px = x + dx, py = y + dy (|dx|, |dy| <= 16) */
 int pw_filled_xy(int obj, int32_t px, int32_t py)
 {
+#ifndef PCOL_EXACT
+    /* point_at_xy's two calls in one when both take the grid paths (the point in the grid, gfar 0, pcol_quiet() 0,
+       obj a static family but oSolid), with the same flushes and fallbacks in the same order:
+       - oSolid: none alive -> 0; else grid_flush and ik_cells' one cell with notme NOONE, prec 0 (a block whose
+         gfblk is not NOONE: 1; gother, or a second block: -1; else 0); -1 -> collision_point_p;
+       - obj (only after a solid miss): none alive -> 0; else ik_xpt's tests inline (xflush_run, the index's miss, the
+         hint holding the point); -1 -> xstatic_any on point_at_xy's query.
+       oSolid's -1 goes back to point_at_xy for both (its grid_flush and ik_cells then change nothing) */
+    int f = obj >= 0 && obj != OBJ_oSolid ? xf_of[obj] : -1, cx = px >> 4, cy = py >> 4;
+    if (f >= 0 && px >= 0 && py >= 0 && cx < GRID_W && cy < GRID_H && !gfar && !pcol_quiet()) {
+        int r, k, n;
+        const struct pin *h;
+        if (olive[OBJ_oSolid]) {
+            grid_flush();
+            n = gfull[cy][cx];
+            r = n && gfblk[cy][cx] != NOONE ? 1 : gother[cy][cx] || n > 1 ? -1 : 0;
+            if (r < 0) return point_at_xy(OBJ_oSolid, px, py) || point_at_xy(obj, px, py);
+#ifdef PLAY_STATS
+            if (r != (collision_point_p((double)px, (double)py, OBJ_oSolid, 0, NOONE) != NOONE)) {
+                fprintf(stderr, "point_at_xy: answer %d differs (%d %d %d)\n", r, OBJ_oSolid, (int)px, (int)py);
+                abort();
+            }
+#endif
+            if (r) return 1;
+        }
+        if (!olive[obj]) return 0;
+        if (xdhead >= 0) xflush_run();
+        if (xfar[f] == 0 && !xsat[f] && xcnt[f][cy][cx] == 0)
+            r = 0;
+        else if ((k = xhint[cy][cx]) >= 0 && (h = &PW.in[k])->alive && h->bbk == BB_INT && obj_is(h->obj, obj) &&
+                 px >= h->bl && px < h->br && py >= h->bt && py < h->bb)
+            r = 1;
+        else {
+            struct pq q;
+            q.iok = 1; q.ix = px; q.iy = py; q.nodbl = 1;
+            r = xstatic_any(obj, NOONE, &q, 0);
+        }
+#ifdef PLAY_STATS
+        if (r != (collision_point_p((double)px, (double)py, obj, 0, NOONE) != NOONE)) {
+            fprintf(stderr, "point_at_xy: answer %d differs (%d %d %d)\n", r, obj, (int)px, (int)py);
+            abort();
+        }
+#endif
+        return r;
+    }
+#endif
     return point_at_xy(OBJ_oSolid, px, py) || point_at_xy(obj, px, py);
 }
 
@@ -2180,6 +2231,27 @@ int (collision_point_any_at)(int i, int32_t dx, int32_t dy, int obj)
             }
 #endif
             return r;
+        }
+        /* oSolid at the position itself (dx = dy = 0) not whole or not near: collision_point_any's summary path on the
+           point PTOD(x), PTOD(y) (its dwhole test, else pq_init, which keeps a float's value): the ints it reads,
+           iok, ix, iy, are the floors pfloor_int gives (dfloor_int's range), so solid_point_sum answers as there;
+           not known: the same search at the same point, as collision_point_any falls back to */
+        if (obj == OBJ_oSolid && dx == 0 && dy == 0 && !gfar && !pcol_quiet()) {
+            int r;
+            if (fam_none(obj)) return 0;
+            q.iok = pfloor_int(PW.in[i].x, &q.ix) && pfloor_int(PW.in[i].y, &q.iy);
+            r = solid_point_sum(&q, 0, NOONE);
+            if (r >= 0) {
+#ifdef PLAY_STATS
+                if (r != (collision_point_p(PTOD(PW.in[i].x) + dx, PTOD(PW.in[i].y) + dy, obj, 0, NOONE) != NOONE)) {
+                    fprintf(stderr, "collision_point_any: summary %d differs (%.17g %.17g)\n", r,
+                            PTOD(PW.in[i].x) + dx, PTOD(PW.in[i].y) + dy);
+                    abort();
+                }
+#endif
+                return r;
+            }
+            return collision_point_p(PTOD(PW.in[i].x) + dx, PTOD(PW.in[i].y) + dy, obj, 0, NOONE) != NOONE;
         }
         if (ok) {
             int r = fam_none(obj) ? 0 : q.iok ? ik_xpt(obj, NOONE, 0, q.ix, q.iy) : -1;
@@ -3392,8 +3464,31 @@ static int xplace_one_i(int self, int32_t idx, int32_t idy, int obj)
             }
     if (n == 0) return NOONE;
     k = xhint[cy][cx];
-    if (k < 0 || !PW.in[k].alive || !(xmask[k] & xf_bit[f]) || xisfar[k] || cx < xx0[k] || cx > xx1[k] ||
-        cy < xy0[k] || cy > xy1[k])
+    if (k < 0 || !PW.in[k].alive || !(xmask[k] & xf_bit[f]) || xr[k].isfar || cx < xr[k].x0 || cx > xr[k].x1 ||
+        cy < xr[k].y0 || cy > xr[k].y1)
+        return -2;
+    return k;
+}
+
+/* xplace_one_i(self, idx, idy, obj) given self's box ia (pin_ibox_s): when the moved box is one 16 x 16 cell of the
+   index (check_water's neighbours), its tests on that cell inline (the loop's one count: 0 NOONE, over 1 -2; the hint's
+   checks), in the same order after the same checks; otherwise xplace_one_i */
+static inline int xplace_cell(int self, const int32_t *ia, int32_t idx, int32_t idy, int obj)
+{
+    int32_t l = ia[0] + idx, t = ia[1] + idy;
+    int f, cx, cy, n, k;
+    if (ia[2] + idx != l + 16 || ia[3] + idy != t + 16 || (l & 15) || (t & 15) || l < 0 || t < 0 ||
+        (cx = l >> 4) >= GRID_W || (cy = t >> 4) >= GRID_H || obj < 0 || (f = xf_of[obj]) < 0)
+        return xplace_one_i(self, idx, idy, obj);
+    if (pcol_quiet()) return -2;
+    if (xdhead >= 0) xflush_run();
+    if (xfar[f] || xsat[f] || xemp[f]) return -2;
+    n = xcnt[f][cy][cx];
+    if (n == 0) return NOONE;
+    if (n > 1) return -2;
+    k = xhint[cy][cx];
+    if (k < 0 || !PW.in[k].alive || !(xmask[k] & xf_bit[f]) || xr[k].isfar || cx < xr[k].x0 || cx > xr[k].x1 ||
+        cy < xr[k].y0 || cy > xr[k].y1)
         return -2;
     return k;
 }
@@ -3490,7 +3585,7 @@ int instance_place_ixy(int self, int32_t x, int32_t y, int32_t idx, int32_t idy,
         c.obj = obj; c.self = self; c.hit = NOONE;            /* (c.dx, c.dy: set where a search reads them) */
 #ifndef PCOL_EXACT
         {
-            int k = xplace_one_i(self, idx, idy, obj);
+            int k = xplace_cell(self, ia, idx, idy, obj);
             if (k != -2) {
                 if (k >= 0) {
                     int32_t ib[4];
