@@ -878,13 +878,15 @@ void pw_deactivate_n(const int16_t *ids, int n)
             int mi = (lo + hi) >> 1;
             if (pw_seq[pw_ord[mi]] < s0) lo = mi + 1; else hi = mi;
         }
-        m = n - 1;
-        for (k = j = lo; k < PW.nord; k++) {
-            int s = pw_ord[k];
-            if (m >= 0 && s == ids[m]) { m--; continue; }
-            pw_ord[j++] = (int16_t)s;
+        int16_t *src = &pw_ord[lo], *dst = src, *end = &pw_ord[PW.nord];
+        for (m = n - 1; m >= 0; m--) {
+            int16_t want = ids[m];
+            while (src < end && *src != want) *dst++ = *src++;
+            if (src == end) break;
+            src++;
         }
-        PW.nord = (int16_t)j;
+        while (src < end) *dst++ = *src++;
+        PW.nord = (int16_t)(dst - pw_ord);
     }
     if (m >= 0) {
 #ifdef PLAY_STATS
