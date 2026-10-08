@@ -1211,6 +1211,21 @@ int pin_box_outside(int i, int w, int h)
     int32_t q[4];
     double l, t, r, b;
     if (pin_ibox(i, q)) return q[2] < 0 || q[0] > w || q[3] < 0 || q[1] > h;
+    {   /* BB_DBL at scales +-1, angle 0 (debris at a fractional position): bbox_dbl's sides are x + ax, x + ax + cw and
+           y + ay, y + ay + ch, exact doubles (|x| < 2^22, small ints), so each compare is x against an int: on pfr's
+           v = 4 floor(x) + class, x < K is v < 4K and x > K is v > 4K */
+        const struct pin *p = &PW.in[i];
+        int32_t vx, vy, ax, ay;
+        int xs, ys;
+        if (p->bbk == BB_DBL && fzero(p->angle) && (xs = funit(p->xscale)) != 0 && (ys = funit(p->yscale)) != 0 &&
+            pfr(p->x, &vx) && pfr(p->y, &vy)) {
+            const struct gsprcol *c = &gsprcol[spr_of(p)];
+            ax = xs > 0 ? c->l - c->xo : -(c->r + 1 - c->xo);
+            ay = ys > 0 ? c->t - c->yo : -(c->b + 1 - c->yo);
+            return vx < 4 * -(ax + (c->r - c->l + 1)) || vx > 4 * (w - ax) || vy < 4 * -(ay + (c->b - c->t + 1)) ||
+                   vy > 4 * (h - ay);
+        }
+    }
     if (!pin_bbox(i, &l, &t, &r, &b)) return 0;
     return r < 0 || l > w || b < 0 || t > h;
 }
