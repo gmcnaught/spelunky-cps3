@@ -435,24 +435,6 @@ static void magma_hit_enemy(int i, int e, int man)
     }
 }
 
-/* objects/oRubblePiece/Step_0.gml (oLavaDrip; type "NONE") */
-static void rubblepiece_step(int i)
-{
-    struct pin *p = &PX(i);
-    pos px, py;
-    pin_setx(p, PADDV(p->x, PE(p)->xVel));
-    pin_sety(p, PADDV(p->y, PE(p)->yVel));
-    PE(p)->yVel += PE(p)->yAcc;
-    px = p->x;
-    py = p->y;
-    if (collision_point_any_at(i, 0, 0, OBJ_oWaterSwim)) pswamp_world(1041, i, 0);
-    else if (collision_point_any_at(i, 0, 0, OBJ_oLava)) pin_destroy(i);
-    if (collision_point_any_at(i, 0, 0, OBJ_oSolid)) pin_destroy(i);   /* (x, y: px, py; site 1041 sets yVel only) */
-    view_read();
-    if (PLTI(px, PW.xview - 32) || PGTI(px, PW.xview + 320 + 32) || PLTI(py, PW.yview - 32) || PGTI(py, PW.yview + 240 + 32))
-        pin_destroy(i);
-}
-
 /* ==== oMagmaMan ================================================================================================== */
 /* objects/oMagmaMan/Create_0.gml (oEnemy Create first) */
 static void magmaman_create(int i)
@@ -1634,7 +1616,7 @@ static int step_ev(int i)
     case OBJ_oHawkman: hawkman_step(i); return 1;
     case OBJ_oLava: lava_step(i); return 1;
     case OBJ_oMagma: magma_step(i); return 1;
-    case OBJ_oLavaDrip: rubblepiece_step(i); return 1;
+    case OBJ_oLavaDrip: rubblepiece_step(i, 0); return 1;
     case OBJ_oMagmaMan: magmaman_step(i); return 1;
     case OBJ_oTombLord: tomblord_step(i); return 1;
     case OBJ_oFly: {                                                   /* objects/oFly/Step_0.gml */

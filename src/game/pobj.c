@@ -992,15 +992,15 @@ void detritus_step(int i)
     }
 }
 
-/* objects/oRubblePiece/Step_0.gml */
-static void rubble_step(int i)
+/* objects/oRubblePiece/Step_0.gml: oRubble, oRubbleSmall (nops 3), oDrip, oRubbleDarkSmall, oLavaDrip (0) */
+__attribute__((noinline)) void rubblepiece_step(int i, int nops)
 {
     struct pin *p = &PX(i);
     pos px, py;
     pin_setx(p, PADDV(p->x, PE(p)->xVel));
     pin_sety(p, PADDV(p->y, PE(p)->yVel));
     PE(p)->yVel += PE(p)->yAcc;
-    NOPS(3);
+    NOPS(nops);
     px = p->x;
     py = p->y;
     if (collision_point_any_at(i, 0, 0, OBJ_oWaterSwim)) pswamp_world(1041, i, 0);
@@ -1367,7 +1367,7 @@ void ev_step(int i)
         pin_sety(p, PI(PCEIL(p->y)));
         break;
     case OBJ_oBigCollect: pin_sety(p, p->y - (PI(1))); break;
-    case OBJ_oRubble: case OBJ_oRubbleSmall: rubble_step(i); break;
+    case OBJ_oRubble: case OBJ_oRubbleSmall: rubblepiece_step(i, 3); break;
     case OBJ_oPushBlock:                                                       /* inherited: no parent Step */
         if (collision_point_any_at(i, 8, 14, OBJ_oLava) &&
             !collision_point_any_at(i, 8, 17, OBJ_oSolid))

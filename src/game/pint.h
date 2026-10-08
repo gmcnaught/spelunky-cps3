@@ -91,6 +91,7 @@ int pickup_of_ptype(int t);
 int inview(int i, int m);                     /* x, y inside the view +/- m (the GML's view checks) */
 int create_detritus(int i);                   /* pobj.c: oDetritus Create / Step (oBone, P5) */
 void detritus_step(int i);
+void rubblepiece_step(int i, int nops);      /* pobj.c: oRubblePiece Step (nops: play_dops to count) */
 void create_item(struct pin *p);              /* pobj.c: oItem Create / Step (oDamsel's inherited, P5) */
 void item_step(int i);
 void destroy_solid(int i);                    /* pobj.c: objects/oSolid/Destroy_0.gml (P7 packages' oSolid children) */
