@@ -2276,10 +2276,23 @@ static int piece_static(int i, int obj, const struct pq *q)
    fall back to collision_point_p at PTOD(x) + 0, PTOD(y) + 0 (the whole branch's ints as doubles: +0 for -0) */
 int pw_piece_tests(int i)
 {
+    const struct pin *p = &PW.in[i];
     struct pq q;
-    int32_t x, y;
-    int r = 0, s;
-    if (xy_int_near(i, &x, &y)) {
+    int32_t x = p->ix, y = p->iy;
+    int r = 0, s, whole;
+    /* whole near by the shadows (PXY_UNK, PXY_NO are below -29900) without pin_xy_fill's decode of a changed y (the
+       drips'); a whole position with a stale shadow takes the floats: the same query (its floors are its ints, px, py
+       their values: nodbl's meaning), except at a +-0 coordinate (px -0.0 where nodbl reads +0): the decode then */
+    if (x > -29900 && x < 29900 && y > -29900 && y < 29900) {
+#ifdef PIN_SHADOW_CHECK
+        pin_xy_check(p, 1, x, y);
+#endif
+        whole = 1;
+    } else if (fzero(p->x) || fzero(p->y))
+        whole = xy_int_near(i, &x, &y);
+    else
+        whole = 0;
+    if (whole) {
         q.iok = 1; q.ix = x; q.iy = y;
         q.nodbl = 1;
     } else {
