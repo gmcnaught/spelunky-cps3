@@ -4346,4 +4346,18 @@ int pw_test_line(int k, double x1, double y1, double x2, double y2, int prec)
     return line_hit(k, &c);
 }
 
+/* pw_test_line with whole ends, |v| < 30000 (lq_init's whole numbers: the same integer query; line_hit_f makes the
+   doubles from the ints when it needs them) */
+int pw_test_line_i(int k, int32_t x1, int32_t y1, int32_t x2, int32_t y2, int prec)
+{
+    struct qctx c;
+    c.lq.iok = 1;
+    c.lq.lx = x1 < x2 ? x1 : x2; c.lq.hx = x1 < x2 ? x2 : x1;
+    c.lq.ly = y1 < y2 ? y1 : y2; c.lq.hy = y1 < y2 ? y2 : y1;
+    c.lq.axis = x1 == x2 || y1 == y2;
+    c.prec = prec;
+    c.ix1 = x1; c.iy1 = y1; c.ix2 = x2; c.iy2 = y2; c.dbl = 0;
+    return line_hit(k, &c);
+}
+
 int pw_test_pair(int a, int b) { return overlap_at(a, 0, 0, b); }
