@@ -1043,27 +1043,6 @@ static void darkfall_solid(int i)                                  /* objects/oD
     pin_destroy(i);
 }
 
-/* objects/oRubblePiece/Step_0.gml (oRubbleDarkSmall) */
-static void rubblepiece_step(int i)
-{
-    struct pin *p = &PX(i);
-    double x, y;
-    pos px, py;
-    pin_setx(p, PADDV(p->x, PE(p)->xVel));
-    pin_sety(p, PADDV(p->y, PE(p)->yVel));
-    PE(p)->yVel += PE(p)->yAcc;
-    px = p->x;
-    py = p->y;
-    x = PTOD(p->x);
-    y = PTOD(p->y);
-    if (collision_point_any_at(i, 0, 0, OBJ_oWaterSwim)) pswamp_world(1041, i, 0);
-    else if (collision_point_any_at(i, 0, 0, OBJ_oLava)) pin_destroy(i);
-    if (collision_point_any(x, y, OBJ_oSolid, 0, NOONE)) pin_destroy(i);
-    view_read();
-    if (PLTI(px, PW.xview - 32) || PGTI(px, PW.xview + 320 + 32) || PLTI(py, PW.yview - 32) || PGTI(py, PW.yview + 240 + 32))
-        pin_destroy(i);
-}
-
 /* ---- oSpringTrap ------------------------------------------------------------------------------------------------ */
 static void spring(int i)
 {
@@ -1306,7 +1285,7 @@ static int ev_step_ice(int i)
         PE(p)->yVel += PE(p)->yAcc;
         if (CP(X(i), Y(i), OBJ_oBrick) || CP(X(i), Y(i), OBJ_oBlock)) pin_destroy(i);
         return 1;
-    case OBJ_oRubbleDarkSmall: rubblepiece_step(i); return 1;
+    case OBJ_oRubbleDarkSmall: rubblepiece_step(i, 0); return 1;
     case OBJ_oBarrierEmitter:
         if (vin(i, 8, 8, 8) && !CP(X(i), Y(i) - 16, OBJ_oSolid)) pin_destroy(i);
         return 1;

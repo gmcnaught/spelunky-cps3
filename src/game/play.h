@@ -356,7 +356,7 @@ int pin_add(int obj, pos x, pos y, int32_t id);   /* no event */
 int pin_create(pos x, pos y, int obj);            /* instance_create: Create event (nested) */
 void pin_destroy(int i);                          /* instance_destroy: Destroy event, then gone */
 void pin_kill(int i);                             /* gone without the Destroy event (instance_destroy(id, false)) */
-void pw_deactivate(int i);                        /* instance_deactivate_object (docs/DEACT.md): alive 0, the slot kept */
+void pw_deactivate_n(const int16_t *ids, int n);  /* instance_deactivate_object of each (docs/DEACT.md): alive 0, slots kept */
 void pw_activate(int i);                          /* instance_activate_object: back as the newest instance */
 /* off-view deactivation (docs/DEACT.md): PLAY_DEACT=<margin> (tools/tracer.py TRACE_DEACT=<margin>, default 32 there
    too), 0 off (make -C test/host DEACT=0; playsh2 scripts DEACT=0) */
@@ -431,6 +431,28 @@ static inline int pos_int(pos v, int32_t *o)
 {
     return fwhole(v, o) && *o > -30000 && *o < 30000;
 }
+/* dfloor_int of a float's value from its bits (pworld.c's point queries, pobj.c's view tests): floor(f) when -30000 <
+   f < 30000 (dfloor_int's range: a whole value within it through dwhole, any other through the compare), else 0 */
+static inline int pfloor_int(float f, int32_t *o)
+{
+    union { float f; uint32_t u; } v;
+    uint32_t e, a;
+    uint64_t p;
+    v.f = f;
+    e = (v.u >> 23) & 0xffu;
+    if (e < 127) {                                          /* |f| < 1: 0, or -1 below zero */
+        *o = (v.u & 0x80000000u) && (v.u & 0x7fffffffu) ? -1 : 0;
+        return 1;
+    }
+    if (e > 141) return 0;                                  /* |f| >= 32768, inf, NaN */
+    /* |f| = m 2^(e - 150) (9 .. 23 fraction bits): m 2^(e - 118) has the integer part in the high word and the
+       fraction in the low one (fwhole's product: the SH-2 shifts by constants only) */
+    p = (uint64_t)((v.u & 0x7fffffu) | 0x800000u) * fwhole_mul[e - 127];
+    a = (uint32_t)(p >> 32);
+    if (a >= 30000) return 0;
+    *o = (v.u & 0x80000000u) ? -(int32_t)a - ((uint32_t)p != 0) : (int32_t)a;
+    return 1;
+}
 /* pin_xy_int from the shadows ix, iy (struct pin): both known and whole, one known not whole (0), else pin_xy_fill
    (pworld.c) decodes the floats and stores the shadows. The PLAY_STATS builds (PIN_SHADOW_CHECK) compare every answer
    with the decode (pin_xy_check: aborts on a difference) */
@@ -491,6 +513,7 @@ int pw_test_pair(int a, int b);                    /* Collision_Instance(a, b): 
 int pw_with(int obj, int16_t *out, int max);
 /* pdist2_lt(pdist2(PTOD(x1) + ox, PTOD(y1) + oy, PTOD(x2), PTOD(y2)), c), mostly without the doubles */
 int pdist_lt_at(pos x1, pos y1, int32_t ox, int32_t oy, pos x2, pos y2, double c);
+int pw_piece_tests(int i);                        /* pobj.c rubblepiece_step: its three point tests (grid build) */
 int pw_static_xy(int obj, int32_t x, int32_t y);   /* collision_point_any_at's common answers at its whole query, else -1 */
 void pw_xstep(int i, int32_t x, int d);           /* pin_setx(x + d) of a whole x, the whole box cache kept */
 int pw_solid_vline_q(int32_t x, int32_t y1, int32_t y2, int notme_self);   /* solid_vline_any without its flush, else -1 */

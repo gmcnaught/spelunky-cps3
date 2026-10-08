@@ -593,3 +593,181 @@ Six commits on 1f1815a, rebased onto 3dd5a2b (off-view deactivation on). No new 
   pw_activate and pw_deactivate write no x / y, so the shadows of a deactivated instance stay valid.
 - **Not done:** the other-family queries (ladder / platform / water / moveable solid through pgrid_search) and
   collision_rect_p's fractional queries.
+
+### check_water and the drain's water queries (branch water, 2026-10-08, on main 832c069)
+
+Target: c_swamp_drain's frame drops (.62: 113 of 370 step pairs). jtcost (fit, modelled jtcps3 clocks) on the record
+after the step: drain 272 (step 271) and c_jungle_firefrog 237; MAME: SOFTFP playsh2 on c_swamp_drain, c_swamp_grave,
+c_jungle_firefrog (1217/1217 checksums on every run), steps after step 1: mean, max, steps over 150 K.
+
+| Commit | What | drain 272 | firefrog 237 | MAME drain / grave / firefrog max (K) |
+|---|---|---|---|---|
+| 832c069 | base | 2,688 K | 1,655 K | 714 / 407 / 531 |
+| 2eaa502 | pw_filled_xy: point_at_xy's two grid paths in one call | 2,479 K | 1,478 K | 666 / 374 / 493 |
+| 98274bc | instance_place_ixy: xplace_one_i's one-cell case inline | (with c2ec8b8) | | |
+| c2ec8b8 | pcol_place_marks_kept: in the grid a kept self's mark is its test-list move | 2,162 K | 1,244 K | 621 / 344 / 455 |
+| 0f79d4f, acc9152 | check_water: room test hoisted; double path out of line | 2,128 K | | |
+| 0cc0511 | x-index: isfar and cells in one 5-byte record | (with 15ad6eb) | | |
+| bcc9124, 15ad6eb | collision_point_any_at: oSolid at a non-whole position on its floors; oDrip uses it | 2,145 K | 1,201 K | 603 / 344 / 455 |
+
+MAME means (K): drain 121.9 -> 119.5, grave 123.0 -> 122.3, firefrog 104.7 -> 103.5. Steps over 150 K: drain 37 -> 37,
+grave 49 -> 47, firefrog 29 -> 30 (step 245: 149,920 -> 150,048). Drain step 280 (record 281): 1,438 K -> 1,405 K.
+Every commit: hostident 184/184; c2ec8b8 and HEAD: CTALL 59/59, EQUIV 88/88; HEAD links on the SH-2 (32 KB stack).
+
+- **oGame on step 271:** 1,222 K -> 682 K. Of the base: the marks of instance_place_ixy's self (mark_e, flush_run,
+  cupdate, dlist: about 250 K) went with c2ec8b8 (grid build only; the exact build keeps them: the R-tree's order
+  depends on them); point_at_xy's wrappers about 210 K with 2eaa502.
+- **What is left there:** instance_place_ixy 151 K (182 calls; per call: pcol_query, touch, tlist_front, the index's
+  cell and hint, pcol_search_has_i, match, precise twice), pw_filled_xy 141 K (358 calls), check_water 66 K. Most is
+  data-line misses: the per-water path (about 3 KB of code and 30 data lines) does not stay in the 4 KB cache.
+- **Where the drain's other slow steps go (jtcost on HEAD acc9152):**
+  - check_water runs only on steps ~270-274.
+  - Step 271's collision pass (688 K, billed to oTreeBranch) is the bomb: explosion_solid 442 K inclusive through
+    ev_collision (collision_point_p 36 calls, rubble pin_add).
+  - Steps 275-295 (200-400 K MAME) run no check_water: step 280 is oDrip 409 K (43 drips, ~9.5 K each, about two
+    thirds cache misses), oBlood 155 K, oRubbleSmall 145 K, oManTrap 132 K, the collision pass 173 K.
+  - Step 165-type steps (150-220 K MAME) are general play (player, piranha, monkey).
+- **Measured, not kept:** an 8-byte x-index record: +5.4 KB .bss, and the SH-2 link fails its 32 KB stack check; the
+  5-byte record has the five arrays' RAM. Its gain on step 271 is small (oGame -3 K; the step +16 K from SIMM data
+  misses of the moved layout, instructions -2.6 K).
+- **Not done:**
+  - a fused per-water path (the int body in one function: estimated oGame -200 to -400 K on steps 270-274);
+  - oDrip's other costs: pw_changed / mark_e per move, 4 gcmp_fi view compares, x + 0.0 through soft-float when
+    xVel is 0;
+  - the debris objects' Steps run interleaved with others' (code always cold); a batch needs an order proof (the
+    test list order is observable).
+
+
+### Step 2 and explosion steps (branch deact3, on main 832c069, 2026-10-08)
+
+The level's second play step deactivated every off-view candidate one by one (DEACT.md: the room's first step has no
+pass), and explosion steps spent their collision time in precise_collision_int's pixel loop. Eight commits, each
+with its exactness argument in its message and `scripts/hostident.sh check` 184/184 equal.
+
+| Commit | Change | Exactness |
+|---|---|---|
+| df7cb13 | pw_deactivate_n: the pass's deactivations remove their slots from pw_ord in one compaction (was one shift of pw_ord's tail each: 4,720 stores) | value proof: nothing between reads pw_ord; removing a set keeps the rest's order |
+| 9483b8d | precise_collision_int by mask rows: up to 25 columns of each mask row as one word, ANDed (flips by bit reversal) | value proof (both scales +-1, mask boxes start >= 0); old loop kept as pci_loop, PLAY_STATS compares every call; 2,000,000 random cases equal |
+| ed35ea8 | dcand_init in the room's first step (its obj_anc scan was most of play_step's 1,948 data misses in step 2) | value proof: a function of the object tables |
+| 69398d4 | pw_deactivate_n: olive_add once per object (count summed) | value proof: sums commute; nc_inval idempotent; xchg / olive_gen are clocks compared only for equality |
+| dc9c821 | pci_of: scale signs from the float bits (no ___gtsf2) | value proof: f > 0 is 0 < bits <= 0x7f800000 |
+| 2716d12 | pw_deactivate_n: the compaction as a copy loop between the ids | codegen-only |
+| 1ff88a9 | deact_pass: doutside's integer case inline (no call, no out-parameter stack) | codegen-only; PLAY_STATS keeps the checked path |
+| b43a919 | gout_fi / POUTI: PLTI(x, lo) or PGTI(x, hi) with one decode of x (rubble, leaf, detritus Steps, doutside_slow) | value proof (gcmp_fi's tests on the same h, l); 40,000,000 random cases equal |
+
+**jtcost** (fit constants, modelled jtcps3 clocks; JTC_BYOBJ=1):
+
+| Step | 832c069 | after | change |
+|---|---|---|---|
+| c_swamp_drain record 3 (step 2) | 719,612 | 618,706 (df7cb13), 556,685 (ed35ea8), 548,569 (69398d4), 543,029 (2716d12), 543,924 (b43a919) | -24.4 % |
+| c_items_damselexpl record 121 (step 120) | 913,735 | 857,718 (ed35ea8), 859,243 (b43a919) | -6.0 % |
+| p4_bomb_drop record 202 (step 201) | 859,913 | 868,620 (1ff88a9), 846,792 (b43a919) | -1.5 % |
+
+Drain step 2 by function: pw_deactivate 114.3 K self (175 K with callees) -> pw_deactivate_n 24.6 K self (79.5 K
+pass); olive_add 21.8 K -> 6.7 K; play_step self 110.1 K -> 61.7 K. precise_collision_int in damselexpl step 120:
+73.0 K -> 12.8 K (9 calls). In bomb_drop step 201, gcmp_fi's 144 calls (18.4 K) became gout_fi's 56 (8.1 K). The
+1ff88a9 bomb_drop figure (+1.0 % against the base with fewer instructions: more fetch conflicts) is layout; MAME
+puts that step at -3.4 % there.
+
+**MAME** (SOFTFP=1 playsh2_check; checksums 9,701 / 9,701 on the default routes and 9,960 / 9,960 on the 28 c_*
+routes playsh2 takes, ROUTES="c_ice_darkfall ... c_temple_xroom3x": every c_* route without a globals / room
+header). "Step 2" is the step after each level start (60 in the two sets):
+
+| Set | step 2 mean (832c069 -> b43a919) | step 2 > 150 K | other steps 150-500 K | all-step mean |
+|---|---|---|---|---|
+| default 27 routes | 143.0 -> 104.3 K | 14 -> 3 | 194 -> 182 | 76,430 -> 74,635 (-2.3 %) |
+| 28 c_* routes | 205.8 -> 166.4 K | 27 -> 16 | 229 -> 216 | 98,138 -> 95,959 (-2.2 %) |
+
+Explosion clusters (MAME K a step, mean and max; steps > 150 K):
+
+| Route, steps | mean | max | > 150 K |
+|---|---|---|---|
+| c_items_damselexpl 120-135 | 179.1 -> 170.0 (-5.0 %) | 209 -> 198 | 15 -> 15 |
+| p4_bomb_drop 195-207 | 180.8 -> 170.8 (-5.6 %) | 217 -> 210 | 11 -> 10 |
+| p4_bomb_throw 292-302 | 165.2 -> 161.4 (-2.3 %) | 187 -> 184 | 10 -> 10 |
+| p5_reg_l2s10 / l3s10 170-190 | 189.1 -> 183.5 (-3.0 %) | 236 -> 229 | 20 -> 20 |
+| p5_reg_l4s10 170-190 | 179.5 -> 174.0 (-3.0 %) | 231 -> 223 | 17 -> 16 |
+| p5_reg_l9s5 335-345 | 223.5 -> 216.8 (-3.0 %) | 244 -> 240 | 11 -> 11 |
+| c_swamp_vampkill 281-290 | 223.5 -> 219.1 (-2.0 %) | 305 -> 300 | 10 -> 10 |
+| p5_reg_l14s16 19-43 | 168.4 -> 165.0 (-2.0 %) | 225 -> 223 | 21 -> 20 |
+
+**Gates on b43a919:** hostident 184/184 (every commit); ctall 59/59; EQUIV 88/88; playsh2 SOFTFP as above;
+game_check p4_exit559 0 px (records 30, 150, 300); no new .bss (brev8 is const, in ROM; pw_deactivate_n's object
+counts are 32 B of stack): tests/game stack room 32,892 B.
+
+**What is left, measured:**
+- Step 2 after the deactivation pass: c_temple_weblava step 2 is 1,019.5 K modelled against 647.7 K for step 3; the
+  pass is 61.6 K of the 372 K difference. The rest is the first full Step of the in-view instances before their rest
+  memos exist (ptemple_ev +122 K, treasure_step +66 K, jar_step +37 K, item_step +26 K; rest_end, nc_get,
+  collision_point_p only in step 2): game logic, not a one-off of the port.
+- Explosion steps are spread over the new and moving instances: p4_bomb_drop step 201 has 25 rubble pieces at about
+  7.5 K modelled each (pw_changed, mark_e, grid_dirty, collision_point_any: per-move bookkeeping and the misses of
+  several small tables), oFlame Steps (ik_line, moveTo), the oWeb collision pass (pgrid_put, ebbox, addsf3).
+  pin_add (about 3 K a call: the 208-byte pin_ext template copy and a dozen table misses) and evnz_sync (an event
+  list rebuilt when an object's list goes empty / non-empty: 15 K in drain step 2, 9.7 K in damselexpl step 120)
+  were not changed. Not tried: batching pcol_deactivated's obj_count (about 4 K in drain step 2).
+- jtcost.sh with two windows on consecutive records (`c_temple_weblava 3 c_temple_weblava 4`) never opened the
+  second window (stopped after 40 min); one call per step works.
+
+
+### Detritus Steps: oDrip, rubble, oBlood, oFlame (branch debris, 2026-10-08, on water 0b06854)
+
+Target: the per-instance Step cost of the pieces an explosion leaves (drain steps 275-295, firefrog 266-284,
+damselexpl 120-140). Measured: jtcost (fit, plain cached link, modelled jtcps3 clocks; "fa" = the fully associative
+bound) on drain records 281 / 290 (one run), firefrog 268, damselexpl 121; MAME SOFTFP playsh2 on drain, firefrog,
+damselexpl, grave (1528/1528 checksums on every run): steps after step 1, mean / max / steps over 150 K.
+
+| Commit | What (exactness) | drain 281 | drain 290 |
+|---|---|---|---|
+| 0b06854 | base (water) | 1,405 K (fa 1,403) | 1,142 K |
+| 3570891 | rubble / ice / temple pieces: oSolid by collision_point_any_at (value, as 15ad6eb) | | |
+| c05f527 | one rubblepiece_step for oRubble, oRubbleSmall, oDrip, oRubbleDarkSmall, oLavaDrip (codegen) | 1,372 K (1,385) | 1,131 K |
+| 6544c17 | x += xVel skipped for xVel +-0 and a normal x (value: x + 0 is x, same bits, no mark) | 1,374 K (1,374) | 1,141 K |
+| 1aa01ae | the view tests on the shadows / floors (pout_ab; value) | 1,303 K (1,319) | 1,108 K |
+| 72ac93b | pw_piece_tests: the three point tests on one query (value; oSolid before site 1041, grid build) | 1,252 K (1,277) | 1,070 K |
+| 840ee81 | oBlood / oFlame / oBone / oMagma: detritus_step's own isCollisionBottom answer (grid build) | | |
+| 65602ff | detritus_step: yVel < 0 before isCollisionTop (grid build) | | |
+| 09f25c5 | pw_piece_tests: whole by the shadows, no decode of the new y | 1,289 K (1,290) | 1,081 K |
+| 9fc3770 | SK_RUBBLE: ev_step calls rubblepiece_step without the package dispatch (codegen) | 1,304 K (1,272) | 1,088 K |
+| 6101e7f | pfloor_int by fwhole's multiply, no variable shifts (value; all 2^32 floats checked) | | |
+| f5975ea | fwiden (TOD) for the drip's y and the query's floats (codegen) | 1,261 K (1,266) | 1,057 K |
+| 7e8370c | detritus compares against 6, 1, 20 on the bits (pcmpc.h; tests/cmpc 515 M cases) | | |
+| af85a93 | moveTo's walk: the stepped position by fint15, the shadows kept (value) | 1,226 K (1,245) | 1,044 K |
+| c17d6a4 | pw_piece_tests: the query's floats only when xstatic_any reads them (codegen) | | |
+| e6a29ea | moveTo_walk: moveTo's grid-build walk for the detritus as a small function (value) | 1,222 K (1,230) | 1,029 K |
+
+Base -> e6a29ea: drain 281 -13.1 % (fa -12.3 %, instructions 367.8 K -> 321.0 K), drain 290 -9.9 %; firefrog 268
+1,347 K -> 1,328 K (-1.4 %; fa 1,229 K -> 1,157 K, -5.8 %; instructions -5.1 %); damselexpl 121 920 K -> 910 K
+(fa -1.7 %). The set-associative model moves +-2 % with the layout alone (conflict misses in unrelated objects:
+firefrog oGame +27 K at 840ee81 with the same instructions), so the fa column and the instruction counts are the
+steadier per-commit signal; the shipped link (nc_robust.txt) runs moveTo, detritus_step, pw_changed, mark_e,
+grid_dirty and isCollision* uncached, which this model does not show.
+
+By object (base -> e6a29ea, modelled K): drain 281 oDrip 362 -> 271 (43 drips: 8.4 -> 6.3 K each), oRubbleSmall 153
+-> 96, oRubble 81 -> 52, oBlood 156 -> 131; drain 290 oDrip 237 -> 170, oBlood 130 -> 111; firefrog 268 oBlood
+280 -> 239 (10), oFlame 158 -> 137 (6); damselexpl 121 oFlame 65 -> 54.
+
+MAME (K; base -> 6101e7f -> af85a93 -> e6a29ea):
+
+| Route | mean | max | steps > 150 K |
+|---|---|---|---|
+| c_swamp_drain | 119.5 -> 117.2 -> 116.5 -> 116.2 | 602.8 -> 561.3 -> 560.5 -> 557.7 | 37 -> 36 -> 35 -> 35 |
+| c_jungle_firefrog | 103.5 -> 102.2 -> 101.2 -> 101.0 | 454.7 -> 444.9 -> 441.5 -> 440.3 | 30 -> 26 -> 24 -> 24 |
+| c_items_damselexpl | 127.4 -> 127.4 -> 126.4 -> 126.2 | 266.7 -> 260.4 -> 256.9 -> 255.6 | 59 -> 58 -> 55 -> 55 |
+| c_swamp_grave | 122.3 -> 121.2 -> 120.5 -> 120.4 | 344.2 -> 334.7 -> 330.9 -> 329.6 | 47 -> 43 -> 37 -> 37 |
+
+Drain steps 275-295 at 6101e7f were 7-11 % below the base each (278: 393 -> 352 K, 281: 306 -> 276 K); they stay
+over 150 K MAME: the drips are a fifth of such a step, and the rest is oTreeBranch's collision pass, oManTrap,
+oPlayer1, oBloodTrail.
+
+- **Gates:** hostident 184/184 after every commit; ctall 59/59 and EQUIV 88/88 at 09f25c5, af85a93, e6a29ea; playsh2
+  SOFTFP 1528/1528 at 6101e7f, af85a93, e6a29ea; tests/game links with 0 compiler warnings, .bss unchanged (stack
+  room 32,892 B); .text +2,376 B.
+- **Measured, not kept apart:** 09f25c5 alone raised drain 281 (fa +12.6 K, instructions +3.2 K): without the y
+  decode, pout_ab's x took pfloor_int, whose variable shifts were __lshrsi3 calls; 6101e7f removed them.
+- **Not done:**
+  - the drip's own soft-float (y += yVel, yVel += yAcc: __adddf3 x 2, __truncdfsf2) and pw_changed / mark_e /
+    grid_dirty per move (about 1.4 K modelled a drip; uncached in the shipped link);
+  - oBlood / oFlame: vel_parts twice a Step (xVel changes only at a wall), isCollisionLeft || Right as one query,
+    the alarms' oBloodTrail / oFlameTrail creation, the animation pass's float image_index;
+  - oBloodTrail (43 K at drain 281: the deactivation pass's doutside and the animation).

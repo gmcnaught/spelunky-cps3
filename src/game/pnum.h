@@ -169,6 +169,24 @@ static inline int fwhole(float f, int32_t *o)
     return 1;
 }
 
+/* (float)v for |v| < 2^15 from the bits (no __floatsisf call): the top bit's place e by four compares, the mantissa as
+   a * 2^(23 - e) (exact: a < 2^(e + 1)), its hidden bit added to the exponent field 126 + e. Checked equal to
+   (float)v for every |v| < 2^15 (pworld.c pw_xstep, PLACE_F; pscript.c moveTo's walks) */
+static const uint32_t fi_mul[16] = { 1u << 23, 1u << 22, 1u << 21, 1u << 20, 1u << 19, 1u << 18, 1u << 17, 1u << 16,
+                                     1u << 15, 1u << 14, 1u << 13, 1u << 12, 1u << 11, 1u << 10, 1u << 9, 1u << 8 };
+static inline float fint15(int32_t v)
+{
+    union { float f; uint32_t u; } r;
+    uint32_t a = v < 0 ? (uint32_t)-v : (uint32_t)v, t = a, e = 0;
+    if (a == 0) return 0.0f;
+    if (t >= 0x100) { e = 8; t >>= 8; }
+    if (t >= 0x10) { e += 4; t >>= 4; }
+    if (t >= 0x4) { e += 2; t >>= 2; }
+    if (t >= 0x2) e += 1;
+    r.u = ((126 + e) << 23) + a * fi_mul[e];
+    if (v < 0) r.u |= 0x80000000u;
+    return r.f;
+}
 /* sprite_width / sprite_height: (int)(w * s) for a sprite size w (0 <= w < 2^15) and a float scale s. s = +-k whole,
    k <= 256 (fwhole): |w k| < 2^23, so the float product is w k exactly; other s take the float product */
 static inline int spr_dim(int w, float s)
@@ -235,6 +253,8 @@ int gcmp_cold(double a, double b);                  /* pworld.c */
 #define NGT_COLD(a, b) (gcmp_cold(NTOD(a), NTOD(b)) > 0)
 #define PLTI(x, v) (gcmp_fi((x), (v)) < 0)
 #define PGTI(x, v) (gcmp_fi((x), (v)) > 0)
+int gout_fi(float x, int32_t lo, int32_t hi);       /* pworld.c: PLTI(x, lo) || PGTI(x, hi), x decoded once */
+#define POUTI(x, lo, hi) gout_fi((x), (lo), (hi))
 #ifdef NUM_IS_CLASS
 static inline int gcmp_n(num a, num b) { play_dcount.cmp++; return gcmp_dd(a.v, b.v); }
 #else

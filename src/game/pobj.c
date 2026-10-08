@@ -968,50 +968,110 @@ terrain_done:
         ptemple_world(1039, i, 0);
 }
 
-/* objects/oDetritus/Step_0.gml (returns 0 if it destroyed itself) */
-void detritus_step(int i)
+/* PLTI(v, a) || PGTI(v, b) (a < b) for a coordinate v of an instance and s its pin_xy_int shadow (play.h): a whole v
+   is s (> -30000), and gcmp_fi(v, c) is then the sign of s - c (an integer: 0 or at least 1 away). Another v within
+   pfloor_int's range by its floor f: f <= a - 2 gives v < a - 1, f >= b + 1 gives v > b + eps, a <= f < b gives a <= v
+   < b (neither); only v in [a - 1, a) or [b, b + 1), where the compare's eps decides, takes gcmp_fi */
+#ifdef PIN_SHADOW_CHECK
+#include <stdio.h>
+#include <stdlib.h>
+#endif
+static inline int pout_ab(pos v, int32_t s, int32_t a, int32_t b)
+{
+    int32_t f;
+    if (s > -30000) {
+#ifdef PIN_SHADOW_CHECK
+        if (!pos_int(v, &f) || f != s) {
+            fprintf(stderr, "pout_ab: shadow %d differs from %.9g\n", (int)s, (double)v);
+            abort();
+        }
+#endif
+        return s < a || s > b;
+    }
+    if (pfloor_int(v, &f)) {
+        if (f <= a - 2 || f > b) return 1;
+        if (f >= a && f < b) return 0;
+    }
+    return PLTI(v, a) || PGTI(v, b);
+}
+
+/* objects/oDetritus/Step_0.gml; returns its isCollisionBottom(i, 1) answer when bounce asked it, else -1 (pint.h
+   detritus_bottom) */
+int detritus_step(int i)
 {
     struct pin *p = &PX(i);
     pos x = p->x, y = p->y;
+    int bot = -1;
     view_read();
-    if (PLTI(x, PW.xview - 4) || PGTI(x, PW.xview + 320 + 4) || PLTI(y, PW.yview - 4) || PGTI(y, PW.yview + 240 + 4))
+    if (pout_ab(x, p->ix, PW.xview - 4, PW.xview + 320 + 4) || pout_ab(y, p->iy, PW.yview - 4, PW.yview + 240 + 4))
         pin_destroy(i);
     if (NGT(PE(p)->life, N(0))) PE(p)->life -= N(1);
     else pin_destroy(i);
-    moveTo(i, PE(p)->xVel, PE(p)->yVel, 0, 0);
+    moveTo_walk(i, PE(p)->xVel, PE(p)->yVel);
     if (collision_point_any_at(i, 0, -4, OBJ_oLava)) ptemple_world(1040, i, 0);
     if (PE(p)->bounce) {
-        if (NLT(PE(p)->yVel, N(6))) PE(p)->yVel += PE(p)->grav;
+        if (CLT(PE(p)->yVel, 6, CMPC_L_6)) PE(p)->yVel += PE(p)->grav;
+#if !defined(PCOL_EXACT) && !defined(NUM_IS_CLASS)
+        /* yVel < 0 first: the query writes nothing the compare reads, and skipping it skips only flushes, which the
+           grid build's searches do not depend on (the count build keeps the order: its compare count) */
+        if (NLT(PE(p)->yVel, N(0)) && isCollisionTop(i, 1)) PE(p)->yVel = NMUL(-PE(p)->yVel, N(0.8));
+#else
         if (isCollisionTop(i, 1) && NLT(PE(p)->yVel, N(0))) PE(p)->yVel = NMUL(-PE(p)->yVel, N(0.8));
+#endif
         if (isCollisionLeft(i, 1) || isCollisionRight(i, 1)) PE(p)->xVel = NMUL(-PE(p)->xVel, N(0.5));
-        if (isCollisionBottom(i, 1)) {
-            if (NGT(PE(p)->yVel, N(1))) PE(p)->yVel = NMUL(-PE(p)->yVel, N(0.5));
+        if ((bot = isCollisionBottom(i, 1)) != 0) {
+            if (CGT(PE(p)->yVel, 1, CMPC_H_1)) PE(p)->yVel = NMUL(-PE(p)->yVel, N(0.5));
             else PE(p)->yVel = 0;
         }
         NOPS(6);
     }
+    return bot;
 }
 
-/* objects/oRubblePiece/Step_0.gml */
-static void rubble_step(int i)
+/* a normal float f (not zero, subnormal, infinite or NaN): (float)((double)f + d) for d = +-0 is f, the same bits */
+static inline int fnormal(float f)
+{
+    union { float f; uint32_t u; } v;
+    uint32_t e;
+    v.f = f;
+    e = (v.u >> 23) & 0xffu;
+    return e != 0 && e != 0xffu;
+}
+
+/* objects/oRubblePiece/Step_0.gml: oRubble, oRubbleSmall (nops 3), oDrip, oRubbleDarkSmall, oLavaDrip (0) */
+__attribute__((noinline)) void rubblepiece_step(int i, int nops)
 {
     struct pin *p = &PX(i);
-    double x, y;
     pos px, py;
-    pin_setx(p, PADDV(p->x, PE(p)->xVel));
-    pin_sety(p, PADDV(p->y, PE(p)->yVel));
+#if !defined(NUM_IS_CLASS)
+    /* x += xVel with xVel +-0 (the drips, the rubble): x + 0 is x for a normal x, so the setter would store the same
+       bits and mark nothing */
+    if (!dzero(PE(p)->xVel) || !fnormal(p->x))
+#endif
+        pin_setx(p, PADDV(p->x, PE(p)->xVel));
+    pin_sety(p, (pos)(TOD(p->y) + NTOD(PE(p)->yVel)));                /* PADDV, y widened by fwiden */
     PE(p)->yVel += PE(p)->yAcc;
-    NOPS(3);
+    NOPS(nops);
     px = p->x;
     py = p->y;
-    x = PTOD(p->x);
-    y = PTOD(p->y);
+#ifndef PCOL_EXACT
+    {
+        /* the three tests at once (pworld.c), the oSolid one before site 1041 / the lava's pin_destroy: these write
+           no position and no oSolid-family entry (1041 sets yVel or destroys the drip), and the grid build's
+           searches do not depend on when an entry is flushed */
+        int t = pw_piece_tests(i);
+        if (t & 1) pswamp_world(1041, i, 0);
+        else if (t & 2) pin_destroy(i);
+        if (t & 4) pin_destroy(i);
+    }
+#else
     if (collision_point_any_at(i, 0, 0, OBJ_oWaterSwim)) pswamp_world(1041, i, 0);
     else if (collision_point_any_at(i, 0, 0, OBJ_oLava)) pin_destroy(i);
-    if (collision_point_any(x, y, OBJ_oSolid, 0, NOONE)) pin_destroy(i);
+    if (collision_point_any_at(i, 0, 0, OBJ_oSolid)) pin_destroy(i);   /* (x, y: px, py; site 1041 moves nothing) */
+#endif
     view_read();
-    if (PLTI(px, PW.xview - 32) || PGTI(px, PW.xview + 320 + 32) || PLTI(py, PW.yview - 32) || PGTI(py, PW.yview + 240 + 32))
-        pin_destroy(i);
+    if (pout_ab(px, p->ix, PW.xview - 32, PW.xview + 320 + 32) || pout_ab(py, p->iy, PW.yview - 32, PW.yview + 240 + 32))
+        pin_destroy(i);                                                 /* (ix, iy: the shadows of px, py) */
 }
 
 /* objects/oBomb/Step_0.gml (after oItem's) */
@@ -1242,6 +1302,9 @@ static void level_step(int i)
 /* SK_PKG + k (k 1-5): ev_step's own path for the object is ptrans_step's 0, then the oTreasure / oItem tests, then
    pcontent_ev's Step with claimant k (all decided by the object alone): ev_step calls package k's ev directly */
 enum { SK_NONE, SK_PEN, SK_PDAM, SK_PSHOP, SK_PITEM, SK_OWN, SK_TREASURE, SK_PKG };
+/* SK_RUBBLE: an SK_PKG object whose package Step is rubblepiece_step(i, 0) and nothing else (oDrip: pswamp_ev,
+   oRubbleDarkSmall: pice_ev, oLavaDrip: ptemple_ev; each switches on the object first), with no off-view test */
+#define SK_RUBBLE (SK_PKG + 6)
 static uint8_t stepk[OBJ_COUNT];
 
 static int step_hooks(int i)
@@ -1292,7 +1355,9 @@ static void step_pkg(int o)
 {
 #ifndef PLAY_DCHECK
     int k = pcontent_step_claimant(o);
-    if (k >= 1 && k <= 5) stepk[o] = (uint8_t)(SK_PKG + k);
+    if (k >= 1 && k <= 5)
+        stepk[o] = (uint8_t)((o == OBJ_oDrip || o == OBJ_oRubbleDarkSmall || o == OBJ_oLavaDrip) && !pen_offview_obj[o] ?
+                             SK_RUBBLE : SK_PKG + k);
 #else
     (void)o;
 #endif
@@ -1320,6 +1385,7 @@ void ev_step(int i)
     case SK_PSHOP: pshop_step(i); return;
     case SK_PITEM: pitem_step(i); return;
     case SK_TREASURE: treasure_step(i); return;
+    case SK_RUBBLE: rubblepiece_step(i, 0); return;                        /* (the package's Step, directly) */
     case SK_OWN: break;
     case SK_NONE:
         if ((stepk[p->obj] = (uint8_t)step_hooks(i)) != SK_OWN) return;
@@ -1347,14 +1413,15 @@ void ev_step(int i)
     case OBJ_oWhip: whip_step(i, 0); break;
     case OBJ_oWhipPre: whip_step(i, 1); break;
     case OBJ_oBlood:                                                           /* oBlood Step: inherited first */
-    case OBJ_oFlame:
-        detritus_step(i);
+    case OBJ_oFlame: {
+        int b = detritus_step(i);
         p = &PX(i);
-        if (NGT(PE(p)->yVel, N(6))) pin_destroy(i);
-        if (isCollisionBottom(i, 1)) {
-            if (NGT(PE(p)->life, N(20))) PE(p)->life = N(20);
+        if (CGT(PE(p)->yVel, 6, CMPC_H_6)) pin_destroy(i);
+        if (detritus_bottom(i, b)) {
+            if (CGT(PE(p)->life, 20, CMPC_H_20)) PE(p)->life = N(20);
         }
         break;
+    }
     case OBJ_oPoof:
         pin_setx(p, PADDV(p->x, PE(p)->xVel));
         pin_sety(p, PADDV(p->y, PE(p)->yVel));
@@ -1370,7 +1437,7 @@ void ev_step(int i)
         pin_sety(p, PI(PCEIL(p->y)));
         break;
     case OBJ_oBigCollect: pin_sety(p, p->y - (PI(1))); break;
-    case OBJ_oRubble: case OBJ_oRubbleSmall: rubble_step(i); break;
+    case OBJ_oRubble: case OBJ_oRubbleSmall: rubblepiece_step(i, 3); break;
     case OBJ_oPushBlock:                                                       /* inherited: no parent Step */
         if (collision_point_any_at(i, 8, 14, OBJ_oLava) &&
             !collision_point_any_at(i, 8, 17, OBJ_oSolid))

@@ -702,7 +702,7 @@ static void leaf_step(int i)
         pin_destroy(i);
     if (CP(x, y, OBJ_oSolid)) pin_destroy(i);
     view_read();
-    if (PLTI(px, PW.xview - 32) || PGTI(px, PW.xview + 320 + 32) || PLTI(py, PW.yview - 32) || PGTI(py, PW.yview + 240 + 32))
+    if (POUTI(px, PW.xview - 32, PW.xview + 320 + 32) || POUTI(py, PW.yview - 32, PW.yview + 240 + 32))
         pin_destroy(i);
 }
 
