@@ -593,3 +593,46 @@ Six commits on 1f1815a, rebased onto 3dd5a2b (off-view deactivation on). No new 
   pw_activate and pw_deactivate write no x / y, so the shadows of a deactivated instance stay valid.
 - **Not done:** the other-family queries (ladder / platform / water / moveable solid through pgrid_search) and
   collision_rect_p's fractional queries.
+
+### check_water and the drain's water queries (branch water, 2026-10-08, on main 832c069)
+
+Target: c_swamp_drain's frame drops (.62: 113 of 370 step pairs). jtcost (fit, modelled jtcps3 clocks) on the record
+after the step: drain 272 (step 271) and c_jungle_firefrog 237; MAME: SOFTFP playsh2 on c_swamp_drain, c_swamp_grave,
+c_jungle_firefrog (1217/1217 checksums on every run), steps after step 1: mean, max, steps over 150 K.
+
+| Commit | What | drain 272 | firefrog 237 | MAME drain / grave / firefrog max (K) |
+|---|---|---|---|---|
+| 832c069 | base | 2,688 K | 1,655 K | 714 / 407 / 531 |
+| 2eaa502 | pw_filled_xy: point_at_xy's two grid paths in one call | 2,479 K | 1,478 K | 666 / 374 / 493 |
+| 98274bc | instance_place_ixy: xplace_one_i's one-cell case inline | (with c2ec8b8) | | |
+| c2ec8b8 | pcol_place_marks_kept: in the grid a kept self's mark is its test-list move | 2,162 K | 1,244 K | 621 / 344 / 455 |
+| 0f79d4f, acc9152 | check_water: room test hoisted; double path out of line | 2,128 K | | |
+| 0cc0511 | x-index: isfar and cells in one 5-byte record | (with 15ad6eb) | | |
+| bcc9124, 15ad6eb | collision_point_any_at: oSolid at a non-whole position on its floors; oDrip uses it | 2,145 K | 1,201 K | 603 / 344 / 455 |
+
+MAME means (K): drain 121.9 -> 119.5, grave 123.0 -> 122.3, firefrog 104.7 -> 103.5. Steps over 150 K: drain 37 -> 37,
+grave 49 -> 47, firefrog 29 -> 30 (step 245: 149,920 -> 150,048). Drain step 280 (record 281): 1,438 K -> 1,405 K.
+Every commit: hostident 184/184; c2ec8b8 and HEAD: CTALL 59/59, EQUIV 88/88; HEAD links on the SH-2 (32 KB stack).
+
+- **oGame on step 271:** 1,222 K -> 682 K. Of the base: the marks of instance_place_ixy's self (mark_e, flush_run,
+  cupdate, dlist: about 250 K) went with c2ec8b8 (grid build only; the exact build keeps them: the R-tree's order
+  depends on them); point_at_xy's wrappers about 210 K with 2eaa502.
+- **What is left there:** instance_place_ixy 151 K (182 calls; per call: pcol_query, touch, tlist_front, the index's
+  cell and hint, pcol_search_has_i, match, precise twice), pw_filled_xy 141 K (358 calls), check_water 66 K. Most is
+  data-line misses: the per-water path (about 3 KB of code and 30 data lines) does not stay in the 4 KB cache.
+- **Where the drain's other slow steps go (jtcost on HEAD acc9152):**
+  - check_water runs only on steps ~270-274.
+  - Step 271's collision pass (688 K, billed to oTreeBranch) is the bomb: explosion_solid 442 K inclusive through
+    ev_collision (collision_point_p 36 calls, rubble pin_add).
+  - Steps 275-295 (200-400 K MAME) run no check_water: step 280 is oDrip 409 K (43 drips, ~9.5 K each, about two
+    thirds cache misses), oBlood 155 K, oRubbleSmall 145 K, oManTrap 132 K, the collision pass 173 K.
+  - Step 165-type steps (150-220 K MAME) are general play (player, piranha, monkey).
+- **Measured, not kept:** an 8-byte x-index record: +5.4 KB .bss, and the SH-2 link fails its 32 KB stack check; the
+  5-byte record has the five arrays' RAM. Its gain on step 271 is small (oGame -3 K; the step +16 K from SIMM data
+  misses of the moved layout, instructions -2.6 K).
+- **Not done:**
+  - a fused per-water path (the int body in one function: estimated oGame -200 to -400 K on steps 270-274);
+  - oDrip's other costs: pw_changed / mark_e per move, 4 gcmp_fi view compares, x + 0.0 through soft-float when
+    xVel is 0;
+  - the debris objects' Steps run interleaved with others' (code always cold); a batch needs an order proof (the
+    test list order is observable).
