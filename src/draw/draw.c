@@ -662,8 +662,19 @@ static void inst_mid(int i, uint16_t stamp)       /* stamp: dstamp (a local: his
                                                      load dstamp again for each instance) */
 {
     struct hist *h = &hist[i];
+    const struct tcache *c = &tcache[i];
     int32_t id = I_ID(i);
-    int x = fpix(I_X(i)), y = fpix(I_Y(i)), dx = 0, dy = 0;
+    uint32_t xb = fbits(I_X(i)), yb = fbits(I_Y(i));
+    int x, y, dx = 0, dy = 0;
+    /* x, y = fpix(x), fpix(y): the slot cache's cx, cy when it holds them for these bit patterns (any kind: filled
+       from them) and they fit its int16 (|x|, |y| < 16384: fpix within +-16384) */
+    if (c->kind && c->xb == xb && c->yb == yb && (xb & 0x7fffffffu) < 0x46800000u && (yb & 0x7fffffffu) < 0x46800000u) {
+        x = c->cx;
+        y = c->cy;
+    } else {
+        x = fpix(I_X(i));
+        y = fpix(I_Y(i));
+    }
     if (h->id == id && h->stamp == (uint16_t)(stamp - 1)) {   /* (stores only what changes: h->id is id, and */
         dx = h->x - x;                                          /* with dx, dy 0 h->x, h->y are x, y) */
         dy = h->y - y;
