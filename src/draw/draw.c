@@ -434,7 +434,8 @@ static inline __attribute__((always_inline)) void ent_put(int px, int py, unsign
         spr_word *m = e - MID_OFF / 4;
 #endif
         m[0] = w0;
-        m[1] = ((uint32_t)(px + EW.mdx + 8 * (int)w - 1) & 0x3ff) << 16 | ((uint32_t)(1006 - py - EW.mdy - 8 * (int)h) & 0x3ff);
+        m[1] = ((uint32_t)(px + EW.mdx + 8 * (int)w - 1) & 0x3ff) << 16 |
+               ((uint32_t)(1006 - py - EW.mdy - 8 * (int)h) & 0x3ff);
         m[2] = w2;
     }
     EW.run_p = e + 4;
@@ -442,8 +443,8 @@ static inline __attribute__((always_inline)) void ent_put(int px, int py, unsign
     EW.ent_n++;
 }
 
-/* piece pc's entry at screen (px, py): piece_put inline when run_p is below ent_lim (the entry words as ent_put's), else
-   piece_out (ent_put's checks, then ent_lim again) */
+/* piece pc's entry at screen (px, py): piece_put inline when run_p is below ent_lim (the entry words as ent_put's),
+   else piece_out (ent_put's checks, then ent_lim again) */
 static __attribute__((noipa)) void piece_out(int px, int py, const struct piecedef *pc, int flip)
 {
     ent_put(px, py, pc->w, pc->h, pc->tile, EW.cur_pal, flip ? CPS3V_FLIPX : 0);
@@ -1192,7 +1193,11 @@ static int blk_local(int i)
     uint8_t dk = draw_kind[I_OBJ(i)] & ~DK_SOLID;
     return I_SPR(i) >= 0 && spr_local[I_SPR(i)] && dk_local[dk] && dk != DK_ITEM;
 }
-static int blk_of(float f, int n) { int32_t v = ftoi(f); return v < 0 ? 0 : (uint32_t)v >> 6 >= (uint32_t)n ? n - 1 : (int)((uint32_t)v >> 6); }
+static int blk_of(float f, int n)
+{
+    int32_t v = ftoi(f);
+    return v < 0 ? 0 : (uint32_t)v >> 6 >= (uint32_t)n ? n - 1 : (int)((uint32_t)v >> 6);
+}
 
 static int32_t dkey_of(int i) { return front_on ? front_drawkey(i) : I_ID(i); }
 
@@ -1355,6 +1360,57 @@ static void scan_candidates(void)
             for (k = bhead[by][bx]; k >= 0; k = bnext[k]) cand[k >> 5] |= bit32[k & 31];
 }
 
+/* the candidates in view (scan_candidates' bits, newest first) as drawables from ents[n] on; returns the new count.
+   bnd: the 16-px test's sxlo, sxhi, sylo, syhi and the coarse window's xlo, xhi, ylo, yhi (draw_frame). Its own
+   function: the loop's values stay in registers */
+static __attribute__((noinline)) int scan_ents(int n, const uint32_t *bnd)
+{
+    uint32_t v;
+    int k, w;
+    for (w = CAND_W - 1; w >= 0; w--) {           /* newest first: the sort below then moves little */
+        for (v = cand[w]; v;) {
+            int b = v >> 16 ? (v >> 24 ? 24 + hb8[v >> 24] : 16 + hb8[v >> 16 & 255])
+                            : (v >> 8 ? 8 + hb8[v >> 8 & 255] : hb8[v & 255]);
+            int pi;
+            uint32_t kx, ky;
+            uint8_t dk;
+            v &= ~bit32[b];
+            pi = k = 32 * w + b;
+            if (!I_ALIVE(pi) || !I_VISIBLE(pi)) continue;
+            dk = draw_kind[I_OBJ(pi)];
+            if (dk == DK_NONE) continue;
+            if (dk == DK_ITEM && I_COST(pi) > 0) {       /* oItem Draw: cimg += 1, 0 after 9 */
+                if (icid[k] != I_ID(pi)) {
+                    icid[k] = I_ID(pi);
+                    icimg[k] = 0;
+                }
+                icimg[k] = icimg[k] >= 9 ? 0 : icimg[k] + 1;
+            }
+            kx = fkey(I_X(pi));
+            ky = fkey(I_Y(pi));
+            if (kx <= bnd[0] || kx >= bnd[1] || ky <= bnd[2] || ky >= bnd[3]) {   /* not within 16 px of the screen: */
+                if (I_SPR(pi) < 0 || (spr_local[I_SPR(pi)] && dk_local[dk & ~DK_SOLID])) continue;   /* draws nothing */
+                if (kx < bnd[4] || kx >= bnd[5] || ky < bnd[6] || ky >= bnd[7]) {   /* outside the window: */
+                    const struct sprdef *sd;           /* only a sprite larger than its margins reaches the view */
+                    float x = I_X(pi), y = I_Y(pi);
+                    if (I_SPR(pi) < 0 || !spr_wide[I_SPR(pi)]) continue;
+                    sd = &sprdefs[draw_spr[I_SPR(pi)]];
+                    if (x <= (float)(vx - sd->w) || x >= (float)(vx + VIEW_W + sd->w) || y <= (float)(vy - sd->h) ||
+                        y >= (float)(vy + VIEW_H + sd->h)) continue;
+                }
+            }
+            if (n < ENT_MAX) {
+                ents[n].dkey = fkey(I_DEPTH(pi));
+                ents[n].id = front_on ? front_drawkey(pi) : I_ID(pi);
+                ents[n].i = (int16_t)k;
+                ents[n].dk = dk;
+                n++;
+            }
+        }
+    }
+    return n;
+}
+
 void draw_new_game(void)
 {
     int k;
@@ -1396,8 +1452,7 @@ void draw_boot(void)
 
 void draw_frame(void)
 {
-    int k, n = 0, band = 0, w;
-    uint32_t v;
+    int k, n = 0, band = 0;
     uint32_t xlo, xhi, ylo, yhi;
     PROF0();
     draw_list_sync();                             /* the last list DMA has copied the main list */
@@ -1468,47 +1523,10 @@ void draw_frame(void)
             n++;
         }
     }
-    scan_candidates();
-    for (w = CAND_W - 1; w >= 0; w--) {           /* newest first: the sort below then moves little */
-        for (v = cand[w]; v;) {
-            int b = v >> 16 ? (v >> 24 ? 24 + hb8[v >> 24] : 16 + hb8[v >> 16 & 255])
-                            : (v >> 8 ? 8 + hb8[v >> 8 & 255] : hb8[v & 255]);
-            int pi;
-            uint32_t kx, ky;
-            uint8_t dk;
-            v &= ~bit32[b];
-            pi = k = 32 * w + b;
-            if (!I_ALIVE(pi) || !I_VISIBLE(pi)) continue;
-            dk = draw_kind[I_OBJ(pi)];
-            if (dk == DK_NONE) continue;
-            if (dk == DK_ITEM && I_COST(pi) > 0) {       /* oItem Draw: cimg += 1, 0 after 9 */
-                if (icid[k] != I_ID(pi)) {
-                    icid[k] = I_ID(pi);
-                    icimg[k] = 0;
-                }
-                icimg[k] = icimg[k] >= 9 ? 0 : icimg[k] + 1;
-            }
-            kx = fkey(I_X(pi));
-            ky = fkey(I_Y(pi));
-            if (kx <= sxlo || kx >= sxhi || ky <= sylo || ky >= syhi) {   /* not within 16 px of the screen: */
-                if (I_SPR(pi) < 0 || (spr_local[I_SPR(pi)] && dk_local[dk & ~DK_SOLID])) continue;   /* draws nothing */
-                if (kx < xlo || kx >= xhi || ky < ylo || ky >= yhi) {   /* outside the window: only a sprite larger */
-                    const struct sprdef *sd;                               /* than its margins reaches the view */
-                    float x = I_X(pi), y = I_Y(pi);
-                    if (I_SPR(pi) < 0 || !spr_wide[I_SPR(pi)]) continue;
-                    sd = &sprdefs[draw_spr[I_SPR(pi)]];
-                    if (x <= (float)(vx - sd->w) || x >= (float)(vx + VIEW_W + sd->w) || y <= (float)(vy - sd->h) ||
-                        y >= (float)(vy + VIEW_H + sd->h)) continue;
-                }
-            }
-            if (n < ENT_MAX) {
-                ents[n].dkey = fkey(I_DEPTH(pi));
-                ents[n].id = front_on ? front_drawkey(pi) : I_ID(pi);
-                ents[n].i = (int16_t)k;
-                ents[n].dk = dk;
-                n++;
-            }
-        }
+    {
+        const uint32_t bnd[8] = { sxlo, sxhi, sylo, syhi, xlo, xhi, ylo, yhi };
+        scan_candidates();
+        n = scan_ents(n, bnd);
     }
     }
     PROF(1);
