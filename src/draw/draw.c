@@ -217,9 +217,10 @@ static uint8_t mfull;
 static int16_t chead[NMAPS][MAPC_MAX] DRAW_MAPS_SECTION;
 /* (the per-instance claim arrays are touched only for instances whose draw state changed: DRAW_CACHE_SECTION, sprite
    RAM in the test builds, keeps main RAM for the play state) */
-static int16_t cnext[PIN_MAX] DRAW_CACHE_SECTION, ccell[PIN_MAX] DRAW_CACHE_SECTION;   /* ccell: m * MAPC_MAX + cell, -1
-                                                                                         when not on a cell */
-static uint16_t ctile[PIN_MAX] DRAW_CACHE_SECTION;
+static int16_t cnext[PIN_MAX] DRAW_CACHE_SECTION;
+static int16_t ccell[PIN_MAX] DRAW_MAPS_SECTION;   /* m * MAPC_MAX + cell, -1 when not on a cell */
+static uint16_t ctile[PIN_MAX] DRAW_MAPS_SECTION;  /* (ccell, ctile: in the maps' section, the cache's area being full
+                                                     in tests/gametime: its results follow area A at 0x0402e000) */
 /* oItem's cimg (its Draw event's price-tag frame counter; the play code keeps oDamsel's only): per instance slot,
    with the id it belongs to; counted at each draw_frame for every visible item with a price, as the Draw event is
    run for every visible instance */
