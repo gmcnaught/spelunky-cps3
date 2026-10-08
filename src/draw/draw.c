@@ -1581,7 +1581,7 @@ void draw_frame(void)
     /* dark levels: oLevel's place in the order (its depth, then its id) and the alpha byte */
     {
         static int lvl = -1;
-        int dark = 0;
+        int dark = 0, smooth;
         uint16_t stamp;
         uint32_t lkey = 0;
         int32_t lid = 0;
@@ -1611,13 +1611,13 @@ void draw_frame(void)
         spr_out(SPR_bgClouds, 0, 160, 0, 0);              /* rEnd3's tiled vertically (rCredits2's not); rEnd2: */
         if (PW.room == R_rEnd3) spr_out(SPR_bgClouds, 0, 160, 200, 0);   /* its colour layer, under oEnd2BG */
     }
-    for (k = 0, stamp = dstamp; k < n; k++) {
+    for (k = 0, stamp = dstamp, smooth = draw_smooth; k < n; k++) {
         const struct ent *e = &ents[ord[k]];
         if (dark && EW.cur_pal == DRAW_PAL && (e->dkey < lkey || (e->dkey == lkey && e->id < lid)))
             EW.cur_pal = DRAW_PAL_LIT;               /* after oLevel's rectangle */
         while (band < nmaps && mdepth_key[band] >= e->dkey) band_out(1 + band++);
         if (e->i >= 0) {
-            if (draw_smooth) inst_mid(e->i, stamp);
+            if (smooth) inst_mid(e->i, stamp);
             inst_out(e->i, e->dk);
         } else {
             const struct tspr *t = &tspr[-1 - e->i];
