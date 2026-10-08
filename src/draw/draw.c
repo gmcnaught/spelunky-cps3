@@ -170,10 +170,12 @@ static struct ew {
     uint8_t mid_on;
 } EW = { .cur_pal = DRAW_PAL, .cxh = VIEW_W, .cyh = SCREEN_H };
 /* smooth motion (draw.h): ocx, ocy: the midpoint camera less this frame's; vmx, vmy: the view test's margin (16 px,
-   plus the camera's half step); set_mid: the midpoint offset of the entries that follow and the clip bounds */
+   plus the camera's half step); set_mid: the midpoint offset of the entries that follow and the clip bounds (the
+   initial EW values are set_mid(0, 0)'s) */
 static int ocx, ocy, vmx = 16, vmy = 16;
-static void set_mid(int dx, int dy)
+static inline __attribute__((always_inline)) void set_mid(int dx, int dy)
 {
+    if (dx == EW.mdx && dy == EW.mdy) return;    /* (the bounds are set from dx, dy here only: unchanged) */
     EW.mdx = dx;
     EW.mdy = dy;
     EW.cxh = VIEW_W - (dx < 0 ? dx : 0);
