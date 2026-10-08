@@ -1632,7 +1632,7 @@ void pcol_create(int i)
     if (oinfo[PW.in[i].obj] & OI_F08) tlist_front(i);
 }
 
-/* off-view deactivation (pworld.c pw_deactivate). The runner leaves a deactivated instance's entry in the tree, where
+/* off-view deactivation (pworld.c pw_deactivate_n). The runner leaves a deactivated instance's entry in the tree, where
    searches pass over it (its instance is not alive), and puts it in again when it is activated (Observed:
    build/trace/dz_tree_oTreasure / dz_tree_oItem, p5_caveman seed 863 TRACE_DEACT=32 with TRACE_TREE at 13 records:
    the search order equal with this, different when the entry leaves the tree at deactivation or stays where it was

@@ -828,43 +828,56 @@ void pin_kill(int i)
     }
 }
 
-/* off-view deactivation (docs/DEACT.md, prun.c deact_pass): instance_deactivate_object(i). Not alive for every event
-   loop, query, `with`, count and the recorder (GameMaker skips a deactivated instance in all of them), out of the
-   object lists and pw_ord, its collision entry taken out (pcol_deactivated); the slot and its records stay (its
-   variables stay readable through references, as GameMaker's) */
-void pw_deactivate(int i)
+/* off-view deactivation (docs/DEACT.md, prun.c deact_pass): instance_deactivate_object of ids[0 .. n), in that order
+   (newest first: deact_pass takes them from the creation-ordered pw_nthead list backwards). Each is not alive for
+   every event loop, query, `with`, count and the recorder (GameMaker skips a deactivated instance in all of them), out
+   of the object lists and pw_ord, its collision entry taken out (pcol_deactivated); the slot and its records stay (its
+   variables stay readable through references, as GameMaker's). Every id is alive (pw_nthead holds linked instances
+   only) and listed once */
+void pw_deactivate_n(const int16_t *ids, int n)
 {
-    int k, j;
-    if (!PW.in[i].alive) return;
-    ounlink(i);
-    PW.in[i].alive = 0;
-    pw_draw_mark(i);
+    int k, j, m;
+    if (n <= 0) return;
+    for (k = 0; k < n; k++) {
+        int i = ids[k];
+        ounlink(i);
+        PW.in[i].alive = 0;
+        pw_draw_mark(i);
 #ifndef PCOL_EXACT
-    if (xmask[i] && !xond[i]) xdirty(i);
+        if (xmask[i] && !xond[i]) xdirty(i);
 #endif
-    /* pw_ord without i: pw_ord holds distinct slots in creation order, so pw_seq rises along it (pw_activate appends
-       with the next number; the renumbering keeps the order) and i's place is found by a binary search on pw_seq;
-       the entries after it move down one. The linear filter where the search does not land on i */
+        pcol_deactivated(i);
+    }
+    /* pw_ord without the ids, in one pass (nothing above reads pw_ord: the order left is the one removing them one by
+       one gives). pw_ord holds distinct slots in creation order, so pw_seq rises along it (pw_activate appends with the
+       next number; the renumbering keeps the order); the ids, oldest (ids[n - 1]) first, are met in that order: the
+       compaction starts at the oldest one's place (a binary search on pw_seq) and drops each id where the walk meets
+       it. Any id the walk did not meet (not in that order) is filtered out after, one by one */
     {
-        int lo = 0, hi = PW.nord - 1, s0 = pw_seq[i];
+        int lo = 0, hi = PW.nord - 1, s0 = pw_seq[ids[n - 1]];
         while (lo < hi) {
-            int m = (lo + hi) >> 1;
-            if (pw_seq[pw_ord[m]] < s0) lo = m + 1; else hi = m;
+            int mi = (lo + hi) >> 1;
+            if (pw_seq[pw_ord[mi]] < s0) lo = mi + 1; else hi = mi;
         }
-        if (PW.nord > 0 && pw_ord[lo] == i) {
-            for (k = lo; k < PW.nord - 1; k++) pw_ord[k] = pw_ord[k + 1];
-            PW.nord = (int16_t)(PW.nord - 1);
-        } else {
+        m = n - 1;
+        for (k = j = lo; k < PW.nord; k++) {
+            int s = pw_ord[k];
+            if (m >= 0 && s == ids[m]) { m--; continue; }
+            pw_ord[j++] = (int16_t)s;
+        }
+        PW.nord = (int16_t)j;
+    }
+    if (m >= 0) {
 #ifdef PLAY_STATS
-            fprintf(stderr, "pw_deactivate: %d not found by creation number\n", i);
-            abort();
+        fprintf(stderr, "pw_deactivate_n: %d not found in creation order\n", ids[m]);
+        abort();
 #endif
+        for (; m >= 0; m--) {
             for (k = j = 0; k < PW.nord; k++)
-                if (pw_ord[k] != i) pw_ord[j++] = pw_ord[k];
+                if (pw_ord[k] != ids[m]) pw_ord[j++] = pw_ord[k];
             PW.nord = (int16_t)j;
         }
     }
-    pcol_deactivated(i);
 }
 
 /* instance_activate_object(i) of a deactivated instance: it comes back as the newest instance (Observed: last in its

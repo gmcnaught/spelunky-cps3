@@ -548,11 +548,9 @@ static void deact_pass(void)
         cand[nc++] = (int16_t)i;
     }
     if (dl_n + nc > DL_MAX) { PUNTR(9010); return; }
-    while (nc > 0) {
-        i = cand[--nc];
-        dl_i[dl_n++] = (int16_t)i;
-        pw_deactivate(i);
-    }
+    for (k = 0; k < nc; k++) dl_i[dl_n + k] = cand[nc - 1 - k];
+    pw_deactivate_n(dl_i + dl_n, nc);
+    dl_n += nc;
 }
 #endif
 
