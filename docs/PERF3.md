@@ -636,7 +636,6 @@ Every commit: hostident 184/184; c2ec8b8 and HEAD: CTALL 59/59, EQUIV 88/88; HEA
     xVel is 0;
   - the debris objects' Steps run interleaved with others' (code always cold); a batch needs an order proof (the
     test list order is observable).
-||||||| 832c069
 
 
 ### Step 2 and explosion steps (branch deact3, on main 832c069, 2026-10-08)
@@ -709,7 +708,6 @@ counts are 32 B of stack): tests/game stack room 32,892 B.
   were not changed. Not tried: batching pcol_deactivated's obj_count (about 4 K in drain step 2).
 - jtcost.sh with two windows on consecutive records (`c_temple_weblava 3 c_temple_weblava 4`) never opened the
   second window (stopped after 40 min); one call per step works.
-||||||| 0b06854
 
 
 ### Detritus Steps: oDrip, rubble, oBlood, oFlame (branch debris, 2026-10-08, on water 0b06854)
