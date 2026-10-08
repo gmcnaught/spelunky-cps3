@@ -6,6 +6,8 @@
 -- the last window.
 --   JTC_STEP  play_step's address (hex)
 --   JTC_WIN   windows "start:file,start:file,...", starts ascending (the record count before the traced step)
+--   JTC_TAP   the count's address (hex; default 0x04100008, tests/playsh2's record count). scripts/jtcost_draw.sh: the
+--             game program's marker steps (0x02000050), JTC_STEP draw_frame: the draw of the step after the count
 local cpu = manager.machine.devices[":maincpu"]
 local space = cpu.spaces["program"]
 local ops = cpu.spaces["decrypted_opcodes"]
@@ -28,7 +30,8 @@ local function entry(offset, data, mask)
   state = 2
 end
 
-ctap = space:install_write_tap(0x04100008, 0x0410000b, "jtc", function(offset, data, mask)
+local TAP = tonumber(os.getenv("JTC_TAP") or "04100008", 16)
+ctap = space:install_write_tap(TAP, TAP + 3, "jtc", function(offset, data, mask)
   if w > #wins then return end
   local win = wins[w]
   if state == 0 and data == win[1] then

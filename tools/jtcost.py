@@ -74,7 +74,8 @@ def dname(a):
 def fn(pc):
     i = bisect.bisect_right(SA, pc) - 1
     return syms[i][1] if i >= 0 else '?'
-PLAY = [a for a, n in syms if n == '_play_step'][0]
+PLAY_FN = os.getenv('JTC_FN', '_play_step')       # JTC_FN=<symbol>: the traced function (scripts/jtcost_draw.sh: _draw_frame)
+PLAY = [a for a, n in syms if n == PLAY_FN][0]
 PCHIST = os.getenv('JTC_PCHIST'); pch = collections.Counter()   # JTC_PCHIST=<symbol>: its instructions by address
 pcc = collections.Counter()                      # JTC_PCHIST: model cost by address
 BYOBJ = os.getenv('JTC_BYOBJ') == '1'            # JTC_BYOBJ=1: cost by play_cur_obj (the object whose event runs)
@@ -291,7 +292,7 @@ for line in open(tr):
                 byph[(phase, cur_obj)]['cost'] += cost; byph[(phase, cur_obj)]['ins'] += 1
                 bo = byof[(cur_obj, f)]; bo['cost'] += cost; bo['ins'] += 1; bo['imiss'] += ev['imiss']
                 bo['dmiss'] += ev['dmiss_ram'] + ev['dmiss_simm']; bo['entries'] += pc in STARTS
-if not inside: sys.exit('jtcost.py: play_step (%08X) not entered in the trace' % PLAY)
+if not inside: sys.exit('jtcost.py: %s (%08X) not entered in the trace' % (PLAY_FN, PLAY))
 
 ins = st['ins']; cost = tot[SI]
 stores = sum(v for k, v in st.items() if k.startswith('st_'))
