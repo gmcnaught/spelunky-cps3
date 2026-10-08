@@ -436,7 +436,8 @@ static inline int pos_int(pos v, int32_t *o)
 static inline int pfloor_int(float f, int32_t *o)
 {
     union { float f; uint32_t u; } v;
-    uint32_t e, m, a, sh;
+    uint32_t e, a;
+    uint64_t p;
     v.f = f;
     e = (v.u >> 23) & 0xffu;
     if (e < 127) {                                          /* |f| < 1: 0, or -1 below zero */
@@ -444,11 +445,12 @@ static inline int pfloor_int(float f, int32_t *o)
         return 1;
     }
     if (e > 141) return 0;                                  /* |f| >= 32768, inf, NaN */
-    m = (v.u & 0x7fffffu) | 0x800000u;
-    sh = 150 - e;                                           /* 9 .. 23 fraction bits */
-    a = m >> sh;
+    /* |f| = m 2^(e - 150) (9 .. 23 fraction bits): m 2^(e - 118) has the integer part in the high word and the
+       fraction in the low one (fwhole's product: the SH-2 shifts by constants only) */
+    p = (uint64_t)((v.u & 0x7fffffu) | 0x800000u) * fwhole_mul[e - 127];
+    a = (uint32_t)(p >> 32);
     if (a >= 30000) return 0;
-    *o = (v.u & 0x80000000u) ? -(int32_t)a - ((m & ((1u << sh) - 1)) != 0) : (int32_t)a;
+    *o = (v.u & 0x80000000u) ? -(int32_t)a - ((uint32_t)p != 0) : (int32_t)a;
     return 1;
 }
 /* pin_xy_int from the shadows ix, iy (struct pin): both known and whole, one known not whole (0), else pin_xy_fill
