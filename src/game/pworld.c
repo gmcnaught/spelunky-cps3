@@ -2232,6 +2232,27 @@ int (collision_point_any_at)(int i, int32_t dx, int32_t dy, int obj)
 #endif
             return r;
         }
+        /* oSolid at the position itself (dx = dy = 0) not whole or not near: collision_point_any's summary path on the
+           point PTOD(x), PTOD(y) (its dwhole test, else pq_init, which keeps a float's value): the ints it reads,
+           iok, ix, iy, are the floors pfloor_int gives (dfloor_int's range), so solid_point_sum answers as there;
+           not known: the same search at the same point, as collision_point_any falls back to */
+        if (obj == OBJ_oSolid && dx == 0 && dy == 0 && !gfar && !pcol_quiet()) {
+            int r;
+            if (fam_none(obj)) return 0;
+            q.iok = pfloor_int(PW.in[i].x, &q.ix) && pfloor_int(PW.in[i].y, &q.iy);
+            r = solid_point_sum(&q, 0, NOONE);
+            if (r >= 0) {
+#ifdef PLAY_STATS
+                if (r != (collision_point_p(PTOD(PW.in[i].x) + dx, PTOD(PW.in[i].y) + dy, obj, 0, NOONE) != NOONE)) {
+                    fprintf(stderr, "collision_point_any: summary %d differs (%.17g %.17g)\n", r,
+                            PTOD(PW.in[i].x) + dx, PTOD(PW.in[i].y) + dy);
+                    abort();
+                }
+#endif
+                return r;
+            }
+            return collision_point_p(PTOD(PW.in[i].x) + dx, PTOD(PW.in[i].y) + dy, obj, 0, NOONE) != NOONE;
+        }
         if (ok) {
             int r = fam_none(obj) ? 0 : q.iok ? ik_xpt(obj, NOONE, 0, q.ix, q.iy) : -1;
             if (r < 0) r = xstatic_any(obj, NOONE, &q, 0);
