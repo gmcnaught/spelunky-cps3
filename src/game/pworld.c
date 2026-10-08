@@ -2137,6 +2137,52 @@ static int point_at_xy(int obj, int32_t px, int32_t py)
    and px = x + dx, py = y + dy (|dx|, |dy| <= 16) */
 int pw_filled_xy(int obj, int32_t px, int32_t py)
 {
+#ifndef PCOL_EXACT
+    /* point_at_xy's two calls in one when both take the grid paths (the point in the grid, gfar 0, pcol_quiet() 0,
+       obj a static family but oSolid), with the same flushes and fallbacks in the same order:
+       - oSolid: none alive -> 0; else grid_flush and ik_cells' one cell with notme NOONE, prec 0 (a block whose
+         gfblk is not NOONE: 1; gother, or a second block: -1; else 0); -1 -> collision_point_p;
+       - obj (only after a solid miss): none alive -> 0; else ik_xpt's tests inline (xflush_run, the index's miss, the
+         hint holding the point); -1 -> xstatic_any on point_at_xy's query.
+       oSolid's -1 goes back to point_at_xy for both (its grid_flush and ik_cells then change nothing) */
+    int f = obj >= 0 && obj != OBJ_oSolid ? xf_of[obj] : -1, cx = px >> 4, cy = py >> 4;
+    if (f >= 0 && px >= 0 && py >= 0 && cx < GRID_W && cy < GRID_H && !gfar && !pcol_quiet()) {
+        int r, k, n;
+        const struct pin *h;
+        if (olive[OBJ_oSolid]) {
+            grid_flush();
+            n = gfull[cy][cx];
+            r = n && gfblk[cy][cx] != NOONE ? 1 : gother[cy][cx] || n > 1 ? -1 : 0;
+            if (r < 0) return point_at_xy(OBJ_oSolid, px, py) || point_at_xy(obj, px, py);
+#ifdef PLAY_STATS
+            if (r != (collision_point_p((double)px, (double)py, OBJ_oSolid, 0, NOONE) != NOONE)) {
+                fprintf(stderr, "point_at_xy: answer %d differs (%d %d %d)\n", r, OBJ_oSolid, (int)px, (int)py);
+                abort();
+            }
+#endif
+            if (r) return 1;
+        }
+        if (!olive[obj]) return 0;
+        if (xdhead >= 0) xflush_run();
+        if (xfar[f] == 0 && !xsat[f] && xcnt[f][cy][cx] == 0)
+            r = 0;
+        else if ((k = xhint[cy][cx]) >= 0 && (h = &PW.in[k])->alive && h->bbk == BB_INT && obj_is(h->obj, obj) &&
+                 px >= h->bl && px < h->br && py >= h->bt && py < h->bb)
+            r = 1;
+        else {
+            struct pq q;
+            q.iok = 1; q.ix = px; q.iy = py; q.nodbl = 1;
+            r = xstatic_any(obj, NOONE, &q, 0);
+        }
+#ifdef PLAY_STATS
+        if (r != (collision_point_p((double)px, (double)py, obj, 0, NOONE) != NOONE)) {
+            fprintf(stderr, "point_at_xy: answer %d differs (%d %d %d)\n", r, obj, (int)px, (int)py);
+            abort();
+        }
+#endif
+        return r;
+    }
+#endif
     return point_at_xy(OBJ_oSolid, px, py) || point_at_xy(obj, px, py);
 }
 
