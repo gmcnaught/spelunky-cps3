@@ -769,40 +769,57 @@ static int is_exit_spr(int s) { return s == GSPR_sPExit || s == GSPR_sDamselExit
 
 /* draw_self (flip = image_xscale -1) or draw_sprite(sprite_index, -1, x, y) (flip 0) of instance pi, through the
    slot cache (kind 2) when the transform is plain */
-static void cached_out(int pi, int mirror)
+/* (cached_out's paths that call: kept out of it, so that a cache hit, every call made a tail call, saves no
+   registers) */
+static inline __attribute__((always_inline)) void cached_draw(const struct tcache *e)
 {
-    struct tcache *e = &tcache[pi];
-    uint32_t xb = fbits(I_X(pi)), yb = fbits(I_Y(pi)), ib = fbits(I_IMG(pi));
-    int flip, s;
-    if (!plain_transform(pi, &flip)) {
-        if (mirror) draw_st.unsup++;
-        s = draw_spr[I_SPR(pi)];
-        spr_out(s, img_of(pi), fpix(I_X(pi)), fpix(I_Y(pi)), mirror && fl_neg(I_XSCALE(pi)));
-        return;
-    }
-    flip &= mirror;
-    if (tcache_ok[pi] != 2 || e->xb != xb || e->yb != yb || e->ib != ib || e->spr != I_SPR(pi) || e->m != flip) {
-        int32_t img = img_of(pi);
-        e->xb = xb; e->yb = yb; e->ib = ib;
-        e->spr = I_SPR(pi);
-        e->m = (int8_t)flip;
-        e->cx = (int16_t)fpix(I_X(pi));
-        e->cy = (int16_t)fpix(I_Y(pi));
-        s = draw_spr[I_SPR(pi)];
-        e->tile = s >= 0;
-        if (s >= 0) {
-            const struct sprdef *sd = &sprdefs[s];
-            if (img < 0) img = 0;
-            if ((uint32_t)img >= sd->nframes) img = (int32_t)((uint32_t)img % sd->nframes);
-            e->c = (int16_t)(sd->frame + img);
-        }
-        tcache_ok[pi] = 2;
-    }
     if (!e->tile) {
         draw_st.noart++;
         return;
     }
     frame_out(e->c, e->cx - ox, e->cy - oy, e->m);
+}
+static __attribute__((noinline)) void cached_odd(int pi, int mirror)   /* not plain_transform */
+{
+    if (mirror) draw_st.unsup++;
+    spr_out(draw_spr[I_SPR(pi)], img_of(pi), fpix(I_X(pi)), fpix(I_Y(pi)), mirror && fl_neg(I_XSCALE(pi)));
+}
+static __attribute__((noinline)) void cached_fill(int pi, int flip)   /* the slot's entry from the fields */
+{
+    struct tcache *e = &tcache[pi];
+    int32_t img = img_of(pi);
+    int s;
+    e->xb = fbits(I_X(pi)); e->yb = fbits(I_Y(pi)); e->ib = fbits(I_IMG(pi));
+    e->spr = I_SPR(pi);
+    e->m = (int8_t)flip;
+    e->cx = (int16_t)fpix(I_X(pi));
+    e->cy = (int16_t)fpix(I_Y(pi));
+    s = draw_spr[I_SPR(pi)];
+    e->tile = s >= 0;
+    if (s >= 0) {
+        const struct sprdef *sd = &sprdefs[s];
+        if (img < 0) img = 0;
+        if ((uint32_t)img >= sd->nframes) img = (int32_t)((uint32_t)img % sd->nframes);
+        e->c = (int16_t)(sd->frame + img);
+    }
+    tcache_ok[pi] = 2;
+    cached_draw(e);
+}
+static void cached_out(int pi, int mirror)
+{
+    const struct tcache *e = &tcache[pi];
+    int flip;
+    if (!plain_transform(pi, &flip)) {
+        cached_odd(pi, mirror);
+        return;
+    }
+    flip &= mirror;
+    if (tcache_ok[pi] != 2 || e->xb != fbits(I_X(pi)) || e->yb != fbits(I_Y(pi)) || e->ib != fbits(I_IMG(pi)) ||
+        e->spr != I_SPR(pi) || e->m != flip) {
+        cached_fill(pi, flip);
+        return;
+    }
+    cached_draw(e);
 }
 static void self_out(int pi, int x, int y)
 {
