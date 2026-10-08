@@ -95,14 +95,14 @@ static inline uint32_t fkey(float f) { uint32_t u = fbits(f); return (u & 0x8000
 static inline int scale_is_pm1(float f) { uint32_t u = fbits(f); return u == F_ONE || u == F_MONE; }
 static inline int fl_neg(float f) { return (fbits(f) & 0x80000000u) != 0; }
 static inline int fl_zero(float f) { return (fbits(f) & 0x7fffffffu) == 0; }
-/* 2^(9 + e) for e = -1 .. 22 (index e + 1): for a float of unbiased exponent e and mantissa m (implicit bit set),
-   the 64-bit product m x 2^(9 + e) holds m >> (23 - e) in its high word and the bits shifted out, left-aligned, in
-   its low word. One dmulu.l in place of GCC's variable shifts (___lshrsi3 / ___ashlsi3: the SH-2 has no barrel
-   shifter) */
-static const uint32_t pw2e[24] = {
-    1u << 8, 1u << 9, 1u << 10, 1u << 11, 1u << 12, 1u << 13, 1u << 14, 1u << 15, 1u << 16, 1u << 17, 1u << 18,
-    1u << 19, 1u << 20, 1u << 21, 1u << 22, 1u << 23, 1u << 24, 1u << 25, 1u << 26, 1u << 27, 1u << 28, 1u << 29,
-    1u << 30, 1u << 31,
+/* bit32[k] = 1 << k: the SH-2 has no barrel shifter, so GCC makes a variable shift a libgcc call (___ashlsi3 /
+   ___lshrsi3); a load from this table replaces it. For a float of unbiased exponent e in -1 .. 22 and mantissa m
+   (implicit bit set), the 64-bit product m x bit32[9 + e] holds m >> (23 - e) in its high word and the bits shifted
+   out, left-aligned, in its low word: one dmulu.l in place of the variable shifts */
+static const uint32_t bit32[32] = {
+    1u << 0, 1u << 1, 1u << 2, 1u << 3, 1u << 4, 1u << 5, 1u << 6, 1u << 7, 1u << 8, 1u << 9, 1u << 10, 1u << 11,
+    1u << 12, 1u << 13, 1u << 14, 1u << 15, 1u << 16, 1u << 17, 1u << 18, 1u << 19, 1u << 20, 1u << 21, 1u << 22,
+    1u << 23, 1u << 24, 1u << 25, 1u << 26, 1u << 27, 1u << 28, 1u << 29, 1u << 30, 1u << 31,
 };
 /* (int32_t)f, truncation toward 0, by integer operations (no soft-float call) */
 static int32_t ftoi(float f)
@@ -111,7 +111,7 @@ static int32_t ftoi(float f)
     int e = (int)((u >> 23) & 255) - 127;
     int32_t v;
     if (e < 0) return 0;
-    v = e >= 23 ? (int32_t)(m << (e - 23 > 7 ? 7 : e - 23)) : (int32_t)(((uint64_t)m * pw2e[e + 1]) >> 32);
+    v = e >= 23 ? (int32_t)(m << (e - 23 > 7 ? 7 : e - 23)) : (int32_t)(((uint64_t)m * bit32[e + 9]) >> 32);
     return (u & 0x80000000u) ? -v : v;
 }
 /* the pixel a sprite at float coordinate f starts on: GameMaker's quad covers the pixels whose centre is at or after
@@ -129,7 +129,7 @@ static int32_t fpix(float f)
         ip = (int32_t)(m << (e - 23 > 7 ? 7 : e - 23));
         return (u & 0x80000000u) ? -ip : ip;
     }
-    p = (uint64_t)m * pw2e[e + 1];
+    p = (uint64_t)m * bit32[e + 9];
     ip = (int32_t)(p >> 32);
     lo = (uint32_t)p;
     if (u & 0x80000000u) return -(ip + (lo >= 0x80000000u));
@@ -695,7 +695,7 @@ void draw_tile_delete(int depth, int x, int y)
         const struct gtile *t = &gtiles[k];
         if (t->depth != depth || (tdel[k >> 5] >> (k & 31) & 1)) continue;
         if (x >= t->x && x < t->x + t->w && y >= t->y && y < t->y + t->h) {
-            tdel[k >> 5] |= 1u << (k & 31);
+            tdel[k >> 5] |= bit32[k & 31];
             tiles_dirty = 1;
             return;
         }
@@ -1031,7 +1031,7 @@ static int blk_local(int i)
     uint8_t dk = draw_kind[I_OBJ(i)] & ~DK_SOLID;
     return I_SPR(i) >= 0 && spr_local[I_SPR(i)] && dk_local[dk] && dk != DK_ITEM;
 }
-static int blk_of(float f, int n) { int32_t v = ftoi(f) >> 6; return v < 0 ? 0 : v >= n ? n - 1 : (int)v; }
+static int blk_of(float f, int n) { int32_t v = ftoi(f); return v < 0 ? 0 : (uint32_t)v >> 6 >= (uint32_t)n ? n - 1 : (int)((uint32_t)v >> 6); }
 
 static int32_t dkey_of(int i) { return front_on ? front_drawkey(i) : I_ID(i); }
 
@@ -1058,19 +1058,19 @@ static void cell_fix(int m, int c)
             mfull = 1;
     }
     for (k = chead[m][c]; k >= 0; k = cnext[k])
-        if (k == best) texc[k >> 5] &= ~(1u << (k & 31));
-        else texc[k >> 5] |= 1u << (k & 31);
+        if (k == best) texc[k >> 5] &= ~bit32[k & 31];
+        else texc[k >> 5] |= bit32[k & 31];
 }
 
 /* the claim of instance i from its current fields: a terrain cell of a tilemap (terrain_cell: a solid's single
    16 x 16 tile, unscaled, on a cell; its depth one of the maps') when visible, else a drawable (tother) */
 static void claim_update(int i)
 {
-    uint32_t bit = 1u << (i & 31);
+    uint32_t bit = bit32[i & 31];
     int c = 0, m;
     uint16_t t;
     if (ccell[i] >= 0) {
-        int om = ccell[i] / MAPC_MAX, oc = ccell[i] % MAPC_MAX;
+        int om = (uint16_t)ccell[i] / MAPC_MAX, oc = (uint16_t)ccell[i] % MAPC_MAX;   /* ccell >= 0 */
         int16_t *pp = &chead[om][oc];
         while (*pp != i) pp = &cnext[*pp];
         *pp = cnext[i];
@@ -1080,7 +1080,7 @@ static void claim_update(int i)
     }
     tother[i >> 5] &= ~bit;
     if (bpos[i] >= 0) {
-        int16_t *pp = &bhead[bpos[i] / BLK_W][bpos[i] % BLK_W];
+        int16_t *pp = &bhead[(uint16_t)bpos[i] / BLK_W][(uint16_t)bpos[i] % BLK_W];   /* bpos >= 0 */
         while (*pp != i) pp = &bnext[*pp];
         *pp = bnext[i];
         bpos[i] = -1;
@@ -1161,13 +1161,13 @@ static int scan_candidates(void)
     if (by1 > BLK_H - 1) by1 = BLK_H - 1;
     for (by = by0; by <= by1; by++)
         for (bx = bx0; bx <= bx1; bx++)
-            for (k = bhead[by][bx]; k >= 0; k = bnext[k]) cand[k >> 5] |= 1u << (k & 31);
+            for (k = bhead[by][bx]; k >= 0; k = bnext[k]) cand[k >> 5] |= bit32[k & 31];
     for (w = CAND_W - 1; w >= 0; w--) {
         uint32_t v = cand[w];
         while (v) {
             int b = v >> 16 ? (v >> 24 ? 24 + hb8[v >> 24] : 16 + hb8[v >> 16 & 255])
                             : (v >> 8 ? 8 + hb8[v >> 8 & 255] : hb8[v & 255]);
-            v &= ~(1u << b);
+            v &= ~bit32[b];
             cand_list[n++] = (int16_t)(32 * w + b);
         }
     }
