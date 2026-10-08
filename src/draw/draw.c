@@ -1411,6 +1411,31 @@ static __attribute__((noinline)) int scan_ents(int n, const uint32_t *bnd)
     return n;
 }
 
+/* the drawables in order (ord), with the tilemap bands at their depths' places; dark: from oLevel's place (lkey,
+   lid) on, the unfaded colour code. Its own function: the loop's values stay in registers */
+static __attribute__((noinline)) void list_ents(int n, int dark, uint32_t lkey, int32_t lid)
+{
+    int k, band = 0, smooth;
+    uint16_t stamp;
+    for (k = 0, stamp = dstamp, smooth = draw_smooth; k < n; k++) {
+        const struct ent *e = &ents[ord[k]];
+        if (dark && EW.cur_pal == DRAW_PAL && (e->dkey < lkey || (e->dkey == lkey && e->id < lid)))
+            EW.cur_pal = DRAW_PAL_LIT;               /* after oLevel's rectangle */
+        while (band < nmaps && mdepth_key[band] >= e->dkey) band_out(1 + band++);
+        if (e->i >= 0) {
+            if (smooth) inst_mid(e->i, stamp);
+            inst_out(e->i, e->dk);
+        } else {
+            const struct tspr *t = &tspr[-1 - e->i];
+            int px = t->x - EW.ox, py = t->y - EW.oy;
+            struct piecedef pc = { 0, 0, 1, 1, t->tile };
+            if (EW.mid_on) set_mid(-EW.ocx, -EW.ocy);
+            if (px + 16 > EW.cxl && px < EW.cxh && py + 16 > EW.cyl && py < EW.cyh) piece_out(px, py, &pc, 0);
+        }
+    }
+    while (band < nmaps) band_out(1 + band++);
+}
+
 void draw_new_game(void)
 {
     int k;
@@ -1452,7 +1477,7 @@ void draw_boot(void)
 
 void draw_frame(void)
 {
-    int k, n = 0, band = 0;
+    int k, n = 0;
     uint32_t xlo, xhi, ylo, yhi;
     PROF0();
     draw_list_sync();                             /* the last list DMA has copied the main list */
@@ -1599,8 +1624,7 @@ void draw_frame(void)
     /* dark levels: oLevel's place in the order (its depth, then its id) and the alpha byte */
     {
         static int lvl = -1;
-        int dark = 0, smooth;
-        uint16_t stamp;
+        int dark = 0;
         uint32_t lkey = 0;
         int32_t lid = 0;
         if (lvl < 0 || lvl >= PW.n || !I_ALIVE(lvl) || I_OBJ(lvl) != OBJ_oLevel)
@@ -1629,23 +1653,7 @@ void draw_frame(void)
         spr_out(SPR_bgClouds, 0, 160, 0, 0);              /* rEnd3's tiled vertically (rCredits2's not); rEnd2: */
         if (PW.room == R_rEnd3) spr_out(SPR_bgClouds, 0, 160, 200, 0);   /* its colour layer, under oEnd2BG */
     }
-    for (k = 0, stamp = dstamp, smooth = draw_smooth; k < n; k++) {
-        const struct ent *e = &ents[ord[k]];
-        if (dark && EW.cur_pal == DRAW_PAL && (e->dkey < lkey || (e->dkey == lkey && e->id < lid)))
-            EW.cur_pal = DRAW_PAL_LIT;               /* after oLevel's rectangle */
-        while (band < nmaps && mdepth_key[band] >= e->dkey) band_out(1 + band++);
-        if (e->i >= 0) {
-            if (smooth) inst_mid(e->i, stamp);
-            inst_out(e->i, e->dk);
-        } else {
-            const struct tspr *t = &tspr[-1 - e->i];
-            int px = t->x - EW.ox, py = t->y - EW.oy;
-            struct piecedef pc = { 0, 0, 1, 1, t->tile };
-            if (EW.mid_on) set_mid(-EW.ocx, -EW.ocy);
-            if (px + 16 > EW.cxl && px < EW.cxh && py + 16 > EW.cyl && py < EW.cyh) piece_out(px, py, &pc, 0);
-        }
-    }
-    while (band < nmaps) band_out(1 + band++);
+    list_ents(n, dark, lkey, lid);
     run_close();
     }
     draw_sprdma_end();                            /* the DMAC sends the rest while the HUD is drawn */
