@@ -430,7 +430,7 @@ static inline __attribute__((always_inline)) void ent_put(int px, int py, unsign
 
 /* piece pc's entry at screen (px, py): piece_put inline when run_p is below ent_lim (the entry words as ent_put's), else
    piece_out (ent_put's checks, then ent_lim again) */
-static __attribute__((noinline)) void piece_out(int px, int py, const struct piecedef *pc, int flip)
+static __attribute__((noipa)) void piece_out(int px, int py, const struct piecedef *pc, int flip)
 {
     ent_put(px, py, pc->w, pc->h, pc->tile, cur_pal, flip ? CPS3V_FLIPX : 0);
     ent_room();
@@ -464,18 +464,35 @@ static inline __attribute__((always_inline)) void piece_put(int px, int py, cons
 #endif
 }
 
-/* frame f (framedefs) with its origin at screen (x, y); flip: mirrored about x (image_xscale -1) */
+/* frame f (framedefs) with its origin at screen (x, y); flip: mirrored about x (image_xscale -1). frame_out_n: any
+   number of pieces; frame_out: one piece inline (97.8 % of frame draws, docs/DRAW.md section 2) with every call a
+   tail call (no registers saved), more by frame_out_n */
+static inline __attribute__((always_inline)) int piece_at(const struct piecedef *pc, int x, int y, int flip, int *px,
+                                                          int *py)   /* the piece's place; 0 when off the clip */
+{
+    int w = 16 * pc->w;
+    *px = flip ? x - pc->dx - w : x + pc->dx;
+    *py = y + pc->dy;
+    return !(*px >= cxh || *py >= cyh || *px + w <= cxl || *py + 16 * pc->h <= cyl);
+}
+static __attribute__((noinline)) void frame_out_n(const struct framedef *fd, int x, int y, int flip)
+{
+    const struct piecedef *pc = &piecedefs[fd->piece], *end = pc + fd->npieces;
+    int px, py;
+    for (; pc < end; pc++)
+        if (piece_at(pc, x, y, flip, &px, &py)) piece_put(px, py, pc, flip);
+}
 static void frame_out(int f, int x, int y, int flip)
 {
     const struct framedef *fd = &framedefs[f];
-    const struct piecedef *pc = &piecedefs[fd->piece], *end = pc + fd->npieces;
-    int xl = cxl, xh = cxh, yl = cyl, yh = cyh;
-    for (; pc < end; pc++) {
-        int w = 16 * pc->w, px = flip ? x - pc->dx - w : x + pc->dx, py = y + pc->dy;
-        if (px >= xh || py >= yh || px + w <= xl || py + 16 * pc->h <= yl)
-            continue;
-        piece_put(px, py, pc, flip);
+    const struct piecedef *pc;
+    int px, py;
+    if (fd->npieces != 1) {
+        frame_out_n(fd, x, y, flip);
+        return;
     }
+    pc = &piecedefs[fd->piece];
+    if (piece_at(pc, x, y, flip, &px, &py)) piece_put(px, py, pc, flip);
 }
 
 /* sprite s (SPR_*), image img (whole), at room (x, y) */
