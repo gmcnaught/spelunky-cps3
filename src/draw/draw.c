@@ -1160,12 +1160,32 @@ static void cell_fix(int m, int c)
 }
 
 /* the claim of instance i from its current fields: a terrain cell of a tilemap (terrain_cell: a solid's single
-   16 x 16 tile, unscaled, on a cell; its depth one of the maps') when visible, else a drawable (tother) */
+   16 x 16 tile, unscaled, on a cell; its depth one of the maps') when visible, else a drawable in a block (blk_local)
+   or not (tother); none when not drawn. An instance holds at most one claim. When the claim is the one it holds,
+   nothing is unlinked: a block or tother claim needs no change (no list's order is used: cell_fix's choice and the
+   candidate bits do not depend on it), a cell claim keeps its place and the cell is fixed again with the tile (the
+   slot may hold a new instance: another draw key); cell_fix(m, c) after an unlink and relink in the same cell gave
+   the same mwant, texc bits and queue */
 static void claim_update(int i)
 {
     uint32_t bit = bit32[i & 31];
-    int c = 0, m;
-    uint16_t t;
+    int c = 0, m = -1, cell = -1, blk = -1, drawn;
+    uint16_t t = 0;
+    drawn = i < PW.n && I_ALIVE(i) && I_VISIBLE(i) && draw_kind[I_OBJ(i)] != DK_NONE;
+    if (drawn) {
+        if (nmaps && (t = terrain_cell(i, &c)) != 0 && (m = map_of_depth(I_DEPTH(i))) >= 0)
+            cell = m * MAPC_MAX + c;
+        else if (blk_local(i))
+            blk = blk_of(I_Y(i), BLK_H) * BLK_W + blk_of(I_X(i), BLK_W);
+    }
+    if (cell >= 0 ? ccell[i] == cell : blk >= 0 ? bpos[i] == blk :
+        ccell[i] < 0 && bpos[i] < 0 && (tother[i >> 5] & bit ? drawn : !drawn)) {
+        if (cell >= 0) {
+            ctile[i] = t;
+            cell_fix(m, c);
+        }
+        return;
+    }
     if (ccell[i] >= 0) {
         int om = (uint16_t)ccell[i] / MAPC_MAX, oc = (uint16_t)ccell[i] % MAPC_MAX;   /* ccell >= 0 */
         int16_t *pp = &chead[om][oc];
@@ -1182,18 +1202,17 @@ static void claim_update(int i)
         *pp = bnext[i];
         bpos[i] = -1;
     }
-    if (i >= PW.n || !I_ALIVE(i) || !I_VISIBLE(i) || draw_kind[I_OBJ(i)] == DK_NONE) return;
-    if (nmaps && (t = terrain_cell(i, &c)) != 0 && (m = map_of_depth(I_DEPTH(i))) >= 0) {
+    if (!drawn) return;
+    if (cell >= 0) {
         cnext[i] = chead[m][c];
         chead[m][c] = (int16_t)i;
-        ccell[i] = (int16_t)(m * MAPC_MAX + c);
+        ccell[i] = (int16_t)cell;
         ctile[i] = t;
         cell_fix(m, c);
-    } else if (blk_local(i)) {
-        int bx = blk_of(I_X(i), BLK_W), by = blk_of(I_Y(i), BLK_H);
-        bnext[i] = bhead[by][bx];
-        bhead[by][bx] = (int16_t)i;
-        bpos[i] = (int16_t)(by * BLK_W + bx);
+    } else if (blk >= 0) {
+        bnext[i] = bhead[(uint16_t)blk / BLK_W][(uint16_t)blk % BLK_W];
+        bhead[(uint16_t)blk / BLK_W][(uint16_t)blk % BLK_W] = (int16_t)i;
+        bpos[i] = (int16_t)blk;
     } else
         tother[i >> 5] |= bit;
 }
