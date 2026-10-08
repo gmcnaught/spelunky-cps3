@@ -657,6 +657,9 @@ struct hist { int32_t id; int16_t x, y; uint16_t stamp; };
 static struct hist hist[PIN_MAX] DRAW_CACHE_SECTION;
 static uint16_t dstamp;                           /* draw_frame calls (smooth motion) */
 static int pvx = -1000, pvy = -1000;              /* the last draw's camera */
+/* the instance inst_mid has just placed (slot, fpix(x), fpix(y)) for inst_out and cached_fill to take; slot -1 none
+   (list_ents sets it so when it does not call inst_mid; the draw does not change x, y) */
+static struct { int slot, x, y; } mxy = { -1, 0, 0 };
 /* instance i is drawn now: its midpoint offset (halfway back to its last draw's place: dx / 2, as the camera's ocx)
    when mid_on, and its place kept for the next draw */
 static void inst_mid(int i, uint16_t stamp)       /* stamp: dstamp (a local: hist's uint16_t stores would make GCC
@@ -690,6 +693,9 @@ static void inst_mid(int i, uint16_t stamp)       /* stamp: dstamp (a local: his
         h->y = (int16_t)y;
     }
     h->stamp = stamp;
+    mxy.slot = i;
+    mxy.x = x;
+    mxy.y = y;
     if (EW.mid_on) set_mid(dx / 2 - EW.ocx, dy / 2 - EW.ocy);
 }
 
@@ -871,8 +877,13 @@ static __attribute__((noinline)) void cached_fill(int pi, int flip)   /* the slo
     e->xb = fbits(I_X(pi)); e->yb = fbits(I_Y(pi)); e->ib = fbits(I_IMG(pi));
     e->spr = I_SPR(pi);
     e->m = (int8_t)flip;
-    e->cx = (int16_t)fpix(I_X(pi));
-    e->cy = (int16_t)fpix(I_Y(pi));
+    if (mxy.slot == pi) {                         /* inst_mid's fpix(x), fpix(y) */
+        e->cx = (int16_t)mxy.x;
+        e->cy = (int16_t)mxy.y;
+    } else {
+        e->cx = (int16_t)fpix(I_X(pi));
+        e->cy = (int16_t)fpix(I_Y(pi));
+    }
     s = draw_spr[I_SPR(pi)];
     kind = TC_NOART;
     if (s >= 0) {
@@ -996,8 +1007,13 @@ static void inst_out(int i, int dk)               /* dk: draw_kind[I_OBJ(i)] (en
     int pi = i, x = 0, y = 0;
     dk &= ~DK_SOLID;
     if (dk != DK_SELF && dk != DK_PLAIN && dk != DK_ITEM && dk != DK_NONE) {
-        x = fpix(I_X(pi));
-        y = fpix(I_Y(pi));
+        if (mxy.slot == pi) {                     /* inst_mid's fpix(x), fpix(y) */
+            x = mxy.x;
+            y = mxy.y;
+        } else {
+            x = fpix(I_X(pi));
+            y = fpix(I_Y(pi));
+        }
     }
     switch (dk) {
     case DK_NONE: break;
@@ -1429,7 +1445,10 @@ static __attribute__((noinline)) void list_ents(int n, int dark, uint32_t lkey, 
 {
     int k, band = 0, smooth;
     uint16_t stamp;
-    for (k = 0, stamp = dstamp, smooth = draw_smooth; k < n; k++) {
+    stamp = dstamp;
+    smooth = draw_smooth;
+    if (!smooth) mxy.slot = -1;                   /* (inst_mid sets it for every instance when smooth) */
+    for (k = 0; k < n; k++) {
         const struct ent *e = &ents[ord[k]];
         if (dark && EW.cur_pal == DRAW_PAL && (e->dkey < lkey || (e->dkey == lkey && e->id < lid)))
             EW.cur_pal = DRAW_PAL_LIT;               /* after oLevel's rectangle */
