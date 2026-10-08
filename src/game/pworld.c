@@ -2370,24 +2370,6 @@ int pw_solid_pt(int32_t x, int32_t y)
 /* pin_setx(p, PI(x + d)) for i's whole x (|x| < 29900) and d = +-1. A box cached whole (BB_INT) before stays cached:
    bbkind_set's box at x + d is the old one moved by d (the sprite, the scales and the angle are unchanged, x + d is
    whole), and the setter's marks (pw_changed) do not read the box */
-/* (float)v for |v| < 2^15 from the bits (no __floatsisf call): the top bit's place e by four compares, the mantissa as
-   a * 2^(23 - e) (exact: a < 2^(e + 1)), its hidden bit added to the exponent field 126 + e. Checked equal to
-   (float)v for every |v| < 2^15 */
-static const uint32_t fi_mul[16] = { 1u << 23, 1u << 22, 1u << 21, 1u << 20, 1u << 19, 1u << 18, 1u << 17, 1u << 16,
-                                     1u << 15, 1u << 14, 1u << 13, 1u << 12, 1u << 11, 1u << 10, 1u << 9, 1u << 8 };
-static float fint15(int32_t v)
-{
-    union { float f; uint32_t u; } r;
-    uint32_t a = v < 0 ? (uint32_t)-v : (uint32_t)v, t = a, e = 0;
-    if (a == 0) return 0.0f;
-    if (t >= 0x100) { e = 8; t >>= 8; }
-    if (t >= 0x10) { e += 4; t >>= 4; }
-    if (t >= 0x4) { e += 2; t >>= 2; }
-    if (t >= 0x2) e += 1;
-    r.u = ((126 + e) << 23) + a * fi_mul[e];
-    if (v < 0) r.u |= 0x80000000u;
-    return r.f;
-}
 #define XSTEP_POS(v) fint15(v)
 void pw_xstep(int i, int32_t x, int d)
 {

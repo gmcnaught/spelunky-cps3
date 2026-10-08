@@ -306,7 +306,13 @@ void moveTo(int i, num a0, num a1, int32_t *xio, int32_t *yio)
         int32_t n = xVelInteger > 0 ? xVelInteger : -xVelInteger, k;
         for (k = 0; k < n; k++)
             if (solid_vline_any(xVelInteger > 0 ? ir + k : il - 1 - k, it + 5, ib - 1, i)) break;
-        if (k) MT_SETX(mtXPrev + PI(xVelInteger > 0 ? k : -k));
+        if (k) {
+            /* x is whole (ibounds: the shadow ix holds it), so mtXPrev + PI(+-k) is the float of ix +- k (exact below
+               2^24; ix + (-ix) gives +0, as fint15(0)): fint15 below 2^15, and the shadow keeps the new x (a cache) */
+            int32_t nx = p->ix + (xVelInteger > 0 ? k : -k);
+            MT_SETX(nx > -32768 && nx < 32768 ? fint15(nx) : PI(nx));
+            if (nx > -30000 && nx < 30000) p->ix = (int16_t)nx;
+        }
         xdone = 1;
     }
 #endif
@@ -352,7 +358,11 @@ void moveTo(int i, num a0, num a1, int32_t *xio, int32_t *yio)
         int32_t n = yVelInteger > 0 ? yVelInteger : -yVelInteger, k;
         for (k = 0; k < n; k++)
             if (solid_hline_any(yVelInteger > 0 ? ib + k : it - 1 - k, il, ir - 1, i)) break;
-        if (k) MT_SETY(mtYPrev + PI(yVelInteger > 0 ? k : -k));
+        if (k) {                                                       /* (as the x walk's) */
+            int32_t ny = p->iy + (yVelInteger > 0 ? k : -k);
+            MT_SETY(ny > -32768 && ny < 32768 ? fint15(ny) : PI(ny));
+            if (ny > -30000 && ny < 30000) p->iy = (int16_t)ny;
+        }
         ydone = 1;
     }
 #endif
@@ -381,9 +391,12 @@ void moveTo(int i, num a0, num a1, int32_t *xio, int32_t *yio)
         /* pin_setx then pin_sety, with nothing between: their marks are one pw_changed's when either changed
            (consecutive pw_changed(i) leave what the last leaves: characterStepEvent's slope loops), so pin_setxy */
         pos fx = p->x, fy = p->y;
+        int16_t sx = p->ix, sy = p->iy;          /* fx, fy's shadows (stale, or theirs): kept through the restore */
         PIN_SETX_RAW(p, mtXPrev);
         PIN_SETY_RAW(p, mtYPrev);
         pin_setxy(p, fx, fy);
+        p->ix = sx;
+        p->iy = sy;
     }
 #undef MT_SETX
 #undef MT_SETY
