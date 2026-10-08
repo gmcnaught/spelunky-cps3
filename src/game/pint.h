@@ -90,7 +90,20 @@ int ptype_of_pickup(int pickup);              /* gen's enum pickup -> enum ptype
 int pickup_of_ptype(int t);
 int inview(int i, int m);                     /* x, y inside the view +/- m (the GML's view checks) */
 int create_detritus(int i);                   /* pobj.c: oDetritus Create / Step (oBone, P5) */
-void detritus_step(int i);
+int detritus_step(int i);                     /* its isCollisionBottom(i, 1) answer, or -1 (detritus_bottom) */
+/* isCollisionBottom(i, 1) right after detritus_step(i) returned b (oBlood, oFlame, oBone, oMagma: only yVel, life and
+   pin_destroy between, which change neither i's position and bounds nor the oSolid family; an oFlame's Destroy makes an
+   oSmokePuff): the answer b it asked, when it did. The grid build: its searches do not depend on when entries are
+   flushed, so the skipped query changes nothing else; the exact build asks again (the R-tree flushes keep their places) */
+static inline int detritus_bottom(int i, int b)
+{
+#ifndef PCOL_EXACT
+    if (b >= 0) return b;
+#else
+    (void)b;
+#endif
+    return isCollisionBottom(i, 1);
+}
 void rubblepiece_step(int i, int nops);      /* pobj.c: oRubblePiece Step (nops: play_dops to count) */
 void create_item(struct pin *p);              /* pobj.c: oItem Create / Step (oDamsel's inherited, P5) */
 void item_step(int i);

@@ -995,11 +995,13 @@ static inline int pout_ab(pos v, int32_t s, int32_t a, int32_t b)
     return PLTI(v, a) || PGTI(v, b);
 }
 
-/* objects/oDetritus/Step_0.gml (returns 0 if it destroyed itself) */
-void detritus_step(int i)
+/* objects/oDetritus/Step_0.gml; returns its isCollisionBottom(i, 1) answer when bounce asked it, else -1 (pint.h
+   detritus_bottom) */
+int detritus_step(int i)
 {
     struct pin *p = &PX(i);
     pos x = p->x, y = p->y;
+    int bot = -1;
     view_read();
     if (pout_ab(x, p->ix, PW.xview - 4, PW.xview + 320 + 4) || pout_ab(y, p->iy, PW.yview - 4, PW.yview + 240 + 4))
         pin_destroy(i);
@@ -1011,12 +1013,13 @@ void detritus_step(int i)
         if (NLT(PE(p)->yVel, N(6))) PE(p)->yVel += PE(p)->grav;
         if (isCollisionTop(i, 1) && NLT(PE(p)->yVel, N(0))) PE(p)->yVel = NMUL(-PE(p)->yVel, N(0.8));
         if (isCollisionLeft(i, 1) || isCollisionRight(i, 1)) PE(p)->xVel = NMUL(-PE(p)->xVel, N(0.5));
-        if (isCollisionBottom(i, 1)) {
+        if ((bot = isCollisionBottom(i, 1)) != 0) {
             if (NGT(PE(p)->yVel, N(1))) PE(p)->yVel = NMUL(-PE(p)->yVel, N(0.5));
             else PE(p)->yVel = 0;
         }
         NOPS(6);
     }
+    return bot;
 }
 
 /* a normal float f (not zero, subnormal, infinite or NaN): (float)((double)f + d) for d = +-0 is f, the same bits */
@@ -1398,14 +1401,15 @@ void ev_step(int i)
     case OBJ_oWhip: whip_step(i, 0); break;
     case OBJ_oWhipPre: whip_step(i, 1); break;
     case OBJ_oBlood:                                                           /* oBlood Step: inherited first */
-    case OBJ_oFlame:
-        detritus_step(i);
+    case OBJ_oFlame: {
+        int b = detritus_step(i);
         p = &PX(i);
         if (NGT(PE(p)->yVel, N(6))) pin_destroy(i);
-        if (isCollisionBottom(i, 1)) {
+        if (detritus_bottom(i, b)) {
             if (NGT(PE(p)->life, N(20))) PE(p)->life = N(20);
         }
         break;
+    }
     case OBJ_oPoof:
         pin_setx(p, PADDV(p->x, PE(p)->xVel));
         pin_sety(p, PADDV(p->y, PE(p)->yVel));

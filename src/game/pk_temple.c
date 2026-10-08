@@ -391,8 +391,7 @@ static void magma_create(int i)
 /* objects/oMagma/Step_0.gml */
 static void magma_step(int i)
 {
-    detritus_step(i);
-    if (isCollisionBottom(i, 1)) {
+    if (detritus_bottom(i, detritus_step(i))) {
         struct pin *p = &PX(i);
         pin_set_sprite(i, GSPR_sMagmaManCreate);
         PE(p)->xVel = 0;
