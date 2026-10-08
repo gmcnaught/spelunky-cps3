@@ -3217,6 +3217,14 @@ static int rect_run(struct rq *rq, int q, const float *r, int obj, int prec, int
    trunc(lx) = (2 lx) / 2 (C division truncates as cvttss2si); rows the same */
 struct pci { int32_t x, y; int sx, sy, xo, yo, ml, mt, mr, mb, bpr; const uint8_t *mask; };
 
+/* f > 0 on the bits (no soft-float compare): above +0 and not above +inf (a positive NaN is not > 0) */
+static int pci_fpos(float f)
+{
+    union { float f; int32_t b; } v;
+    v.f = f;
+    return v.b > 0 && v.b <= 0x7f800000;
+}
+
 static void pci_of(int i, int32_t dx, int32_t dy, struct pci *q)
 {
     const struct pin *p = &PW.in[i];
@@ -3234,8 +3242,8 @@ static void pci_of(int i, int32_t dx, int32_t dy, struct pci *q)
         pos_int(p->y, &q->y);
     }
     q->x += dx; q->y += dy;
-    q->sx = p->xscale > 0 ? 1 : -1;
-    q->sy = p->yscale > 0 ? 1 : -1;
+    q->sx = pci_fpos(p->xscale) ? 1 : -1;
+    q->sy = pci_fpos(p->yscale) ? 1 : -1;
     q->xo = c->xo; q->yo = c->yo;
     q->ml = c->l; q->mt = c->t; q->mr = c->r; q->mb = c->b;
     q->bpr = ((c->r - c->l + 1) + 7) >> 3;
