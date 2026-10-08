@@ -657,12 +657,16 @@ struct hist { int32_t id; int16_t x, y; uint16_t stamp; };
 static struct hist hist[PIN_MAX] DRAW_CACHE_SECTION;
 static uint16_t dstamp;                           /* draw_frame calls (smooth motion) */
 static int pvx = -1000, pvy = -1000;              /* the last draw's camera */
-/* the instance inst_mid has just placed (slot, fpix(x), fpix(y)) for inst_out and cached_fill to take; slot -1 none
-   (list_ents sets it so when it does not call inst_mid; the draw does not change x, y) */
-static struct { int slot, x, y; } mxy = { -1, 0, 0 };
+/* fpix(x), fpix(y) as inst_mid hands them to inst_out and cached_fill: x << 16 | y (16 bits each) when both are in
+   -32767 .. 32767, else NOXY (the draw does not change x, y) */
+#define NOXY 0x80008000u
+static inline uint32_t xy_pack(int x, int y)
+{
+    return x < -32767 || x > 32767 || y < -32767 || y > 32767 ? NOXY : (uint32_t)(uint16_t)x << 16 | (uint16_t)y;
+}
 /* instance i is drawn now: its midpoint offset (halfway back to its last draw's place: dx / 2, as the camera's ocx)
-   when mid_on, and its place kept for the next draw */
-static void inst_mid(int i, uint16_t stamp)       /* stamp: dstamp (a local: hist's uint16_t stores would make GCC
+   when mid_on, and its place kept for the next draw; returns xy_pack(fpix(x), fpix(y)) */
+static uint32_t inst_mid(int i, uint16_t stamp)       /* stamp: dstamp (a local: hist's uint16_t stores would make GCC
                                                      load dstamp again for each instance) */
 {
     struct hist *h = &hist[i];
@@ -693,10 +697,8 @@ static void inst_mid(int i, uint16_t stamp)       /* stamp: dstamp (a local: his
         h->y = (int16_t)y;
     }
     h->stamp = stamp;
-    mxy.slot = i;
-    mxy.x = x;
-    mxy.y = y;
     if (EW.mid_on) set_mid(dx / 2 - EW.ocx, dy / 2 - EW.ocy);
+    return xy_pack(x, y);
 }
 
 /* the tile_add layers into mbase / tspr (gtiles less the deleted ones). A layer draws its tiles in element order,
@@ -869,7 +871,8 @@ static __attribute__((noinline)) void cached_odd(int pi, int mirror)   /* not pl
     if (mirror) draw_st.unsup++;
     spr_out(draw_spr[I_SPR(pi)], img_of(pi), fpix(I_X(pi)), fpix(I_Y(pi)), mirror && fl_neg(I_XSCALE(pi)));
 }
-static __attribute__((noinline)) void cached_fill(int pi, int flip)   /* the slot's entry from the fields */
+/* the slot's entry from the fields (xy: inst_mid's fpix(x), fpix(y), or NOXY) */
+static __attribute__((noinline)) void cached_fill(int pi, int flip, uint32_t xy)
 {
     struct tcache *e = &tcache[pi];
     int32_t img = img_of(pi);
@@ -877,9 +880,9 @@ static __attribute__((noinline)) void cached_fill(int pi, int flip)   /* the slo
     e->xb = fbits(I_X(pi)); e->yb = fbits(I_Y(pi)); e->ib = fbits(I_IMG(pi));
     e->spr = I_SPR(pi);
     e->m = (int8_t)flip;
-    if (mxy.slot == pi) {                         /* inst_mid's fpix(x), fpix(y) */
-        e->cx = (int16_t)mxy.x;
-        e->cy = (int16_t)mxy.y;
+    if (xy != NOXY) {                             /* inst_mid's fpix(x), fpix(y) */
+        e->cx = (int16_t)(xy >> 16);
+        e->cy = (int16_t)xy;
     } else {
         e->cx = (int16_t)fpix(I_X(pi));
         e->cy = (int16_t)fpix(I_Y(pi));
@@ -910,7 +913,7 @@ static __attribute__((noinline)) void cached_fill(int pi, int flip)   /* the slo
     e->kind = (uint8_t)kind;
     cached_draw(e);
 }
-static void cached_out(int pi, int mirror)
+static void cached_out(int pi, int mirror, uint32_t xy)
 {
     const struct tcache *e = &tcache[pi];
     int flip;
@@ -921,7 +924,7 @@ static void cached_out(int pi, int mirror)
     flip &= mirror;
     if (!e->kind || e->xb != fbits(I_X(pi)) || e->yb != fbits(I_Y(pi)) || e->ib != fbits(I_IMG(pi)) ||
         e->spr != I_SPR(pi) || e->m != flip) {
-        cached_fill(pi, flip);
+        cached_fill(pi, flip, xy);
         return;
     }
     cached_draw(e);
@@ -1002,14 +1005,14 @@ static void jaws_out(int pi, int x, int y)
     }
 }
 
-static void inst_out(int i, int dk)               /* dk: draw_kind[I_OBJ(i)] (ents' copy) */
+static void inst_out(int i, int dk, uint32_t xy)  /* dk: draw_kind[I_OBJ(i)] (ents' copy); xy: inst_mid's */
 {
     int pi = i, x = 0, y = 0;
     dk &= ~DK_SOLID;
     if (dk != DK_SELF && dk != DK_PLAIN && dk != DK_ITEM && dk != DK_NONE) {
-        if (mxy.slot == pi) {                     /* inst_mid's fpix(x), fpix(y) */
-            x = mxy.x;
-            y = mxy.y;
+        if (xy != NOXY) {                         /* inst_mid's fpix(x), fpix(y) */
+            x = (int16_t)(xy >> 16);
+            y = (int16_t)xy;
         } else {
             x = fpix(I_X(pi));
             y = fpix(I_Y(pi));
@@ -1018,13 +1021,13 @@ static void inst_out(int i, int dk)               /* dk: draw_kind[I_OBJ(i)] (en
     switch (dk) {
     case DK_NONE: break;
     case DK_TODO: draw_st.todo++; self_out(pi, x, y); break;
-    case DK_SELF: if (I_SPR(pi) >= 0) cached_out(pi, 1); break;
+    case DK_SELF: if (I_SPR(pi) >= 0) cached_out(pi, 1, xy); break;
     case DK_DAMSEL:                               /* objects/oDamsel/Draw_0.gml: the price tag at cimg, which */
         self_out(pi, x, y);                        /* the play code's ev_draw has counted on already */
         if (I_COST(pi) > 0) collect_out(I_CIMG(pi) ? I_CIMG(pi) - 1 : 9, x, y - 12);
         break;
     case DK_ITEM:                                 /* objects/oItem/Draw_0.gml (cimg counted in draw_frame) */
-        if (I_SPR(pi) >= 0) cached_out(pi, 0);
+        if (I_SPR(pi) >= 0) cached_out(pi, 0, xy);
         if (I_COST(pi) > 0) collect_out(icimg[i] ? icimg[i] - 1 : 9, fpix(I_X(pi)), fpix(I_Y(pi)) - 12);
         break;
     case DK_ENEMY:                                /* objects/oEnemy/Draw_0.gml (oEnemy: LEFT 0, RIGHT 1) */
@@ -1042,7 +1045,7 @@ static void inst_out(int i, int dk)               /* dk: draw_kind[I_OBJ(i)] (en
             else spr_out(SPR_sShotgunRight, 0, x + 10, y + 10, 0);
         }
         break;
-    case DK_PLAIN: if (I_SPR(pi) >= 0) cached_out(pi, 0); break;
+    case DK_PLAIN: if (I_SPR(pi) >= 0) cached_out(pi, 0, xy); break;
     case DK_DICE:                                 /* objects/oDice/Draw_0.gml */
         self_out(pi, x, y);
         if (!I_ROLLED(pi) && PL.bet > 0) spr_out(SPR_sRedArrowDown, 0, x, y - 12, 0);
@@ -1447,15 +1450,13 @@ static __attribute__((noinline)) void list_ents(int n, int dark, uint32_t lkey, 
     uint16_t stamp;
     stamp = dstamp;
     smooth = draw_smooth;
-    if (!smooth) mxy.slot = -1;                   /* (inst_mid sets it for every instance when smooth) */
     for (k = 0; k < n; k++) {
         const struct ent *e = &ents[ord[k]];
         if (dark && EW.cur_pal == DRAW_PAL && (e->dkey < lkey || (e->dkey == lkey && e->id < lid)))
             EW.cur_pal = DRAW_PAL_LIT;               /* after oLevel's rectangle */
         while (band < nmaps && mdepth_key[band] >= e->dkey) band_out(1 + band++);
         if (e->i >= 0) {
-            if (smooth) inst_mid(e->i, stamp);
-            inst_out(e->i, e->dk);
+            inst_out(e->i, e->dk, smooth ? inst_mid(e->i, stamp) : NOXY);
         } else {
             const struct tspr *t = &tspr[-1 - e->i];
             int px = t->x - EW.ox, py = t->y - EW.oy;
