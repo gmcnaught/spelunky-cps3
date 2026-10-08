@@ -138,26 +138,52 @@ static int32_t fpix(float f)
 
 /* ---- the frame's state ------------------------------------------------------------------------------------ */
 static int vx, vy;                                /* the view's top-left (room pixels) */
-static int ox, oy;                                /* screen offset: sprite at room (x, y) is at (x - ox, y - oy) */
-/* smooth motion (draw.h): mid_on while this frame's midpoint list is built; each entry goes to it at (mdx, mdy) from
-   its own place; a piece is drawn when it is on screen in either list (clip bounds cxl..cxh, cyl..cyh); ocx, ocy:
-   the midpoint camera less this frame's; vmx, vmy: the view test's margin (16 px, plus the camera's half step) */
-static uint8_t mid_on;
-static int mdx, mdy, cxl, cxh = VIEW_W, cyl, cyh = SCREEN_H, ocx, ocy, vmx = 16, vmy = 16;
+#ifdef DRAW_HOST
+extern uint32_t host_sprram[];                    /* tests/game/host.c: sprite RAM, decoded by its cps3v_object */
+#define SPR_AT(a)    (&host_sprram[(a) >> 2])
+typedef uint32_t spr_word;
+#else
+#define SPR_AT(a)    ((volatile uint32_t *)(0x04000000u + (a)))
+typedef volatile uint32_t spr_word;
+#endif
+/* default 0 (CPU stores) until the DMAC's writes into sprite RAM are checked on jtcps3 (tests/dmac on MiSTer);
+   SPRDMA=1 builds the DMAC path */
+#ifndef DRAW_SPRDMA
+#define DRAW_SPRDMA 0
+#endif
+/* the entry writer's state, in one struct so that a function reaches all of it from one base register (words first:
+   mov.l @(disp,Rn) reaches 60 bytes). run_p: the next entry; ent_lim: see ent_room; cur_pal: the colour code of
+   entries (dark levels: DRAW_PAL until oLevel's place, then DRAW_PAL_LIT); ox, oy: screen offset (a sprite at room
+   (x, y) is at (x - ox, y - oy)); smooth motion: mid_on while this frame's midpoint list is built, each entry going
+   to it at (mdx, mdy) from its own place; a piece is drawn when on screen in either list (clip bounds cxl..cxh,
+   cyl..cyh); run_n: entries in the open run; ent_n: sublist entries this frame */
+#if DRAW_SPRDMA
+typedef uint32_t ew_word;
+#else
+typedef spr_word ew_word;
+#endif
+static struct ew {
+    ew_word *run_p, *ent_lim;
+    uint32_t cur_pal;
+    int ox, oy, mdx, mdy, cxl, cxh, cyl, cyh;
+    uint32_t run_n, ent_n;
+    uint8_t mid_on;
+} EW = { .cur_pal = DRAW_PAL, .cxh = VIEW_W, .cyh = SCREEN_H };
+/* smooth motion (draw.h): ocx, ocy: the midpoint camera less this frame's; vmx, vmy: the view test's margin (16 px,
+   plus the camera's half step); set_mid: the midpoint offset of the entries that follow and the clip bounds */
+static int ocx, ocy, vmx = 16, vmy = 16;
 static void set_mid(int dx, int dy)
 {
-    mdx = dx;
-    mdy = dy;
-    cxh = VIEW_W - (dx < 0 ? dx : 0);
-    cxl = -(dx > 0 ? dx : 0);
-    cyh = SCREEN_H - (dy < 0 ? dy : 0);
-    cyl = -(dy > 0 ? dy : 0);
+    EW.mdx = dx;
+    EW.mdy = dy;
+    EW.cxh = VIEW_W - (dx < 0 ? dx : 0);
+    EW.cxl = -(dx > 0 ? dx : 0);
+    EW.cyh = SCREEN_H - (dy < 0 ? dy : 0);
+    EW.cyl = -(dy > 0 ? dy : 0);
 }
-static uint32_t ent_n;                            /* sublist entries this frame */
 /* dark levels: oLevel's black rectangle at alpha oLevel.darkness (objects/oLevel/Draw_0.gml) as a fade of colour
    code DRAW_PAL (tools/darkfade.py: the palette faded at alpha byte a8, by palette DMA at VBlank); what is drawn
    after oLevel (depth below -2, and the HUD) uses DRAW_PAL_LIT, an unfaded copy */
-static uint32_t cur_pal = DRAW_PAL;
 static int frame_a8, shown_a8;
 typedef char hud_faded_codes[HUD_PAL_FADED == DRAW_PAL_HUDDARK && HUD_PAL_FADED_YELLOW == DRAW_PAL_HUDDARK_YELLOW ? 1 : -1];
 int16_t draw_dark_force = -1;
@@ -232,23 +258,10 @@ static uint16_t ord[ENT_MAX];                     /* ents in drawing order */
 /* smooth motion: the midpoint list's entries at the same place MID_OFF bytes lower (0x30000-0x37fff), in the same
    records */
 #define MID_OFF      0x8000u
-#ifdef DRAW_HOST
-extern uint32_t host_sprram[];                    /* tests/game/host.c: sprite RAM, decoded by its cps3v_object */
-#define SPR_AT(a)    (&host_sprram[(a) >> 2])
-typedef uint32_t spr_word;
-#else
-#define SPR_AT(a)    ((volatile uint32_t *)(0x04000000u + (a)))
-typedef volatile uint32_t spr_word;
-#endif
-static uint32_t run_at, run_n, run_end, run_odd;  /* the open run's start (byte), entries; the area's end */
+static uint32_t run_at, run_end, run_odd;         /* the open run's start (byte); the area's end */
 static uint32_t w2tab[5][5];                      /* word 2 by width and height in tiles (1, 2, 4) */
 /* Word 3 of an entry is always 0: every entry slot of the run areas (16-byte steps from RUN_AREA - MID_OFF) has it
    written once (draw_boot), so ent_put writes words 0-2 only. */
-/* default 0 (CPU stores) until the DMAC's writes into sprite RAM are checked on jtcps3 (tests/dmac on MiSTer);
-   SPRDMA=1 builds the DMAC path */
-#ifndef DRAW_SPRDMA
-#define DRAW_SPRDMA 0
-#endif
 #if DRAW_SPRDMA
 /* DRAW_SPRDMA: the entries are built in main RAM (sbuf, two halves of SB_ENT entries: the run area's next SB_ENT
    slots, and with smooth motion the midpoint list's) and sent to sprite RAM by the SH-2 DMAC in 16-byte units (CHCR
@@ -261,7 +274,7 @@ static uint32_t w2tab[5][5];                      /* word 2 by width and height 
 #define SB_ENT       8
 #define SB_BYTES     (SB_ENT * 16u)
 static uint32_t sbuf[2][2][SB_ENT * 4] __attribute__((aligned(16)));   /* [half][run, midpoint][words] */
-static uint32_t *run_p, *sb_lim;                  /* the next entry in the half being written; its end */
+static uint32_t *sb_lim;                          /* the end of the half being written (EW.run_p: its next entry) */
 static uint32_t sb_base;                          /* the sprite RAM byte its first slot goes to */
 static int sb_h;                                  /* the half being written */
 static uint8_t sb_mid;                            /* this frame's halves have midpoint entries (mid_on) */
@@ -315,19 +328,19 @@ static void sb_send(uint32_t top, uint32_t next)
         sb_h ^= 1;
     }
     sb_base = next;
-    run_p = sbuf[sb_h][0];
-    sb_lim = run_p + SB_ENT * 4;
+    EW.run_p = sbuf[sb_h][0];
+    sb_lim = EW.run_p + SB_ENT * 4;
 }
 static void sb_full(void) { sb_send(sb_base + SB_BYTES, sb_base + SB_BYTES); }
 /* the next entry goes to sprite RAM byte a (a run's start: at or past the last entry's end) */
 static void sb_seek(uint32_t a)
 {
-    if (a - sb_base >= SB_BYTES) sb_send(sb_base + 4 * (uint32_t)(run_p - sbuf[sb_h][0]), a);
-    else run_p = sbuf[sb_h][0] + (a - sb_base) / 4;
+    if (a - sb_base >= SB_BYTES) sb_send(sb_base + 4 * (uint32_t)(EW.run_p - sbuf[sb_h][0]), a);
+    else EW.run_p = sbuf[sb_h][0] + (a - sb_base) / 4;
 }
 static void draw_sprdma_end(void)                 /* after the frame's last run: what is left is sent */
 {
-    uint32_t top = sb_base + 4 * (uint32_t)(run_p - sbuf[sb_h][0]);
+    uint32_t top = sb_base + 4 * (uint32_t)(EW.run_p - sbuf[sb_h][0]);
     sb_send(top, top);
 }
 static void draw_sprdma_sync(void)                /* every transfer has ended */
@@ -338,7 +351,6 @@ static void draw_sprdma_sync(void)                /* every transfer has ended */
 #endif
 }
 #else
-static spr_word *run_p;                           /* the next entry */
 static void draw_sprdma_end(void) {}
 static void draw_sprdma_sync(void) {}
 #endif
@@ -350,14 +362,13 @@ static void draw_sprdma_sync(void) {}
 #if DRAW_SPRDMA
 static void ent_room(void) {}
 #else
-static spr_word *ent_lim;
 static void ent_room(void)
 {
-    int32_t r = 511 - (int32_t)run_n, a = ((int32_t)run_end - (int32_t)run_at) / 16 - (int32_t)run_n,
-            b = DRAW_ENTRIES_MAX - (int32_t)ent_n;
+    int32_t r = 511 - (int32_t)EW.run_n, a = ((int32_t)run_end - (int32_t)run_at) / 16 - (int32_t)EW.run_n,
+            b = DRAW_ENTRIES_MAX - (int32_t)EW.ent_n;
     if (a < r) r = a;
     if (b < r) r = b;
-    ent_lim = run_p + 4 * (r > 0 ? r : 0);
+    EW.ent_lim = EW.run_p + 4 * (r > 0 ? r : 0);
 }
 #endif
 
@@ -366,29 +377,29 @@ static void run_begin(void)
     run_odd ^= 1;
     run_at = RUN_AREA + (run_odd ? RUN_SIZE : 0);
     run_end = run_at + RUN_SIZE;
-    run_n = 0;
+    EW.run_n = 0;
 #if DRAW_SPRDMA
     sb_base = run_at;
-    run_p = sbuf[sb_h][0];
-    sb_lim = run_p + SB_ENT * 4;
+    EW.run_p = sbuf[sb_h][0];
+    sb_lim = EW.run_p + SB_ENT * 4;
 #else
-    run_p = SPR_AT(run_at);
+    EW.run_p = SPR_AT(run_at);
 #endif
     ent_room();
 }
 static void run_close(void)
 {
-    if (!run_n) return;
+    if (!EW.run_n) return;
 #if DRAW_SPRDMA && defined(DRAW_HOST)
-    sb_host_copy(4 * (uint32_t)(run_p - sbuf[sb_h][0]));   /* the host's cps3v_object decodes the run at once */
+    sb_host_copy(4 * (uint32_t)(EW.run_p - sbuf[sb_h][0]));   /* the host's cps3v_object decodes the run at once */
 #endif
-    cps3v_object(run_at, run_n, 0, 0, -1);
-    run_at = (run_at + run_n * 16 + 255) & ~255u;
-    run_n = 0;
+    cps3v_object(run_at, EW.run_n, 0, 0, -1);
+    run_at = (run_at + EW.run_n * 16 + 255) & ~255u;
+    EW.run_n = 0;
 #if DRAW_SPRDMA
     sb_seek(run_at);
 #else
-    run_p = SPR_AT(run_at);
+    EW.run_p = SPR_AT(run_at);
 #endif
     ent_room();
 }
@@ -397,42 +408,42 @@ static inline __attribute__((always_inline)) void ent_put(int px, int py, unsign
                                                           uint32_t pal, uint32_t flip)
 {
     uint32_t w0, w2;
-    if (ent_n >= DRAW_ENTRIES_MAX || run_at + run_n * 16 + 16 > run_end) {
+    if (EW.ent_n >= DRAW_ENTRIES_MAX || run_at + EW.run_n * 16 + 16 > run_end) {
         draw_st.dropped++;
         return;
     }
-    if (run_n == 511) run_close();
+    if (EW.run_n == 511) run_close();
 #if DRAW_SPRDMA
-    if (run_p == sb_lim) sb_full();
-    uint32_t *e = run_p;
+    if (EW.run_p == sb_lim) sb_full();
+    uint32_t *e = EW.run_p;
 #else
-    spr_word *e = run_p;
+    spr_word *e = EW.run_p;
 #endif
     w0 = tile << 17 | flip | pal;
     w2 = w2tab[w][h];
     e[0] = w0;
     e[1] = ((uint32_t)(px + 8 * (int)w - 1) & 0x3ff) << 16 | ((uint32_t)(1006 - py - 8 * (int)h) & 0x3ff);
     e[2] = w2;
-    if (mid_on) {
+    if (EW.mid_on) {
 #if DRAW_SPRDMA
         uint32_t *m = e + SB_MIDW;
 #else
         spr_word *m = e - MID_OFF / 4;
 #endif
         m[0] = w0;
-        m[1] = ((uint32_t)(px + mdx + 8 * (int)w - 1) & 0x3ff) << 16 | ((uint32_t)(1006 - py - mdy - 8 * (int)h) & 0x3ff);
+        m[1] = ((uint32_t)(px + EW.mdx + 8 * (int)w - 1) & 0x3ff) << 16 | ((uint32_t)(1006 - py - EW.mdy - 8 * (int)h) & 0x3ff);
         m[2] = w2;
     }
-    run_p = e + 4;
-    run_n++;
-    ent_n++;
+    EW.run_p = e + 4;
+    EW.run_n++;
+    EW.ent_n++;
 }
 
 /* piece pc's entry at screen (px, py): piece_put inline when run_p is below ent_lim (the entry words as ent_put's), else
    piece_out (ent_put's checks, then ent_lim again) */
 static __attribute__((noipa)) void piece_out(int px, int py, const struct piecedef *pc, int flip)
 {
-    ent_put(px, py, pc->w, pc->h, pc->tile, cur_pal, flip ? CPS3V_FLIPX : 0);
+    ent_put(px, py, pc->w, pc->h, pc->tile, EW.cur_pal, flip ? CPS3V_FLIPX : 0);
     ent_room();
 }
 static inline __attribute__((always_inline)) void piece_put(int px, int py, const struct piecedef *pc, int flip)
@@ -440,27 +451,27 @@ static inline __attribute__((always_inline)) void piece_put(int px, int py, cons
 #if DRAW_SPRDMA
     piece_out(px, py, pc, flip);
 #else
-    spr_word *e = run_p;
+    spr_word *e = EW.run_p;
     unsigned w = pc->w, h = pc->h;
     uint32_t w0, w2;
-    if (e >= ent_lim) {
+    if (e >= EW.ent_lim) {
         piece_out(px, py, pc, flip);
         return;
     }
-    w0 = (uint32_t)pc->tile << 17 | (flip ? CPS3V_FLIPX : 0) | cur_pal;
+    w0 = (uint32_t)pc->tile << 17 | (flip ? CPS3V_FLIPX : 0) | EW.cur_pal;
     w2 = w2tab[w][h];
     e[0] = w0;
     e[1] = ((uint32_t)(px + 8 * (int)w - 1) & 0x3ff) << 16 | ((uint32_t)(1006 - py - 8 * (int)h) & 0x3ff);
     e[2] = w2;
-    if (mid_on) {
+    if (EW.mid_on) {
         spr_word *m = e - MID_OFF / 4;
         m[0] = w0;
-        m[1] = ((uint32_t)(px + mdx + 8 * (int)w - 1) & 0x3ff) << 16 | ((uint32_t)(1006 - py - mdy - 8 * (int)h) & 0x3ff);
+        m[1] = ((uint32_t)(px + EW.mdx + 8 * (int)w - 1) & 0x3ff) << 16 | ((uint32_t)(1006 - py - EW.mdy - 8 * (int)h) & 0x3ff);
         m[2] = w2;
     }
-    run_p = e + 4;
-    run_n++;
-    ent_n++;
+    EW.run_p = e + 4;
+    EW.run_n++;
+    EW.ent_n++;
 #endif
 }
 
@@ -473,7 +484,7 @@ static inline __attribute__((always_inline)) int piece_at(const struct piecedef 
     int w = 16 * pc->w;
     *px = flip ? x - pc->dx - w : x + pc->dx;
     *py = y + pc->dy;
-    return !(*px >= cxh || *py >= cyh || *px + w <= cxl || *py + 16 * pc->h <= cyl);
+    return !(*px >= EW.cxh || *py >= EW.cyh || *px + w <= EW.cxl || *py + 16 * pc->h <= EW.cyl);
 }
 static __attribute__((noinline)) void frame_out_n(const struct framedef *fd, int x, int y, int flip)
 {
@@ -506,20 +517,20 @@ static void spr_out(int s, int32_t img, int x, int y, int flip)
     sd = &sprdefs[s];
     if (img < 0) img = 0;
     if ((uint32_t)img >= sd->nframes) img = (int32_t)((uint32_t)img % sd->nframes);
-    frame_out(sd->frame + img, x - ox, y - oy, flip);
+    frame_out(sd->frame + img, x - EW.ox, y - EW.oy, flip);
 }
 
 /* global.sSmallCollectNew frame k (tools/hudart.py: 8 x 10 at a tile's top-left, origin 4, 4) at room (x, y) */
 static void collect_out(int k, int x, int y)
 {
-    int px = x - HUD_COLLECT_XORIG - ox, py = y - HUD_COLLECT_YORIG - oy;
-    if (px >= cxh || py >= cyh || px + 16 <= cxl || py + 16 <= cyl) return;
-    ent_put(px, py, 1, 1, HUD_TILE_COLLECT(k), cur_pal == DRAW_PAL ? DRAW_PAL_HUDDARK : HUD_PAL, 0);
+    int px = x - HUD_COLLECT_XORIG - EW.ox, py = y - HUD_COLLECT_YORIG - EW.oy;
+    if (px >= EW.cxh || py >= EW.cyh || px + 16 <= EW.cxl || py + 16 <= EW.cyl) return;
+    ent_put(px, py, 1, 1, HUD_TILE_COLLECT(k), EW.cur_pal == DRAW_PAL ? DRAW_PAL_HUDDARK : HUD_PAL, 0);
 }
 
 static void band_out(int tm)
 {
-    if (ent_n >= DRAW_ENTRIES_MAX) {
+    if (EW.ent_n >= DRAW_ENTRIES_MAX) {
         draw_st.dropped++;
         return;
     }
@@ -527,7 +538,7 @@ static void band_out(int tm)
     cps3v_group();
     cps3v_band(tm, 0, CPS3V_H);
     cps3v_group();
-    ent_n += 2;                                   /* 224 lines: two band entries of at most 128 lines */
+    EW.ent_n += 2;                                   /* 224 lines: two band entries of at most 128 lines */
     ent_room();
 }
 
@@ -646,7 +657,7 @@ static void inst_mid(int i)
     h->x = (int16_t)x;
     h->y = (int16_t)y;
     h->stamp = dstamp;
-    if (mid_on) set_mid(dx / 2 - ocx, dy / 2 - ocy);
+    if (EW.mid_on) set_mid(dx / 2 - ocx, dy / 2 - ocy);
 }
 
 /* the tile_add layers into mbase / tspr (gtiles less the deleted ones). A layer draws its tiles in element order,
@@ -794,7 +805,7 @@ static inline __attribute__((always_inline)) void cached_draw(const struct tcach
         draw_st.noart++;
         return;
     }
-    frame_out(e->c, e->cx - ox, e->cy - oy, e->m);
+    frame_out(e->c, e->cx - EW.ox, e->cy - EW.oy, e->m);
 }
 static __attribute__((noinline)) void cached_odd(int pi, int mirror)   /* not plain_transform */
 {
@@ -956,7 +967,7 @@ static void inst_out(int i)
     case DK_PDUMMY: pdummy_out(pi, x, y); break;
     case DK_JAWS: jaws_out(pi, x, y); break;
     case DK_PLAYER: player_out(pi, x, y); break;
-    case DK_FRONT: run_close(); front_draw(pi, ox, oy); break;   /* src/front: the attract rooms' Draw-event
+    case DK_FRONT: run_close(); front_draw(pi, EW.ox, EW.oy); break;   /* src/front: the attract rooms' Draw-event
                                                                      text (SDK entries: after the run's record) */
     }
 }
@@ -1307,9 +1318,9 @@ void draw_frame(void)
     draw_list_sync();                             /* the last list DMA has copied the main list */
     draw_st.frames++;
     draw_st.todo = draw_st.unsup = draw_st.noart = 0;
-    ent_n = 0;
+    EW.ent_n = 0;
     run_begin();
-    mid_on = 0;
+    EW.mid_on = 0;
     ocx = ocy = 0;
     if (built_rooms != play_rooms_entered || built_room != PW.room) {
         build_room();
@@ -1321,13 +1332,13 @@ void draw_frame(void)
     }
     vx = PW.xview;
     vy = PW.yview;
-    ox = vx;
-    oy = vy + DRAW_CROP;
+    EW.ox = vx;
+    EW.oy = vy + DRAW_CROP;
     if (draw_smooth) {                            /* the midpoint camera; none after a jump */
         int dx = pvx - vx, dy = pvy - vy;
         dstamp++;
         if (dx >= -DRAW_MID_CAM && dx <= DRAW_MID_CAM && dy >= -DRAW_MID_CAM && dy <= DRAW_MID_CAM) {
-            mid_on = 1;
+            EW.mid_on = 1;
             ocx = dx / 2;
             ocy = dy / 2;
         }
@@ -1338,7 +1349,7 @@ void draw_frame(void)
     vmy = 16 + (ocy < 0 ? -ocy : ocy);
     set_mid(-ocx, -ocy);
 #if DRAW_SPRDMA
-    sb_mid = mid_on;                              /* before the first entry */
+    sb_mid = EW.mid_on;                              /* before the first entry */
 #endif
     ZOOM_X = DRAW_ZOOM_X;
     /* tilemaps: base + terrain in the screen's cells; first claimant of a cell by creation order keeps it, the
@@ -1492,7 +1503,7 @@ void draw_frame(void)
             lkey = fkey(I_DEPTH(lvl));
             lid = I_ID(lvl);
         }
-        cur_pal = DRAW_PAL;
+        EW.cur_pal = DRAW_PAL;
     /* the list: background, then bands and drawables by depth */
     if (bg_spr >= 0) band_out(0);
     if (PW.room == R_rEnd3 || PW.room == R_rCredits2) {   /* the rooms' two bgClouds layers (480 x 200, not tiled */
@@ -1502,18 +1513,18 @@ void draw_frame(void)
     }
     for (k = 0; k < n; k++) {
         const struct ent *e = &ents[ord[k]];
-        if (dark && cur_pal == DRAW_PAL && (e->dkey < lkey || (e->dkey == lkey && e->id < lid)))
-            cur_pal = DRAW_PAL_LIT;               /* after oLevel's rectangle */
+        if (dark && EW.cur_pal == DRAW_PAL && (e->dkey < lkey || (e->dkey == lkey && e->id < lid)))
+            EW.cur_pal = DRAW_PAL_LIT;               /* after oLevel's rectangle */
         while (band < nmaps && mdepth_key[band] >= e->dkey) band_out(1 + band++);
         if (e->i >= 0) {
             if (draw_smooth) inst_mid(e->i);
             inst_out(e->i);
         } else {
             const struct tspr *t = &tspr[-1 - e->i];
-            int px = t->x - ox, py = t->y - oy;
+            int px = t->x - EW.ox, py = t->y - EW.oy;
             struct piecedef pc = { 0, 0, 1, 1, t->tile };
-            if (mid_on) set_mid(-ocx, -ocy);
-            if (px + 16 > cxl && px < cxh && py + 16 > cyl && py < cyh) piece_out(px, py, &pc, 0);
+            if (EW.mid_on) set_mid(-ocx, -ocy);
+            if (px + 16 > EW.cxl && px < EW.cxh && py + 16 > EW.cyl && py < EW.cyh) piece_out(px, py, &pc, 0);
         }
     }
     while (band < nmaps) band_out(1 + band++);
@@ -1521,7 +1532,7 @@ void draw_frame(void)
     }
     draw_sprdma_end();                            /* the DMAC sends the rest while the HUD is drawn */
     set_mid(0, 0);
-    frame_mid = mid_on;
+    frame_mid = EW.mid_on;
     PROF(3);
     if (draw_hud_on && !front_on) {
         hud_out();
@@ -1534,9 +1545,9 @@ void draw_frame(void)
     if (front_on) front_draw_gui();
     PROF(4);
     draw_sprdma_end();                            /* (nothing: no entries after the runs) */
-    draw_st.entries = ent_n;
+    draw_st.entries = EW.ent_n;
     frame_pending = 1;
-    if (ent_n > draw_st.entries_max) draw_st.entries_max = ent_n;
+    if (EW.ent_n > draw_st.entries_max) draw_st.entries_max = EW.ent_n;
 }
 
 /* smooth motion, at the frame's first VBlank: its main list (sprite RAM 0, as built) is kept for draw_vbl_irq and
