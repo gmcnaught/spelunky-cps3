@@ -1066,6 +1066,22 @@ static uint8_t hud_held_of(int t)
 static char *cat(char *d, const char *s) { while (*s) *d++ = *s++; *d = 0; return d; }
 static char *catn(char *d, int32_t n) { char b[12]; return cat(d, hud_itoa(n, b)); }
 
+/* the lowest alive slot of object o (PW.n when none), as the scan for (k = 0; k < PW.n && !(I_ALIVE(k) &&
+   I_OBJ(k) == o); k++) finds it, from o's list: pw_ohead / pw_inext hold exactly the alive instances of o (pworld.c
+   links a slot where it sets alive, unlinks it where it clears it; slots below PW.n), so the lowest slot on the
+   list is the scan's. The host build checks it against the scan */
+static int first_of(int o)
+{
+    int k, best = PW.n;
+    for (k = pw_ohead[o]; k >= 0; k = pw_inext[k])
+        if (k < best) best = k;
+#ifdef DRAW_HOST
+    for (k = 0; k < PW.n && !(I_ALIVE(k) && I_OBJ(k) == o); k++) ;
+    if (k != best) fprintf(stderr, "draw: first_of(%d) %d, scan %d\n", o, best, k);
+#endif
+    return best;
+}
+
 /* objects/oTransition/Draw_64.gml (English, room_offset 0): the level's end screen */
 static void transition_out(void)
 {
@@ -1073,13 +1089,9 @@ static void transition_out(void)
     char b[48], *e;
     int32_t s, s2, k;
     if (PW.room < R_rTransition1 || PW.room > R_rTransition4) return;
-    for (k = 0; k < PW.n && !(I_ALIVE(k) && I_OBJ(k) == OBJ_oTransition); k++) ;
-    if (k == PW.n || !ptrans_gui(t)) return;
-    for (k = 0; k < PW.n; k++)                    /* oDamselKiss.kissed: "MY HERO!" */
-        if (I_ALIVE(k) && I_OBJ(k) == OBJ_oDamselKiss) {
-            if (I_TRIGGER(k)) hud_text_centered("MY HERO!", HUD_FONT_SMALL, 0, 0, 216);
-            break;
-        }
+    if (first_of(OBJ_oTransition) == PW.n || !ptrans_gui(t)) return;
+    k = first_of(OBJ_oDamselKiss);                /* oDamselKiss.kissed: "MY HERO!" */
+    if (k < PW.n && I_TRIGGER(k)) hud_text_centered("MY HERO!", HUD_FONT_SMALL, 0, 0, 216);
     e = b;
     if (G.currLevel - 1 < 1) cat(b, "TUTORIAL CAVE COMPLETED!");
     else { e = cat(b, "LEVEL "); e = catn(e, G.currLevel - 1); cat(e, " COMPLETED!"); }
@@ -1144,8 +1156,7 @@ static void hud_out(void)
     h.udjat_blink = PG.udjatBlink;
     h.blood_level = S_BLOODLEVEL;
     h.arrows = PG.arrows;
-    for (k = 0; k < PW.n; k++)                    /* oGame.image_index */
-        if (I_ALIVE(k) && I_OBJ(k) == OBJ_oGame) { game = k; break; }
+    if ((k = first_of(OBJ_oGame)) < PW.n) game = k;   /* oGame.image_index */
     h.anim = game >= 0 ? ftoi(I_IMG(game)) : 0;
     if (PW.room == R_rOlmec) {                    /* scrDrawHUD :8: global.exitX / Y in rOlmec */
         h.exit_x = 640;
@@ -1628,7 +1639,7 @@ void draw_frame(void)
         uint32_t lkey = 0;
         int32_t lid = 0;
         if (lvl < 0 || lvl >= PW.n || !I_ALIVE(lvl) || I_OBJ(lvl) != OBJ_oLevel)
-            for (lvl = 0; lvl < PW.n && !(I_ALIVE(lvl) && I_OBJ(lvl) == OBJ_oLevel); lvl++) ;
+            lvl = first_of(OBJ_oLevel);
         frame_a8 = 0;
         if (front_on) {                           /* the attract rooms' black rectangle (oIntro's fade) */
             int fa = 0, fi = front_fade(&fa);
