@@ -636,3 +636,76 @@ Every commit: hostident 184/184; c2ec8b8 and HEAD: CTALL 59/59, EQUIV 88/88; HEA
     xVel is 0;
   - the debris objects' Steps run interleaved with others' (code always cold); a batch needs an order proof (the
     test list order is observable).
+||||||| 832c069
+
+
+### Step 2 and explosion steps (branch deact3, on main 832c069, 2026-10-08)
+
+The level's second play step deactivated every off-view candidate one by one (DEACT.md: the room's first step has no
+pass), and explosion steps spent their collision time in precise_collision_int's pixel loop. Eight commits, each
+with its exactness argument in its message and `scripts/hostident.sh check` 184/184 equal.
+
+| Commit | Change | Exactness |
+|---|---|---|
+| df7cb13 | pw_deactivate_n: the pass's deactivations remove their slots from pw_ord in one compaction (was one shift of pw_ord's tail each: 4,720 stores) | value proof: nothing between reads pw_ord; removing a set keeps the rest's order |
+| 9483b8d | precise_collision_int by mask rows: up to 25 columns of each mask row as one word, ANDed (flips by bit reversal) | value proof (both scales +-1, mask boxes start >= 0); old loop kept as pci_loop, PLAY_STATS compares every call; 2,000,000 random cases equal |
+| ed35ea8 | dcand_init in the room's first step (its obj_anc scan was most of play_step's 1,948 data misses in step 2) | value proof: a function of the object tables |
+| 69398d4 | pw_deactivate_n: olive_add once per object (count summed) | value proof: sums commute; nc_inval idempotent; xchg / olive_gen are clocks compared only for equality |
+| dc9c821 | pci_of: scale signs from the float bits (no ___gtsf2) | value proof: f > 0 is 0 < bits <= 0x7f800000 |
+| 2716d12 | pw_deactivate_n: the compaction as a copy loop between the ids | codegen-only |
+| 1ff88a9 | deact_pass: doutside's integer case inline (no call, no out-parameter stack) | codegen-only; PLAY_STATS keeps the checked path |
+| b43a919 | gout_fi / POUTI: PLTI(x, lo) or PGTI(x, hi) with one decode of x (rubble, leaf, detritus Steps, doutside_slow) | value proof (gcmp_fi's tests on the same h, l); 40,000,000 random cases equal |
+
+**jtcost** (fit constants, modelled jtcps3 clocks; JTC_BYOBJ=1):
+
+| Step | 832c069 | after | change |
+|---|---|---|---|
+| c_swamp_drain record 3 (step 2) | 719,612 | 618,706 (df7cb13), 556,685 (ed35ea8), 548,569 (69398d4), 543,029 (2716d12), 543,924 (b43a919) | -24.4 % |
+| c_items_damselexpl record 121 (step 120) | 913,735 | 857,718 (ed35ea8), 859,243 (b43a919) | -6.0 % |
+| p4_bomb_drop record 202 (step 201) | 859,913 | 868,620 (1ff88a9), 846,792 (b43a919) | -1.5 % |
+
+Drain step 2 by function: pw_deactivate 114.3 K self (175 K with callees) -> pw_deactivate_n 24.6 K self (79.5 K
+pass); olive_add 21.8 K -> 6.7 K; play_step self 110.1 K -> 61.7 K. precise_collision_int in damselexpl step 120:
+73.0 K -> 12.8 K (9 calls). In bomb_drop step 201, gcmp_fi's 144 calls (18.4 K) became gout_fi's 56 (8.1 K). The
+1ff88a9 bomb_drop figure (+1.0 % against the base with fewer instructions: more fetch conflicts) is layout; MAME
+puts that step at -3.4 % there.
+
+**MAME** (SOFTFP=1 playsh2_check; checksums 9,701 / 9,701 on the default routes and 9,960 / 9,960 on the 28 c_*
+routes playsh2 takes, ROUTES="c_ice_darkfall ... c_temple_xroom3x": every c_* route without a globals / room
+header). "Step 2" is the step after each level start (60 in the two sets):
+
+| Set | step 2 mean (832c069 -> b43a919) | step 2 > 150 K | other steps 150-500 K | all-step mean |
+|---|---|---|---|---|
+| default 27 routes | 143.0 -> 104.3 K | 14 -> 3 | 194 -> 182 | 76,430 -> 74,635 (-2.3 %) |
+| 28 c_* routes | 205.8 -> 166.4 K | 27 -> 16 | 229 -> 216 | 98,138 -> 95,959 (-2.2 %) |
+
+Explosion clusters (MAME K a step, mean and max; steps > 150 K):
+
+| Route, steps | mean | max | > 150 K |
+|---|---|---|---|
+| c_items_damselexpl 120-135 | 179.1 -> 170.0 (-5.0 %) | 209 -> 198 | 15 -> 15 |
+| p4_bomb_drop 195-207 | 180.8 -> 170.8 (-5.6 %) | 217 -> 210 | 11 -> 10 |
+| p4_bomb_throw 292-302 | 165.2 -> 161.4 (-2.3 %) | 187 -> 184 | 10 -> 10 |
+| p5_reg_l2s10 / l3s10 170-190 | 189.1 -> 183.5 (-3.0 %) | 236 -> 229 | 20 -> 20 |
+| p5_reg_l4s10 170-190 | 179.5 -> 174.0 (-3.0 %) | 231 -> 223 | 17 -> 16 |
+| p5_reg_l9s5 335-345 | 223.5 -> 216.8 (-3.0 %) | 244 -> 240 | 11 -> 11 |
+| c_swamp_vampkill 281-290 | 223.5 -> 219.1 (-2.0 %) | 305 -> 300 | 10 -> 10 |
+| p5_reg_l14s16 19-43 | 168.4 -> 165.0 (-2.0 %) | 225 -> 223 | 21 -> 20 |
+
+**Gates on b43a919:** hostident 184/184 (every commit); ctall 59/59; EQUIV 88/88; playsh2 SOFTFP as above;
+game_check p4_exit559 0 px (records 30, 150, 300); no new .bss (brev8 is const, in ROM; pw_deactivate_n's object
+counts are 32 B of stack): tests/game stack room 32,892 B.
+
+**What is left, measured:**
+- Step 2 after the deactivation pass: c_temple_weblava step 2 is 1,019.5 K modelled against 647.7 K for step 3; the
+  pass is 61.6 K of the 372 K difference. The rest is the first full Step of the in-view instances before their rest
+  memos exist (ptemple_ev +122 K, treasure_step +66 K, jar_step +37 K, item_step +26 K; rest_end, nc_get,
+  collision_point_p only in step 2): game logic, not a one-off of the port.
+- Explosion steps are spread over the new and moving instances: p4_bomb_drop step 201 has 25 rubble pieces at about
+  7.5 K modelled each (pw_changed, mark_e, grid_dirty, collision_point_any: per-move bookkeeping and the misses of
+  several small tables), oFlame Steps (ik_line, moveTo), the oWeb collision pass (pgrid_put, ebbox, addsf3).
+  pin_add (about 3 K a call: the 208-byte pin_ext template copy and a dozen table misses) and evnz_sync (an event
+  list rebuilt when an object's list goes empty / non-empty: 15 K in drain step 2, 9.7 K in damselexpl step 120)
+  were not changed. Not tried: batching pcol_deactivated's obj_count (about 4 K in drain step 2).
+- jtcost.sh with two windows on consecutive records (`c_temple_weblava 3 c_temple_weblava 4`) never opened the
+  second window (stopped after 40 min); one call per step works.

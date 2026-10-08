@@ -356,7 +356,7 @@ int pin_add(int obj, pos x, pos y, int32_t id);   /* no event */
 int pin_create(pos x, pos y, int obj);            /* instance_create: Create event (nested) */
 void pin_destroy(int i);                          /* instance_destroy: Destroy event, then gone */
 void pin_kill(int i);                             /* gone without the Destroy event (instance_destroy(id, false)) */
-void pw_deactivate(int i);                        /* instance_deactivate_object (docs/DEACT.md): alive 0, the slot kept */
+void pw_deactivate_n(const int16_t *ids, int n);  /* instance_deactivate_object of each (docs/DEACT.md): alive 0, slots kept */
 void pw_activate(int i);                          /* instance_activate_object: back as the newest instance */
 /* off-view deactivation (docs/DEACT.md): PLAY_DEACT=<margin> (tools/tracer.py TRACE_DEACT=<margin>, default 32 there
    too), 0 off (make -C test/host DEACT=0; playsh2 scripts DEACT=0) */

@@ -241,13 +241,13 @@ static void olink(int i)
     }
 }
 
-static void ounlink(int i)
+/* ounlink without the alive count (olive_add(obj, -1)): pw_deactivate_n counts its instances by object */
+static void ounlink_nc(int i)
 {
     int o = PW.in[i].obj;
     if (iprev[i] >= 0) pw_inext[iprev[i]] = pw_inext[i]; else pw_ohead[o] = pw_inext[i];
     if (pw_inext[i] >= 0) iprev[pw_inext[i]] = iprev[i]; else otail[o] = iprev[i];
     if (pw_ohead[o] < 0) prun_onz(o);
-    olive_add(o, -1);
     grid_unlink(i);
     pw_ta_off(i);
     if (aprev[i] >= 0) pw_anext[aprev[i]] = pw_anext[i]; else pw_ahead = pw_anext[i];
@@ -256,6 +256,12 @@ static void ounlink(int i)
         if (ntprev[i] >= 0) pw_ntnext[ntprev[i]] = pw_ntnext[i]; else pw_nthead = pw_ntnext[i];
         if (pw_ntnext[i] >= 0) ntprev[pw_ntnext[i]] = ntprev[i]; else pw_nttail = ntprev[i];
     }
+}
+
+static void ounlink(int i)
+{
+    ounlink_nc(i);
+    olive_add(PW.in[i].obj, -1);
 }
 
 /* the alive instances of obj (with its descendants) in creation order: a merge of the objects' lists. More than
@@ -832,43 +838,71 @@ void pin_kill(int i)
     }
 }
 
-/* off-view deactivation (docs/DEACT.md, prun.c deact_pass): instance_deactivate_object(i). Not alive for every event
-   loop, query, `with`, count and the recorder (GameMaker skips a deactivated instance in all of them), out of the
-   object lists and pw_ord, its collision entry taken out (pcol_deactivated); the slot and its records stay (its
-   variables stay readable through references, as GameMaker's) */
-void pw_deactivate(int i)
+/* off-view deactivation (docs/DEACT.md, prun.c deact_pass): instance_deactivate_object of ids[0 .. n), in that order
+   (newest first: deact_pass takes them from the creation-ordered pw_nthead list backwards). Each is not alive for
+   every event loop, query, `with`, count and the recorder (GameMaker skips a deactivated instance in all of them), out
+   of the object lists and pw_ord, its collision entry taken out (pcol_deactivated); the slot and its records stay (its
+   variables stay readable through references, as GameMaker's). Every id is alive (pw_nthead holds linked instances
+   only) and listed once */
+void pw_deactivate_n(const int16_t *ids, int n)
 {
-    int k, j;
-    if (!PW.in[i].alive) return;
-    ounlink(i);
-    PW.in[i].alive = 0;
-    pw_draw_mark(i);
-#ifndef PCOL_EXACT
-    if (xmask[i] && !xond[i]) xdirty(i);
-#endif
-    /* pw_ord without i: pw_ord holds distinct slots in creation order, so pw_seq rises along it (pw_activate appends
-       with the next number; the renumbering keeps the order) and i's place is found by a binary search on pw_seq;
-       the entries after it move down one. The linear filter where the search does not land on i */
-    {
-        int lo = 0, hi = PW.nord - 1, s0 = pw_seq[i];
-        while (lo < hi) {
-            int m = (lo + hi) >> 1;
-            if (pw_seq[pw_ord[m]] < s0) lo = m + 1; else hi = m;
+    int k, j, m, ng = 0;
+    int16_t go[8], gn[8];                            /* alive counts to take off: up to 8 objects at a time */
+    if (n <= 0) return;
+    for (k = 0; k < n; k++) {
+        int i = ids[k], o = PW.in[i].obj;
+        ounlink_nc(i);
+        for (j = 0; j < ng && go[j] != o; j++) {}
+        if (j == ng) {
+            if (ng == 8) {
+                for (j = 0; j < 8; j++) olive_add(go[j], -gn[j]);
+                ng = j = 0;
+            }
+            go[j] = (int16_t)o;
+            gn[j] = 0;
+            ng++;
         }
-        if (PW.nord > 0 && pw_ord[lo] == i) {
-            for (k = lo; k < PW.nord - 1; k++) pw_ord[k] = pw_ord[k + 1];
-            PW.nord = (int16_t)(PW.nord - 1);
-        } else {
-#ifdef PLAY_STATS
-            fprintf(stderr, "pw_deactivate: %d not found by creation number\n", i);
-            abort();
+        gn[j]++;
+        PW.in[i].alive = 0;
+        pw_draw_mark(i);
+#ifndef PCOL_EXACT
+        if (xmask[i] && !xond[i]) xdirty(i);
 #endif
+        pcol_deactivated(i);
+    }
+    for (j = 0; j < ng; j++) olive_add(go[j], -gn[j]);
+    /* pw_ord without the ids, in one pass (nothing above reads pw_ord: the order left is the one removing them one by
+       one gives). pw_ord holds distinct slots in creation order, so pw_seq rises along it (pw_activate appends with the
+       next number; the renumbering keeps the order); the ids, oldest (ids[n - 1]) first, are met in that order: the
+       compaction starts at the oldest one's place (a binary search on pw_seq) and drops each id where the walk meets
+       it. Any id the walk did not meet (not in that order) is filtered out after, one by one */
+    {
+        int lo = 0, hi = PW.nord - 1, s0 = pw_seq[ids[n - 1]];
+        while (lo < hi) {
+            int mi = (lo + hi) >> 1;
+            if (pw_seq[pw_ord[mi]] < s0) lo = mi + 1; else hi = mi;
+        }
+        int16_t *src = &pw_ord[lo], *dst = src, *end = &pw_ord[PW.nord];
+        for (m = n - 1; m >= 0; m--) {
+            int16_t want = ids[m];
+            while (src < end && *src != want) *dst++ = *src++;
+            if (src == end) break;
+            src++;
+        }
+        while (src < end) *dst++ = *src++;
+        PW.nord = (int16_t)(dst - pw_ord);
+    }
+    if (m >= 0) {
+#ifdef PLAY_STATS
+        fprintf(stderr, "pw_deactivate_n: %d not found in creation order\n", ids[m]);
+        abort();
+#endif
+        for (; m >= 0; m--) {
             for (k = j = 0; k < PW.nord; k++)
-                if (pw_ord[k] != i) pw_ord[j++] = pw_ord[k];
+                if (pw_ord[k] != ids[m]) pw_ord[j++] = pw_ord[k];
             PW.nord = (int16_t)j;
         }
     }
-    pcol_deactivated(i);
 }
 
 /* instance_activate_object(i) of a deactivated instance: it comes back as the newest instance (Observed: last in its
@@ -995,6 +1029,34 @@ int gcmp_fi(float x, int32_t v)
     if (k >= 0) r = k > 0 || l >= 42950u;
     else r = k < -1 || l <= 0u - 42950u ? -1 : 0;
     return (b.u >> 31) ? -r : r;
+}
+
+/* PLTI(x, lo) || PGTI(x, hi) with x decoded once: gcmp_fi's steps for both bounds (a negative x compares |x| with
+   -lo and -hi, the signs swapped); either bound outside gcmp_fi's integer range, or x outside its exponents: the two
+   gcmp_fi calls */
+int gout_fi(float x, int32_t lo, int32_t hi)
+{
+    union { float f; uint32_t u; } b;
+    uint32_t e, l;
+    uint64_t p;
+    int32_t h, k;
+    b.f = x;
+    e = ((b.u >> 23) & 0xffu) - 118u;
+    if (e > 31u || (uint32_t)lo + (1u << 30) >= (1u << 31) || (uint32_t)hi + (1u << 30) >= (1u << 31))
+        return gcmp_fi(x, lo) < 0 || gcmp_fi(x, hi) > 0;
+    p = (uint64_t)((b.u & 0x7fffffu) | 0x800000u) * ffix32_mul[e];
+    l = (uint32_t)p;
+    h = (int32_t)(p >> 32);
+    if (b.u >> 31) {
+        k = h + lo;                                   /* x < lo: |x| > -lo */
+        if (k > 0 || (k == 0 && l >= 42950u)) return 1;
+        k = h + hi;                                   /* x > hi: |x| < -hi */
+        return k < -1 || (k == -1 && l <= 0u - 42950u);
+    }
+    k = h - lo;                                       /* x < lo */
+    if (k < -1 || (k == -1 && l <= 0u - 42950u)) return 1;
+    k = h - hi;                                       /* x > hi */
+    return k > 0 || (k == 0 && l >= 42950u);
 }
 
 /* 1 / -1 when f is exactly 1.0f / -1.0f, else 0 (bits: the same answer as for (double)f) */
@@ -3257,6 +3319,14 @@ static int rect_run(struct rq *rq, int q, const float *r, int obj, int prec, int
    trunc(lx) = (2 lx) / 2 (C division truncates as cvttss2si); rows the same */
 struct pci { int32_t x, y; int sx, sy, xo, yo, ml, mt, mr, mb, bpr; const uint8_t *mask; };
 
+/* f > 0 on the bits (no soft-float compare): above +0 and not above +inf (a positive NaN is not > 0) */
+static int pci_fpos(float f)
+{
+    union { float f; int32_t b; } v;
+    v.f = f;
+    return v.b > 0 && v.b <= 0x7f800000;
+}
+
 static void pci_of(int i, int32_t dx, int32_t dy, struct pci *q)
 {
     const struct pin *p = &PW.in[i];
@@ -3274,8 +3344,8 @@ static void pci_of(int i, int32_t dx, int32_t dy, struct pci *q)
         pos_int(p->y, &q->y);
     }
     q->x += dx; q->y += dy;
-    q->sx = p->xscale > 0 ? 1 : -1;
-    q->sy = p->yscale > 0 ? 1 : -1;
+    q->sx = pci_fpos(p->xscale) ? 1 : -1;
+    q->sy = pci_fpos(p->yscale) ? 1 : -1;
     q->xo = c->xo; q->yo = c->yo;
     q->ml = c->l; q->mt = c->t; q->mr = c->r; q->mb = c->b;
     q->bpr = ((c->r - c->l + 1) + 7) >> 3;
@@ -3355,12 +3425,11 @@ static int line_hit_hi(int k, int32_t Y, int32_t lo, int32_t hi)
     return 0;
 }
 
-static int precise_collision_int(int a, int32_t dx, int32_t dy, const int32_t *ia, int b, const int32_t *ib)
+/* the pixel loop of precise_collision_int as the runner runs it (pixel by pixel) */
+static int pci_loop(const struct pci *Ap, const struct pci *Bp, int32_t dx, int32_t dy, const int32_t *ia, const int32_t *ib)
 {
-    struct pci A, B;
+    const struct pci A = *Ap, B = *Bp;
     int32_t x0, x1, y0, y1, c, r;
-    pci_of(a, dx, dy, &A);
-    pci_of(b, 0, 0, &B);
     x0 = ia[0] + dx > ib[0] ? ia[0] + dx : ib[0];
     x1 = ia[2] + dx < ib[2] ? ia[2] + dx : ib[2];
     y0 = ia[1] + dy > ib[1] ? ia[1] + dy : ib[1];
@@ -3389,6 +3458,101 @@ static int precise_collision_int(int a, int32_t dx, int32_t dy, const int32_t *i
         }
     }
     return 0;
+}
+
+/* n (1 .. 25) bits of a mask row from bit off on, the first in bit 31, the rest 0 (the bytes past the last one needed
+   are not read) */
+static uint32_t pci_row(const uint8_t *row, int32_t off, int n)
+{
+    const uint8_t *p = row + (off >> 3);
+    int sh = off & 7, last = sh + n - 1;
+    uint32_t v = (uint32_t)p[0] << 24;
+    if (last >= 8) v |= (uint32_t)p[1] << 16;
+    if (last >= 16) v |= (uint32_t)p[2] << 8;
+    if (last >= 24) v |= p[3];
+    return (v << sh) & (0xffffffffu << (32 - n));
+}
+
+#define BR2(n) n, n + 128, n + 64, n + 192
+#define BR4(n) BR2(n), BR2(n + 32), BR2(n + 16), BR2(n + 48)
+#define BR6(n) BR4(n), BR4(n + 8), BR4(n + 4), BR4(n + 12)
+static const uint8_t brev8[256] = { BR6(0), BR6(2), BR6(1), BR6(3) };
+#undef BR2
+#undef BR4
+#undef BR6
+static uint32_t rev32(uint32_t v)
+{
+    return (uint32_t)brev8[v >> 24] | (uint32_t)brev8[(v >> 16) & 255] << 8 | (uint32_t)brev8[(v >> 8) & 255] << 16 |
+           (uint32_t)brev8[v & 255] << 24;
+}
+
+/* the columns c (rows the same) whose mask column k lies in q's mask box [ml, mr]: k = c - x + xo at scale 1,
+   x + xo - 1 - c at -1 (pci_loop: 2k + 1 = (2c + 1 - 2x) sx + 2 xo, in [2 ml, 2 mr + 2) exactly when ml <= k <= mr) */
+static void pci_span(int32_t x, int s, int o, int lo, int hi, int32_t *c0, int32_t *c1)
+{
+    int32_t a = s > 0 ? x - o + lo : x + o - 1 - hi, b = s > 0 ? x - o + hi : x + o - 1 - lo;
+    if (a > *c0) *c0 = a;
+    if (b < *c1) *c1 = b;
+}
+
+/* CSprite::PreciseCollision for two BB_INT / BB_INTS instances (pci_loop) by mask rows. Both scales are +-1, so the
+   loop's column test is k in [ml, mr] for k above (an interval of c: pci_span), and where a mask's box starts at
+   column and row >= 0 its column trunc((2k + 1) / 2) is k itself (2k + 1 > 0) and okA always holds: the loop finds a
+   hit exactly when some pixel (c, r) of the overlap, both column spans and both row spans has both mask bits set (an
+   instance without a mask: set). Up to 25 columns at a time: each mask's bits of the row as one word (a flipped one
+   read forwards from its lowest column, then reversed when the other is not flipped: only whether the AND is 0
+   matters). A box starting below 0 takes pci_loop */
+static int precise_collision_int(int a, int32_t dx, int32_t dy, const int32_t *ia, int b, const int32_t *ib)
+{
+    struct pci A, B;
+    int32_t c0, c1, r0, r1, c, r;
+    pci_of(a, dx, dy, &A);
+    pci_of(b, 0, 0, &B);
+    if ((A.mask && (A.ml < 0 || A.mt < 0)) || (B.mask && (B.ml < 0 || B.mt < 0)))
+        return pci_loop(&A, &B, dx, dy, ia, ib);
+    c0 = ia[0] + dx > ib[0] ? ia[0] + dx : ib[0];
+    c1 = (ia[2] + dx < ib[2] ? ia[2] + dx : ib[2]) - 1;
+    r0 = ia[1] + dy > ib[1] ? ia[1] + dy : ib[1];
+    r1 = (ia[3] + dy < ib[3] ? ia[3] + dy : ib[3]) - 1;
+    pci_span(A.x, A.sx, A.xo, A.ml, A.mr, &c0, &c1);
+    pci_span(B.x, B.sx, B.xo, B.ml, B.mr, &c0, &c1);
+    pci_span(A.y, A.sy, A.yo, A.mt, A.mb, &r0, &r1);
+    pci_span(B.y, B.sy, B.yo, B.mt, B.mb, &r0, &r1);
+    {
+        int res = 0;
+        if (c0 > c1 || r0 > r1) goto done;
+        if (!A.mask && !B.mask) { res = 1; goto done; }
+        for (c = c0; c <= c1; c += 25) {
+            int n = c1 - c + 1 < 25 ? c1 - c + 1 : 25;
+            /* the lowest mask column of the n, its offset in the row, and whether the word is reversed */
+            int32_t ka = (A.sx > 0 ? c - A.x + A.xo : A.x + A.xo - 1 - (c + n - 1)) - A.ml;
+            int32_t kb = (B.sx > 0 ? c - B.x + B.xo : B.x + B.xo - 1 - (c + n - 1)) - B.ml;
+            int flip = A.sx != B.sx;
+            for (r = r0; r <= r1; r++) {
+                uint32_t v = 0xffffffffu, w;
+                if (A.mask) {
+                    int32_t j = (A.sy > 0 ? r - A.y + A.yo : A.y + A.yo - 1 - r) - A.mt;
+                    v = pci_row(A.mask + j * A.bpr, ka, n);
+                    if (!v) continue;
+                    if (flip && B.mask) v = rev32(v) << (32 - n);
+                }
+                if (B.mask) {
+                    int32_t j = (B.sy > 0 ? r - B.y + B.yo : B.y + B.yo - 1 - r) - B.mt;
+                    w = pci_row(B.mask + j * B.bpr, kb, n);
+                    v &= w;
+                }
+                if (v) { res = 1; goto done; }
+            }
+        }
+    done:
+#ifdef PLAY_STATS
+        if (res != pci_loop(&A, &B, dx, dy, ia, ib)) {
+            fprintf(stderr, "precise_collision_int: row answer %d differs (%d, %d)\n", res, a, b);
+            abort();
+        }
+#endif
+        return res;
+    }
 }
 
 /* instance a (its bbox moved by dx, dy) against instance b */

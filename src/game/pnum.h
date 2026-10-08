@@ -235,6 +235,8 @@ int gcmp_cold(double a, double b);                  /* pworld.c */
 #define NGT_COLD(a, b) (gcmp_cold(NTOD(a), NTOD(b)) > 0)
 #define PLTI(x, v) (gcmp_fi((x), (v)) < 0)
 #define PGTI(x, v) (gcmp_fi((x), (v)) > 0)
+int gout_fi(float x, int32_t lo, int32_t hi);       /* pworld.c: PLTI(x, lo) || PGTI(x, hi), x decoded once */
+#define POUTI(x, lo, hi) gout_fi((x), (lo), (hi))
 #ifdef NUM_IS_CLASS
 static inline int gcmp_n(num a, num b) { play_dcount.cmp++; return gcmp_dd(a.v, b.v); }
 #else

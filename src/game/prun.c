@@ -510,7 +510,7 @@ static void dcand_init(void)
 
 /* the view tests on the bits of x, y (PLTI / PGTI: gcmp_fi). At a whole position (the integer shadows, play.h
    pin_xy_int_p) x - v is a whole number for an int v, beyond eps unless 0: PLTI(x, v) is x < v and PGTI(x, v) x > v */
-static int doutside(const struct pin *p, int32_t x0, int32_t y0, int32_t x1, int32_t y1)
+static __attribute__((noinline)) int doutside_slow(const struct pin *p, int32_t x0, int32_t y0, int32_t x1, int32_t y1)
 {
     int32_t x, y;
     if (pin_xy_int_p(p, &x, &y)) {
@@ -523,7 +523,19 @@ static int doutside(const struct pin *p, int32_t x0, int32_t y0, int32_t x1, int
 #endif
         return r;
     }
-    return PLTI(p->x, x0) || PGTI(p->x, x1) || PLTI(p->y, y0) || PGTI(p->y, y1);
+    return POUTI(p->x, x0, x1) || POUTI(p->y, y0, y1);
+}
+
+/* doutside_slow's first case (both shadows known and whole: pin_xy_int_p's first branch) inline in the pass's loops,
+   without the call and the stack of the out-parameters; the rest (and every case in the PLAY_STATS builds, with their
+   checks) out of line */
+static inline int doutside(const struct pin *p, int32_t x0, int32_t y0, int32_t x1, int32_t y1)
+{
+#ifndef PLAY_STATS
+    int32_t x = p->ix, y = p->iy;
+    if (x > -30000 && y > -30000) return x < x0 || x > x1 || y < y0 || y > y1;
+#endif
+    return doutside_slow(p, x0, y0, x1, y1);
 }
 
 /* (1) reads a listed instance's x, y now, as the GML reads them through its id (a deactivated instance's variables
@@ -534,7 +546,7 @@ static void deact_pass(void)
     int32_t x1 = PW.xview + 320 + PLAY_DEACT, y1 = PW.yview + 240 + PLAY_DEACT;
     int16_t *cand = order;                        /* (the snapshot's array: free before the alarm passes) */
     int k, n = 0, nc = 0, i;
-    if (!dbits_ok) dcand_init();
+    if (!dbits_ok) dcand_init();                  /* (a room entered without its first step: not on any route) */
     for (k = 0; k < dl_n; k++) {
         i = dl_i[k];
         if (doutside(&PX(i), x0, y0, x1, y1)) dl_i[n++] = (int16_t)i;
@@ -548,11 +560,9 @@ static void deact_pass(void)
         cand[nc++] = (int16_t)i;
     }
     if (dl_n + nc > DL_MAX) { PUNTR(9010); return; }
-    while (nc > 0) {
-        i = cand[--nc];
-        dl_i[dl_n++] = (int16_t)i;
-        pw_deactivate(i);
-    }
+    for (k = 0; k < nc; k++) dl_i[dl_n + k] = cand[nc - 1 - k];
+    pw_deactivate_n(dl_i + dl_n, nc);
+    dl_n += nc;
 }
 #endif
 
@@ -595,6 +605,7 @@ int play_step(uint16_t keys, void (*record_cb)(int phase))
         PW.room_new = 0;
 #if PLAY_DEACT
         dl_n = 0;
+        if (!dbits_ok) dcand_init();              /* (here, not in the room's second step: a read of obj_anc's rows) */
     } else if (PW.room == R_rLevel || PW.room == R_rLevel2 || PW.room == R_rLevel3) {
         deact_pass();
 #endif
