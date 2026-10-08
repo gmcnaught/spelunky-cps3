@@ -245,7 +245,7 @@ static uint32_t tdel[GTILES_MAX / 32 + 1];        /* tile_delete'd gtiles */
 static uint8_t tiles_dirty;
 
 /* the frame's drawables: instances (i >= 0) and tile sprites (i = -1 - k) */
-struct ent { uint32_t dkey; int32_t id; int16_t i; };
+struct ent { uint32_t dkey; int32_t id; int16_t i; uint8_t dk; };   /* dk: draw_kind[obj] (instances) */
 static struct ent ents[ENT_MAX];
 static uint16_t ord[ENT_MAX];                     /* ents in drawing order */
 
@@ -989,9 +989,10 @@ static void jaws_out(int pi, int x, int y)
     }
 }
 
-static void inst_out(int i)
+static void inst_out(int i, int dk)               /* dk: draw_kind[I_OBJ(i)] (ents' copy) */
 {
-    int pi = i, dk = draw_kind[I_OBJ(pi)] & ~DK_SOLID, x = 0, y = 0;
+    int pi = i, x = 0, y = 0;
+    dk &= ~DK_SOLID;
     if (dk != DK_SELF && dk != DK_PLAIN && dk != DK_ITEM && dk != DK_NONE) {
         x = fpix(I_X(pi));
         y = fpix(I_Y(pi));
@@ -1504,6 +1505,7 @@ void draw_frame(void)
                 ents[n].dkey = fkey(I_DEPTH(pi));
                 ents[n].id = front_on ? front_drawkey(pi) : I_ID(pi);
                 ents[n].i = (int16_t)k;
+                ents[n].dk = dk;
                 n++;
             }
         }
@@ -1616,7 +1618,7 @@ void draw_frame(void)
         while (band < nmaps && mdepth_key[band] >= e->dkey) band_out(1 + band++);
         if (e->i >= 0) {
             if (draw_smooth) inst_mid(e->i, stamp);
-            inst_out(e->i);
+            inst_out(e->i, e->dk);
         } else {
             const struct tspr *t = &tspr[-1 - e->i];
             int px = t->x - EW.ox, py = t->y - EW.oy;
