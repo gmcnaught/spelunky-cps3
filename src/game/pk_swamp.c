@@ -1357,11 +1357,12 @@ static void check_water(void)
 {
     int16_t w[PIN_MAX];
     int n = pw_with(OBJ_oWater, w, PIN_MAX), k, waterCounter = 0;
+    int olmec = isRoomIs(R_rOlmec);                            /* (PW.room changes only at a room's load) */
     for (k = 0; k < n; k++) {
         int j = w[k], obj, lava;
         int32_t ix, iy;
         if (!PX(j).alive) continue;
-        if (isRoomIs(R_rOlmec)) continue;
+        if (olmec) continue;
         lava = obj_is(PX(j).obj, OBJ_oLava);                   /* type == "Lava" */
         if (pin_xy_int(j, &ix, &iy) && ix > -29900 && ix < 29900 && iy > -29900 && iy < 29900) {
             /* whole x, y: the same tests on ints (y < 512 is iy < 512; CP(x + dx, y + dy, oSolid) || CP(.., oWater) is
