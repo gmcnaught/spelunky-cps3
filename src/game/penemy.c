@@ -1006,8 +1006,7 @@ int pen_step(int i)
     case OBJ_oWebBall: webball_step(i); return 1;
     case OBJ_oYellHelp: pin_sety(p, PSUBV(p->y, N(0.1))); return 1;
     case OBJ_oBone:                                                    /* objects/oBone/Step_0.gml */
-        detritus_step(i);
-        if (isCollisionBottom(i, 1)) {
+        if (detritus_bottom(i, detritus_step(i))) {
             pin_set_sprite(i, GSPR_sSmokePuff);
             PE(&PX(i))->dying = 1;
         }

@@ -32,6 +32,8 @@ static inline int cmpc_gt(double v, uint64_t h)     /* NGT(v, N(c)), h = H(c)'s 
 #define CMPC_L_1    0x3fefffeb074a771cull   /* 0.99999 */
 #define CMPC_L_M3   0xc00800053e2d6239ull   /* -3.00001 */
 #define CMPC_L_0_1  0x3fb998f1d3ed527eull   /* 0.09999 */
+#define CMPC_H_6    0x401800029f16b11dull   /* 6.00001 */
+#define CMPC_H_20   0x40340000a7c5ac48ull   /* 20.00001 */
 #define CMPC_H_90   0x4056800029f16b12ull   /* 90.00001 */
 #define CMPC_L_270  0x4070dffff583a53bull   /* 269.99999 */
 

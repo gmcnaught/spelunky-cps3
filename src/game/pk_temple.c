@@ -391,8 +391,7 @@ static void magma_create(int i)
 /* objects/oMagma/Step_0.gml */
 static void magma_step(int i)
 {
-    detritus_step(i);
-    if (isCollisionBottom(i, 1)) {
+    if (detritus_bottom(i, detritus_step(i))) {
         struct pin *p = &PX(i);
         pin_set_sprite(i, GSPR_sMagmaManCreate);
         PE(p)->xVel = 0;
@@ -433,27 +432,6 @@ static void magma_hit_enemy(int i, int e, int man)
         PE(o)->status = E_STUNNED;
         PE(o)->counter = 50;
     }
-}
-
-/* objects/oRubblePiece/Step_0.gml (oLavaDrip; type "NONE") */
-static void rubblepiece_step(int i)
-{
-    struct pin *p = &PX(i);
-    double x, y;
-    pos px, py;
-    pin_setx(p, PADDV(p->x, PE(p)->xVel));
-    pin_sety(p, PADDV(p->y, PE(p)->yVel));
-    PE(p)->yVel += PE(p)->yAcc;
-    px = p->x;
-    py = p->y;
-    x = PTOD(p->x);
-    y = PTOD(p->y);
-    if (collision_point_any_at(i, 0, 0, OBJ_oWaterSwim)) pswamp_world(1041, i, 0);
-    else if (collision_point_any_at(i, 0, 0, OBJ_oLava)) pin_destroy(i);
-    if (collision_point_any(x, y, OBJ_oSolid, 0, NOONE)) pin_destroy(i);
-    view_read();
-    if (POUTI(px, PW.xview - 32, PW.xview + 320 + 32) || POUTI(py, PW.yview - 32, PW.yview + 240 + 32))
-        pin_destroy(i);
 }
 
 /* ==== oMagmaMan ================================================================================================== */
@@ -1637,7 +1615,7 @@ static int step_ev(int i)
     case OBJ_oHawkman: hawkman_step(i); return 1;
     case OBJ_oLava: lava_step(i); return 1;
     case OBJ_oMagma: magma_step(i); return 1;
-    case OBJ_oLavaDrip: rubblepiece_step(i); return 1;
+    case OBJ_oLavaDrip: rubblepiece_step(i, 0); return 1;
     case OBJ_oMagmaMan: magmaman_step(i); return 1;
     case OBJ_oTombLord: tomblord_step(i); return 1;
     case OBJ_oFly: {                                                   /* objects/oFly/Step_0.gml */

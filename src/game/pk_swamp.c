@@ -1185,24 +1185,6 @@ static int cape_open(void)
     return c != NOONE && CAPEOPEN(&PX(c));
 }
 
-/* ---- oRubblePiece Step (oDrip): objects/oRubblePiece/Step_0.gml ----------------------------------------------- */
-static void rubblepiece_step(int i)
-{
-    struct pin *p = &PX(i);
-    pos px, py;
-    pin_setx(p, PADDV(p->x, PE(p)->xVel));
-    pin_sety(p, PADDV(p->y, PE(p)->yVel));
-    PE(p)->yVel += PE(p)->yAcc;
-    px = p->x;
-    py = p->y;
-    if (collision_point_any_at(i, 0, 0, OBJ_oWaterSwim)) pswamp_world(1041, i, 0);
-    else if (collision_point_any_at(i, 0, 0, OBJ_oLava)) pin_destroy(i);
-    if (collision_point_any_at(i, 0, 0, OBJ_oSolid)) pin_destroy(i);   /* (x, y: px, py; site 1041 moves nothing) */
-    view_read();
-    if (PLTI(px, PW.xview - 32) || PGTI(px, PW.xview + 320 + 32) || PLTI(py, PW.yview - 32) || PGTI(py, PW.yview + 240 + 32))
-        pin_destroy(i);
-}
-
 /* ---- the events ------------------------------------------------------------------------------------------- */
 int pswamp_ev(int ev, int i, int arg)
 {
@@ -1220,7 +1202,7 @@ int pswamp_ev(int ev, int i, int arg)
         case OBJ_oFishBone: fishbone_step(i); return 1;
         case OBJ_oGhost: ghost_step(i); return 1;
         case OBJ_oCape: cape_step(i); return 1;
-        case OBJ_oDrip: rubblepiece_step(i); return 1;
+        case OBJ_oDrip: rubblepiece_step(i, 0); return 1;
         case OBJ_oJaws: jaws_step(i); return 1;
         case OBJ_oBubble:                                      /* objects/oBubble/Step_0.gml */
             pin_sety(p, PADDV(p->y, PE(p)->yVel));

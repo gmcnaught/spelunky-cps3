@@ -709,3 +709,67 @@ counts are 32 B of stack): tests/game stack room 32,892 B.
   were not changed. Not tried: batching pcol_deactivated's obj_count (about 4 K in drain step 2).
 - jtcost.sh with two windows on consecutive records (`c_temple_weblava 3 c_temple_weblava 4`) never opened the
   second window (stopped after 40 min); one call per step works.
+||||||| 0b06854
+
+
+### Detritus Steps: oDrip, rubble, oBlood, oFlame (branch debris, 2026-10-08, on water 0b06854)
+
+Target: the per-instance Step cost of the pieces an explosion leaves (drain steps 275-295, firefrog 266-284,
+damselexpl 120-140). Measured: jtcost (fit, plain cached link, modelled jtcps3 clocks; "fa" = the fully associative
+bound) on drain records 281 / 290 (one run), firefrog 268, damselexpl 121; MAME SOFTFP playsh2 on drain, firefrog,
+damselexpl, grave (1528/1528 checksums on every run): steps after step 1, mean / max / steps over 150 K.
+
+| Commit | What (exactness) | drain 281 | drain 290 |
+|---|---|---|---|
+| 0b06854 | base (water) | 1,405 K (fa 1,403) | 1,142 K |
+| 3570891 | rubble / ice / temple pieces: oSolid by collision_point_any_at (value, as 15ad6eb) | | |
+| c05f527 | one rubblepiece_step for oRubble, oRubbleSmall, oDrip, oRubbleDarkSmall, oLavaDrip (codegen) | 1,372 K (1,385) | 1,131 K |
+| 6544c17 | x += xVel skipped for xVel +-0 and a normal x (value: x + 0 is x, same bits, no mark) | 1,374 K (1,374) | 1,141 K |
+| 1aa01ae | the view tests on the shadows / floors (pout_ab; value) | 1,303 K (1,319) | 1,108 K |
+| 72ac93b | pw_piece_tests: the three point tests on one query (value; oSolid before site 1041, grid build) | 1,252 K (1,277) | 1,070 K |
+| 840ee81 | oBlood / oFlame / oBone / oMagma: detritus_step's own isCollisionBottom answer (grid build) | | |
+| 65602ff | detritus_step: yVel < 0 before isCollisionTop (grid build) | | |
+| 09f25c5 | pw_piece_tests: whole by the shadows, no decode of the new y | 1,289 K (1,290) | 1,081 K |
+| 9fc3770 | SK_RUBBLE: ev_step calls rubblepiece_step without the package dispatch (codegen) | 1,304 K (1,272) | 1,088 K |
+| 6101e7f | pfloor_int by fwhole's multiply, no variable shifts (value; all 2^32 floats checked) | | |
+| f5975ea | fwiden (TOD) for the drip's y and the query's floats (codegen) | 1,261 K (1,266) | 1,057 K |
+| 7e8370c | detritus compares against 6, 1, 20 on the bits (pcmpc.h; tests/cmpc 515 M cases) | | |
+| af85a93 | moveTo's walk: the stepped position by fint15, the shadows kept (value) | 1,226 K (1,245) | 1,044 K |
+| c17d6a4 | pw_piece_tests: the query's floats only when xstatic_any reads them (codegen) | | |
+| e6a29ea | moveTo_walk: moveTo's grid-build walk for the detritus as a small function (value) | 1,222 K (1,230) | 1,029 K |
+
+Base -> e6a29ea: drain 281 -13.1 % (fa -12.3 %, instructions 367.8 K -> 321.0 K), drain 290 -9.9 %; firefrog 268
+1,347 K -> 1,328 K (-1.4 %; fa 1,229 K -> 1,157 K, -5.8 %; instructions -5.1 %); damselexpl 121 920 K -> 910 K
+(fa -1.7 %). The set-associative model moves +-2 % with the layout alone (conflict misses in unrelated objects:
+firefrog oGame +27 K at 840ee81 with the same instructions), so the fa column and the instruction counts are the
+steadier per-commit signal; the shipped link (nc_robust.txt) runs moveTo, detritus_step, pw_changed, mark_e,
+grid_dirty and isCollision* uncached, which this model does not show.
+
+By object (base -> e6a29ea, modelled K): drain 281 oDrip 362 -> 271 (43 drips: 8.4 -> 6.3 K each), oRubbleSmall 153
+-> 96, oRubble 81 -> 52, oBlood 156 -> 131; drain 290 oDrip 237 -> 170, oBlood 130 -> 111; firefrog 268 oBlood
+280 -> 239 (10), oFlame 158 -> 137 (6); damselexpl 121 oFlame 65 -> 54.
+
+MAME (K; base -> 6101e7f -> af85a93 -> e6a29ea):
+
+| Route | mean | max | steps > 150 K |
+|---|---|---|---|
+| c_swamp_drain | 119.5 -> 117.2 -> 116.5 -> 116.2 | 602.8 -> 561.3 -> 560.5 -> 557.7 | 37 -> 36 -> 35 -> 35 |
+| c_jungle_firefrog | 103.5 -> 102.2 -> 101.2 -> 101.0 | 454.7 -> 444.9 -> 441.5 -> 440.3 | 30 -> 26 -> 24 -> 24 |
+| c_items_damselexpl | 127.4 -> 127.4 -> 126.4 -> 126.2 | 266.7 -> 260.4 -> 256.9 -> 255.6 | 59 -> 58 -> 55 -> 55 |
+| c_swamp_grave | 122.3 -> 121.2 -> 120.5 -> 120.4 | 344.2 -> 334.7 -> 330.9 -> 329.6 | 47 -> 43 -> 37 -> 37 |
+
+Drain steps 275-295 at 6101e7f were 7-11 % below the base each (278: 393 -> 352 K, 281: 306 -> 276 K); they stay
+over 150 K MAME: the drips are a fifth of such a step, and the rest is oTreeBranch's collision pass, oManTrap,
+oPlayer1, oBloodTrail.
+
+- **Gates:** hostident 184/184 after every commit; ctall 59/59 and EQUIV 88/88 at 09f25c5, af85a93, e6a29ea; playsh2
+  SOFTFP 1528/1528 at 6101e7f, af85a93, e6a29ea; tests/game links with 0 compiler warnings, .bss unchanged (stack
+  room 32,892 B); .text +2,376 B.
+- **Measured, not kept apart:** 09f25c5 alone raised drain 281 (fa +12.6 K, instructions +3.2 K): without the y
+  decode, pout_ab's x took pfloor_int, whose variable shifts were __lshrsi3 calls; 6101e7f removed them.
+- **Not done:**
+  - the drip's own soft-float (y += yVel, yVel += yAcc: __adddf3 x 2, __truncdfsf2) and pw_changed / mark_e /
+    grid_dirty per move (about 1.4 K modelled a drip; uncached in the shipped link);
+  - oBlood / oFlame: vel_parts twice a Step (xVel changes only at a wall), isCollisionLeft || Right as one query,
+    the alarms' oBloodTrail / oFlameTrail creation, the animation pass's float image_index;
+  - oBloodTrail (43 K at drain 281: the deactivation pass's doutside and the animation).
