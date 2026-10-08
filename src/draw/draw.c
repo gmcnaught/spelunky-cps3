@@ -867,21 +867,21 @@ static __attribute__((noinline)) void cached_fill(int pi, int flip)   /* the slo
 {
     struct tcache *e = &tcache[pi];
     int32_t img = img_of(pi);
-    int s;
+    int s, kind;
     e->xb = fbits(I_X(pi)); e->yb = fbits(I_Y(pi)); e->ib = fbits(I_IMG(pi));
     e->spr = I_SPR(pi);
     e->m = (int8_t)flip;
     e->cx = (int16_t)fpix(I_X(pi));
     e->cy = (int16_t)fpix(I_Y(pi));
     s = draw_spr[I_SPR(pi)];
-    e->kind = TC_NOART;
+    kind = TC_NOART;
     if (s >= 0) {
         const struct sprdef *sd = &sprdefs[s];
         const struct framedef *fd;
         if (img < 0) img = 0;
         if ((uint32_t)img >= sd->nframes) img = (int32_t)((uint32_t)img % sd->nframes);
         e->c = (int16_t)(sd->frame + img);
-        e->kind = TC_FRAME;
+        kind = TC_FRAME;
         fd = &framedefs[e->c];
         if (fd->npieces == 1) {
             const struct piecedef *pc = &piecedefs[fd->piece];
@@ -892,10 +892,11 @@ static __attribute__((noinline)) void cached_fill(int pi, int flip)   /* the slo
                 e->pw = pc->w;
                 e->ph = pc->h;
                 e->tile = pc->tile;
-                e->kind = TC_PIECE;
+                kind = TC_PIECE;
             }
         }
     }
+    e->kind = (uint8_t)kind;
     cached_draw(e);
 }
 static void cached_out(int pi, int mirror)
