@@ -968,13 +968,40 @@ terrain_done:
         ptemple_world(1039, i, 0);
 }
 
+/* PLTI(v, a) || PGTI(v, b) (a < b) for a coordinate v of an instance and s its pin_xy_int shadow (play.h): a whole v
+   is s (> -30000), and gcmp_fi(v, c) is then the sign of s - c (an integer: 0 or at least 1 away). Another v within
+   pfloor_int's range by its floor f: f <= a - 2 gives v < a - 1, f >= b + 1 gives v > b + eps, a <= f < b gives a <= v
+   < b (neither); only v in [a - 1, a) or [b, b + 1), where the compare's eps decides, takes gcmp_fi */
+#ifdef PIN_SHADOW_CHECK
+#include <stdio.h>
+#include <stdlib.h>
+#endif
+static inline int pout_ab(pos v, int32_t s, int32_t a, int32_t b)
+{
+    int32_t f;
+    if (s > -30000) {
+#ifdef PIN_SHADOW_CHECK
+        if (!pos_int(v, &f) || f != s) {
+            fprintf(stderr, "pout_ab: shadow %d differs from %.9g\n", (int)s, (double)v);
+            abort();
+        }
+#endif
+        return s < a || s > b;
+    }
+    if (pfloor_int(v, &f)) {
+        if (f <= a - 2 || f > b) return 1;
+        if (f >= a && f < b) return 0;
+    }
+    return PLTI(v, a) || PGTI(v, b);
+}
+
 /* objects/oDetritus/Step_0.gml (returns 0 if it destroyed itself) */
 void detritus_step(int i)
 {
     struct pin *p = &PX(i);
     pos x = p->x, y = p->y;
     view_read();
-    if (PLTI(x, PW.xview - 4) || PGTI(x, PW.xview + 320 + 4) || PLTI(y, PW.yview - 4) || PGTI(y, PW.yview + 240 + 4))
+    if (pout_ab(x, p->ix, PW.xview - 4, PW.xview + 320 + 4) || pout_ab(y, p->iy, PW.yview - 4, PW.yview + 240 + 4))
         pin_destroy(i);
     if (NGT(PE(p)->life, N(0))) PE(p)->life -= N(1);
     else pin_destroy(i);
@@ -1022,8 +1049,8 @@ __attribute__((noinline)) void rubblepiece_step(int i, int nops)
     else if (collision_point_any_at(i, 0, 0, OBJ_oLava)) pin_destroy(i);
     if (collision_point_any_at(i, 0, 0, OBJ_oSolid)) pin_destroy(i);   /* (x, y: px, py; site 1041 moves nothing) */
     view_read();
-    if (PLTI(px, PW.xview - 32) || PGTI(px, PW.xview + 320 + 32) || PLTI(py, PW.yview - 32) || PGTI(py, PW.yview + 240 + 32))
-        pin_destroy(i);
+    if (pout_ab(px, p->ix, PW.xview - 32, PW.xview + 320 + 32) || pout_ab(py, p->iy, PW.yview - 32, PW.yview + 240 + 32))
+        pin_destroy(i);                                                 /* (ix, iy: the shadows of px, py) */
 }
 
 /* objects/oBomb/Step_0.gml (after oItem's) */

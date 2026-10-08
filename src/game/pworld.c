@@ -1967,29 +1967,6 @@ static int xpoint_any(int obj, int notme, const struct pq *q, int prec)
 }
 #endif
 
-#if !defined(PCOL_EXACT)
-/* dfloor_int of a float's value from its bits: floor(f) when -30000 < f < 30000 (dfloor_int's range: a whole value
-   within it through dwhole, any other through the compare), else 0 */
-static int pfloor_int(float f, int32_t *o)
-{
-    union { float f; uint32_t u; } v;
-    uint32_t e, m, a, sh;
-    v.f = f;
-    e = (v.u >> 23) & 0xffu;
-    if (e < 127) {                                          /* |f| < 1: 0, or -1 below zero */
-        *o = (v.u & 0x80000000u) && (v.u & 0x7fffffffu) ? -1 : 0;
-        return 1;
-    }
-    if (e > 141) return 0;                                  /* |f| >= 32768, inf, NaN */
-    m = (v.u & 0x7fffffu) | 0x800000u;
-    sh = 150 - e;                                           /* 9 .. 23 fraction bits */
-    a = m >> sh;
-    if (a >= 30000) return 0;
-    *o = (v.u & 0x80000000u) ? -(int32_t)a - ((m & ((1u << sh) - 1)) != 0) : (int32_t)a;
-    return 1;
-}
-#endif
-
 #ifndef PCOL_EXACT
 /* collision_point_any's answer for a static family (xf_of[obj] >= 0, pcol_quiet() 0, obj alive) at the query q */
 static int xstatic_any(int obj, int notme, const struct pq *q, int prec)
