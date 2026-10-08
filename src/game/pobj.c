@@ -1302,6 +1302,9 @@ static void level_step(int i)
 /* SK_PKG + k (k 1-5): ev_step's own path for the object is ptrans_step's 0, then the oTreasure / oItem tests, then
    pcontent_ev's Step with claimant k (all decided by the object alone): ev_step calls package k's ev directly */
 enum { SK_NONE, SK_PEN, SK_PDAM, SK_PSHOP, SK_PITEM, SK_OWN, SK_TREASURE, SK_PKG };
+/* SK_RUBBLE: an SK_PKG object whose package Step is rubblepiece_step(i, 0) and nothing else (oDrip: pswamp_ev,
+   oRubbleDarkSmall: pice_ev, oLavaDrip: ptemple_ev; each switches on the object first), with no off-view test */
+#define SK_RUBBLE (SK_PKG + 6)
 static uint8_t stepk[OBJ_COUNT];
 
 static int step_hooks(int i)
@@ -1352,7 +1355,9 @@ static void step_pkg(int o)
 {
 #ifndef PLAY_DCHECK
     int k = pcontent_step_claimant(o);
-    if (k >= 1 && k <= 5) stepk[o] = (uint8_t)(SK_PKG + k);
+    if (k >= 1 && k <= 5)
+        stepk[o] = (uint8_t)((o == OBJ_oDrip || o == OBJ_oRubbleDarkSmall || o == OBJ_oLavaDrip) && !pen_offview_obj[o] ?
+                             SK_RUBBLE : SK_PKG + k);
 #else
     (void)o;
 #endif
@@ -1380,6 +1385,7 @@ void ev_step(int i)
     case SK_PSHOP: pshop_step(i); return;
     case SK_PITEM: pitem_step(i); return;
     case SK_TREASURE: treasure_step(i); return;
+    case SK_RUBBLE: rubblepiece_step(i, 0); return;                        /* (the package's Step, directly) */
     case SK_OWN: break;
     case SK_NONE:
         if ((stepk[p->obj] = (uint8_t)step_hooks(i)) != SK_OWN) return;
