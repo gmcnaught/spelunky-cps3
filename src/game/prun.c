@@ -534,7 +534,7 @@ static void deact_pass(void)
     int32_t x1 = PW.xview + 320 + PLAY_DEACT, y1 = PW.yview + 240 + PLAY_DEACT;
     int16_t *cand = order;                        /* (the snapshot's array: free before the alarm passes) */
     int k, n = 0, nc = 0, i;
-    if (!dbits_ok) dcand_init();
+    if (!dbits_ok) dcand_init();                  /* (a room entered without its first step: not on any route) */
     for (k = 0; k < dl_n; k++) {
         i = dl_i[k];
         if (doutside(&PX(i), x0, y0, x1, y1)) dl_i[n++] = (int16_t)i;
@@ -593,6 +593,7 @@ int play_step(uint16_t keys, void (*record_cb)(int phase))
         PW.room_new = 0;
 #if PLAY_DEACT
         dl_n = 0;
+        if (!dbits_ok) dcand_init();              /* (here, not in the room's second step: a read of obj_anc's rows) */
     } else if (PW.room == R_rLevel || PW.room == R_rLevel2 || PW.room == R_rLevel3) {
         deact_pass();
 #endif
