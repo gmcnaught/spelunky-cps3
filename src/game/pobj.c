@@ -1010,7 +1010,7 @@ int detritus_step(int i)
     moveTo(i, PE(p)->xVel, PE(p)->yVel, 0, 0);
     if (collision_point_any_at(i, 0, -4, OBJ_oLava)) ptemple_world(1040, i, 0);
     if (PE(p)->bounce) {
-        if (NLT(PE(p)->yVel, N(6))) PE(p)->yVel += PE(p)->grav;
+        if (CLT(PE(p)->yVel, 6, CMPC_L_6)) PE(p)->yVel += PE(p)->grav;
 #if !defined(PCOL_EXACT) && !defined(NUM_IS_CLASS)
         /* yVel < 0 first: the query writes nothing the compare reads, and skipping it skips only flushes, which the
            grid build's searches do not depend on (the count build keeps the order: its compare count) */
@@ -1020,7 +1020,7 @@ int detritus_step(int i)
 #endif
         if (isCollisionLeft(i, 1) || isCollisionRight(i, 1)) PE(p)->xVel = NMUL(-PE(p)->xVel, N(0.5));
         if ((bot = isCollisionBottom(i, 1)) != 0) {
-            if (NGT(PE(p)->yVel, N(1))) PE(p)->yVel = NMUL(-PE(p)->yVel, N(0.5));
+            if (CGT(PE(p)->yVel, 1, CMPC_H_1)) PE(p)->yVel = NMUL(-PE(p)->yVel, N(0.5));
             else PE(p)->yVel = 0;
         }
         NOPS(6);
@@ -1416,9 +1416,9 @@ void ev_step(int i)
     case OBJ_oFlame: {
         int b = detritus_step(i);
         p = &PX(i);
-        if (NGT(PE(p)->yVel, N(6))) pin_destroy(i);
+        if (CGT(PE(p)->yVel, 6, CMPC_H_6)) pin_destroy(i);
         if (detritus_bottom(i, b)) {
-            if (NGT(PE(p)->life, N(20))) PE(p)->life = N(20);
+            if (CGT(PE(p)->life, 20, CMPC_H_20)) PE(p)->life = N(20);
         }
         break;
     }
