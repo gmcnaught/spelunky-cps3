@@ -167,12 +167,12 @@ static struct ew {
     uint32_t cur_pal;
     int ox, oy, mdx, mdy, cxl, cxh, cyl, cyh;
     uint32_t run_n, ent_n;
+    int ocx, ocy;                                 /* smooth motion: the midpoint camera less this frame's */
     uint8_t mid_on;
 } EW = { .cur_pal = DRAW_PAL, .cxh = VIEW_W, .cyh = SCREEN_H };
-/* smooth motion (draw.h): ocx, ocy: the midpoint camera less this frame's; vmx, vmy: the view test's margin (16 px,
-   plus the camera's half step); set_mid: the midpoint offset of the entries that follow and the clip bounds (the
-   initial EW values are set_mid(0, 0)'s) */
-static int ocx, ocy, vmx = 16, vmy = 16;
+/* smooth motion (draw.h): vmx, vmy: the view test's margin (16 px, plus the camera's half step); set_mid: the
+   midpoint offset of the entries that follow and the clip bounds (the initial EW values are set_mid(0, 0)'s) */
+static int vmx = 16, vmy = 16;
 static inline __attribute__((always_inline)) void set_mid(int dx, int dy)
 {
     if (dx == EW.mdx && dy == EW.mdy) return;    /* (the bounds are set from dx, dy here only: unchanged) */
@@ -689,7 +689,7 @@ static void inst_mid(int i, uint16_t stamp)       /* stamp: dstamp (a local: his
         h->y = (int16_t)y;
     }
     h->stamp = stamp;
-    if (EW.mid_on) set_mid(dx / 2 - ocx, dy / 2 - ocy);
+    if (EW.mid_on) set_mid(dx / 2 - EW.ocx, dy / 2 - EW.ocy);
 }
 
 /* the tile_add layers into mbase / tspr (gtiles less the deleted ones). A layer draws its tiles in element order,
@@ -1406,7 +1406,7 @@ void draw_frame(void)
     EW.ent_n = 0;
     run_begin();
     EW.mid_on = 0;
-    ocx = ocy = 0;
+    EW.ocx = EW.ocy = 0;
     if (built_rooms != play_rooms_entered || built_room != PW.room) {
         build_room();
         pvx = -1000;                              /* no midpoint across a room change */
@@ -1424,15 +1424,15 @@ void draw_frame(void)
         dstamp++;
         if (dx >= -DRAW_MID_CAM && dx <= DRAW_MID_CAM && dy >= -DRAW_MID_CAM && dy <= DRAW_MID_CAM) {
             EW.mid_on = 1;
-            ocx = dx / 2;
-            ocy = dy / 2;
+            EW.ocx = dx / 2;
+            EW.ocy = dy / 2;
         }
         pvx = vx;
         pvy = vy;
     }
-    vmx = 16 + (ocx < 0 ? -ocx : ocx);
-    vmy = 16 + (ocy < 0 ? -ocy : ocy);
-    set_mid(-ocx, -ocy);
+    vmx = 16 + (EW.ocx < 0 ? -EW.ocx : EW.ocx);
+    vmy = 16 + (EW.ocy < 0 ? -EW.ocy : EW.ocy);
+    set_mid(-EW.ocx, -EW.ocy);
 #if DRAW_SPRDMA
     sb_mid = EW.mid_on;                              /* before the first entry */
 #endif
@@ -1623,7 +1623,7 @@ void draw_frame(void)
             const struct tspr *t = &tspr[-1 - e->i];
             int px = t->x - EW.ox, py = t->y - EW.oy;
             struct piecedef pc = { 0, 0, 1, 1, t->tile };
-            if (EW.mid_on) set_mid(-ocx, -ocy);
+            if (EW.mid_on) set_mid(-EW.ocx, -EW.ocy);
             if (px + 16 > EW.cxl && px < EW.cxh && py + 16 > EW.cyl && py < EW.cyh) piece_out(px, py, &pc, 0);
         }
     }
@@ -1794,8 +1794,8 @@ void draw_vblank(void)
     {
         int sx = vx, sy = vy;
         if (frame_mid && mid_present()) {
-            sx = vx + ocx;
-            sy = vy + ocy;
+            sx = vx + EW.ocx;
+            sy = vy + EW.ocy;
         }
         cps3v_tilemap(0, sx, sy + DRAW_CROP, UNIT(0), 1);
         for (m = 0; m < NMAPS; m++) cps3v_tilemap(1 + m, sx, sy + DRAW_CROP, UNIT(1 + m), m < nmaps);
