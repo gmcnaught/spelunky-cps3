@@ -3296,12 +3296,11 @@ static int line_hit_hi(int k, int32_t Y, int32_t lo, int32_t hi)
     return 0;
 }
 
-static int precise_collision_int(int a, int32_t dx, int32_t dy, const int32_t *ia, int b, const int32_t *ib)
+/* the pixel loop of precise_collision_int as the runner runs it (pixel by pixel) */
+static int pci_loop(const struct pci *Ap, const struct pci *Bp, int32_t dx, int32_t dy, const int32_t *ia, const int32_t *ib)
 {
-    struct pci A, B;
+    const struct pci A = *Ap, B = *Bp;
     int32_t x0, x1, y0, y1, c, r;
-    pci_of(a, dx, dy, &A);
-    pci_of(b, 0, 0, &B);
     x0 = ia[0] + dx > ib[0] ? ia[0] + dx : ib[0];
     x1 = ia[2] + dx < ib[2] ? ia[2] + dx : ib[2];
     y0 = ia[1] + dy > ib[1] ? ia[1] + dy : ib[1];
@@ -3330,6 +3329,101 @@ static int precise_collision_int(int a, int32_t dx, int32_t dy, const int32_t *i
         }
     }
     return 0;
+}
+
+/* n (1 .. 25) bits of a mask row from bit off on, the first in bit 31, the rest 0 (the bytes past the last one needed
+   are not read) */
+static uint32_t pci_row(const uint8_t *row, int32_t off, int n)
+{
+    const uint8_t *p = row + (off >> 3);
+    int sh = off & 7, last = sh + n - 1;
+    uint32_t v = (uint32_t)p[0] << 24;
+    if (last >= 8) v |= (uint32_t)p[1] << 16;
+    if (last >= 16) v |= (uint32_t)p[2] << 8;
+    if (last >= 24) v |= p[3];
+    return (v << sh) & (0xffffffffu << (32 - n));
+}
+
+#define BR2(n) n, n + 128, n + 64, n + 192
+#define BR4(n) BR2(n), BR2(n + 32), BR2(n + 16), BR2(n + 48)
+#define BR6(n) BR4(n), BR4(n + 8), BR4(n + 4), BR4(n + 12)
+static const uint8_t brev8[256] = { BR6(0), BR6(2), BR6(1), BR6(3) };
+#undef BR2
+#undef BR4
+#undef BR6
+static uint32_t rev32(uint32_t v)
+{
+    return (uint32_t)brev8[v >> 24] | (uint32_t)brev8[(v >> 16) & 255] << 8 | (uint32_t)brev8[(v >> 8) & 255] << 16 |
+           (uint32_t)brev8[v & 255] << 24;
+}
+
+/* the columns c (rows the same) whose mask column k lies in q's mask box [ml, mr]: k = c - x + xo at scale 1,
+   x + xo - 1 - c at -1 (pci_loop: 2k + 1 = (2c + 1 - 2x) sx + 2 xo, in [2 ml, 2 mr + 2) exactly when ml <= k <= mr) */
+static void pci_span(int32_t x, int s, int o, int lo, int hi, int32_t *c0, int32_t *c1)
+{
+    int32_t a = s > 0 ? x - o + lo : x + o - 1 - hi, b = s > 0 ? x - o + hi : x + o - 1 - lo;
+    if (a > *c0) *c0 = a;
+    if (b < *c1) *c1 = b;
+}
+
+/* CSprite::PreciseCollision for two BB_INT / BB_INTS instances (pci_loop) by mask rows. Both scales are +-1, so the
+   loop's column test is k in [ml, mr] for k above (an interval of c: pci_span), and where a mask's box starts at
+   column and row >= 0 its column trunc((2k + 1) / 2) is k itself (2k + 1 > 0) and okA always holds: the loop finds a
+   hit exactly when some pixel (c, r) of the overlap, both column spans and both row spans has both mask bits set (an
+   instance without a mask: set). Up to 25 columns at a time: each mask's bits of the row as one word (a flipped one
+   read forwards from its lowest column, then reversed when the other is not flipped: only whether the AND is 0
+   matters). A box starting below 0 takes pci_loop */
+static int precise_collision_int(int a, int32_t dx, int32_t dy, const int32_t *ia, int b, const int32_t *ib)
+{
+    struct pci A, B;
+    int32_t c0, c1, r0, r1, c, r;
+    pci_of(a, dx, dy, &A);
+    pci_of(b, 0, 0, &B);
+    if ((A.mask && (A.ml < 0 || A.mt < 0)) || (B.mask && (B.ml < 0 || B.mt < 0)))
+        return pci_loop(&A, &B, dx, dy, ia, ib);
+    c0 = ia[0] + dx > ib[0] ? ia[0] + dx : ib[0];
+    c1 = (ia[2] + dx < ib[2] ? ia[2] + dx : ib[2]) - 1;
+    r0 = ia[1] + dy > ib[1] ? ia[1] + dy : ib[1];
+    r1 = (ia[3] + dy < ib[3] ? ia[3] + dy : ib[3]) - 1;
+    pci_span(A.x, A.sx, A.xo, A.ml, A.mr, &c0, &c1);
+    pci_span(B.x, B.sx, B.xo, B.ml, B.mr, &c0, &c1);
+    pci_span(A.y, A.sy, A.yo, A.mt, A.mb, &r0, &r1);
+    pci_span(B.y, B.sy, B.yo, B.mt, B.mb, &r0, &r1);
+    {
+        int res = 0;
+        if (c0 > c1 || r0 > r1) goto done;
+        if (!A.mask && !B.mask) { res = 1; goto done; }
+        for (c = c0; c <= c1; c += 25) {
+            int n = c1 - c + 1 < 25 ? c1 - c + 1 : 25;
+            /* the lowest mask column of the n, its offset in the row, and whether the word is reversed */
+            int32_t ka = (A.sx > 0 ? c - A.x + A.xo : A.x + A.xo - 1 - (c + n - 1)) - A.ml;
+            int32_t kb = (B.sx > 0 ? c - B.x + B.xo : B.x + B.xo - 1 - (c + n - 1)) - B.ml;
+            int flip = A.sx != B.sx;
+            for (r = r0; r <= r1; r++) {
+                uint32_t v = 0xffffffffu, w;
+                if (A.mask) {
+                    int32_t j = (A.sy > 0 ? r - A.y + A.yo : A.y + A.yo - 1 - r) - A.mt;
+                    v = pci_row(A.mask + j * A.bpr, ka, n);
+                    if (!v) continue;
+                    if (flip && B.mask) v = rev32(v) << (32 - n);
+                }
+                if (B.mask) {
+                    int32_t j = (B.sy > 0 ? r - B.y + B.yo : B.y + B.yo - 1 - r) - B.mt;
+                    w = pci_row(B.mask + j * B.bpr, kb, n);
+                    v &= w;
+                }
+                if (v) { res = 1; goto done; }
+            }
+        }
+    done:
+#ifdef PLAY_STATS
+        if (res != pci_loop(&A, &B, dx, dy, ia, ib)) {
+            fprintf(stderr, "precise_collision_int: row answer %d differs (%d, %d)\n", res, a, b);
+            abort();
+        }
+#endif
+        return res;
+    }
 }
 
 /* instance a (its bbox moved by dx, dy) against instance b */
