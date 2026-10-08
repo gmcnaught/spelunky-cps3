@@ -1,5 +1,17 @@
 # Handoff
 
+## 2026-10-08 19:00: frame-dip batch 1 merged (4e61879, not pushed)
+
+Goal (the user): keep the frame rate locked at 60 fps. A step and its draw get 2 frames (838,940 jtcps3 clocks); over
+that the pair takes 3 frames. Measured with tests/gametime SMOOTH=1 on jtcps3 (.62), pairs over 2 frames:
+c_swamp_drain 113 -> 33 of 370, c_items_damselexpl 70 -> 46 of 308; p5_lush_l5s11 2 of 636 and c_temple_tomblord
+3 of 402 before the batch (level starts). Merged: water (check_water queries), deact3 (step 2's deactivation batch,
+precise collision by mask rows), draw2 (draw_frame 25-44 % cheaper, no libgcc calls in the traced draws, +5.4 KB
+stack room), debris (detritus Steps). New tool: scripts/jtcost_draw.sh (jtcost of one draw, or JTD_FN=<fn>).
+Left (docs/PERF3.md last sections): explosion aftermath (collision pass, oManTrap, oBloodTrail, drip soft-float,
+pw_changed / mark_e per move), the transition room's start (412 Creates), level-start step 2 on some routes.
+In progress: branch icetemple (p5_reg_l9s5, p5_reg_l14s16, damselexpl's non-explosion share).
+
 ## 2026-10-07 08:15: v0.2.0 released (tag on 84dd6e6, game source = 42e0952)
 
 The user playtested the 42e0952 build on .81 and approved. main pushed (2e1c921..84dd6e6), tag v0.2.0 pushed; Actions run
