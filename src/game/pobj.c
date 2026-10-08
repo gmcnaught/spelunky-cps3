@@ -1045,9 +1045,21 @@ __attribute__((noinline)) void rubblepiece_step(int i, int nops)
     NOPS(nops);
     px = p->x;
     py = p->y;
+#ifndef PCOL_EXACT
+    {
+        /* the three tests at once (pworld.c), the oSolid one before site 1041 / the lava's pin_destroy: these write
+           no position and no oSolid-family entry (1041 sets yVel or destroys the drip), and the grid build's
+           searches do not depend on when an entry is flushed */
+        int t = pw_piece_tests(i);
+        if (t & 1) pswamp_world(1041, i, 0);
+        else if (t & 2) pin_destroy(i);
+        if (t & 4) pin_destroy(i);
+    }
+#else
     if (collision_point_any_at(i, 0, 0, OBJ_oWaterSwim)) pswamp_world(1041, i, 0);
     else if (collision_point_any_at(i, 0, 0, OBJ_oLava)) pin_destroy(i);
     if (collision_point_any_at(i, 0, 0, OBJ_oSolid)) pin_destroy(i);   /* (x, y: px, py; site 1041 moves nothing) */
+#endif
     view_read();
     if (pout_ab(px, p->ix, PW.xview - 32, PW.xview + 320 + 32) || pout_ab(py, p->iy, PW.yview - 32, PW.yview + 240 + 32))
         pin_destroy(i);                                                 /* (ix, iy: the shadows of px, py) */

@@ -2255,6 +2255,61 @@ int (collision_point_any_at)(int i, int32_t dx, int32_t dy, int obj)
     return (collision_point_any)(PTOD(PW.in[i].x) + dx, PTOD(PW.in[i].y) + dy, obj, 0, NOONE);
 }
 
+#ifndef PCOL_EXACT
+/* collision_point_any_at(i, 0, 0, obj) for a static family (xf_of[obj] >= 0) on its query q of i's position: its
+   static-family branch (the macro's pw_noinst_point test first; pcol_quiet: the function itself) */
+static int piece_static(int i, int obj, const struct pq *q)
+{
+    int r;
+    if (pw_noinst_point(obj)) return 0;
+    if (xf_of[obj] < 0 || pcol_quiet()) return (collision_point_any_at)(i, 0, 0, obj);
+    r = fam_none(obj) ? 0 : q->iok ? ik_xpt(obj, NOONE, 0, q->ix, q->iy) : -1;
+    if (r < 0) r = xstatic_any(obj, NOONE, q, 0);
+    return r;
+}
+
+/* rubblepiece_step's point tests (pobj.c) at i's position, its query made once: 1 collision_point_any_at(i, 0, 0,
+   oWaterSwim), 2 the same for oLava (asked only without 1), 4 for oSolid. collision_point_any_at's query of the
+   position (dx = dy = 0) is q below: the ints of a whole near position (nodbl), else the floats and their floors.
+   The liquids take its static-family branch on q; oSolid its oSolid branches, which read only iok, ix, iy (the
+   whole branch's ints are the floors of the not-whole branch's, which also takes a whole position past 29900), and
+   fall back to collision_point_p at PTOD(x) + 0, PTOD(y) + 0 (the whole branch's ints as doubles: +0 for -0) */
+int pw_piece_tests(int i)
+{
+    struct pq q;
+    int32_t x, y;
+    int r = 0, s;
+    if (xy_int_near(i, &x, &y)) {
+        q.iok = 1; q.ix = x; q.iy = y;
+        q.nodbl = 1;
+    } else {
+        q.px = PW.in[i].x; q.py = PW.in[i].y;
+        q.nodbl = 0;
+        q.iok = pfloor_int(PW.in[i].x, &q.ix) && pfloor_int(PW.in[i].y, &q.iy);
+    }
+    if (piece_static(i, OBJ_oWaterSwim, &q)) r = 1;
+    else if (piece_static(i, OBJ_oLava, &q)) r = 2;
+    if (pw_noinst_point(OBJ_oSolid)) s = 0;
+    else if (!gfar && !pcol_quiet()) {
+        s = fam_none(OBJ_oSolid) ? 0 : solid_point_sum(&q, 0, NOONE);
+        if (s < 0) s = collision_point_p(PTOD(PW.in[i].x) + 0, PTOD(PW.in[i].y) + 0, OBJ_oSolid, 0, NOONE) != NOONE;
+    } else
+        s = (collision_point_any_at)(i, 0, 0, OBJ_oSolid);
+#ifdef PLAY_STATS
+    {
+        double px = PTOD(PW.in[i].x) + 0, py = PTOD(PW.in[i].y) + 0;
+        int w = collision_point_p(px, py, OBJ_oWaterSwim, 0, NOONE) != NOONE;
+        int c = w ? 1 : (collision_point_p(px, py, OBJ_oLava, 0, NOONE) != NOONE) ? 2 : 0;
+        if (c != r || s != (collision_point_p(px, py, OBJ_oSolid, 0, NOONE) != NOONE)) {
+            fprintf(stderr, "pw_piece_tests: %d %d differ (instance %d)\n", r, s, i);
+            abort();
+        }
+    }
+#endif
+    return r | (s ? 4 : 0);
+}
+#endif
+
 /* ---- the idle fish's tests (pk_swamp.c piranha_idle): the common answers of three queries in a few lines, -1 where
    the caller must ask the general function. Each reads what the general one reads first and changes nothing it would
    not (grid_flush only where collision_point_any would run it) ---------------------------------------------- */
