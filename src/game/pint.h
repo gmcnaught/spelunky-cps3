@@ -74,6 +74,7 @@ int approximatelyZero(num a);
 /* moveTo(xv, yv) for instance i; xVelInteger / yVelInteger are left in *xi, *yi (may be 0) */
 void moveTo(int i, num xv, num yv, int32_t *xi, int32_t *yi);
 void moveTo_x1(int i, int dir);                  /* moveTo(i, N(dir), 0, 0, 0), dir = +-1 */
+void moveTo_walk(int i, num xv, num yv);          /* moveTo(i, xv, yv, 0, 0): the detritus' path alone */
 void scrCreateBlood(int self, pos x, pos y, int n);
 void scrCreateFlame(pos x, pos y, int n);
 void scrShake(int d);

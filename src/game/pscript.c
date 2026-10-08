@@ -422,6 +422,80 @@ void moveTo_x1(int i, int dir)
     moveTo(i, N(dir), 0, 0, 0);
 }
 
+/* moveTo(i, a0, a1, 0, 0) for a mover outside the character, oSolid and oPlatform families whose bounds are whole now
+   (the detritus: oDetritus Step): the statements moveTo runs for it in the grid build (vel_parts and the whole steps
+   as there; ch 0, raw 1: the PLAY_WALK walks, the setters once at the end), in a function of that path alone. Its
+   ibounds comes first here (moveTo asks it at the x walk, before which nothing moves; it writes only the shadows, a
+   cache); the end's restore and pin_setxy are skipped when nothing moved (they would leave every field as it is).
+   Any other mover, and the exact build: moveTo itself */
+void moveTo_walk(int i, num a0, num a1)
+{
+#if PLAY_WALK
+    struct pin *p = &PX(i);
+    pos mtXPrev = p->x, mtYPrev = p->y;
+    struct vparts vx, vy;
+    int32_t xv = 0, yv = 0, il, it, ir, ib, k, n;
+    int moved = 0;
+    if (is_character(i) || obj_is(p->obj, OBJ_oSolid) || obj_is(p->obj, OBJ_oPlatform) ||
+        !ibounds(i, &il, &it, &ir, &ib)) {
+        moveTo(i, a0, a1, 0, 0);
+        return;
+    }
+    vel_parts(a0, &vx);
+    vel_parts(a1, &vy);
+    if (vx.r != 0) xv = (int32_t)(play_time % (uint32_t)vx.r) == 0;
+    if (vy.r != 0) yv = (int32_t)(play_time % (uint32_t)vy.r) == 0;
+    xv += vx.fl;
+    yv += vy.fl;
+    if (vx.neg) xv = -xv;
+    if (vy.neg) yv = -yv;
+    NOPS(10);
+    if (xv != 0) {                                                 /* moveTo's x walk */
+        n = xv > 0 ? xv : -xv;
+        for (k = 0; k < n; k++)
+            if (solid_vline_any(xv > 0 ? ir + k : il - 1 - k, it + 5, ib - 1, i)) break;
+        if (k) {
+            int32_t nx = p->ix + (xv > 0 ? k : -k);
+            PIN_SETX_RAW(p, nx > -32768 && nx < 32768 ? fint15(nx) : PI(nx));
+            if (nx > -30000 && nx < 30000) p->ix = (int16_t)nx;
+            moved = 1;
+        }
+    }
+    if (yv != 0) {
+        if (ibounds(i, &il, &it, &ir, &ib)) {                      /* moveTo's y walk */
+            n = yv > 0 ? yv : -yv;
+            for (k = 0; k < n; k++)
+                if (solid_hline_any(yv > 0 ? ib + k : it - 1 - k, il, ir - 1, i)) break;
+            if (k) {
+                int32_t ny = p->iy + (yv > 0 ? k : -k);
+                PIN_SETY_RAW(p, ny > -32768 && ny < 32768 ? fint15(ny) : PI(ny));
+                if (ny > -30000 && ny < 30000) p->iy = (int16_t)ny;
+                moved = 1;
+            }
+        } else {                    /* (x walked out of the shadows' range) moveTo's y loops, for a non-character */
+            moved = 1;
+            if (yv > 0)
+                for (; p->y < mtYPrev + PI(yv); PIN_SETY_RAW(p, p->y + (PI(1))))
+                    if (isCollisionBottom(i, 1)) break;
+            if (yv < 0)
+                for (; p->y > mtYPrev + PI(yv); PIN_SETY_RAW(p, p->y - (PI(1))))
+                    if (isCollisionTop(i, 1)) break;
+        }
+    }
+    if (moved) {                                                   /* moveTo's setters, once */
+        pos fx = p->x, fy = p->y;
+        int16_t sx = p->ix, sy = p->iy;
+        PIN_SETX_RAW(p, mtXPrev);
+        PIN_SETY_RAW(p, mtYPrev);
+        pin_setxy(p, fx, fy);
+        p->ix = sx;
+        p->iy = sy;
+    }
+#else
+    moveTo(i, a0, a1, 0, 0);
+#endif
+}
+
 /* scripts/scrCreateBlood */
 void scrCreateBlood(int self, pos x, pos y, int n)
 {

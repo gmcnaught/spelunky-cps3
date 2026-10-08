@@ -1007,7 +1007,7 @@ int detritus_step(int i)
         pin_destroy(i);
     if (NGT(PE(p)->life, N(0))) PE(p)->life -= N(1);
     else pin_destroy(i);
-    moveTo(i, PE(p)->xVel, PE(p)->yVel, 0, 0);
+    moveTo_walk(i, PE(p)->xVel, PE(p)->yVel);
     if (collision_point_any_at(i, 0, -4, OBJ_oLava)) ptemple_world(1040, i, 0);
     if (PE(p)->bounce) {
         if (CLT(PE(p)->yVel, 6, CMPC_L_6)) PE(p)->yVel += PE(p)->grav;
