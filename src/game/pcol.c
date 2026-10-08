@@ -1461,6 +1461,18 @@ void pcol_place_marks(int self)
 void pcol_place_marks_kept(int self)
 {
     int kept;
+#ifndef PCOL_EXACT
+    /* in play (the grid) with no quiet entry (so sync1 changes nothing), kept: the mark's only observed effect is the
+       test list (CollisionMarkTest). The mark would make self stale and dirty; every later look at it puts back or
+       reads the rectangle it has (pm_e's premise: its box, which nothing here moves): the flush's cupdate (pm_e, or
+       er_set / pgrid_put of the same rectangle into the same cell), a touch, pcol_handle's searcher rectangle (after
+       its flush); the stale stack is read through EF_STALE (stk_compact, stk_clean, touch_stale); deactivation clears
+       the entry either way. The grid's searches order their hits by creation number, not by when entries went in */
+    if (PCOL_GRID_ON && !quiet_any && (ef[self] & (EF_TREE | EF_STALE)) == EF_TREE) {
+        if (oinfo[eobj(self)] & OI_F08) tlist_front(self);
+        return;
+    }
+#endif
     sync1(self);
     kept = (ef[self] & (EF_TREE | EF_STALE)) == EF_TREE;
     mark_e(self);
