@@ -343,6 +343,24 @@ static void draw_sprdma_end(void) {}
 static void draw_sprdma_sync(void) {}
 #endif
 
+/* run_p may take entries below ent_lim with none of ent_put's checks firing (fewer than DRAW_ENTRIES_MAX entries,
+   room for the entry in the run area, fewer than 511 in the run): piece_put's fast path. ent_room sets it after every
+   change of ent_n, run_n or run_at other than piece_put's own entries (ent_put's keep it valid: one entry and one
+   step of run_p, or run_close's ent_room). DRAW_SPRDMA: not used, every entry by ent_put */
+#if DRAW_SPRDMA
+static void ent_room(void) {}
+#else
+static spr_word *ent_lim;
+static void ent_room(void)
+{
+    int32_t r = 511 - (int32_t)run_n, a = ((int32_t)run_end - (int32_t)run_at) / 16 - (int32_t)run_n,
+            b = DRAW_ENTRIES_MAX - (int32_t)ent_n;
+    if (a < r) r = a;
+    if (b < r) r = b;
+    ent_lim = run_p + 4 * (r > 0 ? r : 0);
+}
+#endif
+
 static void run_begin(void)
 {
     run_odd ^= 1;
@@ -356,6 +374,7 @@ static void run_begin(void)
 #else
     run_p = SPR_AT(run_at);
 #endif
+    ent_room();
 }
 static void run_close(void)
 {
@@ -371,6 +390,7 @@ static void run_close(void)
 #else
     run_p = SPR_AT(run_at);
 #endif
+    ent_room();
 }
 /* the sprite cps3v_sprite(px, py, w, h, tile, pal, flip) would write (word 3, 0, is already there) */
 static inline __attribute__((always_inline)) void ent_put(int px, int py, unsigned w, unsigned h, uint32_t tile,
@@ -408,9 +428,40 @@ static inline __attribute__((always_inline)) void ent_put(int px, int py, unsign
     ent_n++;
 }
 
-static void piece_out(int px, int py, const struct piecedef *pc, int flip)
+/* piece pc's entry at screen (px, py): piece_put inline when run_p is below ent_lim (the entry words as ent_put's), else
+   piece_out (ent_put's checks, then ent_lim again) */
+static __attribute__((noinline)) void piece_out(int px, int py, const struct piecedef *pc, int flip)
 {
     ent_put(px, py, pc->w, pc->h, pc->tile, cur_pal, flip ? CPS3V_FLIPX : 0);
+    ent_room();
+}
+static inline __attribute__((always_inline)) void piece_put(int px, int py, const struct piecedef *pc, int flip)
+{
+#if DRAW_SPRDMA
+    piece_out(px, py, pc, flip);
+#else
+    spr_word *e = run_p;
+    unsigned w = pc->w, h = pc->h;
+    uint32_t w0, w2;
+    if (e >= ent_lim) {
+        piece_out(px, py, pc, flip);
+        return;
+    }
+    w0 = (uint32_t)pc->tile << 17 | (flip ? CPS3V_FLIPX : 0) | cur_pal;
+    w2 = w2tab[w][h];
+    e[0] = w0;
+    e[1] = ((uint32_t)(px + 8 * (int)w - 1) & 0x3ff) << 16 | ((uint32_t)(1006 - py - 8 * (int)h) & 0x3ff);
+    e[2] = w2;
+    if (mid_on) {
+        spr_word *m = e - MID_OFF / 4;
+        m[0] = w0;
+        m[1] = ((uint32_t)(px + mdx + 8 * (int)w - 1) & 0x3ff) << 16 | ((uint32_t)(1006 - py - mdy - 8 * (int)h) & 0x3ff);
+        m[2] = w2;
+    }
+    run_p = e + 4;
+    run_n++;
+    ent_n++;
+#endif
 }
 
 /* frame f (framedefs) with its origin at screen (x, y); flip: mirrored about x (image_xscale -1) */
@@ -423,7 +474,7 @@ static void frame_out(int f, int x, int y, int flip)
         int w = 16 * pc->w, px = flip ? x - pc->dx - w : x + pc->dx, py = y + pc->dy;
         if (px >= xh || py >= yh || px + w <= xl || py + 16 * pc->h <= yl)
             continue;
-        piece_out(px, py, pc, flip);
+        piece_put(px, py, pc, flip);
     }
 }
 
@@ -460,6 +511,7 @@ static void band_out(int tm)
     cps3v_band(tm, 0, CPS3V_H);
     cps3v_group();
     ent_n += 2;                                   /* 224 lines: two band entries of at most 128 lines */
+    ent_room();
 }
 
 /* ---- tilemaps ---------------------------------------------------------------------------------------------- */
