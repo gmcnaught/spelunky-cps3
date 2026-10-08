@@ -373,6 +373,85 @@ the other shots 0-8 px plus jitter (PLAN.md P3's transient), or taken as a hold 
 Attract 1040: 153 px on jtcps3, where MAME vs model is 388 px on that build too (the regenerated g_p8_boot_s7 trace
 or merged src changes: not the draw, whose MAME frames equal 16ab24f's).
 
+## 9. Draw cost on jtcps3: codegen and data-path changes (2026-10-08, branch draw2)
+
+Goal: room for the step in each 2-frame pair (838,940 jtcps3 clocks). Every change keeps the frames identical (each
+commit message has the argument). Base main 50072e6, tip ae80c88, 27 commits, all in src/draw/draw.c.
+
+### Result: modelled jtcps3 clocks for one draw_frame (tools/jtcost.py, fit constants, SMOOTH=1)
+
+| Draw | base | tip | change | instructions |
+|---|---|---|---|---|
+| c_swamp_drain 300 | 225,373 | 147,845 | -34.4 % | 112,101 -> 74,640 |
+| c_items_damselexpl 120 | 142,006 | 105,812 | -25.5 % | 63,498 -> 47,029 |
+| c_items_damselexpl 195 (explosion) | 249,312 | 159,545 | -36.0 % | 120,905 -> 80,196 |
+| p4_exit559 300 | 133,621 | 89,417 | -33.1 % | 61,464 -> 41,918 |
+| p4_exit559 560 (transition room) | 370,176 | 208,378 | -43.7 % | 208,498 -> 122,207 |
+
+Method: `scripts/jtcost_draw.sh` traces from the window's start (the whole game step, then the draw), which took
+60-90 min a run on the loaded machine. A scratch variant traced from draw_frame's entry only (MAME breakpoint on its
+first instruction; the entry instruction put back into the trace) and gave the official number to the clock on the
+base (c_swamp_drain 300: 225,373 both ways; damselexpl 120: 142,006; p4_exit559 300: 133,621) and on the tip
+(c_swamp_drain 300: 147,845 both ways), so the table uses it.
+
+Checkpoints on c_swamp_drain 300: after commit 12 171,517; after 18 155,071; after 22 149,533; after 25 148,063.
+
+`scripts/gametime_check.sh c_items_damselexpl 29 12 0 1 c_swamp_drain 113 5 0 1`, SMOOTH=1 (MAME clocks):
+
+| Section | draw mean base -> tip | draw max base -> tip | pair mean base -> tip |
+|---|---|---|---|
+| attract | 107,350 -> 70,500 | 950,752 -> 786,080 | 157,154 -> 120,330 |
+| game 1 damselexpl | 69,820 -> 50,331 | 994,080 -> 900,608 | 238,991 -> 219,263 |
+| game 2 drain | 123,855 -> 78,909 | 301,824 -> 183,392 | 278,166 -> 233,193 |
+
+Step means unchanged (164,575 / 149,669 -> 164,579 / 149,675). Draw max of games 1 / 2 is a room start.
+
+### What changed (where the clocks went)
+
+- **libgcc calls:** float -> double for the scale tests (`___extendsfdf2`, 213 calls a draw; commit 1), variable
+  shifts in fpix / ftoi (one `dmulu.l` by a power-of-two table; 2), `1u << k` and signed `>> 6` (table, unsigned;
+  3), the view bounds' int -> float (8 `___floatsisf`; 27).
+- **Stack traffic (62 % of the base's stores were stack):** the entry writer inlined with a precomputed limit
+  (ent_lim) so the checks are one compare (4); cache hit, one-piece frame and claim paths made leaf / tail-call
+  paths (5, 6, 16); the candidate and list loops out of draw_frame's register pressure (21, 22); the entry
+  writer's globals in one struct (7, 19).
+- **Data misses:** the slot cache keeps a one-piece frame's entry place (no framedefs / piecedefs reads on a hit;
+  14); inst_mid reuses the cache's fpix values (15) and hands them on in a register (25, 26); draw_kind carried in
+  the entry (18); dstamp / draw_smooth read once (10, 20); cand_list removed (12).
+- **Work skipped with the same result:** unchanged claims stay linked (8); set_mid / hist store only changed fields
+  (9, 11); terrain_cell not called for non-solids (16); the sort's key search from the last key (17); object
+  lookups (oLevel, oGame, oTransition, oDamselKiss) from pw_ohead lists instead of 563-slot scans (23: -22 K in
+  the transition room).
+
+### Checks
+
+- **Host identity, every commit:** tests/game/host.c built twice (main's draw.c, the commit's), every step hashing
+  sprite RAM (the run and midpoint areas included), the decoded display list and the composed frame; every route
+  (smooth off and on) and the attract (seeds 7, 99, 3,600 steps): 184 / 184 runs equal, 76,856 steps, for each of
+  the 27 commits. The host build's own checks (stale claims; first_of against the scan) print nothing. A deliberate
+  rounding change gave 4 differing runs (the check sees a change).
+- **MAME (tip):** game_check p4_exit559 / p5_shop / p5_spider 13 / 13 frames 0 px; smooth_check p4_exit559,
+  p5_shop own frames 0 px; game_host p4_exit559 801 / 801, p5_shop 316 / 316, p5_spider 301 / 301; the attract
+  (p8_boot 300 / 1040): 0 / 388 px, the 388 px as on main (section 8), MAME snapshots of base and tip
+  byte-identical (own and midpoint frames).
+- **SH-2:** 0 compiler warnings; DRAW_SPRDMA=1 compiles (it keeps ent_put for every entry).
+- **RAM:** main .bss -5,376 bytes (cand_list 3,584, tcache_ok 1,792): stack room tests/game 32,892 -> 38,268,
+  gametime 33,024 -> 38,384. Sprite RAM: tcache 28 -> 32 bytes a slot in area A, ccell / ctile (7,168 bytes)
+  moved to area B (commit 13): area A ends where it did (0x0402d4c4, gametime's results at 0x0402e000); area B and
+  the capture end at 0x0407fc58 (936 bytes below 0x04080000).
+
+### Measured and not kept, open
+
+- Commit 25 first passed inst_mid's x, y through a static (3 stores a drawn instance, ~740 model clocks on
+  damselexpl 120); commit 26 replaced it with a register return.
+- The HUD and the front end's text still go through the SDK (cps3v_sprite ~210 model clocks an entry: 9.6 K on
+  c_swamp_drain 300's game-over panel, ~2-6 K on play frames). Writing them as EW entries would change the record
+  layout in sprite RAM (frames equal, list bytes not); not done.
+- Left in the profile (c_swamp_drain 300, 147.8 K): list_ents ~27 K (per drawable ~350: ents / ord misses after
+  the write-through cache's no-allocate writes, spills around inst_out's calls), draw_frame ~30 K (sort, setup,
+  HUD state), scan_ents ~17 K, cached_out ~16 K, SDK HUD ~15 K.
+- **Unknown:** jtcps3 hardware timing (the lead's runs).
+
 ## Observed / Inferred / Unknown
 
 - **Observed:** entries max 214, records max 9 over 27,544 frames; 97.8 % of frame draws one-piece; no
