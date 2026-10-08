@@ -82,8 +82,12 @@ static int xbits_ok;
 static uint8_t xcnt[XF_N][GRID_H][GRID_W];
 static uint16_t xfar[XF_N];
 static uint8_t xsat[XF_N];
-static uint16_t xemp[XF_N];                      /* entries placed with an empty integer box (xisfar 2): in no cell */
-static uint8_t xmask[PIN_MAX], xisfar[PIN_MAX], xond[PIN_MAX], xx0[PIN_MAX], xy0[PIN_MAX], xx1[PIN_MAX], xy1[PIN_MAX];
+static uint16_t xemp[XF_N];                      /* entries placed with an empty integer box (isfar 2): in no cell */
+static uint8_t xmask[PIN_MAX], xond[PIN_MAX];
+/* an entry's place in the index (xflush_run): isfar 1 a box not cached whole, 2 an empty one, else its cells x0 .. x1,
+   y0 .. y1 (clamped); one record of 5 bytes (the five arrays' RAM), as a lookup (xplace_cell, xpoint_any) reads
+   them together */
+static struct xrec { int8_t isfar, x0, x1, y0, y1; } xr[PIN_MAX];
 static int16_t xdnext[PIN_MAX], xdhead = NOONE;
 /* per cell, the last entry placed (xflush_run) whose integer box covers the whole cell, any family, or NOONE: a hint
    only. collision_point_any's static path tests it with point_hit before walking the family (xhint_hit), so a stale
@@ -1564,7 +1568,7 @@ static void grid_reset(void)
         }
         xbits_ok = 1;
     }
-    for (x = 0; x < PIN_MAX; x++) xmask[x] = xisfar[x] = xond[x] = 0;
+    for (x = 0; x < PIN_MAX; x++) { xmask[x] = xond[x] = 0; xr[x].isfar = 0; }
     for (x = 0; x < XF_N; x++) {
         xfar[x] = 0;
         xemp[x] = 0;
@@ -1758,10 +1762,10 @@ static void xplace(int i, int d)
     int f, x, y;
     for (f = 0; f < XF_N; f++) {
         if (!(xmask[i] >> f & 1)) continue;
-        if (xisfar[i] == 1) { xfar[f] += d; continue; }
-        if (xisfar[i] == 2) { xemp[f] += d; continue; }
-        for (y = xy0[i]; y <= xy1[i]; y++)
-            for (x = xx0[i]; x <= xx1[i]; x++) {
+        if (xr[i].isfar == 1) { xfar[f] += d; continue; }
+        if (xr[i].isfar == 2) { xemp[f] += d; continue; }
+        for (y = xr[i].y0; y <= xr[i].y1; y++)
+            for (x = xr[i].x0; x <= xr[i].x1; x++) {
                 if (d > 0 && xcnt[f][y][x] == 255) xsat[f] = 1;   /* (then the counts are not read until the reset) */
                 xcnt[f][y][x] += d;
             }
@@ -1776,17 +1780,18 @@ static __attribute__((noinline)) void xflush_run(void)
         xdhead = xdnext[i];
         xond[i] = 0;
         xplace(i, -1);
-        xmask[i] = xisfar[i] = 0;
+        xmask[i] = 0;
+        xr[i].isfar = 0;
         if (!PW.in[i].alive || !(b = xbits[PW.in[i].obj]) || bbkind(i) == BB_NOSPR) continue;
         xmask[i] = (uint8_t)b;
         if (pin_ibox(i, ib)) {
             if (ib[2] <= ib[0] || ib[3] <= ib[1]) {                  /* empty: never hit by a point; counted in xemp */
-                xisfar[i] = 2;                                       /* (xpoint_any tests it with point_hit: a miss) */
+                xr[i].isfar = 2;                                     /* (xpoint_any tests it with point_hit: a miss) */
                 xplace(i, 1);
                 continue;
             }
-            xx0[i] = (uint8_t)clampi(ib[0] >> 4, 0, GRID_W - 1); xx1[i] = (uint8_t)clampi((ib[2] - 1) >> 4, 0, GRID_W - 1);
-            xy0[i] = (uint8_t)clampi(ib[1] >> 4, 0, GRID_H - 1); xy1[i] = (uint8_t)clampi((ib[3] - 1) >> 4, 0, GRID_H - 1);
+            xr[i].x0 = (int8_t)clampi(ib[0] >> 4, 0, GRID_W - 1); xr[i].x1 = (int8_t)clampi((ib[2] - 1) >> 4, 0, GRID_W - 1);
+            xr[i].y0 = (int8_t)clampi(ib[1] >> 4, 0, GRID_H - 1); xr[i].y1 = (int8_t)clampi((ib[3] - 1) >> 4, 0, GRID_H - 1);
             {
                 int x, y, fx0 = clampi((ib[0] + 15) >> 4, 0, GRID_W), fx1 = clampi(ib[2] >> 4, 0, GRID_W);
                 int fy0 = clampi((ib[1] + 15) >> 4, 0, GRID_H), fy1 = clampi(ib[3] >> 4, 0, GRID_H);
@@ -1794,7 +1799,7 @@ static __attribute__((noinline)) void xflush_run(void)
                     for (x = fx0; x < fx1; x++) xhint[y][x] = (int16_t)i;
             }
         } else
-            xisfar[i] = 1;
+            xr[i].isfar = 1;
         xplace(i, 1);
     }
 }
@@ -1952,8 +1957,8 @@ static int xpoint_any(int obj, int notme, const struct pq *q, int prec)
         if (olive[o] == 0) continue;
         for (k = pw_ohead[o]; k >= 0; k = pw_inext[k]) {
             if (k == notme) continue;
-            if (cx >= 0 && !xisfar[k] && (!(xmask[k] & xf_bit[f]) || cx < xx0[k] || cx > xx1[k] || cy < xy0[k] ||
-                                          cy > xy1[k]))
+            if (cx >= 0 && !xr[k].isfar && (!(xmask[k] & xf_bit[f]) || cx < xr[k].x0 || cx > xr[k].x1 || cy < xr[k].y0 ||
+                                          cy > xr[k].y1))
                 continue;
             if (point_hit(k, q, prec)) return 1;
         }
@@ -3438,8 +3443,8 @@ static int xplace_one_i(int self, int32_t idx, int32_t idy, int obj)
             }
     if (n == 0) return NOONE;
     k = xhint[cy][cx];
-    if (k < 0 || !PW.in[k].alive || !(xmask[k] & xf_bit[f]) || xisfar[k] || cx < xx0[k] || cx > xx1[k] ||
-        cy < xy0[k] || cy > xy1[k])
+    if (k < 0 || !PW.in[k].alive || !(xmask[k] & xf_bit[f]) || xr[k].isfar || cx < xr[k].x0 || cx > xr[k].x1 ||
+        cy < xr[k].y0 || cy > xr[k].y1)
         return -2;
     return k;
 }
@@ -3461,8 +3466,8 @@ static inline int xplace_cell(int self, const int32_t *ia, int32_t idx, int32_t 
     if (n == 0) return NOONE;
     if (n > 1) return -2;
     k = xhint[cy][cx];
-    if (k < 0 || !PW.in[k].alive || !(xmask[k] & xf_bit[f]) || xisfar[k] || cx < xx0[k] || cx > xx1[k] ||
-        cy < xy0[k] || cy > xy1[k])
+    if (k < 0 || !PW.in[k].alive || !(xmask[k] & xf_bit[f]) || xr[k].isfar || cx < xr[k].x0 || cx > xr[k].x1 ||
+        cy < xr[k].y0 || cy > xr[k].y1)
         return -2;
     return k;
 }
