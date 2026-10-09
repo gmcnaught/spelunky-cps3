@@ -1061,6 +1061,7 @@ static uint32_t fbits_u(float f) { union { float f; uint32_t u; } v; v.f = f; re
 
 /* CInstance::Compute_BoundingBox (non-compatibility mode), normalized (CollisionUpdate): o = l, t, r, b */
 static void ebbox(int e, float dx, float dy, float *o);
+static void ebbox_f(int e, float dx, float dy, float *o);
 
 /* the same as a tree rectangle */
 static void ebbox_rect(int e, float dx, float dy, struct rbr *o)
@@ -1071,7 +1072,7 @@ static void ebbox_rect(int e, float dx, float dy, struct rbr *o)
         rset_i(o, ib[0], ib[1], ib[2], ib[3]);
         return;
     }
-    ebbox(e, dx, dy, fr);
+    ebbox_f(e, dx, dy, fr);                       /* (ebbox: the same test first, false again) */
     rset_f(o, fr);
 }
 
@@ -1100,9 +1101,6 @@ void pcol_box(int i, float *o);
 
 static void ebbox(int e, float dx, float dy, float *o)
 {
-    float x, y, xs = 1, ys = 1, ang = 0, w, h, t0;
-    int s;
-    const struct gsprcol *c;
     if (fkey(dx) == 0 && fkey(dy) == 0) {
         int32_t ib[4];
         if (ebbox_int(e, ib)) {
@@ -1110,6 +1108,15 @@ static void ebbox(int e, float dx, float dy, float *o)
             return;
         }
     }
+    ebbox_f(e, dx, dy, o);
+}
+
+/* ebbox past its whole-box case. ang == 0 as fzero (the bits: +-0; no __eqsf2 call) */
+static void ebbox_f(int e, float dx, float dy, float *o)
+{
+    float x, y, xs = 1, ys = 1, ang = 0, w, h, t0;
+    int s;
+    const struct gsprcol *c;
     if (!gmode) {
         const struct pin *p = &PW.in[e];
         s = p->mask >= 0 ? p->mask : p->spr;
@@ -1133,7 +1140,7 @@ static void ebbox(int e, float dx, float dy, float *o)
         return;
     }
     c = &gsprcol[s];
-    if (ang == 0) {
+    if (fzero(ang)) {
         float l, r, t, b;
         /* fmadd in the runner (s registers): one rounding each. w, h: (float)(r - l) + 1.0f, the exact small
            integer (kf(ikey(v)) is (float)v for |v| < 2^24, without the soft-float conversion) */
