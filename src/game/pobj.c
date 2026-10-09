@@ -381,15 +381,15 @@ void destroy_solid(int i)
     struct pin *p = &PX(i);
     int obj;
     if (p->shopWall) PUNTR(1010);
-    if (collision_point_p(PTOD(p->x) + 8, PTOD(p->y) - 1, OBJ_oSpikes, 0, NOONE) != NOONE) {
-        obj = instance_place_p(i, PTOD(p->x) + 8, PTOD(p->y) - 1, OBJ_oSpikes);
+    if (collision_point_any_at(i, 8, -1, OBJ_oSpikes)) {
+        obj = instance_place_at(i, 8, -1, OBJ_oSpikes);
         if (obj != NOONE) pin_destroy(obj);
     }
-    if (collision_point_p(PTOD(p->x) + 8, PTOD(p->y) - 1, OBJ_oTikiTorch, 0, NOONE) != NOONE) pjungle_world(1011, i, 0);
-    if (collision_point_p(PTOD(p->x) + 8, PTOD(p->y) - 1, OBJ_oGrave, 0, NOONE) != NOONE) pswamp_world(1012, i, 0);
-    if (collision_point_p(PTOD(p->x) + 8, PTOD(p->y) + 18, OBJ_oLampRed, 0, NOONE) != NOONE) PUNTR(1013);
-    if (collision_point_p(PTOD(p->x) + 8, PTOD(p->y) + 18, OBJ_oLamp, 0, NOONE) != NOONE) {
-        obj = instance_place_p(i, PTOD(p->x) + 8, PTOD(p->y) + 16, OBJ_oLamp);
+    if (collision_point_any_at(i, 8, -1, OBJ_oTikiTorch)) pjungle_world(1011, i, 0);
+    if (collision_point_any_at(i, 8, -1, OBJ_oGrave)) pswamp_world(1012, i, 0);
+    if (collision_point_any_at(i, 8, 18, OBJ_oLampRed)) PUNTR(1013);
+    if (collision_point_any_at(i, 8, 18, OBJ_oLamp)) {
+        obj = instance_place_at(i, 8, 16, OBJ_oLamp);
         if (obj != NOONE) {
             pin_create(PX(obj).x + PI(8), PX(obj).y + PI(12), OBJ_oLampItem);
             pin_destroy(obj);

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """tools/sgfix_at.py <rule-id> [--apply]: rewrite the matches of tools/sg/rules/cp-at.yml, rect-at.yml or place-at.yml
+(and their -p forms: PTOD(p->x) with p = &PX(i) in the enclosing function, see resolve_p)
 to the _at forms (collision_point_any_at, collision_rect_at / collision_rect_any_at, instance_place_at), the
 instance's x / y read once by the callee on ints. Prints each site and its rewrite; --apply edits the files.
 Every argument is checked again here: the coordinates must be X(i) / Y(i) or PTOD(PX(i).x / .y) of one instance
@@ -23,6 +24,28 @@ def coord(a, axis):
     i = m.group(1) or m.group(2)
     if not m.group(3): return i, '0'
     return i, ('-' + m.group(4)) if m.group(3) == '-' else m.group(4)
+
+PIN = {}      # (file, P) at a match: the instance P points to (resolve_p)
+def resolve_p(path, off, src):
+    """the enclosing function (column-0 braces) of byte offset off: its one `struct pin *P = &PX(i);` for each P, when
+    neither P nor i is assigned again in it (i a parameter or local); {P: i}"""
+    b = src.rfind(b'\n{\n', 0, off); e = src.find(b'\n}\n', off)
+    if b < 0 or e < 0: return {}
+    body = src[b:e].decode()
+    out = {}
+    for m in re.finditer(r'struct pin \*(\w+) = &PX\((\w+)\);', body):
+        P, i = m.group(1), m.group(2)
+        if len(re.findall(r'(?<![\w>.])%s\s*=(?!=)' % P, body)) != 1: continue
+        if re.search(r'(?<![\w>.])%s\s*([-+*/]?=(?!=)|\+\+|--)' % i, body): continue
+        out[P] = i
+    return out
+
+def subst_p(t, pins):
+    def f(m):
+        P = m.group(1)
+        if P not in pins: raise KeyError(P)
+        return 'PTOD(PX(%s).%s)' % (pins[P], m.group(2))
+    return re.sub(r'PTOD\((\w+)->([xy])\)', f, t)
 
 def rewrite(t):
     t1 = ' '.join(t.split())
@@ -57,7 +80,12 @@ js = subprocess.run(['ast-grep', 'scan', '--filter', '^%s$' % rule, '--json=stre
 edits = {}
 for l in js.splitlines():
     r = json.loads(l)
-    new = rewrite(r['text'])
+    text = r['text']
+    if rule.endswith('-p'):
+        src = open(r['file'], 'rb').read()
+        try: text = subst_p(text, resolve_p(r['file'], r['range']['byteOffset']['start'], src))
+        except KeyError: text = None
+    new = rewrite(text) if text else None
     loc = '%s:%d' % (r['file'], r['range']['start']['line'] + 1)
     print('%-28s %s\n%-28s -> %s' % (loc, ' '.join(r['text'].split()), '', new or 'SKIPPED'))
     if new: edits.setdefault(r['file'], []).append((r['range']['byteOffset']['start'], r['range']['byteOffset']['end'], new))
