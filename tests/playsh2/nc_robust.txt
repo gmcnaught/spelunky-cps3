@@ -3,7 +3,7 @@ f characterStepEvent
 f collision_point_any
 f detritus_step
 f dlist_remove
-f ebbox
+f ebbox_f
 f ev_collision
 f ev_create
 f grid_dirty
