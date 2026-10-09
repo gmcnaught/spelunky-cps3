@@ -1,5 +1,6 @@
 /* Soft-float entry points in SH-2 assembly (src/sh2/softfp.c has the rest and the general C paths): binary64 add
- * and subtract, binary32 add and subtract, the binary64 compares, binary64 to binary32 (__truncdfsf2).
+ * and subtract, binary32 add and subtract, the binary64 compares, binary64 to binary32 (__truncdfsf2); a debris
+ * piece's y move on them (softfp_piece_y).
  *
  * binary64 add: a normal operand plus +-0 returns it; two normal operands (except opposite signs within one binade
  * when the larger exponent is below 55, where the result could be subnormal) take the fast path; zeros with zeros,
@@ -627,3 +628,143 @@ TRUNC:
 .Ltkb:  .long 896 << 20
 .Ltk8:  .long 0x80000000
 .Ltc:   .long _softfp_truncdfsf2_c
+
+/* ---- a debris piece's y move (pobj.c rubblepiece_step): y + yVel rounded to binary32, then yVel += yAcc ------- */
+/* PIECEY(y, v): v points at yVel, yAcc 16 bytes on (struct pin_ext's num xVel, yVel, xAcc, yAcc). Returns the bits
+   of __truncdfsf2 (__adddf3 (__extendsfdf2 (y), v[0])) (y widened here when normal, else by __extendsfdf2; then ADD
+   and TRUNC); stores v[0] = __adddf3 (v[0], v[2]) through a one-entry memo of the last operands' and result's bits
+   (a hit is ADD's result for the same operands; the zeroed memo holds +0 + +0 = +0): the pieces of one explosion
+   or drain move with the same velocities */
+#ifdef SOFTFP_SFNAMES
+#define PIECEY _sf_piece_y
+#else
+#define PIECEY _softfp_piece_y
+#endif
+    .align 2
+    .global PIECEY
+PIECEY:
+    sts.l   pr, @-r15
+    mov.l   r9, @-r15
+    mov.l   r10, @-r15
+    mov     r5, r9                      /* v */
+    mov.l   .Lpfinf, r1                 /* 0x7f800000 */
+    mov     r4, r0
+    and     r1, r0
+    tst     r0, r0
+    bt      .Lpwide                     /* zero, subnormal */
+    cmp/eq  r1, r0
+    bt      .Lpwide                     /* infinite, NaN */
+    mov     r4, r5
+    shll16  r5
+    shll8   r5
+    shll2   r5
+    shll2   r5
+    shll    r5                          /* the low word: the fraction's 3 low bits at the top */
+    mov.l   .Lpk8, r1                   /* 0x80000000 */
+    mov     r4, r2
+    and     r1, r2                      /* the sign */
+    mov.l   .Lpfm, r1                   /* 0x7fffffff */
+    and     r1, r4
+    shlr2   r4
+    shlr    r4                          /* exponent and fraction 3 places right */
+    mov.l   .Lpkb, r1                   /* 896 << 20: the exponent rebiased */
+    add     r1, r4
+    or      r2, r4                      /* the high word */
+.Lpadd:
+    mov.l   @r9, r6
+    bsr     ADD
+    mov.l   @(4, r9), r7
+    mov.l   .Lp7ff, r3                  /* TRUNC's fast path (its comment) */
+    mov     r0, r2
+    and     r3, r2
+    mov.l   .Lpklo, r3
+    sub     r3, r2
+    mov.l   .Lpkrg, r3
+    cmp/hi  r3, r2
+    bt      .Lptrunc
+    mov.l   .Lpkb, r3
+    sub     r3, r0
+    mov.l   .Lpk8, r3
+    mov     r0, r2
+    and     r3, r2
+    shll    r1
+    rotcl   r0
+    shll    r1
+    rotcl   r0
+    shll    r1
+    rotcl   r0
+    or      r2, r0
+    cmp/hi  r3, r1
+    bt      1f
+    cmp/eq  r3, r1
+    bf      2f
+    tst     #1, r0
+    bt      2f
+1:  add     #1, r0
+2:  mov     r0, r10                     /* the new y */
+    mov.l   @r9, r4
+    mov.l   @(4, r9), r5
+    mov.l   @(16, r9), r6
+    mov.l   @(20, r9), r7
+    mov.l   .Lpmemo, r1
+    mov.l   @r1, r0
+    cmp/eq  r0, r4
+    bf      .Lpmiss
+    mov.l   @(4, r1), r0
+    cmp/eq  r0, r5
+    bf      .Lpmiss
+    mov.l   @(8, r1), r0
+    cmp/eq  r0, r6
+    bf      .Lpmiss
+    mov.l   @(12, r1), r0
+    cmp/eq  r0, r7
+    bf      .Lpmiss
+    mov.l   @(16, r1), r0
+    mov.l   @(20, r1), r1
+.Lpput:
+    mov.l   r0, @r9
+    mov.l   r1, @(4, r9)
+    mov     r10, r0
+    mov.l   @r15+, r10
+    mov.l   @r15+, r9
+    lds.l   @r15+, pr
+    rts
+    nop
+.Lpmiss:
+    mov.l   r4, @r1
+    mov.l   r5, @(4, r1)
+    mov.l   r6, @(8, r1)
+    bsr     ADD
+    mov.l   r7, @(12, r1)
+    mov.l   .Lpmemo, r2
+    mov.l   r0, @(16, r2)
+    bra     .Lpput
+    mov.l   r1, @(20, r2)
+.Lpwide:
+    mov.l   .Lpext, r0
+    jsr     @r0
+    nop
+    mov     r0, r4
+    bra     .Lpadd
+    mov     r1, r5
+.Lptrunc:                               /* not a normal float: TRUNC (its C path) */
+    mov     r0, r4
+    bsr     TRUNC
+    mov     r1, r5
+    bra     2b
+    nop
+
+    .align 2
+.Lpfinf: .long 0x7f800000
+.Lpk8:  .long 0x80000000
+.Lpfm:  .long 0x7fffffff
+.Lpkb:  .long 896 << 20
+.Lp7ff: .long 0x7ff00000
+.Lpklo: .long 897 << 20
+.Lpkrg: .long (1150 - 897) << 20
+.Lpmemo: .long .Lpm
+.Lpext: .long N(extendsfdf2)
+
+    .bss
+    .align 2
+.Lpm:   .space 24                       /* yVel, yAcc, yVel + yAcc (high word first) */

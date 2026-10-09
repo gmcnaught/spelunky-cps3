@@ -31,6 +31,25 @@ DECL(mulsf3, uint32_t, uint32_t, uint32_t) DECL(divsf3, uint32_t, uint32_t, uint
 DECL(eqsf2, int, uint32_t, uint32_t) DECL(nesf2, int, uint32_t, uint32_t) DECL(ltsf2, int, uint32_t, uint32_t)
 DECL(lesf2, int, uint32_t, uint32_t) DECL(gtsf2, int, uint32_t, uint32_t) DECL(gesf2, int, uint32_t, uint32_t)
 DECL(floatsisf, uint32_t, int32_t) DECL(fixsfsi, int32_t, uint32_t)
+uint32_t sf_piece_y(uint32_t y, uint64_t *v);      /* softfp_sh2.S's debris y move (v[0] yVel, v[2] yAcc) */
+
+/* OP_PIECEY / OP_PIECEV: the acceleration (the case's c) */
+static uint64_t run_c;
+
+/* the piece's y move: fp-bit's calls (impl 0), softfp_sh2.S's (1); the new y, and yVel + yAcc in *nv */
+static uint32_t piece(int impl, uint32_t y, uint64_t v, uint64_t acc, uint64_t *nv)
+{
+    uint64_t w[3];
+    uint32_t r;
+    if (!impl) {
+        *nv = __adddf3(v, acc);
+        return __truncdfsf2(__adddf3(__extendsfdf2(y), v));
+    }
+    w[0] = v; w[1] = 0; w[2] = acc;
+    r = sf_piece_y(y, w);
+    *nv = w[0];
+    return r;
+}
 
 /* raw result of op through fp-bit (impl 0) or softfp (impl 1); compares as their int, sign-extended */
 static uint64_t run(int impl, int op, uint64_t a, uint64_t b)
@@ -66,6 +85,8 @@ static uint64_t run(int impl, int op, uint64_t a, uint64_t b)
     case OP_FGE: return (uint64_t)(int64_t)P(gesf2, fa, fb);
     case OP_I2F: return P(floatsisf, (int32_t)fa);
     case OP_F2I: return (uint32_t)P(fixsfsi, fa);
+    case OP_PIECEY: { uint64_t nv; return piece(impl, fa, b, run_c, &nv); }
+    case OP_PIECEV: { uint64_t nv; (void)piece(impl, fa, b, run_c, &nv); return nv; }
     }
     return 0;
 #undef P
@@ -75,8 +96,8 @@ static uint64_t run(int impl, int op, uint64_t a, uint64_t b)
 static uint64_t canon(int op, uint64_t r)
 {
     switch (op) {
-    case OP_ADD: case OP_SUB: case OP_MUL: case OP_DIV: case OP_EXT: return canon_d(r);
-    case OP_TRUNC: case OP_FADD: case OP_FSUB: case OP_FMUL: case OP_FDIV: return canon_f((uint32_t)r);
+    case OP_ADD: case OP_SUB: case OP_MUL: case OP_DIV: case OP_EXT: case OP_PIECEV: return canon_d(r);
+    case OP_TRUNC: case OP_PIECEY: case OP_FADD: case OP_FSUB: case OP_FMUL: case OP_FDIV: return canon_f((uint32_t)r);
     case OP_EQ: case OP_NE: case OP_LT: case OP_LE: case OP_GT: case OP_GE: case OP_FEQ: case OP_FNE: case OP_FLT:
     case OP_FLE: case OP_FGT: case OP_FGE: return rel(op, (int)(int64_t)r);
     case OP_UNORD: return r != 0;
@@ -120,6 +141,11 @@ static uint32_t time256(int impl, int op)
     F2(OP_FADD, addsf3) F2(OP_FSUB, subsf3) F2(OP_FMUL, mulsf3) F2(OP_FDIV, divsf3) F2(OP_FEQ, eqsf2)
     F2(OP_FNE, nesf2) F2(OP_FLT, ltsf2) F2(OP_FLE, lesf2) F2(OP_FGT, gtsf2) F2(OP_FGE, gesf2)
     U1(OP_I2F, floatsisf, ti) U1(OP_F2I, fixsfsi, tf)
+    case OP_PIECEY: case OP_PIECEV: {                /* yVel + yAcc repeated in 4 calls of 4 */
+        uint64_t nv;
+        for (k = 0; k < 256; k++) sink = piece(impl, tf[k & 7], tv[(k >> 2) & 7], 0x3fe3333333333333ull, &nv);
+        break;
+    }
     default:                                         /* impl 2: the loop alone */
         for (k = 0; k < 256; k++) sink = tv[k & 7] ^ tv[(k + 3) & 7];
     }
@@ -141,7 +167,9 @@ int main(void)
         cs_state = 0x9e3779b97f4a7c15ull + (uint64_t)op;
         for (k = 0; k < CASES; k++) {
             struct cs_case c = cs_case_for(op);
-            uint64_t f = run(0, op, c.a, c.b), s = run(1, op, c.a, c.b), v = canon(op, s);
+            uint64_t f, s, v;
+            run_c = c.c;
+            f = run(0, op, c.a, c.b); s = run(1, op, c.a, c.b); v = canon(op, s);
             if (f != s) {
                 if (nb < 2) {
                     o[6 + 5 * nb] = (uint32_t)(c.a >> 32);

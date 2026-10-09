@@ -4,6 +4,7 @@
  * GML argument order: last argument first, so instance_create(x + rand.., y + rand.., o) draws y's numbers first.
  * Objects or branches P4 does not reach set play_untranslated (codes 1xxx).
  */
+#include <stddef.h>                              /* offsetof (rubblepiece_step's softfp_piece_y) */
 #include "pint.h"
 #include "../snd/sndgame.h"                     /* the GML sound calls (src/snd) */
 #include "pmsg.h"                                /* the HUD messages (trMessages) */
@@ -1063,6 +1064,13 @@ static inline int fnormal(float f)
     return e != 0 && e != 0xffu;
 }
 
+#if defined(SOFTFP_ASM) && !defined(NUM_IS_CLASS)
+/* src/sh2/softfp_sh2.S: (float)((double)y + v[0]) as __extendsfdf2, __adddf3, __truncdfsf2 give it, and v[0] += v[2]
+   (yVel += yAcc, the same __adddf3, through a one-entry memo of its operands) */
+float softfp_piece_y(float y, num *v);
+typedef char piece_y_yacc[offsetof(struct pin_ext, yAcc) - offsetof(struct pin_ext, yVel) == 2 * sizeof(num) ? 1 : -1];
+#endif
+
 /* objects/oRubblePiece/Step_0.gml: oRubble, oRubbleSmall (nops 3), oDrip, oRubbleDarkSmall, oLavaDrip (0) */
 __attribute__((noinline)) void rubblepiece_step(int i, int nops)
 {
@@ -1074,8 +1082,12 @@ __attribute__((noinline)) void rubblepiece_step(int i, int nops)
     if (!dzero(PE(p)->xVel) || !fnormal(p->x))
 #endif
         pin_setx(p, PADDV(p->x, PE(p)->xVel));
+#if defined(SOFTFP_ASM) && !defined(NUM_IS_CLASS)
+    pin_sety(p, softfp_piece_y(p->y, &PE(p)->yVel));                  /* the two lines below in one call */
+#else
     pin_sety(p, (pos)(TOD(p->y) + NTOD(PE(p)->yVel)));                /* PADDV, y widened by fwiden */
     PE(p)->yVel += PE(p)->yAcc;
+#endif
     NOPS(nops);
     px = p->x;
     py = p->y;

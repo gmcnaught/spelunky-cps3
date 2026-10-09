@@ -27,6 +27,8 @@ static uint64_t U(double d) { uint64_t u; memcpy(&u, &d, 8); return u; }
 static float Fl(uint32_t u) { float f; memcpy(&f, &u, 4); return f; }
 static uint32_t UF(float f) { uint32_t u; memcpy(&u, &f, 4); return u; }
 
+/* OP_PIECEY / OP_PIECEV: the acceleration (the case's c) */
+static uint64_t run_c;
 /* the soft-float result, canonical */
 static uint64_t soft(int op, uint64_t a, uint64_t b, int *raw)
 {
@@ -62,6 +64,8 @@ static uint64_t soft(int op, uint64_t a, uint64_t b, int *raw)
     case OP_FGE: r = sf_gesf2(fa, fb); v = rel(op, r); break;
     case OP_I2F: v = sf_floatsisf((int32_t)fa); break;
     case OP_F2I: v = (uint32_t)sf_fixsfsi(fa); break;
+    case OP_PIECEY: v = canon_f(sf_truncdfsf2(sf_adddf3(sf_extendsfdf2(fa), b))); break;
+    case OP_PIECEV: v = canon_d(sf_adddf3(b, run_c)); break;
     }
     *raw = r;
     return v;
@@ -109,6 +113,8 @@ static uint64_t fpu(int op, uint64_t a, uint64_t b)
     case OP_FGE: return fx >= fy;
     case OP_I2F: return UF((float)(int32_t)(uint32_t)a);
     case OP_F2I: return d2i((double)fx);
+    case OP_PIECEY: return canon_f(UF((float)((double)fx + y)));
+    case OP_PIECEV: { volatile double z = D(run_c); return canon_d(U(y + z)); }
     }
     return 0;
 }
@@ -131,6 +137,7 @@ int main(int argc, char **argv)
         for (long k = 0; k < n; k++) {
             struct cs_case c = cs_case_for(op);
             int raw;
+            run_c = c.c;
             uint64_t s = soft(op, c.a, c.b, &raw), f = fpu(op, c.a, c.b);
             int ok = s == f;
             if (ok && is_cmp(op)) {                 /* fp-bit's values: -1 / 0 / 1; NaN: 1, or -1 for gt / ge */
