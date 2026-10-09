@@ -137,9 +137,20 @@ void ev_create(int i)
 {
     if (front_on && front_ev(FEV_CREATE, i, 0)) return;                                 /* P8 hook */
     struct pin *p = &PX(i);
-    if (pen_create(i, play_in_gen_init) || pdam_create(i, play_in_gen_init) || pshop_create(i, play_in_gen_init) ||
-        pitem_create(i, play_in_gen_init))
-        return;                                                                /* P5 hook */
+    switch (p->obj) {
+    /* the debris made in numbers (an explosion's rubble and flames, blood, the trails, the drips): none of the P5 hooks
+       has a case for them (each is a switch on the object, or pitem_create's oUdjatEye test, that returns 0 and does
+       nothing for any other object), so their Create starts at the switch below */
+    case OBJ_oBlood: case OBJ_oFlame: case OBJ_oBloodTrail: case OBJ_oFlameTrail: case OBJ_oSmokePuff: case OBJ_oBurn:
+    case OBJ_oPoof: case OBJ_oRubble: case OBJ_oRubbleSmall: case OBJ_oRubbleDarkSmall: case OBJ_oExplosion:
+    case OBJ_oDrip: case OBJ_oLavaDrip:
+        break;
+    default:
+        if (pen_create(i, play_in_gen_init) || pdam_create(i, play_in_gen_init) || pshop_create(i, play_in_gen_init) ||
+            pitem_create(i, play_in_gen_init))
+            return;                                                            /* P5 hook */
+        break;
+    }
     switch (p->obj) {
     /* items */
     case OBJ_oRock: item(i, T_ROCK, -4, -4, 4, 4, -1); break;
