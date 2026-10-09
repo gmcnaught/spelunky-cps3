@@ -1696,6 +1696,24 @@ void pcol_place_marks_kept(int self)
     pm_e = kept ? (int16_t)self : -1;
 }
 
+#ifndef PCOL_EXACT
+/* instance_place_ixy(self, .., obj)'s entry with nothing but the test list to change (pworld.c pw_water_tests): in play
+   (the grid) with no quiet entry and no dirty one, obj's family asked this room, a member of the grid with at least
+   rn[rroot].level instances (so pcol_query(obj): ask nothing, no query_dyn, flush nothing, 1), self in the grid, not
+   stale, synced (pcol_touch(self) nothing; pcol_place_marks_kept(self) its kept branch: pcol_place_front) */
+int pcol_place_clean(int self, int obj)
+{
+    return PCOL_GRID_ON && !quiet_any && dhead < 0 && (oinfo[obj] & OI_ASKROOT) && (oinfo[obj] & (OI_MEMBER | OI_DYN)) &&
+           ocnt[obj] != 0 && ocnt[obj] >= rn[rroot].level && (ef[self] & (EF_TREE | EF_STALE | EF_NOSNAP)) == EF_TREE;
+}
+
+/* pcol_place_marks_kept(self)'s kept branch (pcol_place_clean(self, ..) 1) */
+void pcol_place_front(int self)
+{
+    if (oinfo[eobj(self)] & OI_F08) tlist_front(self);
+}
+#endif
+
 void pcol_mark(int i)
 {
     if (i == pm_e) pm_e = -1;
