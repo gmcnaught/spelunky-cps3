@@ -1762,30 +1762,43 @@ static void grid_unlink(int i)
     gcell[i] = NOONE;
 }
 
-/* per object: 2 when its instances go in the grid (obj_is(o, oSolid) || !pin_needs_ext(o): constant per object), 1 when
-   not, 0 not computed yet */
+/* per object, computed at its first grid_dirty (after the first level start: xbits is set then): bit 1 its instances
+   go in the grid (obj_is(o, oSolid) || !pin_needs_ext(o): constant per object), bit 2 xbits[o] != 0 (the static-family
+   index; constant), bit 0 computed */
 static uint8_t gobj[OBJ_COUNT];
 
-static __attribute__((noinline)) int gobj_set(int o)
+static __attribute__((noinline)) void grid_dirty_new(int i, int o)
 {
-    gobj[o] = (uint8_t)(obj_is(o, OBJ_oSolid) || !pin_needs_ext(o) ? 2 : 1);
-    return gobj[o];
+    int g = 1 | (obj_is(o, OBJ_oSolid) || !pin_needs_ext(o) ? 2 : 0);
+#ifndef PCOL_EXACT
+    if (xbits[o]) g |= 4;
+#endif
+    gobj[o] = (uint8_t)g;
+    grid_dirty(i);
 }
 
-/* a solid's box may have changed (or it was added): placed again at the next query */
+/* a solid's box may have changed (or it was added): placed again at the next query (a leaf but for the first call per
+   object: no frame) */
 static void grid_dirty(int i)
 {
-    int o = PW.in[i].obj, g;
+    int o = PW.in[i].obj, g = gobj[o];
+    if (!g) {
+        grid_dirty_new(i, o);
+        return;
+    }
+#ifdef PLAY_STATS
+    if (!(g & 2) != !(obj_is(o, OBJ_oSolid) || !pin_needs_ext(o))) { fprintf(stderr, "grid_dirty: gobj[%d]\n", o); abort(); }
 #ifndef PCOL_EXACT
-    if (xbits[o]) {
+    if (!(g & 4) != !xbits[o]) { fprintf(stderr, "grid_dirty: gobj[%d] xbits\n", o); abort(); }
+#endif
+#endif
+#ifndef PCOL_EXACT
+    if (g & 4) {
         xchg++;
         if (!xond[i]) xdirty(i);
     }
 #endif
-    if (gond[i]) return;
-    g = gobj[o];
-    if (!g) g = gobj_set(o);
-    if (g == 1) return;
+    if (!(g & 2) || gond[i]) return;
     gond[i] = 1;
     gdnext[i] = gdhead;
     gdhead = (int16_t)i;
