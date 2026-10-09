@@ -83,6 +83,11 @@ $(OUT)/pcrows: pcrows.c $(SRC) $(PSRC) $(ROOT)/src/game/*.h $(GEN)/playtables.h 
 	mkdir -p $(OUT)
 	$(CC) $(CFLAGS) -ffp-contract=off $(INC0) -o $@ pcrows.c $(SRC) $(filter-out $(ROOT)/src/game/pworld.c,$(PSRC) $(HSRC)) -lm
 
+# pworld.c ovl_frac (overlap_at's float path on ints) against the float path on random instance pairs (it includes pworld.c)
+$(OUT)/ovlfrac: ovlfrac.c $(SRC) $(PSRC) $(ROOT)/src/game/*.h $(GEN)/playtables.h $(ROOT)/build/snd/sndnames.h $(ROOT)/src/snd/snd.h
+	mkdir -p $(OUT)
+	$(CC) $(CFLAGS) -ffp-contract=off $(INC0) -o $@ ovlfrac.c $(SRC) $(filter-out $(ROOT)/src/game/pworld.c,$(PSRC) $(HSRC)) -lm
+
 # pworld.c pfrac_ok's identities (the fractional _at queries) for every float it accepts (it includes pworld.c)
 $(OUT)/pfrac: pfrac.c $(SRC) $(PSRC) $(ROOT)/src/game/*.h $(GEN)/playtables.h $(ROOT)/build/snd/sndnames.h $(ROOT)/src/snd/snd.h
 	mkdir -p $(OUT)

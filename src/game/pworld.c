@@ -4382,21 +4382,168 @@ int fcol_note(int kind, int n, double a, double b, double c, double d)
 void fcol_done(int counted) { fcol_depth--; if (counted) fcol_of = NULL; }
 #endif
 
-/* instance a (its bbox moved by dx, dy) against instance b */
-static int overlap_at(int a, double dx, double dy, int b)
+/* ---- overlap_at's float path on ints (ovl_frac) ------------------------------------------------------------- */
+/* x = h + f / 2^32 for 1 <= x < 2^22 (biased exponents 127 .. 148; pfr's scaling, exact); 0 otherwise */
+static int ofx(float x, int32_t *h, uint32_t *f)
+{
+    union { float f; uint32_t u; } b;
+    uint32_t e;
+    uint64_t p;
+    b.f = x;
+    e = b.u >> 23;                                  /* (the sign 0) */
+    if (e - 127u > 21u) return 0;
+    p = (uint64_t)((b.u & 0x7fffffu) | 0x800000u) * ffix32_mul[e - 118];
+    *h = (int32_t)(uint32_t)(p >> 32);
+    *f = (uint32_t)p;
+    return 1;
+}
+
+/* (h, f) < (h2, f2) for v = h + f / 2^32 */
+static inline int ofx_lt(int32_t h, uint32_t f, int32_t h2, uint32_t f2) { return h < h2 || (h == h2 && f < f2); }
+
+/* v = h + f / 2^32 (1 <= h < 2^22) rounded to binary32 (to nearest even), in place: the float's last place 2^(e - 23)
+   for 2^e <= h < 2^(e + 1) is 2^(e + 9) in f */
+static void ofx_round(int32_t *h, uint32_t *f)
+{
+    uint32_t v = (uint32_t)*h, u, half, r;
+    int e = 0;
+    if (v >= 0x10000u) { e = 16; v >>= 16; }
+    if (v >= 0x100u) { e += 8; v >>= 8; }
+    if (v >= 0x10u) { e += 4; v >>= 4; }
+    if (v >= 4u) { e += 2; v >>= 2; }
+    if (v >= 2u) e += 1;
+    u = ffix32_mul[e + 9];
+    half = u >> 1;
+    r = *f & (u - 1);
+    *f -= r;
+    if (r > half || (r == half && (*f & u))) {
+        *f += u;
+        if (!*f) (*h)++;
+    }
+}
+
+/* (int)(v + 32768.0f) - 32768 for a float v = h + f / 2^32, 1 <= h <= 32766: the sum's last place is 2^-8 (2^24 in f;
+   its parity v's), then truncated */
+static int32_t ofx_lo(int32_t h, uint32_t f)
+{
+    uint32_t r = f & 0xffffffu;
+    f -= r;
+    if (r > 0x800000u || (r == 0x800000u && (f & 0x1000000u))) {
+        f += 0x1000000u;
+        if (!f) h++;
+    }
+    return h;
+}
+
+/* 32768 - (int)(32768.0f - v) for a float v = h + f / 2^32, 1 <= h <= 32766: the difference exact, rounded to binary32,
+   truncated */
+static int32_t ofx_hi(int32_t h, uint32_t f)
+{
+    int32_t w = f ? 32767 - h : 32768 - h;
+    uint32_t g = 0u - f;
+    ofx_round(&w, &g);
+    return 32768 - w;
+}
+
+/* one instance of ovl_frac: the sprite, the scales' signs, the position as h + f / 2^32 and the box sides (l, t, r, b)
+   the same way: x + (l - xo) .. x + (r + 1 - xo) at scale 1, x - (r + 1 - xo) .. x - (l - xo) at -1 (bbox_dbl's
+   doubles, exact) */
+struct ofi { int s, sx, sy; int32_t xh, yh, bh[4]; uint32_t xf, yf, bf[4]; };
+
+static int ofi_of(int i, struct ofi *q)
+{
+    const struct pin *p = &PW.in[i];
+    const struct gsprcol *c;
+    uint32_t xs = pcf(p->xscale), ys = pcf(p->yscale);
+    int32_t m, k, w;
+    q->s = spr_of(p);
+    if (q->s < 0 || !fzero(p->angle) || (xs & 0x7fffffffu) != 0x3f800000u || (ys & 0x7fffffffu) != 0x3f800000u ||
+        !ofx(p->x, &q->xh, &q->xf) || !ofx(p->y, &q->yh, &q->yf))
+        return 0;
+    c = &gsprcol[q->s];
+    q->sx = xs >> 31 ? -1 : 1;
+    q->sy = ys >> 31 ? -1 : 1;
+    /* the loop's floats exact (x - column, its sprite column, rows the same): every value a multiple of x's last place
+       and below 2^e <= x in magnitude, for which 2 (the largest offset of a box side from x + |xo| + 2) <= floor(x) is
+       enough (the columns lie within the box and one column beyond) */
+    m = c->l - c->xo; if (m < 0) m = -m;
+    k = c->r + 1 - c->xo; if (k < 0) k = -k;
+    if (k > m) m = k;
+    m += (c->xo < 0 ? -c->xo : c->xo) + 2;
+    if (2 * m > q->xh) return 0;
+    m = c->t - c->yo; if (m < 0) m = -m;
+    k = c->b + 1 - c->yo; if (k < 0) k = -k;
+    if (k > m) m = k;
+    m += (c->yo < 0 ? -c->yo : c->yo) + 2;
+    if (2 * m > q->yh) return 0;
+    w = c->r - c->l + 1;
+    q->bh[0] = q->xh + (q->sx > 0 ? c->l - c->xo : -(c->r + 1 - c->xo));
+    q->bh[2] = q->bh[0] + w;
+    w = c->b - c->t + 1;
+    q->bh[1] = q->yh + (q->sy > 0 ? c->t - c->yo : -(c->b + 1 - c->yo));
+    q->bh[3] = q->bh[1] + w;
+    q->bf[0] = q->bf[2] = q->xf;
+    q->bf[1] = q->bf[3] = q->yf;
+    for (k = 0; k < 4; k++)
+        if (q->bh[k] < 1 || q->bh[k] > 32000) return 0;
+    return 1;
+}
+
+/* overlap_at(a, +0, +0, b)'s float path on ints for two instances at angle 0 and scales +-1 whose x, y lie in
+   [1, 2^22) and leave room for their boxes (ofi_of); -1: another case (the float path).
+   The boxes: pin_bbox's doubles x + int are exact (ofi_of), so the double test is on the exact values. Neither precise:
+   -1. Else pcinst_of (dx, dy +0): each box side rounded to float (ofx_round), x, y the floats themselves, 1 / s = s;
+   precise_collision: the overlap of the float boxes (max / min), x0 = (int)(bl + 32768.0f) - 32768 + 0.5 (ofx_lo),
+   x1 = 32768 - (int)(32768.0f - br) (ofx_hi), y0, y1 the same; pc_rows / pc_loop (no rotation): with every float
+   exact (ofi_of), column xc = n + 0.5 for n0 <= n < x1 (x0 = n0 + 0.5) has sprite column
+   lx = s (n + 0.5 - x) + xo, in the mask box when ml <= floor(lx) <= mr, and trunc(lx) = floor(lx) there for ml >= 0
+   (precise_collision_int's mask boxes); with x = h + f / 2^32, floor(lx) = n - X + xo at s = 1 for X = h + (f > 1/2),
+   X + xo - 1 - n at s = -1 for X = h + (f >= 1/2): the columns of an integer instance at X (pci_span, pci_scan);
+   rows the same. PLAY_STATS builds compare every answer with the float path */
+static int ovl_frac(int a, int b)
+{
+    struct ofi P, Q;
+    struct pci A, B;
+    int32_t h[4], c0, c1, r0, r1;
+    uint32_t f[4];
+    int k;
+    if (!ofi_of(a, &P) || !ofi_of(b, &Q)) return -1;
+    if (!(ofx_lt(P.bh[0], P.bf[0], Q.bh[2], Q.bf[2]) && ofx_lt(Q.bh[0], Q.bf[0], P.bh[2], P.bf[2]) &&
+          ofx_lt(P.bh[1], P.bf[1], Q.bh[3], Q.bf[3]) && ofx_lt(Q.bh[1], Q.bf[1], P.bh[3], P.bf[3])))
+        return 0;
+    if (!precise(a) && !precise(b)) return -1;
+    pci_of(a, 0, 0, &A);
+    pci_of(b, 0, 0, &B);
+    if ((A.mask && (A.ml < 0 || A.mt < 0)) || (B.mask && (B.ml < 0 || B.mt < 0))) return -1;
+    /* the float boxes' overlap: max of the left / top sides, min of the right / bottom ones */
+    for (k = 0; k < 4; k++) {
+        int32_t ph = P.bh[k], qh = Q.bh[k];
+        uint32_t pf = P.bf[k], qf = Q.bf[k];
+        ofx_round(&ph, &pf);
+        ofx_round(&qh, &qf);
+        if (k < 2 ? ofx_lt(ph, pf, qh, qf) : ofx_lt(qh, qf, ph, pf)) { ph = qh; pf = qf; }
+        if (ph > 32766) return -1;
+        h[k] = ph; f[k] = pf;
+    }
+    c0 = ofx_lo(h[0], f[0]);
+    r0 = ofx_lo(h[1], f[1]);
+    c1 = ofx_hi(h[2], f[2]) - 1;
+    r1 = ofx_hi(h[3], f[3]) - 1;
+    A.x = P.xh + (P.sx > 0 ? P.xf > 0x80000000u : P.xf >= 0x80000000u);
+    A.y = P.yh + (P.sy > 0 ? P.yf > 0x80000000u : P.yf >= 0x80000000u);
+    B.x = Q.xh + (Q.sx > 0 ? Q.xf > 0x80000000u : Q.xf >= 0x80000000u);
+    B.y = Q.yh + (Q.sy > 0 ? Q.yf > 0x80000000u : Q.yf >= 0x80000000u);
+    pci_span(A.x, A.sx, A.xo, A.ml, A.mr, &c0, &c1);
+    pci_span(B.x, B.sx, B.xo, B.ml, B.mr, &c0, &c1);
+    pci_span(A.y, A.sy, A.yo, A.mt, A.mb, &r0, &r1);
+    pci_span(B.y, B.sy, B.yo, B.mt, B.mb, &r0, &r1);
+    return pci_scan(&A, &B, c0, c1, r0, r1);
+}
+
+/* overlap_at's float path (whole boxes and moves take the integer one) */
+static __attribute__((noinline)) int overlap_float(int a, double dx, double dy, int b)
 {
     double l, t, r, bb, l2, t2, r2, b2, ba[4];
-    int32_t ia[4], ib[4], idx, idy;
-    if (pin_ibox_s(a, ia) && pin_ibox_s(b, ib) && whole(dx, &idx) && whole(dy, &idy)) {
-        if (!(ia[0] + idx < ib[2] && ib[0] < ia[2] + idx && ia[1] + idy < ib[3] && ib[1] < ia[3] + idy))
-            return 0;
-        if (!precise(a) && !precise(b))
-            return 1;
-        return precise_collision_int(a, idx, idy, ia, b, ib);
-    }
-#ifdef FCOL_STATS
-    fcol_add(fcol_of ? fcol_of : "overlap_at(pass)", fcol_of ? fcol_ol : 0, FK_OVL, 1);
-#endif
     if (!pin_bbox(a, &l, &t, &r, &bb) || !pin_bbox(b, &l2, &t2, &r2, &b2))
         return 0;
     ba[0] = l; ba[1] = t; ba[2] = r; ba[3] = bb;
@@ -4420,6 +4567,35 @@ static int overlap_at(int a, double dx, double dy, int b)
         if ((A.ang != 0 || B.ang != 0) && !sa_collision(&A, &B)) return 0;
         return precise_collision(&A, &B);
     }
+}
+
+/* instance a (its bbox moved by dx, dy) against instance b */
+static int overlap_at(int a, double dx, double dy, int b)
+{
+    int32_t ia[4], ib[4], idx, idy;
+    if (pin_ibox_s(a, ia) && pin_ibox_s(b, ib) && whole(dx, &idx) && whole(dy, &idy)) {
+        if (!(ia[0] + idx < ib[2] && ib[0] < ia[2] + idx && ia[1] + idy < ib[3] && ib[1] < ia[3] + idy))
+            return 0;
+        if (!precise(a) && !precise(b))
+            return 1;
+        return precise_collision_int(a, idx, idy, ia, b, ib);
+    }
+#ifdef FCOL_STATS
+    fcol_add(fcol_of ? fcol_of : "overlap_at(pass)", fcol_of ? fcol_ol : 0, FK_OVL, 1);
+#endif
+    if (pcd(dx) == 0 && pcd(dy) == 0) {
+        int r = ovl_frac(a, b);
+        if (r >= 0) {
+#ifdef PLAY_STATS
+            if (r != overlap_float(a, dx, dy, b)) {
+                fprintf(stderr, "ovl_frac: answer %d differs from the float path (%d, %d)\n", r, a, b);
+                abort();
+            }
+#endif
+            return r;
+        }
+    }
+    return overlap_float(a, dx, dy, b);
 }
 
 int pin_overlap(int a, int b)
