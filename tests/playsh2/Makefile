@@ -42,7 +42,8 @@ endif
 FPCHECK ?= 0
 ifeq ($(FPCHECK),1)
 SRCS   += fpcheck.c fpref.c
-CFLAGS += $(addprefix -Wl$(comma)--wrap=__,adddf3 subdf3 addsf3 subsf3 eqdf2 nedf2 ltdf2 ledf2 gtdf2 gedf2)
+CFLAGS += $(addprefix -Wl$(comma)--wrap=__,adddf3 subdf3 addsf3 subsf3 eqdf2 nedf2 ltdf2 ledf2 gtdf2 gedf2 truncdfsf2) \
+          -Wl,--wrap=softfp_piece_y
 endif
 # PROF_WRAP=1: soft-float calls through wrap.S, so the samples inside them name their caller
 PROF_WRAP ?= 0

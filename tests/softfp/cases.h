@@ -122,9 +122,9 @@ static inline int32_t cs_i32(void)
 /* the operations, in the order of the case table */
 enum { OP_ADD, OP_SUB, OP_MUL, OP_DIV, OP_EQ, OP_NE, OP_LT, OP_LE, OP_GT, OP_GE, OP_UNORD, OP_EXT, OP_TRUNC,
        OP_I2D, OP_U2D, OP_D2I, OP_FADD, OP_FSUB, OP_FMUL, OP_FDIV, OP_FEQ, OP_FNE, OP_FLT, OP_FLE, OP_FGT, OP_FGE,
-       OP_I2F, OP_F2I, OP_PIECEY, OP_PIECEV, OP_N };
+       OP_I2F, OP_F2I, OP_PIECE, OP_TRUNCE, OP_PIECEE, OP_PIECEH, OP_N };
 static const char *const cs_opname[OP_N] = { "adddf3", "subdf3", "muldf3", "divdf3", "eqdf2", "nedf2", "ltdf2",
     "ledf2", "gtdf2", "gedf2", "unorddf2", "extendsfdf2", "truncdfsf2", "floatsidf", "floatunsidf", "fixdfsi",
     "addsf3", "subsf3", "mulsf3", "divsf3", "eqsf2", "nesf2", "ltsf2", "lesf2", "gtsf2", "gesf2", "floatsisf",
-    "fixsfsi", "piece_y", "piece_v" };
+    "fixsfsi", "piece", "trunc_edge", "piece_edge", "piece_host" };
 #endif

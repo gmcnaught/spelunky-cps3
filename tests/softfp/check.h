@@ -8,6 +8,36 @@
 
 struct cs_case { uint64_t a, b, c; };
 
+/* the case's index (OP_TRUNCE, OP_PIECEE, OP_PIECEH enumerate) */
+static long cs_k;
+
+/* the edge sets' binary64 fractions: zero, all ones, the last place, a binary32 tie bit below a float of the same
+   exponent (bit 28) and one place above it, random */
+static inline uint64_t cs_vm(uint32_t i)
+{
+    static const uint64_t m[5] = { 0, 0x000fffffffffffffull, 1, 0x10000000ull, 0x10000001ull };
+    return i < 5 ? m[i] : cs_next() & 0x000fffffffffffffull;
+}
+
+/* OP_PIECEH's table: piece_tuples.h (scripts: the host runs' rubblepiece_step operands), y, yVel, yAcc */
+#ifdef PIECE_TUPLES
+#include "piece_tuples.h"
+#else
+static const uint32_t pt_y[1] = { 0x43800000u };
+static const uint64_t pt_v[1] = { 0x3fe3333333333333ull }, pt_a[1] = { 0x3fe3333333333333ull };
+#define PT_N 1
+#endif
+static inline void cs_host(long k, uint64_t *a, uint64_t *b, uint64_t *c) { *a = pt_y[k]; *b = pt_v[k]; *c = pt_a[k]; }
+
+#define TRUNCE_N 196608L                             /* 2 x 2048 x 6 x 8 */
+#define PIECEE_N 6684672L                            /* 2 x (2 x 256 x 4 x 136 x 2 x 6) */
+/* the cases of op: the enumerations' sizes, else n (CASES) */
+static inline long cs_count(int op, long n)
+{
+    return op == OP_TRUNCE ? TRUNCE_N : op == OP_PIECEE ? PIECEE_N : op == OP_PIECEH ? (long)PT_N : n;
+}
+static inline int cs_piece(int op) { return op == OP_PIECE || op == OP_PIECEE || op == OP_PIECEH; }
+
 /* binary32 to binary64, exact (normal, subnormal, zero, infinity; a NaN keeps its payload): the case builders' */
 static inline uint64_t cs_widen(uint32_t f)
 {
@@ -55,7 +85,7 @@ static inline struct cs_case cs_case_for(int op)
         c.a = cs_f1();
         c.b = cs_f2((uint32_t)c.a);
         break;
-    case OP_PIECEY: case OP_PIECEV: {                /* a float y, its velocity v (b), the acceleration (c) */
+    case OP_PIECE: {                                 /* a float y (a), its velocity v (b), the acceleration (c) */
         uint32_t y = cs_f1(), k = cs_u32(8), ey = (y >> 23) & 0xff;
         uint64_t sg = (uint64_t)cs_u32(2) << 63;
         c.a = y;
@@ -67,13 +97,59 @@ static inline struct cs_case cs_case_for(int op)
         k = cs_u32(4);
         c.c = k == 0 ? cs_d1() : k == 1 ? cs_d2(c.b) : k == 2 ? 0x3fe3333333333333ull :     /* 0.6 */
               ((uint64_t)(1015 + cs_u32(10)) << 52) | (cs_next() & 0x000fffffffffffffull);
-        {   /* half the velocity cases the previous case's v and acceleration (the memo's hits) */
+        {   /* half the cases the previous case's v and acceleration (the memo's hits) */
             static uint64_t pb, pc;
-            if (op == OP_PIECEV && cs_u32(2)) { c.b = pb; c.c = pc; }
+            if (cs_u32(2)) { c.b = pb; c.c = pc; }
             pb = c.b; pc = c.c;
         }
         break;
     }
+    case OP_TRUNCE: {                                /* every sign and exponent (zeros, subnormals, inf, NaN payloads
+                                                        included) x 6 kept-bit x 8 lost-bit patterns */
+        static const uint32_t hi[6] = { 0, 1, 0x7fffff, 0x7ffffe, 0x400000, 0x2aaaaa };
+        static const uint32_t lo[8] = { 0, 1, 0x0fffffff, 0x10000000, 0x10000001, 0x1fffffff, 0x15555555, 0 };
+        uint64_t k = (uint64_t)cs_k;
+        uint32_t l = lo[(k >> 12) / 6];
+        if ((k >> 12) / 6 == 7) l = (uint32_t)cs_next() & 0x1fffffff;
+        c.a = ((k & 1) << 63) | (((k >> 1) & 2047) << 52) | ((uint64_t)hi[(k >> 12) % 6] << 29) | l;
+        c.b = c.c = 0;
+        break;
+    }
+    case OP_PIECEE: {                                /* y: every sign and exponent x 4 fractions; v and the acceleration:
+                                                        every exponent difference -66 .. 66 to y's (to v's), and the
+                                                        zero / subnormal, top finite and inf / NaN exponents, both signs,
+                                                        6 fractions; an odd case repeats the even one's v and acceleration
+                                                        (the memo's hit) with y's last bit flipped */
+        static const uint32_t ym[4] = { 0, 1, 0x7fffff, 0x400001 };
+        static uint64_t pb, pc;
+        uint64_t k = (uint64_t)cs_k >> 1, g, vm, am;
+        uint32_t y, ey, dv, da;
+        int ev, ea;
+        g = k;
+        y = (uint32_t)(g & 1) << 31; g >>= 1;
+        ey = (uint32_t)(g & 255); g >>= 8;
+        y |= ey << 23 | ym[g & 3]; g >>= 2;
+        dv = (uint32_t)(g % 136); g /= 136;
+        c.b = (g & 1) << 63; g >>= 1;
+        vm = cs_vm((uint32_t)(g % 6));
+        ev = dv < 133 ? (int)ey + 896 + (int)dv - 66 : dv == 133 ? 0 : dv == 134 ? 2046 : 2047;
+        if (ev < 0) ev = 0;
+        if (ev > 2047) ev = 2047;
+        c.b |= ((uint64_t)ev << 52) | vm;
+        da = (uint32_t)((k * 7) % 136);
+        am = cs_vm((uint32_t)((k * 5) % 6));
+        ea = da < 133 ? ev + (int)da - 66 : da == 133 ? 0 : da == 134 ? 2046 : 2047;
+        if (ea < 0) ea = 0;
+        if (ea > 2047) ea = 2047;
+        c.c = ((k * 3) & 2 ? 0x8000000000000000ull : 0) | ((uint64_t)ea << 52) | am;
+        c.a = y;
+        if (cs_k & 1) { c.b = pb; c.c = pc; c.a = y ^ 1; }
+        pb = c.b; pc = c.c;
+        break;
+    }
+    case OP_PIECEH:                                  /* the tuples the 184 host runs feed rubblepiece_step (cs_host) */
+        cs_host(cs_k, &c.a, &c.b, &c.c);
+        break;
     case OP_TRUNC:                                   /* a third near the rounding: the 29 bits below a tie, 0, all
                                                         ones; exponents at the float's normal ends */
         if (cs_u32(3) == 0) {

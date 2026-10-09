@@ -47,7 +47,17 @@ emu.register_periodic(function()
     end
     g:close()
   end
-  -- FPCHECK builds (tests/playsh2/fpcheck.c): the assembly / C soft-float disagreements
+  -- FPCHECK builds (tests/playsh2/fpcheck.c): the calls checked per op, the assembly / C soft-float disagreements
+  local cc = {}
+  for op = 1, 13 do
+    local n = mem:read_u32(0x041a1000 + 4 * op)
+    if n > 0 and n < 0xffffffff then cc[#cc + 1] = string.format("C %d %d\n", op, n) end
+  end
+  if #cc > 0 then
+    local g = io.open(out .. ".fpcount", "w")
+    for _, l in ipairs(cc) do g:write(l) end
+    g:close()
+  end
   local nf = mem:read_u32(0x041a0000)
   if nf > 0 then
     local g = io.open(out .. ".fpcheck", "w")

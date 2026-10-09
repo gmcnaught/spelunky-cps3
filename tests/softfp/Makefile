@@ -4,8 +4,10 @@
 PROG   := softfp
 TITLE  := Spelunky CPS3 soft-float test
 CASES  ?= 500000
+OPMASK ?= 0xffffffffffffffffull
+PT     := $(if $(wildcard build/piece_tuples.h),-DPIECE_TUPLES -Ibuild,)
 SRCS   := main.c build/softfp_sf.c build/softfp_sh2_sf.S
-CFLAGS := -O2 -std=gnu99 -fno-bit-tests -I. -DSOFTFP_SFNAMES -DSOFTFP_ASM -DCASES=$(CASES) -Wno-unused-parameter
+CFLAGS := -O2 -std=gnu99 -fno-bit-tests -I. -DSOFTFP_SFNAMES -DSOFTFP_ASM -DCASES=$(CASES) -DOPMASK=$(OPMASK) $(PT) -Wno-unused-parameter
 include ../../../cps3-testgame/sdk/sdk.mk
 
 # softfp.c under its sf_* names (libgcc keeps the __* ones)

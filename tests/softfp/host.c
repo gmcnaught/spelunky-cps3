@@ -27,8 +27,6 @@ static uint64_t U(double d) { uint64_t u; memcpy(&u, &d, 8); return u; }
 static float Fl(uint32_t u) { float f; memcpy(&f, &u, 4); return f; }
 static uint32_t UF(float f) { uint32_t u; memcpy(&u, &f, 4); return u; }
 
-/* OP_PIECEY / OP_PIECEV: the acceleration (the case's c) */
-static uint64_t run_c;
 /* the soft-float result, canonical */
 static uint64_t soft(int op, uint64_t a, uint64_t b, int *raw)
 {
@@ -48,7 +46,7 @@ static uint64_t soft(int op, uint64_t a, uint64_t b, int *raw)
     case OP_GE: r = sf_gedf2(a, b); v = rel(op, r); break;
     case OP_UNORD: r = sf_unorddf2(a, b); v = r != 0; break;
     case OP_EXT: v = canon_d(sf_extendsfdf2(fa)); break;
-    case OP_TRUNC: v = canon_f(sf_truncdfsf2(a)); break;
+    case OP_TRUNC: case OP_TRUNCE: v = canon_f(sf_truncdfsf2(a)); break;
     case OP_I2D: v = sf_floatsidf((int32_t)fa); break;
     case OP_U2D: v = sf_floatunsidf(fa); break;
     case OP_D2I: v = (uint32_t)sf_fixdfsi(a); break;
@@ -64,8 +62,6 @@ static uint64_t soft(int op, uint64_t a, uint64_t b, int *raw)
     case OP_FGE: r = sf_gesf2(fa, fb); v = rel(op, r); break;
     case OP_I2F: v = sf_floatsisf((int32_t)fa); break;
     case OP_F2I: v = (uint32_t)sf_fixsfsi(fa); break;
-    case OP_PIECEY: v = canon_f(sf_truncdfsf2(sf_adddf3(sf_extendsfdf2(fa), b))); break;
-    case OP_PIECEV: v = canon_d(sf_adddf3(b, run_c)); break;
     }
     *raw = r;
     return v;
@@ -97,7 +93,7 @@ static uint64_t fpu(int op, uint64_t a, uint64_t b)
     case OP_GE: return x >= y;
     case OP_UNORD: return x != x || y != y;
     case OP_EXT: return canon_d(U((double)fx));
-    case OP_TRUNC: return canon_f(UF((float)x));
+    case OP_TRUNC: case OP_TRUNCE: return canon_f(UF((float)x));
     case OP_I2D: return U((double)(int32_t)(uint32_t)a);
     case OP_U2D: return U((double)(uint32_t)a);
     case OP_D2I: return d2i(x);
@@ -113,8 +109,6 @@ static uint64_t fpu(int op, uint64_t a, uint64_t b)
     case OP_FGE: return fx >= fy;
     case OP_I2F: return UF((float)(int32_t)(uint32_t)a);
     case OP_F2I: return d2i((double)fx);
-    case OP_PIECEY: return canon_f(UF((float)((double)fx + y)));
-    case OP_PIECEV: { volatile double z = D(run_c); return canon_d(U(y + z)); }
     }
     return 0;
 }
@@ -130,28 +124,43 @@ static int has_nan(int op, uint64_t a, uint64_t b)
 int main(int argc, char **argv)
 {
     long n = argc > 1 ? atol(argv[1]) : 1000000, total = 0, bad = 0;
+    uint64_t mask = argc > 2 ? strtoull(argv[2], 0, 0) : ~0ull;
     for (int op = 0; op < OP_N; op++) {
         uint32_t h = 2166136261u;
-        long nb = 0;
+        long nb = 0, m = (mask >> op) & 1 ? cs_count(op, n) : 0;
         cs_state = 0x9e3779b97f4a7c15ull + (uint64_t)op;
-        for (long k = 0; k < n; k++) {
-            struct cs_case c = cs_case_for(op);
-            int raw;
-            run_c = c.c;
-            uint64_t s = soft(op, c.a, c.b, &raw), f = fpu(op, c.a, c.b);
-            int ok = s == f;
+        for (long k = 0; k < m; k++) {
+            struct cs_case c;
+            int raw = 0, ok;
+            uint64_t s, f;
+            cs_k = k;
+            c = cs_case_for(op);
+            if (cs_piece(op)) {                     /* the new y and yVel + yAcc: softfp.c's calls and the FPU */
+                uint32_t fa = (uint32_t)c.a;
+                uint64_t sv = sf_adddf3(c.b, c.c);
+                volatile float fx = Fl(fa);
+                volatile double v = D(c.b), a = D(c.c);
+                s = canon_f(sf_truncdfsf2(sf_adddf3(sf_extendsfdf2(fa), c.b)));
+                f = canon_f(UF((float)((double)fx + v)));
+                ok = s == f && canon_d(sv) == canon_d(U(v + a));
+                for (int i = 0; i < 64; i += 8) { h ^= (uint32_t)(canon_d(sv) >> i) & 0xff; h *= 16777619u; }
+            } else {
+                s = soft(op, c.a, c.b, &raw);
+                f = fpu(op, c.a, c.b);
+                ok = s == f;
+            }
             if (ok && is_cmp(op)) {                 /* fp-bit's values: -1 / 0 / 1; NaN: 1, or -1 for gt / ge */
                 if (raw < -1 || raw > 1) ok = 0;
                 if (has_nan(op, c.a, c.b))
                     ok = raw == ((op == OP_GT || op == OP_GE || op == OP_FGT || op == OP_FGE) ? -1 : 1);
             }
             if (!ok && nb++ < 5)
-                printf("  %s %016llx %016llx: soft %llx fpu %llx (raw %d)\n", cs_opname[op], (unsigned long long)c.a,
-                       (unsigned long long)c.b, (unsigned long long)s, (unsigned long long)f, raw);
+                printf("  %s %016llx %016llx %016llx: soft %llx fpu %llx (raw %d)\n", cs_opname[op], (unsigned long long)c.a,
+                       (unsigned long long)c.b, (unsigned long long)c.c, (unsigned long long)s, (unsigned long long)f, raw);
             for (int i = 0; i < 64; i += 8) { h ^= (uint32_t)(s >> i) & 0xff; h *= 16777619u; }
         }
-        printf("%-12s %ld cases, %ld differ, hash %08x\n", cs_opname[op], n, nb, h);
-        total += n;
+        printf("%-12s %ld cases, %ld differ, hash %08x\n", cs_opname[op], m, nb, h);
+        total += m;
         bad += nb;
     }
     printf("total %ld cases, %ld differ\n", total, bad);

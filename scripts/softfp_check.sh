@@ -2,16 +2,20 @@
 # src/sh2/softfp.c (the soft-float replacing libgcc's fp-bit): the host test against the host's FPU, then the SH-2
 # test in MAME against fp-bit on the same cases; the SH-2's hash per operation must equal the host's (= the FPU's
 # results) and no raw result may differ from fp-bit's. Clocks per call (MAME) for both.
-#   [CASES=500000] scripts/softfp_check.sh
+#   [CASES=500000] [OPMASK=<bits>] [SECONDS_TO_RUN=20000] scripts/softfp_check.sh
+# OPMASK: only the operations whose bit is set (cases.h's order; e.g. 0x10001000 = truncdfsf2 and piece with
+# CASES=1000000000: the bulk run); the enumerated sets (trunc_edge, piece_edge, piece_host) have their own sizes.
+# piece_host replays tests/softfp/build/piece_tuples.h when it exists (the host runs' rubblepiece_step operands).
 set -e
 cd "$(dirname "$0")/.."
 T=tests/softfp; B=$T/build; O=$B/run; rm -rf "$O"; mkdir -p "$O/w"
 N=${CASES:-500000}
-cc -std=c99 -O2 -ffp-contract=off -Wall -Wextra -DSOFTFP_HOST -I$T -o $B/host $T/host.c src/sh2/softfp.c
-$B/host $N > "$O/host.txt" || true
-scripts/dmake.sh $T -B CASES=$N >/dev/null    # -B: the SH-2 build must use this run's CASES
+PT=; [ -f $B/piece_tuples.h ] && PT="-DPIECE_TUPLES -I$B"
+cc -std=c99 -O2 -ffp-contract=off -Wall -Wextra -DSOFTFP_HOST $PT -I$T -o $B/host $T/host.c src/sh2/softfp.c
+$B/host $N ${OPMASK:-0xffffffffffffffff} > "$O/host.txt" || true
+scripts/dmake.sh $T -B CASES=$N OPMASK=${OPMASK:-0xffffffffffffffffull} >/dev/null    # -B: the SH-2 build must use this run's CASES
 SOFTFP_OUT="$O/sh2.txt" scripts/mame.sh sfiii3na -rompath "$B/mame" -skip_gameinfo -nothrottle -sound none -video none \
-  -seconds_to_run 20000 -cfg_directory "$O/w/cfg" -nvram_directory "$O/w/nvram" -snapshot_directory "$O/w/snap" \
+  -seconds_to_run ${SECONDS_TO_RUN:-20000} -cfg_directory "$O/w/cfg" -nvram_directory "$O/w/nvram" -snapshot_directory "$O/w/snap" \
   -diff_directory "$O/w/diff" -state_directory "$O/w/sta" -inipath "$O/w" -autoboot_script scripts/lua/softfp.lua \
   >"$O/mame.log" 2>&1 || true
 python3 - "$O/host.txt" "$O/sh2.txt" <<'PY'

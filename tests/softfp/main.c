@@ -33,8 +33,6 @@ DECL(lesf2, int, uint32_t, uint32_t) DECL(gtsf2, int, uint32_t, uint32_t) DECL(g
 DECL(floatsisf, uint32_t, int32_t) DECL(fixsfsi, int32_t, uint32_t)
 uint32_t sf_piece_y(uint32_t y, uint64_t *v);      /* softfp_sh2.S's debris y move (v[0] yVel, v[2] yAcc) */
 
-/* OP_PIECEY / OP_PIECEV: the acceleration (the case's c) */
-static uint64_t run_c;
 
 /* the piece's y move: fp-bit's calls (impl 0), softfp_sh2.S's (1); the new y, and yVel + yAcc in *nv */
 static uint32_t piece(int impl, uint32_t y, uint64_t v, uint64_t acc, uint64_t *nv)
@@ -69,7 +67,7 @@ static uint64_t run(int impl, int op, uint64_t a, uint64_t b)
     case OP_GE: return (uint64_t)(int64_t)P(gedf2, a, b);
     case OP_UNORD: return (uint64_t)(int64_t)P(unorddf2, a, b);
     case OP_EXT: return P(extendsfdf2, fa);
-    case OP_TRUNC: return P(truncdfsf2, a);
+    case OP_TRUNC: case OP_TRUNCE: return P(truncdfsf2, a);
     case OP_I2D: return P(floatsidf, (int32_t)fa);
     case OP_U2D: return P(floatunsidf, fa);
     case OP_D2I: return (uint32_t)P(fixdfsi, a);
@@ -85,8 +83,6 @@ static uint64_t run(int impl, int op, uint64_t a, uint64_t b)
     case OP_FGE: return (uint64_t)(int64_t)P(gesf2, fa, fb);
     case OP_I2F: return P(floatsisf, (int32_t)fa);
     case OP_F2I: return (uint32_t)P(fixsfsi, fa);
-    case OP_PIECEY: { uint64_t nv; return piece(impl, fa, b, run_c, &nv); }
-    case OP_PIECEV: { uint64_t nv; (void)piece(impl, fa, b, run_c, &nv); return nv; }
     }
     return 0;
 #undef P
@@ -96,8 +92,8 @@ static uint64_t run(int impl, int op, uint64_t a, uint64_t b)
 static uint64_t canon(int op, uint64_t r)
 {
     switch (op) {
-    case OP_ADD: case OP_SUB: case OP_MUL: case OP_DIV: case OP_EXT: case OP_PIECEV: return canon_d(r);
-    case OP_TRUNC: case OP_PIECEY: case OP_FADD: case OP_FSUB: case OP_FMUL: case OP_FDIV: return canon_f((uint32_t)r);
+    case OP_ADD: case OP_SUB: case OP_MUL: case OP_DIV: case OP_EXT: return canon_d(r);
+    case OP_TRUNC: case OP_TRUNCE: case OP_FADD: case OP_FSUB: case OP_FMUL: case OP_FDIV: return canon_f((uint32_t)r);
     case OP_EQ: case OP_NE: case OP_LT: case OP_LE: case OP_GT: case OP_GE: case OP_FEQ: case OP_FNE: case OP_FLT:
     case OP_FLE: case OP_FGT: case OP_FGE: return rel(op, (int)(int64_t)r);
     case OP_UNORD: return r != 0;
@@ -141,7 +137,7 @@ static uint32_t time256(int impl, int op)
     F2(OP_FADD, addsf3) F2(OP_FSUB, subsf3) F2(OP_FMUL, mulsf3) F2(OP_FDIV, divsf3) F2(OP_FEQ, eqsf2)
     F2(OP_FNE, nesf2) F2(OP_FLT, ltsf2) F2(OP_FLE, lesf2) F2(OP_FGT, gtsf2) F2(OP_FGE, gesf2)
     U1(OP_I2F, floatsisf, ti) U1(OP_F2I, fixsfsi, tf)
-    case OP_PIECEY: case OP_PIECEV: {                /* yVel + yAcc repeated in 4 calls of 4 */
+    case OP_PIECE: case OP_PIECEE: case OP_PIECEH: { /* yVel + yAcc repeated in 4 calls of 4 */
         uint64_t nv;
         for (k = 0; k < 256; k++) sink = piece(impl, tf[k & 7], tv[(k >> 2) & 7], 0x3fe3333333333333ull, &nv);
         break;
@@ -151,6 +147,11 @@ static uint32_t time256(int impl, int op)
     }
     return ((frc() - t0) & 0xffff) * 8;
 }
+
+/* OPMASK (make): the operations run (bit op; default all) */
+#ifndef OPMASK
+#define OPMASK 0xffffffffffffffffull
+#endif
 
 int main(void)
 {
@@ -162,14 +163,23 @@ int main(void)
     for (op = 0; op < OP_N; op++) {
         volatile uint32_t *o = (volatile uint32_t *)(0x04000100 + 64 * op);
         uint32_t h = 2166136261u, nb = 0;
-        long k;
+        long k, n = ((uint64_t)(OPMASK) >> op) & 1 ? cs_count(op, CASES) : 0;
         int i;
         cs_state = 0x9e3779b97f4a7c15ull + (uint64_t)op;
-        for (k = 0; k < CASES; k++) {
-            struct cs_case c = cs_case_for(op);
-            uint64_t f, s, v;
-            run_c = c.c;
-            f = run(0, op, c.a, c.b); s = run(1, op, c.a, c.b); v = canon(op, s);
+        for (k = 0; k < n; k++) {
+            struct cs_case c;
+            uint64_t f, s, v, fv = 0, sv = 0;
+            cs_k = k;
+            c = cs_case_for(op);
+            if (cs_piece(op)) {                     /* the new y and yVel + yAcc both */
+                f = piece(0, (uint32_t)c.a, c.b, c.c, &fv);
+                s = piece(1, (uint32_t)c.a, c.b, c.c, &sv);
+                if (fv != sv) f = ~s;
+                v = canon_f((uint32_t)s);
+                for (i = 0; i < 64; i += 8) { h ^= (uint32_t)(canon_d(sv) >> i) & 0xff; h *= 16777619u; }
+            } else {
+                f = run(0, op, c.a, c.b); s = run(1, op, c.a, c.b); v = canon(op, s);
+            }
             if (f != s) {
                 if (nb < 2) {
                     o[6 + 5 * nb] = (uint32_t)(c.a >> 32);
@@ -182,12 +192,12 @@ int main(void)
             }
             for (i = 0; i < 64; i += 8) { h ^= (uint32_t)(v >> i) & 0xff; h *= 16777619u; }
         }
-        o[0] = CASES;
+        o[0] = (uint32_t)n;
         o[1] = nb;
         o[2] = h;
-        o[3] = time256(0, op);
-        o[4] = time256(1, op);
-        o[5] = time256(0, -1);
+        o[3] = n ? time256(0, op) : 0;
+        o[4] = n ? time256(1, op) : 0;
+        o[5] = n ? time256(0, -1) : 0;
         R32(0x04000010) = (uint32_t)op + 1;         /* progress */
     }
     R32(0x04000004) = 1;
