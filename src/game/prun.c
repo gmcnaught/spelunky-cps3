@@ -253,8 +253,12 @@ static void draw_and_view(void)
     /* the instances with a Draw event in creation order (an object with an event is not terrain: the list of the
        alive non-terrain instances, pworld.c, in creation order), then any created meanwhile (pw_ord from n0 on,
        as the scan of every instance reached them) */
-    for (k = pw_nthead; k >= 0; k = pw_ntnext[k])
-        if (objev(PW.in[k].obj) & EV_DRAW) order[m++] = (int16_t)k;
+    for (k = pw_nthead; k >= 0; k = pw_ntnext[k]) {
+#ifdef PLAY_STATS
+        if (!(pw_ntfl[k] & NTF_DRAW) != !(objev(PW.in[k].obj) & EV_DRAW)) { fprintf(stderr, "pw_ntfl %d\n", k); abort(); }
+#endif
+        if (pw_ntfl[k] & NTF_DRAW) order[m++] = (int16_t)k;   /* (objev(obj) & EV_DRAW: pin_add's byte) */
+    }
     for (j = 0; j < m; j++) {
         k = order[j];
         if (PW.in[k].alive && PW.in[k].visible) { ev_draw(k); pcol_event_done(k); }
@@ -644,7 +648,10 @@ static void deact_pass(void)
     dl_n = n;
     for (i = pw_nthead; i >= 0; i = pw_ntnext[i]) {   /* creation order; the list below takes them newest first */
         const struct pin *p = &PX(i);
-        if (!DCAND(p->obj) || !doutside(p, x0, y0, x1, y1)) continue;
+#ifdef PLAY_STATS
+        if (!(pw_ntfl[i] & NTF_DCAND) != !DCAND(p->obj)) { fprintf(stderr, "pw_ntfl %d\n", i); abort(); }
+#endif
+        if (!(pw_ntfl[i] & NTF_DCAND) || !doutside(p, x0, y0, x1, y1)) continue;   /* (DCAND(p->obj)) */
         if (p->ext && (PE(p)->held || PE(p)->forSale)) continue;
         cand[nc++] = (int16_t)i;
     }
@@ -654,6 +661,18 @@ static void deact_pass(void)
     dl_n += nc;
 }
 #endif
+
+/* pw_ntfl's bits of an object (play.h; pin_add keeps them per slot): its Draw event (objev's EV_DRAW bit: oGamepad's
+   extra bits are others) and deact_pass's candidacy (DCAND: dbits is made once and never changes) */
+int prun_ntfl(int obj)
+{
+    int f = (pobj[obj].ev & EV_DRAW) ? NTF_DRAW : 0;
+#if PLAY_DEACT
+    if (!dbits_ok) dcand_init();
+    if (DCAND(obj)) f |= NTF_DCAND;
+#endif
+    return f;
+}
 
 /* enter the room of a room_goto(); 0, or the room if the play loop does not model it */
 static int room_change(void)

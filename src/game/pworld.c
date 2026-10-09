@@ -158,6 +158,7 @@ int16_t pw_ahead, pw_anext[PIN_MAX];
 static int16_t pw_atail, aprev[PIN_MAX];
 /* the alive non-terrain instances (pin_needs_ext 1) in creation order: pw_nthead, then pw_ntnext[i] */
 int16_t pw_nthead, pw_ntnext[PIN_MAX];
+uint8_t pw_ntfl[PIN_MAX];                        /* play.h NTF_*: the object's, set by pin_add (pa_fl) */
 static int16_t pw_nttail, ntprev[PIN_MAX];
 static int16_t otail[OBJ_COUNT], iprev[PIN_MAX];
 /* the instances to animate (prun.c animate): alive instances in creation order, pw_tahead then pw_tanext[i], except
@@ -819,16 +820,17 @@ void pw_reset(void)
    pin_needs_ext's memo is too), so a kept entry holds what the tables give. The entry before it is kept too (pb_*):
    a block's rubble alternates oRubble and oRubbleSmall */
 static int16_t pa_obj = -1, pa_spr, pb_obj = -1, pb_spr;
-static uint8_t pa_vis, pa_ext, pa_en, pb_vis, pb_ext, pb_en;
+static uint8_t pa_vis, pa_ext, pa_en, pa_fl, pb_vis, pb_ext, pb_en, pb_fl;
 static float pa_depth, pb_depth;
 
 static __attribute__((noinline)) void pa_fill(int obj)
 {
     int16_t o = pa_obj, sp = pa_spr;
-    uint8_t v = pa_vis, x = pa_ext, e = pa_en;
+    uint8_t v = pa_vis, x = pa_ext, e = pa_en, f = pa_fl;
     float d = pa_depth;
     if (obj == pb_obj) {
         pa_obj = pb_obj; pa_spr = pb_spr; pa_vis = pb_vis; pa_depth = pb_depth; pa_ext = pb_ext; pa_en = pb_en;
+        pa_fl = pb_fl;
     } else {
         pa_obj = (int16_t)obj;
         pa_spr = gobjspr[obj];
@@ -836,8 +838,9 @@ static __attribute__((noinline)) void pa_fill(int obj)
         pa_depth = objdefs[obj].depth;
         pa_ext = (uint8_t)pin_needs_ext(obj);
         pa_en = (uint8_t)pin_needs_en(obj);
+        pa_fl = (uint8_t)prun_ntfl(obj);
     }
-    pb_obj = o; pb_spr = sp; pb_vis = v; pb_depth = d; pb_ext = x; pb_en = e;
+    pb_obj = o; pb_spr = sp; pb_vis = v; pb_depth = d; pb_ext = x; pb_en = e; pb_fl = f;
 }
 
 int pin_add(int obj, pos x, pos y, int32_t id)
@@ -865,10 +868,14 @@ int pin_add(int obj, pos x, pos y, int32_t id)
     if (obj != pa_obj) pa_fill(obj);
 #ifdef PLAY_STATS
     if (pa_spr != gobjspr[obj] || pa_vis != pobj[obj].visible || pa_depth != (float)objdefs[obj].depth ||
-        pa_ext != pin_needs_ext(obj) || pa_en != pin_needs_en(obj)) { fprintf(stderr, "pin_add: kept constants of %d differ\n", obj); abort(); }
+        pa_ext != pin_needs_ext(obj) || pa_en != pin_needs_en(obj) || pa_fl != prun_ntfl(obj)) {
+        fprintf(stderr, "pin_add: kept constants of %d differ\n", obj);
+        abort();
+    }
 #endif
     p->id = id;
     p->obj = (int16_t)obj;
+    pw_ntfl[i] = pa_fl;
     PIN_WR(int16_t, p->spr) = pa_spr;               /* a new instance: pcol_added takes it as it is */
     PIN_WR(int16_t, p->mask) = -1;
     p->alive = 1;

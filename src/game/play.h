@@ -396,6 +396,12 @@ int pw_grid_tcell(int cx, int cy);
 int pw_grid_next(int k);
 void pw_grid_extent(int *w, int *h);
 extern int16_t pw_nthead, pw_ntnext[PIN_MAX];
+/* per slot, bits of its object set by pin_add (prun_ntfl), so the walks over pw_nthead's list read a byte, not the
+   instance: NTF_DRAW the object has a Draw event, NTF_DCAND it is an off-view deactivation candidate (prun.c) */
+#define NTF_DRAW 1
+#define NTF_DCAND 2
+extern uint8_t pw_ntfl[PIN_MAX];
+int prun_ntfl(int obj);                          /* prun.c: obj's NTF_DRAW and NTF_DCAND bits */
 void pw_draw_dirty_clear(void);
 int collision_point_p(double px, double py, int obj, int prec, int notme_self);
 int collision_point_any(double px, double py, int obj, int prec, int notme_self);   /* collision_point_p(..) != NOONE */
