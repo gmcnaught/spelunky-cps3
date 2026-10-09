@@ -816,19 +816,28 @@ void pw_reset(void)
 /* pin_add's constants of the object created last (creations come in runs of one object: an explosion's rubble, a
    blood spray, the transition room's blocks): its sprite, visible, depth as a float (objdefs' int: a __floatsisf
    call), and whether it gets a pin_ext / pin_en record. All are functions of the object alone (const tables;
-   pin_needs_ext's memo is too), so a kept entry holds what the tables give */
-static int16_t pa_obj = -1, pa_spr;
-static uint8_t pa_vis, pa_ext, pa_en;
-static float pa_depth;
+   pin_needs_ext's memo is too), so a kept entry holds what the tables give. The entry before it is kept too (pb_*):
+   a block's rubble alternates oRubble and oRubbleSmall */
+static int16_t pa_obj = -1, pa_spr, pb_obj = -1, pb_spr;
+static uint8_t pa_vis, pa_ext, pa_en, pb_vis, pb_ext, pb_en;
+static float pa_depth, pb_depth;
 
 static __attribute__((noinline)) void pa_fill(int obj)
 {
-    pa_obj = (int16_t)obj;
-    pa_spr = gobjspr[obj];
-    pa_vis = pobj[obj].visible;
-    pa_depth = objdefs[obj].depth;
-    pa_ext = (uint8_t)pin_needs_ext(obj);
-    pa_en = (uint8_t)pin_needs_en(obj);
+    int16_t o = pa_obj, sp = pa_spr;
+    uint8_t v = pa_vis, x = pa_ext, e = pa_en;
+    float d = pa_depth;
+    if (obj == pb_obj) {
+        pa_obj = pb_obj; pa_spr = pb_spr; pa_vis = pb_vis; pa_depth = pb_depth; pa_ext = pb_ext; pa_en = pb_en;
+    } else {
+        pa_obj = (int16_t)obj;
+        pa_spr = gobjspr[obj];
+        pa_vis = pobj[obj].visible;
+        pa_depth = objdefs[obj].depth;
+        pa_ext = (uint8_t)pin_needs_ext(obj);
+        pa_en = (uint8_t)pin_needs_en(obj);
+    }
+    pb_obj = o; pb_spr = sp; pb_vis = v; pb_depth = d; pb_ext = x; pb_en = e;
 }
 
 int pin_add(int obj, pos x, pos y, int32_t id)
