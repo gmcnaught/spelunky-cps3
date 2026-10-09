@@ -995,6 +995,8 @@ player's rectangles at a fractional position (rq_init 5.4 K a call).
 | 4616e50 | pw_piece_tests: the oSolid search on the piece's own query |
 | 061c66e | pcinst_of_raw: sprite ints by fint15, a zero test on the bits |
 | ef8fa7a | the _at forms at a fractional x, y (pfrac_ok: +-0 or 1/2 <= \|x\| < 2^13): float sums, pfloor_int / pfr ints, no doubles |
+| 59a8c36 | rect_at_frac's floors in its entry test (SH-2 GCC maybe-uninitialized warning; codegen) |
+| 2d58088 | collision_point_any_at's oSolid fallback search on its own whole query (22,269 host calls; playsh2 SOFTFP all-step mean 69,323 -> 69,310, 9,701 / 9,701; not traced) |
 
 Proofs beyond the value arguments: PLAY_STATS compares every new query struct (pq, rq, qrect's rectangle, the
 pcinst floats and boxes) with the double path's and every pc_rows answer with the old loop; test/host/pcrows (20 M
