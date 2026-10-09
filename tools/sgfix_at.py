@@ -27,15 +27,17 @@ def coord(a, axis):
 
 PIN = {}      # (file, P) at a match: the instance P points to (resolve_p)
 def resolve_p(path, off, src):
-    """the enclosing function (column-0 braces) of byte offset off: its one `struct pin *P = &PX(i);` for each P, when
-    neither P nor i is assigned again in it (i a parameter or local); {P: i}"""
+    """the enclosing function (column-0 braces) of byte offset off: its `struct pin *P = &PX(i);` for each P, when
+    P is assigned nothing else in it and i is not assigned (i a parameter or local); {P: i}"""
     b = src.rfind(b'\n{\n', 0, off); e = src.find(b'\n}\n', off)
     if b < 0 or e < 0: return {}
     body = src[b:e].decode()
     out = {}
     for m in re.finditer(r'struct pin \*(\w+) = &PX\((\w+)\);', body):
         P, i = m.group(1), m.group(2)
-        if len(re.findall(r'(?<![\w>.])%s\s*=(?!=)' % P, body)) != 1: continue
+        # every assignment of P is P = &PX(i) (re-reads of the same slot after calls are kept)
+        if len(re.findall(r'(?<![\w>.])%s\s*=(?!=)' % P, body)) != len(re.findall(r'(?<![\w>.])%s = &PX\(%s\);' % (P, i), body)):
+            continue
         if re.search(r'(?<![\w>.])%s\s*([-+*/]?=(?!=)|\+\+|--)' % i, body): continue
         out[P] = i
     return out

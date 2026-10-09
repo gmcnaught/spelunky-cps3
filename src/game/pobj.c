@@ -746,7 +746,7 @@ void item_step(int i)
     } else if (p->type != T_BOMB && p->type != T_ARROW && rest_skip(i, &br)) {
         /* the terrain part as its last full run (rest_skip); the lava tests below still run */
     } else if (rest = p->type != T_BOMB && p->type != T_ARROW, rest ? rest_begin(i) : (void)0,   /* (comma: only on */
-               !collision_point_any(PTOD(p->x), PTOD(p->y), OBJ_oSolid, 0, NOONE)) {   /* :69   reaching here) */
+               !collision_point_any_at(i, 0, 0, OBJ_oSolid)) {   /* :69   reaching here) */
         br = 1;
         moveTo(i, PE(p)->xVel, PE(p)->yVel, 0, 0);
         PE(p)->colLeft = PE(p)->colRight = PE(p)->colBot = PE(p)->colTop = 0;
@@ -884,7 +884,7 @@ static void jar_step(int i, int skull)
             if (NGT_COLD(NABS(PE(p)->xVel), skull ? N(2) : N(3))) destroy = 1;
             PE(p)->xVel = NMUL(-PE(p)->xVel, N(0.5));
         }
-        if (!skull && collision_point_any(PTOD(p->x), PTOD(p->y), OBJ_oSolid, 0, NOONE)) destroy = 1;
+        if (!skull && collision_point_any_at(i, 0, 0, OBJ_oSolid)) destroy = 1;
         if (PE(p)->colBot) {
             if (CGT(PE(p)->yVel, 3, CMPC_H_3)) destroy = 1;
             if (CGT(PE(p)->yVel, 1, CMPC_H_1)) PE(p)->yVel = NMUL(-PE(p)->yVel, N(0.5));
@@ -1093,10 +1093,10 @@ static void ropethrow_step(int i)
     if (PE(p)->armed && NGE(PE(p)->yVel, N(0))) {
         move_snap(i, 16, 1);
         if (PE(p)->px < NP(p->x)) {
-            if (!collision_point_any(PTOD(p->x) - 8, PTOD(p->y), OBJ_oSolid, 0, NOONE)) pin_setx(p, p->x - (PI(8)));
+            if (!collision_point_any_at(i, -8, 0, OBJ_oSolid)) pin_setx(p, p->x - (PI(8)));
             else pin_setx(p, p->x + (PI(8)));
         } else {
-            if (!collision_point_any(PTOD(p->x) + 8, PTOD(p->y), OBJ_oSolid, 0, NOONE)) pin_setx(p, p->x + (PI(8)));
+            if (!collision_point_any_at(i, 8, 0, OBJ_oSolid)) pin_setx(p, p->x + (PI(8)));
             else pin_setx(p, p->x - (PI(8)));
         }
         pin_create(p->x, p->y, OBJ_oRopeTop);
@@ -1146,7 +1146,7 @@ static void goldidol_step(int i)
     p = &PX(i);
     if (inview(i, 8)) {
         if (isLevel()) {
-            if (!PE(p)->held && collision_point_p(PTOD(p->x), PTOD(p->y) + 4, OBJ_oBrickSmooth, 0, NOONE) != NOONE &&
+            if (!PE(p)->held && collision_point_any_at(i, 0, 4, OBJ_oBrickSmooth) &&
                 instance_exists_p(OBJ_oShopkeeper) && G.thiefLevel == 0 && !G.murderer)
                 pitems_world(1043, i, 0);
         }
