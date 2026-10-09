@@ -40,6 +40,11 @@ static int spr_of(const struct pin *p) { return p->mask >= 0 ? p->mask : p->spr;
 static void grid_reset(void);
 static void grid_unlink(int i);
 static void grid_dirty(int i);
+static inline void grid_dirty_g(int i, int o, int g);
+/* per object, computed at its first grid_dirty (after the first level start: xbits is set then): bit 1 its instances
+   go in the grid (obj_is(o, oSolid) || !pin_needs_ext(o): constant per object), bit 2 xbits[o] != 0 (the static-family
+   index; constant), bit 0 computed */
+static uint8_t gobj[OBJ_COUNT];
 static void grid_flush_run(void);
 static int16_t ghead[GRID_H][GRID_W];       /* the oSolid family (point queries) */
 static int16_t thead[GRID_H][GRID_W];       /* the other terrain (the drawing only) */
@@ -389,16 +394,34 @@ void pw_draw_dirty_clear(void)
 }
 
 /* a setter changed x / y / sprite / mask / scale / angle (play.h pin_changed_) */
-void pw_changed(int i)
+/* pw_changed past the watch count when nc_moved runs or the object's gobj byte is not computed yet */
+static __attribute__((noinline)) void pw_changed_slow(int i)
 {
-    if (i == watch_i) watch_n++;
-#ifdef PLAY_STATS
-    nc_ofam_check(PW.in[i].obj);
-#endif
     if (nc_any && nc_ofam[PW.in[i].obj]) nc_moved(i);   /* (nc_moved does nothing for an object of no kept family) */
     pw_draw_mark(i);
     PW.in[i].bbk = 0;
     grid_dirty(i);
+    pcol_changed(i);
+}
+
+/* the same steps in the same order; the common case (no nc_moved, gobj known) has grid_dirty's body inline and ends in a
+   tail call (no frame) */
+void pw_changed(int i)
+{
+    int o, g;
+    if (i == watch_i) watch_n++;
+#ifdef PLAY_STATS
+    nc_ofam_check(PW.in[i].obj);
+#endif
+    o = PW.in[i].obj;
+    g = gobj[o];
+    if ((nc_any && nc_ofam[o]) || !g) {
+        pw_changed_slow(i);
+        return;
+    }
+    pw_draw_mark(i);
+    PW.in[i].bbk = 0;
+    grid_dirty_g(i, o, g);
     pcol_changed(i);
 }
 
@@ -1762,10 +1785,6 @@ static void grid_unlink(int i)
     gcell[i] = NOONE;
 }
 
-/* per object, computed at its first grid_dirty (after the first level start: xbits is set then): bit 1 its instances
-   go in the grid (obj_is(o, oSolid) || !pin_needs_ext(o): constant per object), bit 2 xbits[o] != 0 (the static-family
-   index; constant), bit 0 computed */
-static uint8_t gobj[OBJ_COUNT];
 
 static __attribute__((noinline)) void grid_dirty_new(int i, int o)
 {
@@ -1779,13 +1798,8 @@ static __attribute__((noinline)) void grid_dirty_new(int i, int o)
 
 /* a solid's box may have changed (or it was added): placed again at the next query (a leaf but for the first call per
    object: no frame) */
-static void grid_dirty(int i)
+static inline void grid_dirty_g(int i, int o, int g)
 {
-    int o = PW.in[i].obj, g = gobj[o];
-    if (!g) {
-        grid_dirty_new(i, o);
-        return;
-    }
 #ifdef PLAY_STATS
     if (!(g & 2) != !(obj_is(o, OBJ_oSolid) || !pin_needs_ext(o))) { fprintf(stderr, "grid_dirty: gobj[%d]\n", o); abort(); }
 #ifndef PCOL_EXACT
@@ -1802,6 +1816,16 @@ static void grid_dirty(int i)
     gond[i] = 1;
     gdnext[i] = gdhead;
     gdhead = (int16_t)i;
+}
+
+static void grid_dirty(int i)
+{
+    int o = PW.in[i].obj, g = gobj[o];
+    if (!g) {
+        grid_dirty_new(i, o);
+        return;
+    }
+    grid_dirty_g(i, o, g);
 }
 
 static __attribute__((noinline)) void grid_flush_run(void)
