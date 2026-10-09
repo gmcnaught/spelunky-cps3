@@ -4455,8 +4455,9 @@ static __attribute__((noinline)) int water_filled(int f, int32_t px, int32_t py,
 
 /* place_ixy(j, x, y, idx, 0, oWater) after its entry (pcol_place_clean; the test list's move done), j's box ia one
    16 x 16 cell, the moved box's cell cx, cy in the grid, xfar / xsat / xemp of f 0 and no index update pending:
-   xplace_cell's answer from the cell and place_ixy's checks of its hit; -2 where xplace_cell would answer -2 (then
-   place_ixy, whose entry changes nothing more). pj: precise(j) */
+   xplace_cell's answer from the cell and place_ixy's checks of its hit (pcol_search_has_i as pcol_has_whole: the
+   search state it would set is not read); -2 where xplace_cell would answer -2 (then place_ixy, whose entry changes
+   nothing more). pj: precise(j) */
 static int water_place(int j, const int32_t *ia, int32_t idx, int f, int cx, int cy, int pj)
 {
     int n = xcnt[f][cy][cx], k, ov;
@@ -4473,7 +4474,7 @@ static int water_place(int j, const int32_t *ia, int32_t idx, int f, int cx, int
             if (ov && (pj || precise(k))) ov = precise_collision_int(j, idx, 0, ia, k, ib);
         } else
             ov = -1;
-        if (!(pcol_search_has_i(k, ia[0] + idx, ia[1], ia[2] + idx, ia[3]) && match(k, OBJ_oWater, j) &&
+        if (!(pcol_has_whole(k, ia[0] + idx, ia[1], ia[2] + idx, ia[3]) && match(k, OBJ_oWater, j) &&
               (ov >= 0 ? ov : overlap_at(j, idx, 0, k))))
             k = NOONE;
     }

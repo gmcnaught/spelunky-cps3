@@ -975,6 +975,32 @@ int pcol_search_has_i(int e, int32_t l, int32_t t, int32_t r, int32_t b)
 }
 #endif
 
+/* pcol_search_has_i's answer without setting the search state s_r / s_kv (pworld.c water_place): with the four sides
+   in the whole form's range and e's grid rectangle whole, pg_overlap's whole compare on the sides; otherwise
+   pcol_search_has_i. s_r and s_kv are search state that every reader sets first (pcol_search_i, pcol_search,
+   pcol_search_has, pcol_search_has_i, pcol_handle: pgrid_search, direct_pairs, search_rec and the key compares run
+   after one of them), so the value they are left with is never read */
+#ifndef PCOL_EXACT
+int pcol_has_whole(int e, int32_t l, int32_t t, int32_t r, int32_t b)
+{
+    const rk *q;
+    int h;
+    if (!PCOL_GRID_ON || e < 0 || e >= PIN_MAX || pg_cell[e] == PGRID_NONE) return 0;
+    if (!(l > -WLIM && l < WLIM && t > -WLIM && t < WLIM && r > -WLIM && r < WLIM && b > -WLIM && b < WLIM) ||
+        !(erw[e] & 1))
+        return pcol_search_has_i(e, l, t, r, b);
+    q = er[e];
+    h = !(l > q[2] || q[0] > r || t > q[3] || q[1] > b);
+#ifdef PLAY_STATS
+    if (h != pcol_search_has_i(e, l, t, r, b)) {
+        fprintf(stderr, "pcol_has_whole: %d differs (%d %d %d %d %d)\n", h, e, (int)l, (int)t, (int)r, (int)b);
+        abort();
+    }
+#endif
+    return h;
+}
+#endif
+
 static void search_run(void) { if (PCOL_GRID_ON) pgrid_search(); else search_rec(rroot); }
 static uint8_t epass[ENT_MAX];         /* the HandleCollision pass that entry searched in (EPASS_NONE: none since the
                                           last wrap; pass_no runs 0 .. 254, then every epass is reset) */
