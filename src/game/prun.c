@@ -68,6 +68,10 @@ static const uint32_t bit32[32] = {
     1u << 23, 1u << 24, 1u << 25, 1u << 26, 1u << 27, 1u << 28, 1u << 29, 1u << 30, 1u << 31
 };
 
+static const uint8_t debruijn[32] = {
+    0, 1, 28, 2, 29, 14, 24, 3, 30, 22, 20, 15, 25, 17, 4, 8, 31, 27, 13, 23, 21, 19, 16, 7, 26, 12, 18, 6, 11, 5, 10, 9
+};
+
 void prun_onz_reset(void)
 {
     int w;
@@ -136,14 +140,13 @@ static void evnz_sync(int k0, int k1)
             int16_t *out = &evnz[evobj0[key]];
             int lim = EVNZ_N - evobj0[key], w;
             n = 0;
+            const uint32_t *km = evkm[key];
             for (w = 0; w < RTW; w++) {
-                uint32_t b = onzb[w] & evkm[key][w];
-                int r = w * 32;
-                while (b) {
-                    if (!(b & 0xff)) { b >>= 8; r += 8; continue; }
-                    if ((b & 1) && n < lim) out[n++] = (int16_t)obj_byrt[r];
-                    b >>= 1;
-                    r++;
+                uint32_t b = onzb[w] & km[w];
+                while (b) {                       /* the lowest set bit's index by de Bruijn multiplication */
+                    uint32_t lo = b & (0u - b);
+                    if (n < lim) out[n++] = (int16_t)obj_byrt[w * 32 + debruijn[(lo * 0x077CB531u) >> 27]];
+                    b ^= lo;
                 }
             }
         }
