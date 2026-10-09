@@ -1357,19 +1357,46 @@ struct pcinst {
     const uint8_t *mask;                        /* NULL: the sprite has no mask (its box counts) */
 };
 
-static int pcinst_of_raw(int i, double dx, double dy, struct pcinst *q)
+static uint32_t pcf(float f) { union { float f; uint32_t u; } v; v.f = f; return v.u; }
+static uint64_t pcd(double d) { union { double d; uint64_t u; } v; v.d = d; return v.u; }
+
+/* (float)(v + d): v's own float when d is +0 (v + +0 is v but for -0, which gives +0), else the double sum */
+static float pc_addf(double v, double d)
+{
+    if (pcd(d) == 0) return v == 0 ? 0.0f : (float)v;
+    return (float)(v + d);
+}
+
+/* box: i's pin_bbox (l, t, r, b) when the caller has it (overlap_at: nothing changes between), else NULL */
+static int pcinst_of_raw(int i, double dx, double dy, struct pcinst *q, const double *box)
 {
     const struct pin *p = &PW.in[i];
     int s = spr_of(p);
     const struct gsprcol *c;
     const struct psprite *ps;
     double l, t, r, b;
-    if (s < 0 || !pin_bbox(i, &l, &t, &r, &b)) return 0;
+    if (s < 0) return 0;
+    if (box) { l = box[0]; t = box[1]; r = box[2]; b = box[3]; }
+    else if (!pin_bbox(i, &l, &t, &r, &b)) return 0;
     c = &gsprcol[s];
     ps = &psprite[s];
-    q->x = (float)(PTOD(p->x) + dx); q->y = (float)(PTOD(p->y) + dy);
+    q->x = pcd(dx) == 0 ? (fzero(p->x) ? 0.0f : p->x) : (float)(PTOD(p->x) + dx);
+    q->y = pcd(dy) == 0 ? (fzero(p->y) ? 0.0f : p->y) : (float)(PTOD(p->y) + dy);
     q->xs = p->xscale; q->ys = p->yscale; q->ang = p->angle;
-    q->bl = (float)(l + dx); q->bt = (float)(t + dy); q->br = (float)(r + dx); q->bb = (float)(b + dy);
+    q->bl = pc_addf(l, dx); q->bt = pc_addf(t, dy); q->br = pc_addf(r, dx); q->bb = pc_addf(b, dy);
+#ifdef PLAY_STATS
+    {   /* the box given is pin_bbox's; the floats are the double sums' */
+        double m[4];
+        if ((box && (!pin_bbox(i, &m[0], &m[1], &m[2], &m[3]) || pcd(m[0]) != pcd(l) || pcd(m[1]) != pcd(t) ||
+                     pcd(m[2]) != pcd(r) || pcd(m[3]) != pcd(b))) ||
+            pcf(q->x) != pcf((float)(PTOD(p->x) + dx)) || pcf(q->y) != pcf((float)(PTOD(p->y) + dy)) ||
+            pcf(q->bl) != pcf((float)(l + dx)) || pcf(q->bt) != pcf((float)(t + dy)) || pcf(q->br) != pcf((float)(r + dx)) ||
+            pcf(q->bb) != pcf((float)(b + dy))) {
+            fprintf(stderr, "pcinst_of_raw: box or floats differ (%d)\n", i);
+            abort();
+        }
+    }
+#endif
     q->xo = (float)c->xo; q->yo = (float)c->yo;
     q->ml = (float)c->l; q->mt = (float)c->t; q->mr = (float)c->r; q->mb = (float)c->b;
     q->bpr = ((c->r - c->l + 1) + 7) >> 3;
@@ -1396,10 +1423,8 @@ struct pcc { uint32_t x, y, xs, ys, ang, img; uint64_t dx, dy; int16_t s; uint8_
 static struct pcc pccache[2];
 static unsigned pcnext;
 
-static uint32_t pcf(float f) { union { float f; uint32_t u; } v; v.f = f; return v.u; }
-static uint64_t pcd(double d) { union { double d; uint64_t u; } v; v.d = d; return v.u; }
 
-static int pcinst_of(int i, double dx, double dy, struct pcinst *q)
+static int pcinst_of_b(int i, double dx, double dy, struct pcinst *q, const double *box)
 {
     const struct pin *p = &PW.in[i];
     uint32_t x = pcf(p->x), y = pcf(p->y), xs = pcf(p->xscale), ys = pcf(p->yscale), ang = pcf(p->angle),
@@ -1412,7 +1437,7 @@ static int pcinst_of(int i, double dx, double dy, struct pcinst *q)
             c->s == s && c->dx == bx && c->dy == by) {
 #ifdef PLAY_STATS
             struct pcinst f;
-            int fr = pcinst_of_raw(i, dx, dy, &f);
+            int fr = pcinst_of_raw(i, dx, dy, &f, NULL);
             if (fr != c->ret || (fr && (pcf(f.x) != pcf(c->q.x) || pcf(f.y) != pcf(c->q.y) || pcf(f.xs) != pcf(c->q.xs) ||
                 pcf(f.ys) != pcf(c->q.ys) || pcf(f.ang) != pcf(c->q.ang) || pcf(f.bl) != pcf(c->q.bl) ||
                 pcf(f.bt) != pcf(c->q.bt) || pcf(f.br) != pcf(c->q.br) || pcf(f.bb) != pcf(c->q.bb) ||
@@ -1427,7 +1452,7 @@ static int pcinst_of(int i, double dx, double dy, struct pcinst *q)
             return c->ret;
         }
     }
-    r = pcinst_of_raw(i, dx, dy, q);
+    r = pcinst_of_raw(i, dx, dy, q, box);
     {
         struct pcc *c = &pccache[pcnext++ & 1];
         c->x = x; c->y = y; c->xs = xs; c->ys = ys; c->ang = ang; c->img = img; c->s = (int16_t)s;
@@ -1436,6 +1461,8 @@ static int pcinst_of(int i, double dx, double dy, struct pcinst *q)
     }
     return r;
 }
+
+static int pcinst_of(int i, double dx, double dy, struct pcinst *q) { return pcinst_of_b(i, dx, dy, q, NULL); }
 
 static int pc_bit(const struct pcinst *q, float lx, float ly)
 {
@@ -1559,42 +1586,34 @@ static int pc_loop(const struct pcinst *A, const struct pcinst *B, float x0, flo
 #define PC_ROWS 64
 
 /* precise_collision's unrotated loop (A: this sprite; x0 .. iyB as there). A row's tests depend on yc alone, and yc
-   runs from y0 by + 1.0f in every column: each row's floats once (the same operations on the same values), its
-   answers in rw (bit 0 A's row in its box, 1 A's mask row, 2 B's row in its box, 3 B's mask row; cy the mask rows),
-   then the columns on them, in pc_loop's order. More rows than PC_ROWS: pc_loop */
+   runs from y0 by + 1.0f in every column: each row's floats are computed once, when a column first needs them (the
+   same operations on the same values, never more of them than pc_loop makes), kept in rw (bit 0 A's row in its
+   box, 1 A's mask row, 2 B's row in its box, 3 B's mask row, 4 / 5 A's / B's computed; cy the mask rows), and the
+   columns run on them in pc_loop's order. The rows' yc when the first column passes its tests (pc_loop adds them in
+   each such column). More rows than PC_ROWS: pc_loop */
 static int pc_rows(const struct pcinst *A, const struct pcinst *B, float x0, float y0, float x1, float y1, float ixA,
                    float ixB, float iyA, float iyB)
 {
     float lxA, lxB, xc, yc;
     float arA = A->mr + 1.0f, abA = A->mb + 1.0f, arB = B->mr + 1.0f, abB = B->mb + 1.0f;
+    float ycs[PC_ROWS];
     uint8_t rw[PC_ROWS];
     int16_t cyA[PC_ROWS], cyB[PC_ROWS];
-    int n = 0, k;
+    int n = -1, k;
     if (!(x1 > x0)) return 0;
-    for (yc = y0; y1 > yc; yc = yc + 1.0f) {
-        float lyA, lyB, ty;
-        int f = 0;
-        if (n == PC_ROWS) return pc_loop(A, B, x0, y0, x1, y1, ixA, ixB, iyA, iyB);
-        lyA = pc_mul(yc - A->y, iyA) + A->yo;
-        if (!(A->mt > lyA || lyA >= abA)) {
-            f = 1;
-            ty = (float)(int)lyA;
-            if (!(A->mt > ty || ty > A->mb)) { f |= 2; cyA[n] = (int16_t)(int)(ty - A->mt); }
-        }
-        lyB = pc_mul(yc - B->y, iyB) + B->yo;
-        if (!(B->mt > lyB || lyB >= abB)) {
-            f |= 4;
-            ty = (float)(int)lyB;
-            if (!(B->mt > ty || ty > B->mb)) { f |= 8; cyB[n] = (int16_t)(int)(ty - B->mt); }
-        }
-        rw[n++] = (uint8_t)f;
-    }
     lxB = pc_mul(x0 - B->x, ixB) + B->xo;
     lxA = pc_mul(x0 - A->x, ixA) + A->xo;
     for (xc = x0; x1 > xc; xc = xc + 1.0f, lxB = lxB + ixB, lxA = lxA + ixA) {
         int okA, okB, cxA = 0, cxB = 0;
         float tA, tB;
-        if (A->ml > lxA || lxA >= arA || B->ml > lxB || lxB >= arB || n == 0) continue;
+        if (A->ml > lxA || lxA >= arA || B->ml > lxB || lxB >= arB || !(y1 > y0)) continue;
+        if (n < 0) {
+            for (n = 0, yc = y0; y1 > yc; yc = yc + 1.0f) {
+                if (n == PC_ROWS) return pc_loop(A, B, x0, y0, x1, y1, ixA, ixB, iyA, iyB);
+                rw[n] = 0;
+                ycs[n++] = yc;
+            }
+        }
         tA = (float)(int)lxA; tB = (float)(int)lxB;
         okA = !(A->ml > tA) && !(tA > A->mr);
         okB = !(B->ml > tB) && !(tB > B->mr);
@@ -1602,8 +1621,32 @@ static int pc_rows(const struct pcinst *A, const struct pcinst *B, float x0, flo
         if (B->mask && okB) cxB = (int)(tB - B->ml);
         for (k = 0; k < n; k++) {
             int f = rw[k];
+            if (!(f & 16)) {
+                float ly = pc_mul(ycs[k] - A->y, iyA) + A->yo, ty;
+                f |= 16;
+                if (!(A->mt > ly || ly >= abA)) {
+                    f |= 1;
+                    if (A->mask) {
+                        ty = (float)(int)ly;
+                        if (!(A->mt > ty || ty > A->mb)) { f |= 2; cyA[k] = (int16_t)(int)(ty - A->mt); }
+                    }
+                }
+                rw[k] = (uint8_t)f;
+            }
             if (!(f & 1)) continue;
             if (A->mask && (!okA || !(f & 2) || !pc_bitc(A, cxA, cyA[k]))) continue;
+            if (!(f & 32)) {
+                float ly = pc_mul(ycs[k] - B->y, iyB) + B->yo, ty;
+                f |= 32;
+                if (!(B->mt > ly || ly >= abB)) {
+                    f |= 4;
+                    if (B->mask) {
+                        ty = (float)(int)ly;
+                        if (!(B->mt > ty || ty > B->mb)) { f |= 8; cyB[k] = (int16_t)(int)(ty - B->mt); }
+                    }
+                }
+                rw[k] = (uint8_t)f;
+            }
             if (!(f & 4)) continue;
             if (!B->mask) return 1;
             if (!okB || !(f & 8)) continue;
@@ -3953,7 +3996,7 @@ void fcol_done(int counted) { fcol_depth--; if (counted) fcol_of = NULL; }
 /* instance a (its bbox moved by dx, dy) against instance b */
 static int overlap_at(int a, double dx, double dy, int b)
 {
-    double l, t, r, bb, l2, t2, r2, b2;
+    double l, t, r, bb, l2, t2, r2, b2, ba[4];
     int32_t ia[4], ib[4], idx, idy;
     if (pin_ibox_s(a, ia) && pin_ibox_s(b, ib) && whole(dx, &idx) && whole(dy, &idy)) {
         if (!(ia[0] + idx < ib[2] && ib[0] < ia[2] + idx && ia[1] + idy < ib[3] && ib[1] < ia[3] + idy))
@@ -3967,6 +4010,7 @@ static int overlap_at(int a, double dx, double dy, int b)
 #endif
     if (!pin_bbox(a, &l, &t, &r, &bb) || !pin_bbox(b, &l2, &t2, &r2, &b2))
         return 0;
+    ba[0] = l; ba[1] = t; ba[2] = r; ba[3] = bb;
     l += dx; r += dx; t += dy; bb += dy;
     if (!(l < r2 && l2 < r && t < b2 && t2 < bb))
         return 0;
@@ -3981,7 +4025,9 @@ static int overlap_at(int a, double dx, double dy, int b)
     }
     {   /* one precise: SeparatingAxisCollision when either is rotated, then CSprite::PreciseCollision */
         struct pcinst A, B;
-        if (!pcinst_of(a, dx, dy, &A) || !pcinst_of(b, 0, 0, &B)) return 0;
+        double bbx[4];
+        bbx[0] = l2; bbx[1] = t2; bbx[2] = r2; bbx[3] = b2;
+        if (!pcinst_of_b(a, dx, dy, &A, ba) || !pcinst_of_b(b, 0, 0, &B, bbx)) return 0;
         if ((A.ang != 0 || B.ang != 0) && !sa_collision(&A, &B)) return 0;
         return precise_collision(&A, &B);
     }
