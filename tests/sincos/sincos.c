@@ -11,7 +11,9 @@
  *                                                    every float dir in [+0, 360] and of dir - 1, dir + 1 (the
  *                                                    piranhas' point_direction + a - b), sin and cos alone and both
  *   build/host/sincos nproc fastrand <count> [seed]  the same for random doubles in [-8, 8] and degrees in
- *                                                    [-720, 1080] */
+ *                                                    [-720, 1080]
+ *   build/host/sincos nproc fast2 | fast2rand <count> [seed]   the same for sc_fast2 (the 128-bit second stage) on
+ *                                                    every argument */
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -62,6 +64,23 @@ static void one_fast(double a, struct res *R)
     if (sc_fast(a, 1, &x, &y)) { if (memcmp(&x, &s0, 8) && R->bad++ < 5) printf("fast sin differs: a %.17g\n", a); }
     else R->fail1[1]++;
     if (sc_fast(a, 2, &x, &y)) { if (memcmp(&y, &c0, 8) && R->bad++ < 5) printf("fast cos differs: a %.17g\n", a); }
+    else R->fail1[1]++;
+}
+
+/* sc_fast2 (the second stage) on its own, every argument: fail1[0]: (.., 3) refused; fail1[1]: sin or cos alone
+   refused; bad: a kept value differs from the old path's */
+static void one_fast2(double a, struct res *R)
+{
+    double s, c, s0, c0, x, y;
+    old_sc(a, &s0, &c0);
+    R->n++;
+    if (!sc_fast2(a, 3, &s, &c)) R->fail1[0]++;
+    else if (memcmp(&s, &s0, 8) || memcmp(&c, &c0, 8)) {
+        if (R->bad++ < 5) printf("fast2 differs: a %.17g (bits %016llx)\n", a, (unsigned long long)*(uint64_t *)&a);
+    }
+    if (sc_fast2(a, 1, &x, &y)) { if (memcmp(&x, &s0, 8) && R->bad++ < 5) printf("fast2 sin differs: a %.17g\n", a); }
+    else R->fail1[1]++;
+    if (sc_fast2(a, 2, &x, &y)) { if (memcmp(&y, &c0, 8) && R->bad++ < 5) printf("fast2 cos differs: a %.17g\n", a); }
     else R->fail1[1]++;
 }
 
@@ -160,7 +179,11 @@ static void run(uint32_t u0, uint32_t u1, struct res *R)
     for (u = u0; u < u1; u++) {
         float f;
         memcpy(&f, &u, 4);
-        if (fastmode) {
+        if (fastmode == 2) {
+            one_fast2(degtorad_d((double)f), R);
+            one_fast2(degtorad_d((double)f + 1), R);
+            one_fast2(degtorad_d((double)f - 1), R);
+        } else if (fastmode) {
             one_fast(degtorad_d((double)f), R);
             one_fast(degtorad_d((double)f + 1), R);
             one_fast(degtorad_d((double)f - 1), R);
@@ -178,7 +201,10 @@ static void run_rand(uint64_t seed, long n, struct res *R)
         double v;
         x ^= x << 13; x ^= x >> 7; x ^= x << 17;
         v = (double)(x >> 11) * 0x1p-53;                       /* [0, 1) with 53 random bits */
-        if (fastmode) {
+        if (fastmode == 2) {
+            if (j & 1) one_fast2(v * 16.0 - 8.0, R);
+            else one_fast2(degtorad_d(v * 1800.0 - 720.0), R);
+        } else if (fastmode) {
             if (j & 1) one_fast(v * 16.0 - 8.0, R);
             else one_fast(degtorad_d(v * 1800.0 - 720.0), R);
         } else if (j & 1) one(v * 40.0 - 20.0, R);
@@ -189,13 +215,14 @@ static void run_rand(uint64_t seed, long n, struct res *R)
 int main(int argc, char **argv)
 {
     int np = argc > 1 ? atoi(argv[1]) : 8, i, j, k, fd[64][2];
-    int rnd = argc > 3 && (!strcmp(argv[2], "rand") || !strcmp(argv[2], "fastrand"));
+    int rnd = argc > 3 && (!strcmp(argv[2], "rand") || !strcmp(argv[2], "fastrand") || !strcmp(argv[2], "fast2rand"));
     long rn = rnd ? atol(argv[3]) : 0;
     uint64_t rseed = rnd && argc > 4 ? strtoull(argv[4], 0, 10) : 1;
     const uint32_t hi = argc > 2 && !rnd ? (uint32_t)strtoul(argv[2], 0, 16) : 0x43b40001u;   /* (float)360 = 0x43b40000, inclusive */
     struct res T, R;
     memset(&T, 0, sizeof T);
     fastmode = argc > 2 && (!strcmp(argv[2], "fast") || !strcmp(argv[2], "fastrand"));
+    if (argc > 2 && (!strcmp(argv[2], "fast2") || !strcmp(argv[2], "fast2rand"))) fastmode = 2;
     const uint32_t hi2 = fastmode && !rnd ? 0x43b40001u : hi;
     if (np < 1 || np > 64) np = 8;
     for (i = 0; i < np; i++) {
@@ -224,8 +251,8 @@ int main(int argc, char **argv)
     }
     while (wait(0) > 0) ;
     if (fastmode) {
-        printf("sincos fast: %ld arguments, %ld kept values differ from the old path; refused: both %ld, alone %ld\n",
-               T.n, T.bad, T.fail1[0], T.fail1[1]);
+        printf("sincos %s: %ld arguments, %ld kept values differ from the old path; refused: both %ld, alone %ld\n",
+               fastmode == 2 ? "fast2" : "fast", T.n, T.bad, T.fail1[0], T.fail1[1]);
         return T.bad != 0;
     }
     printf("sincos: %ld arguments, %ld differ from cr_trig_dd\n", T.n, T.bad);
