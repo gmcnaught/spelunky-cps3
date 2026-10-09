@@ -1894,6 +1894,10 @@ void pcol_added(int i)
     obj_count(PW.in[i].obj, 1);
 }
 
+#ifndef PCOL_EXACT
+static int can_pair(int s);
+#endif
+
 /* instance_create: the CInstance constructor marks it dirty (SetObjectIndex, SetSpriteIndex: CollisionMarkDirty;
    Observed: tools/treeprobe.py, 3 creations in an empty room leave the leaf [1, 2, 0]: put in at creation, put in
    again newest first by the next UpdateTree), then CRoom::AddInstance's CollisionInsert puts it in */
@@ -1905,10 +1909,11 @@ void pcol_create(int i)
        where CollisionInsert waits with its later marks; it goes in when it is brought up to date (ask_fam,
        flush_pairable, a touch, rebuild_all: cupdate inserts an entry not in the grid). The deferral's argument
        (EQUIV.md): no answer reads such an entry's grid rectangle before then, and the grid orders hits by creation
-       number, not by when an entry went in */
+       number, not by when an entry went in. Only while it cannot pair (can_pair): one that can is brought up to date
+       by the next pass's flush_pairable, so it goes in now as before (the insert in the step that made it) */
     if (!gmode) {
         int oi = oinfo[PW.in[i].obj];
-        if ((oi & (OI_MEMBER | OI_DYN | OI_SOLID)) && !(oi & OI_ASKED)) {
+        if ((oi & (OI_MEMBER | OI_DYN | OI_SOLID)) && !(oi & OI_ASKED) && !can_pair(i)) {
             if (oi & OI_F08) tlist_front(i);
             return;
         }
