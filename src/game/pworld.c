@@ -166,9 +166,15 @@ static int16_t olive[OBJ_COUNT];
 #define odesc obj_desc
 
 static uint8_t nc_any;                           /* instance_nearest_p's cache (nc) is in use */
+/* bit e: obj_is(o, nc[e].obj), for each slot e that nc_get has filled (nc_slot keeps it at every change of the slot's
+   obj): pw_changed calls nc_moved only for an instance of a kept family */
+static uint8_t nc_ofam[OBJ_COUNT];
 static void nc_inval(int obj);
 static void nc_moved(int i);
 static void nc_reset(void);
+#ifdef PLAY_STATS
+static void nc_ofam_check(int obj);
+#endif
 
 /* a family walk over the object tree (pcol.c's pcol_ochild / pcol_osib) in preorder: the object after o in root's
    family, o's subtree skipped when it holds no alive instance (olive counts a family) */
@@ -386,7 +392,10 @@ void pw_draw_dirty_clear(void)
 void pw_changed(int i)
 {
     if (i == watch_i) watch_n++;
-    if (nc_any) nc_moved(i);
+#ifdef PLAY_STATS
+    nc_ofam_check(PW.in[i].obj);
+#endif
+    if (nc_any && nc_ofam[PW.in[i].obj]) nc_moved(i);   /* (nc_moved does nothing for an object of no kept family) */
     pw_draw_mark(i);
     PW.in[i].bbk = 0;
     grid_dirty(i);
@@ -3890,6 +3899,43 @@ static int dfloor14(double v, int32_t *o)
 struct ncache { int16_t obj, n; uint8_t ok; int16_t k[NEAR_MAX], x[NEAR_MAX], y[NEAR_MAX]; };
 static struct ncache nc[NC_N];
 static uint8_t nc_next;
+static uint8_t nc_asg;                           /* bit e: slot e has been filled (its obj's family is in nc_ofam) */
+
+/* bit b of nc_ofam over root's family (root and its descendants: pcol.c's fam_obj_next walk), set or cleared */
+static void nc_fam_bit(int root, uint8_t b, int set)
+{
+    int o = root;
+    pcol_obj_tree();
+    for (;;) {
+        nc_ofam[o] = (uint8_t)(set ? nc_ofam[o] | b : nc_ofam[o] & ~b);
+        if (pcol_ochild[o] >= 0) { o = pcol_ochild[o]; continue; }
+        while (o != root && pcol_osib[o] < 0) o = objdefs[o].parent;
+        if (o == root) return;
+        o = pcol_osib[o];
+    }
+}
+
+#ifdef PLAY_STATS
+static void nc_ofam_check(int obj)
+{
+    int e;
+    for (e = 0; e < NC_N; e++)
+        if (!(nc_ofam[obj] >> e & 1) != !((nc_asg >> e & 1) && obj_is(obj, nc[e].obj))) {
+            fprintf(stderr, "nc_ofam[%d] bit %d differs from obj_is\n", obj, e);
+            abort();
+        }
+}
+#endif
+
+/* slot e is about to hold obj's family (nc_fill writes nc[e].obj): nc_ofam's bit e moves from the old family */
+static void nc_slot(int e, int obj)
+{
+    uint8_t b = (uint8_t)(1u << e);
+    if ((nc_asg & b) && nc[e].obj == obj) return;
+    if (nc_asg & b) nc_fam_bit(nc[e].obj, b, 0);
+    nc_fam_bit(obj, b, 1);
+    nc_asg |= b;
+}
 
 static void nc_inval(int obj)
 {
@@ -3901,13 +3947,13 @@ static void nc_inval(int obj)
 /* instance i (alive and linked, or not) may have changed position: a kept entry of a family holding it takes its
    new floors in place (k[]'s order is the lists' walk, which a move does not change); one where it is not found,
    whose floors do not fit, or that did not fit (ok 2) is dropped as nc_inval drops it */
-static void nc_moved(int i)
+static __attribute__((noinline)) void nc_moved(int i)
 {
     int e, j, obj = PW.in[i].obj;
     for (e = 0; e < NC_N; e++) {
         struct ncache *c = &nc[e];
         int32_t xk, yk;
-        if (!c->ok || !obj_is(obj, c->obj)) continue;
+        if (!c->ok || !(nc_ofam[obj] >> e & 1)) continue;       /* (bit e: obj_is(obj, c->obj)) */
         if (c->ok != 1) { c->ok = 0; continue; }
         for (j = 0; j < c->n && c->k[j] != i; j++) {}
         if (j == c->n || !pl_floor(PW.in[i].x, &xk) || !pl_floor(PW.in[i].y, &yk) ||
@@ -3970,6 +4016,7 @@ static struct ncache *nc_get(int obj)
     e = nc_next;
     nc_next = (uint8_t)((nc_next + 1) & (NC_N - 1));
     nc_any = 1;
+    nc_slot(e, obj);
     nc_fill(&nc[e], obj);
     return &nc[e];
 }
