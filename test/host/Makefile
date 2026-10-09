@@ -83,6 +83,11 @@ $(OUT)/pcrows: pcrows.c $(SRC) $(PSRC) $(ROOT)/src/game/*.h $(GEN)/playtables.h 
 	mkdir -p $(OUT)
 	$(CC) $(CFLAGS) -ffp-contract=off $(INC0) -o $@ pcrows.c $(SRC) $(filter-out $(ROOT)/src/game/pworld.c,$(PSRC) $(HSRC)) -lm
 
+# pworld.c pfrac_ok's identities (the fractional _at queries) for every float it accepts (it includes pworld.c)
+$(OUT)/pfrac: pfrac.c $(SRC) $(PSRC) $(ROOT)/src/game/*.h $(GEN)/playtables.h $(ROOT)/build/snd/sndnames.h $(ROOT)/src/snd/snd.h
+	mkdir -p $(OUT)
+	$(CC) $(CFLAGS) -ffp-contract=off $(INC0) -o $@ pfrac.c $(SRC) $(filter-out $(ROOT)/src/game/pworld.c,$(PSRC) $(HSRC)) -lm
+
 # struct pin_ext checked (play.h PIN_EXT_CHECK): exits 3 when the shared record 0 (the terrain's defaults) was
 # written or a removed instance's record is read; run it over the routes and generated levels
 $(OUT)/playhost_extchk: playhost.c $(SRC) $(PSRC) $(ROOT)/src/game/*.h $(GEN)/playtables.h $(ROOT)/build/snd/sndnames.h $(ROOT)/src/snd/snd.h
