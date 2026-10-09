@@ -964,7 +964,6 @@ family and flush_pairable's walk).
   direct_pairs (more than 16 candidates); the RV_LONG objects always search.
 - Set conflicts: drain 281's NC model is 119 K above its fa bound (cached .text and data placement).
 
-||||||| parent of dec0d5d (AST-GREP.md: the floatcol rules and the call-site survey; PERF3.md: double collision queries (branch floatcol))
 
 
 ### Double collision queries (branch floatcol, 2026-10-08, on main 8b3d544)
