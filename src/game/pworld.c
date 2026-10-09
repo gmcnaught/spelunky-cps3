@@ -3748,20 +3748,22 @@ static int rect_q_i(int q, int32_t x1, int32_t y1, int32_t x2, int32_t y2, int o
 static int rect_at_frac(int i, int32_t l, int32_t t, int32_t r, int32_t b, int obj, int *res)
 {
     const struct pin *p = &PW.in[i];
-    int32_t vx, vy, rx, ry, q;
+    int32_t vx, vy, rx, ry, fx, fy, q;
     struct rq rq;
     float rr[4];
-    if (l > r || t > b || !pfrac_ok(p->x) || !pfrac_ok(p->y) || !pfr(p->x, &vx) || !pfr(p->y, &vy)) return 0;
+    if (l > r || t > b || !pfrac_ok(p->x) || !pfrac_ok(p->y) || !pfr(p->x, &vx) || !pfr(p->y, &vy) ||
+        !pfloor_int(p->x, &fx) || !pfloor_int(p->y, &fy))
+        return 0;
     q = pcol_query(obj);
     PWST(rect, 1);
     if (q < 0) { *res = NOONE; return 1; }
 #if !defined(PCOL_EXACT)
-    if (obj >= 0 && olive[obj] <= 4) {
-        int32_t fx, fy;
-        pfloor_int(p->x, &fx);
-        pfloor_int(p->y, &fy);
-        if (rect_far_none_i(fx + l, fy + t, fx + r, fy + b, obj, 0, NOONE)) { *res = NOONE; return 1; }
+    if (obj >= 0 && olive[obj] <= 4 && rect_far_none_i(fx + l, fy + t, fx + r, fy + b, obj, 0, NOONE)) {
+        *res = NOONE;
+        return 1;
     }
+#else
+    (void)fx; (void)fy;
 #endif
     rx = (vx >> 2) + ((vx & 3) >= 2);
     ry = (vy >> 2) + ((vy & 3) >= 2);
