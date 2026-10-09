@@ -785,6 +785,8 @@ void pcol_search(float l, float t, float r, float b, int (*cb)(int e, void *ctx)
 #define OI_MEMBER 4
 #define OI_DYN 8
 #define OI_SOLID 16    /* objdefs[o].solid (obj_init): a member of the tree with OI_MEMBER / OI_DYN (emember) */
+#define OI_ASKED 32    /* (grid build, play) a family holding the object has been queried this room (ask) */
+#define OI_ASKROOT 64  /* (grid build, play) the object's own family has been queried this room */
 static uint8_t oinfo[OBJ_COUNT];
 static int16_t ocnt[OBJ_COUNT];        /* instances of the object and its descendants (the runner's 0x78) */
 static uint8_t otarget[OBJ_COUNT];     /* the target of a collision event */
@@ -911,6 +913,11 @@ static uint8_t gmode;                  /* a level is being generated: entries ar
 static uint8_t ef[ENT_MAX];
 static int16_t dn[ENT_MAX], dp[ENT_MAX], tn[ENT_MAX], tp[ENT_MAX];
 static int16_t dhead = -1, tchead = -1;
+/* the grid build's deferred dirty list (play): the stale members of objects that no query has asked for yet (no
+   OI_ASKED), linked by dn / dp as the dirty list (EF_OND), not on the stale stack. Their grid rectangles are read by
+   no search answer until a query asks for their family (ask: brought up to date then) or until they can make a
+   collision pair (pcol_handle: flush_pairable). docs/PERF3.md (branch moves) */
+static int16_t fhead = -1;
 static rk er[ENT_MAX][4];           /* the rectangle the entry was put in with (RemoveRect's search key) */
 static uint8_t erw[ENT_MAX];           /* its form (struct rbr w) */
 #include "pcolgrid.h"                   /* the shipping build's play-time grid (PCOL_EXACT: the tree) */
@@ -969,7 +976,7 @@ static int emember(int e) { return (oinfo[eobj(e)] & (OI_MEMBER | OI_DYN | OI_SO
 static void dlist_remove(int e)
 {
     if (!(ef[e] & EF_OND)) return;
-    if (dp[e] >= 0) dn[dp[e]] = dn[e]; else dhead = dn[e];
+    if (dp[e] >= 0) dn[dp[e]] = dn[e]; else if (e == dhead) dhead = dn[e]; else fhead = dn[e];
     if (dn[e] >= 0) dp[dn[e]] = dp[e];
     ef[e] &= (uint8_t)~EF_OND;
 }
@@ -1408,6 +1415,21 @@ static void mark_e(int e)
 {
     int oi = oinfo[eobj(e)], f = ef[e];
     if (oi & (OI_MEMBER | OI_DYN | OI_SOLID)) {
+#ifndef PCOL_EXACT
+        if (!(oi & OI_ASKED) && !gmode) {         /* the deferred list (fhead), not the stale stack */
+            if (f & EF_OND) {
+                dlist_remove(e);
+                f &= ~EF_OND;
+            }
+            dp[e] = -1;
+            dn[e] = fhead;
+            if (fhead >= 0) dp[fhead] = (int16_t)e;
+            fhead = (int16_t)e;
+            ef[e] = (uint8_t)(f | EF_STALE | EF_OND);
+            if (oi & OI_F08) tlist_front(e);
+            return;
+        }
+#endif
         if (!(f & EF_STALE)) {
             if (nstk == ENT_MAX) stk_compact();
             stk[nstk++] = (int16_t)e;
@@ -1478,6 +1500,55 @@ static inline void flush(void)
     else PCST(pcol_st.flushes++);                  /* (flush_run counts it otherwise) */
 }
 
+#ifndef PCOL_EXACT
+/* a deferred entry comes up to date as flush_run brings a dirty one: off the list, then (not dead) not stale and
+   CollisionUpdate */
+static void defer_flush1(int e)
+{
+    dlist_remove(e);
+    if (!edead(e)) {
+        ef[e] &= (uint8_t)~EF_STALE;
+        cupdate(e);
+    }
+}
+
+/* the first query of obj's family in the room (play): the family's objects are asked for (their marks go to the dirty
+   list from now on) and their deferred entries come up to date. Every read of an entry's grid rectangle that can
+   change an answer is of an asked object: pgrid_search's callbacks (line_cb, rect_cb, place_cb, probe_cb) drop the
+   entries outside the query's family (match, obj_is) with no other effect, after pcol_query of that family;
+   pcol_search_has is of an entry tested with match too; touch_stale scans its family; pcol_handle's pairs are
+   flush_pairable's. The grid's answers do not depend on when an entry was brought up to date (hits ordered by creation
+   number) */
+static __attribute__((noinline)) void ask_fam(int obj)
+{
+    int o, e, n;
+    for (o = obj; o >= 0; o = fam_obj_next(obj, o)) oinfo[o] |= OI_ASKED;
+    oinfo[obj] |= OI_ASKROOT;
+    for (e = fhead; e >= 0; e = n) {
+        n = dn[e];
+        if (oinfo[PW.in[e].obj] & OI_ASKED) defer_flush1(e);
+    }
+}
+
+static inline void ask(int obj)
+{
+    if (!(oinfo[obj] & OI_ASKROOT)) ask_fam(obj);
+}
+
+#ifdef PLAY_STATS
+/* the host builds: no deferred entry is of an asked object */
+static void defer_check(void)
+{
+    int e;
+    for (e = fhead; e >= 0; e = dn[e])
+        if ((oinfo[PW.in[e].obj] & OI_ASKED) || !(ef[e] & EF_OND)) {
+            fprintf(stderr, "defer_check: entry %d (object %d) deferred\n", e, PW.in[e].obj);
+            abort();
+        }
+}
+#endif
+#endif
+
 static void touch_e(int e)
 {
     if (!gmode) sync1(e);
@@ -1501,6 +1572,9 @@ void pcol_load_done(void) { sync_all(); }
 static void touch_stale(int obj, int notme, int upto)
 {
     int k;
+#ifndef PCOL_EXACT
+    if (!gmode) ask(obj);                         /* (the family's deferred entries come up to date) */
+#endif
     stk_compact();
     for (k = 0; k < nstk; k++) {
         int e = stk[k], alive = gmode ? W.in[e].alive : PW.in[e].alive;
@@ -1579,7 +1653,7 @@ static void room_reset(void)
         ef[e] = 0;
         epass[e] = EPASS_NONE;
     }
-    dhead = tchead = -1;
+    dhead = tchead = fhead = -1;
     pm_e = -1;
     npend = 0;
     nstk = 0;
@@ -1587,7 +1661,7 @@ static void room_reset(void)
     onstk = 0;
 #endif
     for (o = 0; o < OBJ_COUNT; o++) {
-        oinfo[o] &= (uint8_t)~OI_DYN;
+        oinfo[o] &= (uint8_t)~(OI_DYN | OI_ASKED | OI_ASKROOT);
         ocnt[o] = 0;
     }
     rlock = 0;
@@ -1842,12 +1916,19 @@ static __attribute__((noinline)) void gen_flush(void)
 /* ShouldUseFastCollision, and UpdateTree when it says 1 (inline: the common answer needs no frame) */
 static inline int query_e(int obj, int gen)
 {
-    int cnt = ocnt[obj];
+    int cnt;
+#ifndef PCOL_EXACT
+    if (!gen) ask(obj);
+#endif
+    cnt = ocnt[obj];
     if (cnt == 0) return -1;
     if (cnt < rn[rroot].level) return 2;
     if (!(oinfo[obj] & (OI_MEMBER | OI_DYN))) query_dyn(obj, gen);
     if (gen) gen_flush();
     else flush();
+#if defined(PLAY_STATS) && !defined(PCOL_EXACT)
+    if (!gen) defer_check();
+#endif
     return 1;
 }
 
@@ -1925,6 +2006,29 @@ static int can_pair(int s)
 }
 
 #ifndef PCOL_EXACT
+/* pcol_handle's deferred entries that can make a pair (can_pair: a pair's two entries both can) come up to date before
+   the pass; the others' rectangles are read by no pair (collision_result keeps a hit only when has_col relates it to
+   the searcher, and a searcher that cannot pair does not search). can_pair depends on the object and ocnt only (ocnt
+   does not change here): one call per run of entries of one object */
+static __attribute__((noinline)) void flush_pairable(void)
+{
+    int e, n, lo = -1, lr = 0;
+    for (e = fhead; e >= 0; e = n) {
+        int o = PW.in[e].obj;
+        n = dn[e];
+        if (o != lo) {
+            lo = o;
+            lr = can_pair(e);
+        }
+        if (lr) defer_flush1(e);
+    }
+#ifdef PLAY_STATS
+    for (e = fhead; e >= 0; e = dn[e])
+        if (can_pair(e)) { fprintf(stderr, "flush_pairable: entry %d left\n", e); abort(); }
+    defer_check();
+#endif
+}
+
 /* pcol_handle's pairs of searcher s (s_r set, s_kv 0) without the grid search, when its lists are short (can_pair's
    bound): the grid search calls collision_result for every grid entry whose rectangle overlaps s_r (pg_overlap: the
    predicate it applies; the grid finds every such entry), newest first (pw_seq descending), and collision_result
@@ -1995,6 +2099,9 @@ void pcol_handle(void)
     static int16_t keep[PIN_MAX];
     npairs = 0;
     flush();
+#ifndef PCOL_EXACT
+    if (fhead >= 0) flush_pairable();
+#endif
     while (tchead >= 0) {
         int s = tchead, sn = tn[s];
         tchead = (int16_t)sn;                     /* tlist_remove(s) of the head (on the list: EF_ONT; tp[s] -1) */
