@@ -125,12 +125,12 @@ static void yeti_step(int i)                                       /* objects/oY
     if (PE(p)->colBot && PE(p)->status != E_STUNNED) PE(p)->yVel = 0;  /* :19 */
     if (PE(p)->status != E_DEAD && PE(p)->status != E_STUNNED && PE(p)->hp < 1) PE(p)->status = E_DEAD;
     if (PE(p)->status >= E_STUNNED) {                                  /* :26 */
-        if (CP(X(i) + 8, Y(i) + 12, OBJ_oSolid)) {
+        if (collision_point_any_at(i, 8, 12, OBJ_oSolid)) {
             scrCreateBlood(i, (pos)(X(i) + 8), (pos)(Y(i) + 8), 3);
             snd_play(SND_xcavemandie);                                         /* :31 */
             pin_destroy(i);
         }
-    } else if (!PE(p)->held && CP(X(i) + 8, Y(i) + 8, OBJ_oSolid)) {
+    } else if (!PE(p)->held && collision_point_any_at(i, 8, 8, OBJ_oSolid)) {
         scrCreateBlood(i, (pos)(X(i) + 8), (pos)(Y(i) + 8), 3);
         snd_play(SND_xcavemandie);                                             /* :38 */
         pin_destroy(i);
@@ -138,7 +138,7 @@ static void yeti_step(int i)                                       /* objects/oY
     p = &PX(i);
     if (PE(p)->status == 0) {                                          /* IDLE :42 */
         PEN(p)->bounced = 0;
-        if (isCollisionBottom(i, 1) && (CPn(X(i) - 1, Y(i), OBJ_oSolid, i) || CPn(X(i) + 16, Y(i), OBJ_oSolid, i))) {
+        if (isCollisionBottom(i, 1) && (collision_point_any_at(i, -1, 0, OBJ_oSolid) || collision_point_any_at(i, 16, 0, OBJ_oSolid))) {
             PE(p)->yVel = N(-6);
             PE(p)->xVel = PE(p)->facing == E_LEFT ? N(-1) : N(1);
             PE(p)->counter -= 10;
@@ -160,14 +160,14 @@ static void yeti_step(int i)                                       /* objects/oY
             PE(p)->xVel = 0;
         } else if (PE(p)->facing == E_LEFT) {
             PE(p)->xVel = N(-1.5);
-            if (!CPn(X(i) - 1, Y(i) + 16, OBJ_oSolid, i)) {
+            if (!collision_point_any_at(i, -1, 16, OBJ_oSolid)) {
                 PE(p)->status = 0;
                 PE(p)->counter = (int16_t)RAND(20, 50);
                 PE(p)->xVel = 0;
             }
         } else if (PE(p)->facing == E_RIGHT) {
             PE(p)->xVel = N(1.5);
-            if (!CPn(X(i) + 16, Y(i) + 16, OBJ_oSolid, i)) {
+            if (!collision_point_any_at(i, 16, 16, OBJ_oSolid)) {
                 PE(p)->status = 0;
                 PE(p)->counter = (int16_t)RAND(20, 50);
                 PE(p)->xVel = 0;
@@ -250,7 +250,7 @@ static void yeti_hit_player(int i, int c)
             snd_play(SND_xhit);                                                /* :20 */
         }
     } else if (PL.invincible == 0 && PE(p)->status < E_STUNNED) {
-        if (CP(X(i) + 8, Y(i) - 4, OBJ_oSolid)) {                      /* :25 */
+        if (collision_point_any_at(i, 8, -4, OBJ_oSolid)) {                      /* :25 */
             PL.blink = 30;
             PL.invincible = 30;
             PE(o)->xVel = DLT(PTOD(o->x), X(i)) ? N(-6) : N(6);
@@ -348,7 +348,7 @@ static void yetiking_step(int i)                                   /* objects/oY
     moveTo(i, PE(p)->xVel, PE(p)->yVel, 0, 0);
     PE(p)->yVel += PE(p)->myGrav;
     if (NGT(PE(p)->yVel, PEN(p)->yVelLimit)) PE(p)->yVel = PEN(p)->yVelLimit;
-    if (CP(X(i) + 16, Y(i) + 16, OBJ_oSolid)) PE(p)->hp = 0;
+    if (collision_point_any_at(i, 16, 16, OBJ_oSolid)) PE(p)->hp = 0;
     if (PE(p)->hp < 1) {                                               /* :15 */
         {
             int yr = RAND(0, 4), xr = RAND(0, 4);
@@ -645,7 +645,7 @@ static void alien_step(int i)                                      /* objects/oA
     if (!vin(i, 20, 4, 4)) return;
     p = &PX(i);
     moveTo(i, PE(p)->xVel, PE(p)->yVel, 0, 0);
-    if (CP(X(i) + 8, Y(i) + 8, OBJ_oSolid)) PE(p)->hp = 0;
+    if (collision_point_any_at(i, 8, 8, OBJ_oSolid)) PE(p)->hp = 0;
     if (PE(p)->hp < 1) {
         scrCreateBlood(i, (pos)(X(i) + 8), (pos)(Y(i) + 8), 3);
         kill_count(i);
@@ -720,15 +720,15 @@ static void alieneject_step(int i)                                 /* objects/oA
     } else if (PE(p)->status == 2) {                                   /* FLOAT */
         PE(p)->xVel = 0;
         PE(p)->yVel = N(2);
-        if (CP(X(i), Y(i) + 6, OBJ_oSolid)) {
+        if (collision_point_any_at(i, 0, 6, OBJ_oSolid)) {
             pin_create(p->x - PI(8), p->y - PI(12), OBJ_oAlien);
             pin_destroy(i);
         } else if (PE(p)->facing == 0) {
             PE(p)->xVel = N(-1);
-            if (CP(X(i) - 8, Y(i), OBJ_oSolid)) PE(p)->facing = 99;
+            if (collision_point_any_at(i, -8, 0, OBJ_oSolid)) PE(p)->facing = 99;
         } else if (PE(p)->facing == 1) {
             PE(p)->xVel = N(1);
-            if (CP(X(i) + 8, Y(i), OBJ_oSolid)) PE(p)->facing = 99;
+            if (collision_point_any_at(i, 8, 0, OBJ_oSolid)) PE(p)->facing = 99;
         }
     }
 }
@@ -783,7 +783,7 @@ static void alienboss_step(int i)                                  /* objects/oA
     int k;
     double dist;
     if (!vin(i, 36, 0, 0)) return;
-    if (CP(X(i) + 8, Y(i) + 8, OBJ_oSolid)) PE(p)->hp = 0;
+    if (collision_point_any_at(i, 8, 8, OBJ_oSolid)) PE(p)->hp = 0;
     if (PE(p)->hp < 1 && PE(p)->status != E_DEAD) {                    /* :9 */
         PE(p)->status = E_DEAD;
         pin_set_sprite(i, GSPR_sAlienBossDie);
@@ -973,7 +973,7 @@ static void ice_destroy(int i)                                     /* objects/oI
     struct pin *p = &PX(i);
     if (!p->cleanDeath && !G.cleanSolids) {
         three_drips(i);
-        if (CP(X(i) + 8, Y(i) + 8, OBJ_oFrozenCaveman)) {
+        if (collision_point_any_at(i, 8, 8, OBJ_oFrozenCaveman)) {
             int f = instance_place_p(i, X(i) + 8, Y(i) + 8, OBJ_oFrozenCaveman);
             if (f != NOONE) pin_destroy(f);
         }
@@ -1263,12 +1263,12 @@ static int ev_step_ice(int i)
     case OBJ_oSpringTrap:                                              /* objects/oSpringTrap/Step_0.gml */
         if (vin(i, 16, 0, 0)) {
             if (PE(p)->counter > 0) PE(p)->counter -= 1;
-            if (!CP(X(i), Y(i) + 16, OBJ_oSolid)) pin_destroy(i);
+            if (!collision_point_any_at(i, 0, 16, OBJ_oSolid)) pin_destroy(i);
         }
         return 1;
     case OBJ_oThinIce: thinice_step(i); return 1;
     case OBJ_oIceBlock:                                                /* objects/oIceBlock/Step_0.gml */
-        if (collision_point_any_at(i, 8, 16, OBJ_oLava) && !CP(X(i) + 8, Y(i) + 17, OBJ_oSolid)) {
+        if (collision_point_any_at(i, 8, 16, OBJ_oLava) && !collision_point_any_at(i, 8, 17, OBJ_oSolid)) {
             PE(p)->yVel = 0;
             PE(p)->myGrav = 0;
             pin_sety(p, PADDV(p->y, N(0.05)));
@@ -1276,20 +1276,20 @@ static int ev_step_ice(int i)
         if (DGT(Y(i), 576)) pin_destroy(i);
         return 1;
     case OBJ_oIceBottom:
-        if (!CP(X(i) + 8, Y(i) - 1, OBJ_oSolid)) pin_destroy(i);
+        if (!collision_point_any_at(i, 8, -1, OBJ_oSolid)) pin_destroy(i);
         return 1;
     case OBJ_oFrozenCaveman:
-        if (!CP(X(i), Y(i), OBJ_oIce)) pin_destroy(i);
+        if (!collision_point_any_at(i, 0, 0, OBJ_oIce)) pin_destroy(i);
         return 1;
     case OBJ_oDarkFall: darkfall_step(i); return 1;
     case OBJ_oRubbleDark:                                              /* objects/oRubbleDark/Step_0.gml */
         pin_sety(p, PADDV(p->y, PE(p)->yVel));
         PE(p)->yVel += PE(p)->yAcc;
-        if (CP(X(i), Y(i), OBJ_oBrick) || CP(X(i), Y(i), OBJ_oBlock)) pin_destroy(i);
+        if (collision_point_any_at(i, 0, 0, OBJ_oBrick) || collision_point_any_at(i, 0, 0, OBJ_oBlock)) pin_destroy(i);
         return 1;
     case OBJ_oRubbleDarkSmall: rubblepiece_step(i, 0); return 1;
     case OBJ_oBarrierEmitter:
-        if (vin(i, 8, 8, 8) && !CP(X(i), Y(i) - 16, OBJ_oSolid)) pin_destroy(i);
+        if (vin(i, 8, 8, 8) && !collision_point_any_at(i, 0, -16, OBJ_oSolid)) pin_destroy(i);
         return 1;
     }
     return 0;

@@ -251,7 +251,7 @@ static void fire_bow(int i)
     int obj = NOONE;
     if (PL.holdItem == NOONE || PX(PL.holdItem).type != T_BOW) return;
     if (PL.facing == LEFT) {
-        if (CP(X(i) - 14, Y(i), OBJ_oSolid)) obj = pin_create(p->x, p->y, OBJ_oArrow);
+        if (collision_point_any_at(i, -14, 0, OBJ_oSolid)) obj = pin_create(p->x, p->y, OBJ_oArrow);
         else obj = pin_create(p->x - PI(14), p->y, OBJ_oArrow);
         p = &PX(i);
         PE(&PX(obj))->xVel = PE(p)->xVel - N(1) - PL.bowStrength;
@@ -263,7 +263,7 @@ static void fire_bow(int i)
         snd_play(SND_xarrowtrap);                                              /* :37 */
         PL.firing = 10;
     } else if (PL.facing == RIGHT) {
-        if (CP(X(i) + 14, Y(i), OBJ_oSolid)) obj = pin_create(p->x, p->y, OBJ_oArrow);
+        if (collision_point_any_at(i, 14, 0, OBJ_oSolid)) obj = pin_create(p->x, p->y, OBJ_oArrow);
         else obj = pin_create(p->x + PI(14), p->y, OBJ_oArrow);
         p = &PX(i);
         PE(&PX(obj))->xVel = PE(p)->xVel + N(1) + PL.bowStrength;
@@ -396,7 +396,7 @@ static void steal_equipment(int i)
 /* oPlayer1 Step :254-266: the parachute opens */
 static void parachute_open(int i)
 {
-    if (!CP(X(i), Y(i) + 32, OBJ_oSolid)) {
+    if (!collision_point_any_at(i, 0, 32, OBJ_oSolid)) {
         pin_create(PX(i).x - PI(8), PX(i).y - PI(16), OBJ_oParachute);
         PL.fallTimer = 0;
         PG.hasParachute = 0;
@@ -599,10 +599,10 @@ static void mattock_hit_end(int i)
 {
     struct pin *p = &PX(i);
     int hit = 0, obj = NOONE;
-    if (CP(X(i), Y(i), OBJ_oSolid)) {
+    if (collision_point_any_at(i, 0, 0, OBJ_oSolid)) {
         obj = instance_place_p(i, X(i), Y(i), OBJ_oSolid);
         if (obj != NOONE && !PX(obj).invincible) hit = 1;
-    } else if (CP(X(i), Y(i) + 9, OBJ_oSolid)) {
+    } else if (collision_point_any_at(i, 0, 9, OBJ_oSolid)) {
         obj = instance_place_p(i, X(i), Y(i) + 9, OBJ_oSolid);
         if (obj != NOONE && !PX(obj).invincible) hit = 1;
     }
@@ -616,7 +616,7 @@ static void mattock_hit_end(int i)
         for (k = 0; k < n; k++) {
             int s = w[k];
             if (!PX(s).alive) continue;
-            if (!CP(X(s), Y(s) + 16, OBJ_oSolid)) pin_destroy(s);
+            if (!collision_point_any_at(s, 0, 16, OBJ_oSolid)) pin_destroy(s);
         }
         if (RAND(1, 20) == 1 && !G.isTunnelMan) {
             PL.holdItem = NOONE;
@@ -736,7 +736,7 @@ static void idol_step(int i)
     p = &PX(i);
     if (inview(i, 8)) {
         if (isLevel()) {
-            if (!PE(p)->held && CP(X(i), Y(i) + 4, OBJ_oBrickSmooth) && instance_exists_p(OBJ_oShopkeeper) &&
+            if (!PE(p)->held && collision_point_any_at(i, 0, 4, OBJ_oBrickSmooth) && instance_exists_p(OBJ_oShopkeeper) &&
                 G.thiefLevel == 0 && !G.murderer)
                 pitems_world(1043, i, 0);
         }
@@ -1528,11 +1528,11 @@ int pitems_ev(int ev, int i, int arg)
     case OBJ_oParaUsed:
         if (ev == FEV_CREATE) { p->type = T_NONE; PE(p)->yVel = 0; PE(p)->yAcc = N(0.2); return 1; }
         if (ev == FEV_STEP) {                                                  /* objects/oParaUsed/Step_0.gml */
-            if (!CP(X(i) + 8, Y(i) + 16, OBJ_oSolid)) {
+            if (!collision_point_any_at(i, 8, 16, OBJ_oSolid)) {
                 pin_sety(p, PADDV(p->y, PE(p)->yVel));
                 PE(p)->yVel += PE(p)->yAcc;
             }
-            if (CP(X(i) + 8, Y(i) + 15, OBJ_oSolid)) pin_sety(p, p->y - PI(1));
+            if (collision_point_any_at(i, 8, 15, OBJ_oSolid)) pin_sety(p, p->y - PI(1));
             return 1;
         }
         break;
@@ -1592,7 +1592,7 @@ int pitems_ev(int ev, int i, int arg)
         }
         if (ev == FEV_STEP) {
             pin_sety(p, PADDV(p->y, PE(p)->yVel));
-            if (CP(X(i), Y(i), OBJ_oSolid)) pin_destroy(i);
+            if (collision_point_any_at(i, 0, 0, OBJ_oSolid)) pin_destroy(i);
             return 1;
         }
         if (ev == FEV_ANIMEND) { pin_destroy(i); return 1; }

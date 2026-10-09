@@ -1492,7 +1492,7 @@ void pl_step(int i)
             double x = PTOD(p->x), y = PTOD(p->y);
             if (collision_rect_p(x - 8, y, x + 8, y + 8, OBJ_oItem, 0, NOONE) != NOONE) {
                 int obj = instance_nearest_p(x, y, OBJ_oItem);
-                if (PE(&PX(obj))->canPickUp && collision_point_p(PTOD(PX(obj).x), PTOD(PX(obj).y), OBJ_oSolid, 0, NOONE) == NOONE) {
+                if (PE(&PX(obj))->canPickUp && !collision_point_any_at(obj, 0, 0, OBJ_oSolid)) {
                     int h = obj;
                     PL.holdItem = h;
                     PE(&PX(h))->held = 1;
@@ -1650,7 +1650,7 @@ void pl_step(int i)
         }
         if (collision_rect_p(x - 8, y - 8, x + 8, y + 8, OBJ_oBombBag, 0, NOONE) != NOONE && !PL.dead && !PL.stunned) {   /* :1994 */
             int obj = collision_rect_p(x - 8, y - 8, x + 8, y + 8, OBJ_oBombBag, 0, NOONE);
-            if (!PE(&PX(obj))->held && PE(&PX(obj))->cost == 0 && collision_point_p(PTOD(PX(obj).x), PTOD(PX(obj).y), OBJ_oSolid, 0, NOONE) == NOONE) {
+            if (!PE(&PX(obj))->held && PE(&PX(obj))->cost == 0 && !collision_point_any_at(obj, 0, 0, OBJ_oSolid)) {
                 int d;
                 PG.bombs += 3;
                 d = pin_create(PX(obj).x, PX(obj).y - PI(14), OBJ_oItemsGet);
@@ -1662,7 +1662,7 @@ void pl_step(int i)
         }
         if (collision_rect_p(x - 8, y - 8, x + 8, y + 8, OBJ_oBombBox, 0, NOONE) != NOONE && !PL.dead && !PL.stunned) {
             int obj = collision_rect_p(x - 8, y - 8, x + 8, y + 8, OBJ_oBombBox, 0, NOONE);
-            if (!PE(&PX(obj))->held && PE(&PX(obj))->cost == 0 && collision_point_p(PTOD(PX(obj).x), PTOD(PX(obj).y), OBJ_oSolid, 0, NOONE) == NOONE) {
+            if (!PE(&PX(obj))->held && PE(&PX(obj))->cost == 0 && !collision_point_any_at(obj, 0, 0, OBJ_oSolid)) {
                 int d;
                 PG.bombs += 12;
                 d = pin_create(PX(obj).x, PX(obj).y - PI(14), OBJ_oItemsGet);
@@ -1674,7 +1674,7 @@ void pl_step(int i)
         }
         if (collision_rect_p(x - 8, y - 8, x + 8, y + 8, OBJ_oRopePile, 0, NOONE) != NOONE && !PL.dead && !PL.stunned) {
             int obj = collision_rect_p(x - 8, y - 8, x + 8, y + 8, OBJ_oRopePile, 0, NOONE);
-            if (!PE(&PX(obj))->held && PE(&PX(obj))->cost == 0 && collision_point_p(PTOD(PX(obj).x), PTOD(PX(obj).y), OBJ_oSolid, 0, NOONE) == NOONE) {
+            if (!PE(&PX(obj))->held && PE(&PX(obj))->cost == 0 && !collision_point_any_at(obj, 0, 0, OBJ_oSolid)) {
                 int d;
                 PG.rope += 3;
                 d = pin_create(PX(obj).x, PX(obj).y - PI(15), OBJ_oItemsGet);

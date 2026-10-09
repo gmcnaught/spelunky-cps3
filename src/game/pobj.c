@@ -1684,7 +1684,7 @@ static void explosion_solid(int self, int other)
         for (k = 0; k < n; k++) {
             int s = w[k];
             if (!PX(s).alive) continue;
-            if (collision_point_p(PTOD(PX(s).x), PTOD(PX(s).y) + 16, OBJ_oSolid, 0, NOONE) == NOONE) pin_destroy(s);
+            if (!collision_point_any_at(s, 0, 16, OBJ_oSolid)) pin_destroy(s);
         }
     }
 }

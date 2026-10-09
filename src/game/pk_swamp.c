@@ -516,8 +516,8 @@ int pswamp_piranha_run(const int16_t *ord, int n)
             int k = instance_first_p(OBJ_oCharacter), sv;
             struct pin_ext *e = PE(p);
             int nr = pdist_lt_at(p->x, p->y, 4, 4, PX(k).x, PX(k).y, 90) && PL.swimming && !PL.dead;
-            int ok = d > 0 ? collision_point_any_at(i, 8 + 2, 0, OBJ_oWater) && !CP(X(i) + 10, Y(i), OBJ_oSolid)
-                           : collision_point_any_at(i, -2, 0, OBJ_oWater) && !CP(X(i) - 2, Y(i), OBJ_oSolid);
+            int ok = d > 0 ? collision_point_any_at(i, 8 + 2, 0, OBJ_oWater) && !collision_point_any_at(i, 10, 0, OBJ_oSolid)
+                           : collision_point_any_at(i, -2, 0, OBJ_oWater) && !collision_point_any_at(i, -2, 0, OBJ_oSolid);
             sv = solid_vline_any(d > 0 ? ix[j] + e->rbo : ix[j] + e->lbo - 1, iy[j] + e->tbo + 5, iy[j] + e->bbo - 1, i);
             if (!ok || nr != !!(a & 4) || sv != !!(a & 2) || pw_fam_swims(prey_objs, 4)) {
                 fprintf(stderr, "pswamp_piranha_run: phase T differs (%d)\n", i);
@@ -1299,7 +1299,7 @@ int pswamp_player(int site, int i, int arg)
     case 2009:                                                 /* characterStepEvent :764: under water */
         if (instance_exists_p(OBJ_oCape)) cape_set_open(0);
         if (PL.state == FALLING && NGT(PE(p)->yVel, 0)) PL.yFric = N(0.5);
-        else if (!collision_point_any(X(i), Y(i) - 9, OBJ_oWater, 0, NOONE)) PL.yFric = N(1);
+        else if (!collision_point_any_at(i, 0, -9, OBJ_oWater)) PL.yFric = N(1);
         else PL.yFric = N(0.9);
         return 1;
     case 2011:                                                 /* characterStepEvent :886 */

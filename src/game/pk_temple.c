@@ -105,13 +105,13 @@ static void hawkman_step(int i)
     if (isCollisionBottom(i, 1)) PE(p)->colBot = 1;
     if (isCollisionTop(i, 1)) PE(p)->colTop = 1;
     if (PE(p)->status >= E_STUNNED) {                                      /* :19 */
-        if (CP(X(i) + 8, Y(i) + 12, OBJ_oSolid)) {
+        if (collision_point_any_at(i, 8, 12, OBJ_oSolid)) {
             scrCreateBlood(i, p->x + PI(8), p->y + PI(8), 3);
             snd_play(SND_xcavemandie);                                         /* :24 */
             pin_destroy(i);
         }
     } else if (!PE(p)->held) {
-        if (CP(X(i) + 8, Y(i) + 8, OBJ_oSolid)) {
+        if (collision_point_any_at(i, 8, 8, OBJ_oSolid)) {
             scrCreateBlood(i, p->x + PI(8), p->y + PI(8), 3);
             snd_play(SND_xcavemandie);                                         /* :33 */
             pin_destroy(i);
@@ -162,7 +162,7 @@ static void hawkman_step(int i)
         if (isCollisionLeft(i, 1) || isCollisionRight(i, 1))
             PE(p)->facing = PE(p)->facing == E_LEFT ? E_RIGHT : E_LEFT;
         PE(p)->xVel = PE(p)->facing == E_LEFT ? N(-3) : N(3);
-        if (isCollisionBottom(i, 1) && !CP(X(i), Y(i) - 16, OBJ_oSolid)) PE(p)->yVel = N(-6);
+        if (isCollisionBottom(i, 1) && !collision_point_any_at(i, 0, -16, OBJ_oSolid)) PE(p)->yVel = N(-6);
     } else if (PE(p)->status == E_STUNNED) {                               /* :141 */
         if (NEQ(PE(p)->xVel, N(0)) && PE(p)->hp > 0) pin_set_sprite(i, GSPR_sHawkStunL);
         else if (PEN(p)->bounced) pin_set_sprite(i, NLT(PE(p)->yVel, N(0)) ? GSPR_sHawkBounceL : GSPR_sHawkFallL);
@@ -235,7 +235,7 @@ static void hawkman_hit_player(int i, int c)
         pin_setispd(p, (img_t)0.5);
         snd_play(SND_xhit);                                                    /* :21 */
     } else if (PL.invincible == 0 && PE(p)->status < E_STUNNED) {
-        if (CP(X(i) + 8, Y(i) - 4, OBJ_oSolid)) {                          /* :25 */
+        if (collision_point_any_at(i, 8, -4, OBJ_oSolid)) {                          /* :25 */
             PL.blink = 30;
             PL.invincible = 30;
             PE(o)->xVel = DLT(PTOD(o->x), X(i)) ? N(-6) : N(6);
@@ -462,7 +462,7 @@ static void magmaman_step(int i)
 {
     struct pin *p = &PX(i);
     if (PE(p)->hp > 0) PE(p)->hp -= 1;
-    if (CP(X(i) + 8, Y(i) + 8, OBJ_oSolid) || PE(p)->hp < 1) {
+    if (collision_point_any_at(i, 8, 8, OBJ_oSolid) || PE(p)->hp < 1) {
         PE(p)->xVel = 0;
         PE(p)->yVel = 0;
         PE(p)->status = E_DEAD;
@@ -580,7 +580,7 @@ static void tomblord_step(int i)
     moveTo(i, PE(p)->xVel, PE(p)->yVel, 0, 0);
     PE(p)->yVel += PE(p)->myGrav;
     if (NGT(PE(p)->yVel, PEN(p)->yVelLimit)) PE(p)->yVel = PEN(p)->yVelLimit;
-    if (CP(X(i) + 16, Y(i) + 16, OBJ_oSolid)) PE(p)->hp = 0;
+    if (collision_point_any_at(i, 16, 16, OBJ_oSolid)) PE(p)->hp = 0;
     if (PE(p)->hp < 1) {                                                   /* :15 */
         int k;
         {   /* scrCreateBlood(x+14+rand(0,4), y+14+rand(0,4), 4): bloodless, but the arguments draw */
@@ -941,7 +941,7 @@ static void ceiling_step(int i)
             pin_sety(p, p->y + PI(1));
         }
         PE(p)->yVel = 0;
-        if (CP(X(i) + 8, Y(i) + 17, OBJ_oSolid)) PE(p)->status = 2;
+        if (collision_point_any_at(i, 8, 17, OBJ_oSolid)) PE(p)->status = 2;
         if (p->spr == GSPR_sBlock) pin_set_sprite(i, GSPR_sCeilingTrapS);
     } else if (PE(p)->status == 2) {                                       /* WAIT */
         PE(p)->yVel = 0;
@@ -1156,7 +1156,7 @@ static void lava_rope(int i)
 {
     struct pin *p = &PX(i);
     if (PE(p)->burnTimer == 1) {                                       /* :7 */
-        if (PL.state == CLIMBING && collision_point_p(X(i) + 12, Y(i) + 4, OBJ_oPlayer1, 0, NOONE) != NOONE)
+        if (PL.state == CLIMBING && collision_point_any_at(i, 12, 4, OBJ_oPlayer1))
             PL.state = FALLING;
         pin_destroy(i);
         return;
@@ -1169,10 +1169,10 @@ static void ropeburn_step(int i)
 {
     struct pin *p = &PX(i);
     pin_sety(p, PADDV(p->y, PE(p)->yVel));
-    if (CP(X(i), Y(i), OBJ_oSolid) ||
+    if (collision_point_any_at(i, 0, 0, OBJ_oSolid) ||
         collision_rect_p(X(i) - 1, Y(i) - 8, X(i) + 1, Y(i) + 8, OBJ_oRope, 0, NOONE) == NOONE)
         pin_destroy(i);
-    if (CP(X(i), Y(i), OBJ_oRope)) {
+    if (collision_point_any_at(i, 0, 0, OBJ_oRope)) {
         int r = instance_nearest_p(X(i), Y(i), OBJ_oRope);
         if (r != NOONE) PE(&PX(r))->burnTimer = 1;
     }
@@ -1478,7 +1478,7 @@ static void debris_step(int i)
     pin_sety(p, PADDV(p->y, PE(p)->yVel));
     if (PE(p)->bounce) {
         if (NLT(PE(p)->yVel, N(6))) PE(p)->yVel += PE(p)->grav;
-        if (CP(X(i), Y(i) + 4, OBJ_oTemple)) {
+        if (collision_point_any_at(i, 0, 4, OBJ_oTemple)) {
             if (NGT(PE(p)->yVel, N(1))) PE(p)->yVel = NMUL(-PE(p)->yVel, N(0.4));
             else {
                 pin_create(p->x, p->y, OBJ_oSmokePuff);
@@ -1646,7 +1646,7 @@ static int step_ev(int i)
     case OBJ_oFinalBoss: finalboss_step(i); return 1;
     case OBJ_oRopeBurn: ropeburn_step(i); return 1;
     case OBJ_oTempleFake:                                              /* objects/oTempleFake/Step_0.gml */
-        if (!CP(X(i) + 8, Y(i) + 8, OBJ_oDoor)) {
+        if (!collision_point_any_at(i, 8, 8, OBJ_oDoor)) {
             pin_create(PX(i).x, PX(i).y, OBJ_oTemple);
             pin_destroy(i);
         }

@@ -335,7 +335,7 @@ void pen_parent_step(int i)
         if (PL.holdItem == NOONE || PE(p)->status < E_STUNNED) PE(p)->held = 0;
     } else
         pin_setdepth(p, 60);
-    if (CPn(X(i) + (sprw(i) >> 1), Y(i) + (sprh(i) >> 1), OBJ_oWaterSwim, i)) {   /* :34 */
+    if (collision_point_any_at(i, (sprw(i) >> 1), (sprh(i) >> 1), OBJ_oWaterSwim)) {   /* :34 */
         if (!PEN(p)->swimming) {
             pin_create(P(X(i) + (sprw(i) >> 1)), p->y, OBJ_oSplash);
             p = &PX(i);
@@ -376,7 +376,7 @@ void pen_parent_step(int i)
     }
     if (PE(p)->status >= E_STUNNED) {                                             /* :131 sacrifice */
         if (!PE(p)->held && NEQ(PE(p)->xVel, N(0)) && NEQ(PE(p)->yVel, N(0))) {
-            if (CP(X(i) + 8, Y(i) + 16, OBJ_oSacAltarLeft)) pitems_world(5014, i, 0);
+            if (collision_point_any_at(i, 8, 16, OBJ_oSacAltarLeft)) pitems_world(5014, i, 0);
         } else
             PEN(p)->sacCount = 20;
     }
@@ -417,7 +417,7 @@ static void snake_step(int i)
     moveTo(i, PE(p)->xVel, PE(p)->yVel, 0, 0);
     PE(p)->yVel += PE(p)->myGrav;
     if (NGT(PE(p)->yVel, PEN(p)->yVelLimit)) PE(p)->yVel = PEN(p)->yVelLimit;
-    if (CP(X(i) + 8, Y(i) + 8, OBJ_oSolid)) PE(p)->hp = 0;
+    if (collision_point_any_at(i, 8, 8, OBJ_oSolid)) PE(p)->hp = 0;
     if (PE(p)->hp < 1) {                                                   /* :15 */
         blood(i, X(i) + 8, Y(i) + 8, 3);
         kill_count(i);
@@ -481,7 +481,7 @@ static void bat_step(int i)
     double dist, dir, x, y, qx, qy;
     if (!eview(i, 20, 4)) return;
     moveTo(i, PE(p)->xVel, PE(p)->yVel, 0, 0);
-    if (CP(X(i) + 8, Y(i) + 8, OBJ_oSolid)) PE(p)->hp = -999;
+    if (collision_point_any_at(i, 8, 8, OBJ_oSolid)) PE(p)->hp = -999;
     if (PE(p)->hp < 1) {
         blood(i, X(i) + 8, Y(i) + 8, 3);
         kill_count(i);
@@ -552,7 +552,7 @@ static void spiderhang_step(int i, int giant)
     double dist;
     if (giant ? !eview(i, 32, 0) : !eview(i, 20, 4)) return;
     dist = distance_to_object_p(i, OBJ_oCharacter);
-    if (CP(X(i) + (giant ? 16 : 8), Y(i) + (giant ? 8 : 4), OBJ_oSolid)) PE(p)->hp = 0;
+    if (collision_point_any_at(i, (giant ? 16 : 8), (giant ? 8 : 4), OBJ_oSolid)) PE(p)->hp = 0;
     if (PE(p)->hp < 1) {
         if (giant)                                                     /* :11 */
             giant_spider_loot(i);
@@ -562,7 +562,7 @@ static void spiderhang_step(int i, int giant)
             PG.kills += 1;
         }
         pin_destroy(i);
-    } else if ((giant && PE(&PX(i))->hp < 10) || !CP(X(i), Y(i) - 16, OBJ_oSolid) ||
+    } else if ((giant && PE(&PX(i))->hp < 10) || !collision_point_any_at(i, 0, -16, OBJ_oSolid) ||
                (DLT(dist, 90) && c != NOONE && DGT(Y(c), Y(i)) &&
                 DLT(X(c) - (X(i) + (giant ? 16 : 8)) < 0 ? (X(i) + (giant ? 16 : 8)) - X(c) : X(c) - (X(i) + (giant ? 16 : 8)), 8))) {
         int hp = PE(&PX(i))->hp;
@@ -584,7 +584,7 @@ static void spider_step(int i)
         moveTo(i, PE(p)->xVel, PE(p)->yVel, 0, 0);
         PE(p)->yVel += PE(p)->myGrav;
         if (NGT(PE(p)->yVel, PEN(p)->yVelLimit)) PE(p)->yVel = PEN(p)->yVelLimit;
-        if (CP(X(i) + 8, Y(i) + 8, OBJ_oSolid)) PE(p)->hp = 0;
+        if (collision_point_any_at(i, 8, 8, OBJ_oSolid)) PE(p)->hp = 0;
         if (PE(p)->hp < 1) {
             blood(i, X(i) + 8, Y(i) + 8, 3);
             kill_count(i);
@@ -632,7 +632,7 @@ static void giantspider_step(int i)
     PE(p)->yVel += PE(p)->myGrav;
     if (NGT(PE(p)->yVel, PEN(p)->yVelLimit)) PE(p)->yVel = PEN(p)->yVelLimit;
     if (PEN(p)->whipped > 0) PEN(p)->whipped -= 1;
-    if (CP(X(i) + 16, Y(i) + 24, OBJ_oSolid)) PE(p)->hp = 0;
+    if (collision_point_any_at(i, 16, 24, OBJ_oSolid)) PE(p)->hp = 0;
     if (PE(p)->hp < 1) {                                                   /* :16 */
         giant_spider_loot(i);
         pin_destroy(i);
@@ -750,13 +750,13 @@ static void caveman_step(int i)
     if (isCollisionBottom(i, 1)) PE(p)->colBot = 1;
     if (isCollisionTop(i, 1)) PE(p)->colTop = 1;
     if (PE(p)->status >= E_STUNNED) {                                      /* :18 */
-        if (CP(X(i) + 8, Y(i) + 12, OBJ_oSolid)) {
+        if (collision_point_any_at(i, 8, 12, OBJ_oSolid)) {
             blood(i, X(i) + 8, Y(i) + 8, 3);
             snd_play(SND_xcavemandie);                                         /* :23 */
             pin_destroy(i);
         }
     } else if (!PE(p)->held) {
-        if (CP(X(i) + 8, Y(i) + 8, OBJ_oSolid)) {
+        if (collision_point_any_at(i, 8, 8, OBJ_oSolid)) {
             blood(i, X(i) + 8, Y(i) + 8, 3);
             snd_play(SND_xcavemandie);                                         /* :32 */
             pin_destroy(i);
@@ -767,7 +767,7 @@ static void caveman_step(int i)
     if (PE(p)->colBot && PE(p)->status != E_STUNNED) PE(p)->yVel = 0;
     if (PE(p)->status == 0) {                                              /* IDLE :45 */
         PEN(p)->bounced = 0;
-        if (PE(p)->colBot && (CPn(X(i) - 1, Y(i), OBJ_oSolid, i) || CPn(X(i) + 16, Y(i), OBJ_oSolid, i))) {
+        if (PE(p)->colBot && (collision_point_any_at(i, -1, 0, OBJ_oSolid) || collision_point_any_at(i, 16, 0, OBJ_oSolid))) {
             PE(p)->yVel = N(-6);
             PE(p)->xVel = PE(p)->facing == E_LEFT ? N(-1) : N(1);
             PE(p)->counter -= 10;
@@ -782,14 +782,14 @@ static void caveman_step(int i)
     } else if (PE(p)->status == 1) {                                       /* WALK :79 */
         if (PE(p)->colLeft || PE(p)->colRight) PE(p)->facing = PE(p)->facing == E_LEFT ? E_RIGHT : E_LEFT;
         if (PE(p)->facing == E_LEFT) {
-            if (!CPn(X(i) - 1, Y(i) + 16, OBJ_oSolid, i)) {
+            if (!collision_point_any_at(i, -1, 16, OBJ_oSolid)) {
                 PE(p)->status = 0;
                 PE(p)->counter = (int16_t)RAND(20, 50);
                 PE(p)->xVel = 0;
             }
             PE(p)->xVel = N(-1.5);
         } else {
-            if (!CPn(X(i) + 16, Y(i) + 16, OBJ_oSolid, i)) {
+            if (!collision_point_any_at(i, 16, 16, OBJ_oSolid)) {
                 PE(p)->status = 0;
                 PE(p)->counter = (int16_t)RAND(20, 50);
                 PE(p)->xVel = 0;
@@ -856,7 +856,7 @@ static void skeleton_step(int i)
     moveTo(i, PE(p)->xVel, PE(p)->yVel, 0, 0);
     PE(p)->yVel += PE(p)->myGrav;
     if (NGT(PE(p)->yVel, PEN(p)->yVelLimit)) PE(p)->yVel = PEN(p)->yVelLimit;
-    if (CP(X(i) + 8, Y(i) + 8, OBJ_oSolid)) PE(p)->hp = 0;
+    if (collision_point_any_at(i, 8, 8, OBJ_oSolid)) PE(p)->hp = 0;
     if (PE(p)->hp < 1) {                                                   /* :15 */
         int k, skull;
         for (k = 0; k < 3; k++) pin_create(PX(i).x + PI(8), PX(i).y + PI(8), OBJ_oBone);
@@ -889,11 +889,11 @@ static void fakebones_step(int i)
     struct pin *p = &PX(i);
     struct pin *q;
     if (!eview(i, 16, 0)) return;
-    if (!CP(X(i) + 8, Y(i) + 16, OBJ_oSolid)) {
+    if (!collision_point_any_at(i, 8, 16, OBJ_oSolid)) {
         pin_sety(p, PADDV(p->y, PE(p)->yVel));
         PE(p)->yVel += PE(p)->yAcc;
     }
-    if (CP(X(i) + 8, Y(i) + 15, OBJ_oSolid)) pin_sety(p, p->y - (PI(1)));
+    if (collision_point_any_at(i, 8, 15, OBJ_oSolid)) pin_sety(p, p->y - (PI(1)));
     q = &PX(pl());
     {
         double dy = PTOD(q->y) - (Y(i) + 8), dx = PTOD(q->x) - (X(i) + 8);
@@ -938,7 +938,7 @@ static void boulder_step(int i)
         }
         if (NLT(NABS(PE(p)->xVel), N(0.5))) PE(p)->xVel = 0;
     }
-    if (!CP(X(i), Y(i) + 16, OBJ_oSolid)) {
+    if (!collision_point_any_at(i, 0, 16, OBJ_oSolid)) {
         PE(p)->colLeft = collision_rect_any(X(i) - 16, Y(i) - 16, X(i) - 8, Y(i) + 16, OBJ_oSolid, 0, i);
         PE(p)->colRight = collision_rect_any(X(i) + 8, Y(i) - 16, X(i) + 16, Y(i) + 16, OBJ_oSolid, 0, i);
         if (PE(p)->colLeft && !PE(p)->colRight) pin_setx(p, p->x + (PI(1)));
