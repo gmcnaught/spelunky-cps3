@@ -2543,7 +2543,11 @@ int (collision_point_any_at)(int i, int32_t dx, int32_t dy, int obj)
             int r;
             q.iok = 1; q.ix = x + dx; q.iy = y + dy;                 /* (solid_point_sum reads iok, ix, iy) */
             r = fam_none(obj) ? 0 : solid_point_sum(&q, 0, NOONE);
-            if (r < 0) r = collision_point_p(q.ix, q.iy, obj, 0, NOONE) != NOONE;
+            if (r < 0) {           /* collision_point_p at the whole ix, iy (not fam_none): pq_init's query is q, nodbl */
+                PWST(point, 1);
+                q.nodbl = 1;
+                r = point_q(&q, obj, 0, NOONE) != NOONE;
+            }
 #ifdef PLAY_STATS
             if (r != (collision_point_p(PTOD(PW.in[i].x) + dx, PTOD(PW.in[i].y) + dy, obj, 0, NOONE) != NOONE)) {
                 fprintf(stderr, "collision_point_any_at: solid answer %d differs (%d %d)\n", r, q.ix, q.iy);
