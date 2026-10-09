@@ -2509,55 +2509,61 @@ static int point_at_xy(int obj, int32_t px, int32_t py)
 #endif
 }
 
+#ifndef PCOL_EXACT
+/* pw_filled_xy's grid paths (the point in the grid at cell cx, cy, gfar 0, pcol_quiet() 0, obj a static family f but
+   oSolid): point_at_xy's two calls in one, with the same flushes and fallbacks in the same order:
+   - oSolid: none alive -> 0; else grid_flush and ik_cells' one cell with notme NOONE, prec 0 (a block whose
+     gfblk is not NOONE: 1; gother, or a second block: -1; else 0); -1 -> collision_point_p;
+   - obj (only after a solid miss): none alive -> 0; else ik_xpt's tests inline (xflush_run, the index's miss, the
+     hint holding the point); -1 -> xstatic_any on point_at_xy's query.
+   oSolid's -1 goes back to point_at_xy for both (its grid_flush and ik_cells then change nothing) */
+static inline int filled_grid(int obj, int f, int32_t px, int32_t py, int cx, int cy)
+{
+    int r, k, n;
+    const struct pin *h;
+    if (olive[OBJ_oSolid]) {
+        grid_flush();
+        n = gfull[cy][cx];
+        r = n && gfblk[cy][cx] != NOONE ? 1 : gother[cy][cx] || n > 1 ? -1 : 0;
+        if (r < 0) return point_at_xy(OBJ_oSolid, px, py) || point_at_xy(obj, px, py);
+#ifdef PLAY_STATS
+        if (r != (collision_point_p((double)px, (double)py, OBJ_oSolid, 0, NOONE) != NOONE)) {
+            fprintf(stderr, "point_at_xy: answer %d differs (%d %d %d)\n", r, OBJ_oSolid, (int)px, (int)py);
+            abort();
+        }
+#endif
+        if (r) return 1;
+    }
+    if (!olive[obj]) return 0;
+    if (xdhead >= 0) xflush_run();
+    if (xfar[f] == 0 && !xsat[f] && xcnt[f][cy][cx] == 0)
+        r = 0;
+    else if ((k = xhint[cy][cx]) >= 0 && (h = &PW.in[k])->alive && h->bbk == BB_INT && obj_is(h->obj, obj) &&
+             px >= h->bl && px < h->br && py >= h->bt && py < h->bb)
+        r = 1;
+    else {
+        struct pq q;
+        q.iok = 1; q.ix = px; q.iy = py; q.nodbl = 1;
+        r = xstatic_any(obj, NOONE, &q, 0);
+    }
+#ifdef PLAY_STATS
+    if (r != (collision_point_p((double)px, (double)py, obj, 0, NOONE) != NOONE)) {
+        fprintf(stderr, "point_at_xy: answer %d differs (%d %d %d)\n", r, obj, (int)px, (int)py);
+        abort();
+    }
+#endif
+    return r;
+}
+#endif
+
 /* collision_point_any_at(i, dx, dy, oSolid) || collision_point_any_at(i, dx, dy, obj) for i at whole x, y (|.| < 29900)
    and px = x + dx, py = y + dy (|dx|, |dy| <= 16) */
 int pw_filled_xy(int obj, int32_t px, int32_t py)
 {
 #ifndef PCOL_EXACT
-    /* point_at_xy's two calls in one when both take the grid paths (the point in the grid, gfar 0, pcol_quiet() 0,
-       obj a static family but oSolid), with the same flushes and fallbacks in the same order:
-       - oSolid: none alive -> 0; else grid_flush and ik_cells' one cell with notme NOONE, prec 0 (a block whose
-         gfblk is not NOONE: 1; gother, or a second block: -1; else 0); -1 -> collision_point_p;
-       - obj (only after a solid miss): none alive -> 0; else ik_xpt's tests inline (xflush_run, the index's miss, the
-         hint holding the point); -1 -> xstatic_any on point_at_xy's query.
-       oSolid's -1 goes back to point_at_xy for both (its grid_flush and ik_cells then change nothing) */
     int f = obj >= 0 && obj != OBJ_oSolid ? xf_of[obj] : -1, cx = px >> 4, cy = py >> 4;
-    if (f >= 0 && px >= 0 && py >= 0 && cx < GRID_W && cy < GRID_H && !gfar && !pcol_quiet()) {
-        int r, k, n;
-        const struct pin *h;
-        if (olive[OBJ_oSolid]) {
-            grid_flush();
-            n = gfull[cy][cx];
-            r = n && gfblk[cy][cx] != NOONE ? 1 : gother[cy][cx] || n > 1 ? -1 : 0;
-            if (r < 0) return point_at_xy(OBJ_oSolid, px, py) || point_at_xy(obj, px, py);
-#ifdef PLAY_STATS
-            if (r != (collision_point_p((double)px, (double)py, OBJ_oSolid, 0, NOONE) != NOONE)) {
-                fprintf(stderr, "point_at_xy: answer %d differs (%d %d %d)\n", r, OBJ_oSolid, (int)px, (int)py);
-                abort();
-            }
-#endif
-            if (r) return 1;
-        }
-        if (!olive[obj]) return 0;
-        if (xdhead >= 0) xflush_run();
-        if (xfar[f] == 0 && !xsat[f] && xcnt[f][cy][cx] == 0)
-            r = 0;
-        else if ((k = xhint[cy][cx]) >= 0 && (h = &PW.in[k])->alive && h->bbk == BB_INT && obj_is(h->obj, obj) &&
-                 px >= h->bl && px < h->br && py >= h->bt && py < h->bb)
-            r = 1;
-        else {
-            struct pq q;
-            q.iok = 1; q.ix = px; q.iy = py; q.nodbl = 1;
-            r = xstatic_any(obj, NOONE, &q, 0);
-        }
-#ifdef PLAY_STATS
-        if (r != (collision_point_p((double)px, (double)py, obj, 0, NOONE) != NOONE)) {
-            fprintf(stderr, "point_at_xy: answer %d differs (%d %d %d)\n", r, obj, (int)px, (int)py);
-            abort();
-        }
-#endif
-        return r;
-    }
+    if (f >= 0 && px >= 0 && py >= 0 && cx < GRID_W && cy < GRID_H && !gfar && !pcol_quiet())
+        return filled_grid(obj, f, px, py, cx, cy);
 #endif
     return point_at_xy(OBJ_oSolid, px, py) || point_at_xy(obj, px, py);
 }
@@ -4360,7 +4366,7 @@ int instance_place_at(int self, int32_t idx, int32_t idy, int obj)
    moved is idx || idy (whole values below 2^24 are their floats), pin_bbox's box is the ints and the query's floats
    (l + dx, ...) are (float)(int); overlap_at's integer path is taken as it would be (whole dx, dy). Otherwise, and
    off the grid path, instance_place_p's own code on the same values (place_after_query) */
-int instance_place_ixy(int self, int32_t x, int32_t y, int32_t idx, int32_t idy, int obj)
+static inline int place_ixy(int self, int32_t x, int32_t y, int32_t idx, int32_t idy, int obj)
 {
     PWST(place, 1);
     int q = pcol_query(obj), moved = idx != 0 || idy != 0;
@@ -4405,6 +4411,44 @@ int instance_place_ixy(int self, int32_t x, int32_t y, int32_t idx, int32_t idy,
         return c.hit;
     }
     return place_after_query(self, q, (double)(x + idx), (double)(y + idy), idx, idy, moved, obj);
+}
+
+int instance_place_ixy(int self, int32_t x, int32_t y, int32_t idx, int32_t idy, int obj)
+{
+    return place_ixy(self, x, y, idx, idy, obj);
+}
+
+/* pk_swamp.c check_water's tests of water j at whole ix, iy (|.| < 29900), in its order: pw_filled_xy(oWater, ix,
+   iy - 16) (0: j's sprite to top), instance_place_ixy(j, ix, iy, -16 then 16, 0, oWater) (a hit whose sprite is
+   sWaterTop or sLavaTop: j's sprite to top), then !pw_filled_xy left || !right || !below: 1 (j to be destroyed).
+   One call, the pieces inline; with the four points in the grid, each pw_filled_xy is FILLED_W (its own test of gfar
+   and pcol_quiet(), the rest of its conditions true) */
+#ifndef PCOL_EXACT
+#define FILLED_W(px, py, cx, cy) \
+    (!gfar && !pcol_quiet() ? filled_grid(OBJ_oWater, f, px, py, cx, cy) : pw_filled_xy(OBJ_oWater, px, py))
+#endif
+int pw_water_tests(int j, int32_t ix, int32_t iy, int top)
+{
+    int k;
+#ifndef PCOL_EXACT
+    int f = xf_of[OBJ_oWater];
+    if (f >= 0 && ix >= 16 && iy >= 16 && ix < (GRID_W - 1) * 16 && iy < (GRID_H - 1) * 16) {
+        int cx = ix >> 4, cy = iy >> 4;
+        if (!FILLED_W(ix, iy - 16, cx, cy - 1)) pin_set_sprite(j, top);
+        k = place_ixy(j, ix, iy, -16, 0, OBJ_oWater);
+        if (k != NOONE && (PW.in[k].spr == GSPR_sWaterTop || PW.in[k].spr == GSPR_sLavaTop)) pin_set_sprite(j, top);
+        k = place_ixy(j, ix, iy, 16, 0, OBJ_oWater);
+        if (k != NOONE && (PW.in[k].spr == GSPR_sWaterTop || PW.in[k].spr == GSPR_sLavaTop)) pin_set_sprite(j, top);
+        return !FILLED_W(ix - 16, iy, cx - 1, cy) || !FILLED_W(ix + 16, iy, cx + 1, cy) || !FILLED_W(ix, iy + 16, cx, cy + 1);
+    }
+#endif
+    if (!pw_filled_xy(OBJ_oWater, ix, iy - 16)) pin_set_sprite(j, top);
+    k = instance_place_ixy(j, ix, iy, -16, 0, OBJ_oWater);
+    if (k != NOONE && (PW.in[k].spr == GSPR_sWaterTop || PW.in[k].spr == GSPR_sLavaTop)) pin_set_sprite(j, top);
+    k = instance_place_ixy(j, ix, iy, 16, 0, OBJ_oWater);
+    if (k != NOONE && (PW.in[k].spr == GSPR_sWaterTop || PW.in[k].spr == GSPR_sLavaTop)) pin_set_sprite(j, top);
+    return !pw_filled_xy(OBJ_oWater, ix - 16, iy) || !pw_filled_xy(OBJ_oWater, ix + 16, iy) ||
+           !pw_filled_xy(OBJ_oWater, ix, iy + 16);
 }
 
 /* floor(v) as an int when |v| < 2^14, from the double's bits (dwhole's product: the integer part in the high word,

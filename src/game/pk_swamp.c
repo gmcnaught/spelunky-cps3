@@ -1359,7 +1359,7 @@ static void check_water(void)
     int n = pw_with(OBJ_oWater, w, PIN_MAX), k, waterCounter = 0;
     int olmec = isRoomIs(R_rOlmec);                            /* (PW.room changes only at a room's load) */
     for (k = 0; k < n; k++) {
-        int j = w[k], obj, lava;
+        int j = w[k], lava;
         int32_t ix, iy;
         if (!PX(j).alive) continue;
         if (olmec) continue;
@@ -1367,18 +1367,9 @@ static void check_water(void)
         if (pin_xy_int(j, &ix, &iy) && ix > -29900 && ix < 29900 && iy > -29900 && iy < 29900) {
             /* whole x, y: the same tests on ints (y < 512 is iy < 512; CP(x + dx, y + dy, oSolid) || CP(.., oWater) is
                pw_filled_xy: collision_point_any_at's branches, whose query is CP's on the doubles, on the ints;
-               x -+ 16: instance_place_ixy) */
+               x -+ 16: instance_place_ixy; the five and the sprite changes in pworld.c pw_water_tests) */
             if (!(iy < 512)) continue;
-            if (!pw_filled_xy(OBJ_oWater, ix, iy - 16))
-                pin_set_sprite(j, lava ? GSPR_sLavaTop : GSPR_sWaterTop);
-            obj = instance_place_ixy(j, ix, iy, -16, 0, OBJ_oWater);
-            if (obj != NOONE && (PX(obj).spr == GSPR_sWaterTop || PX(obj).spr == GSPR_sLavaTop))
-                pin_set_sprite(j, lava ? GSPR_sLavaTop : GSPR_sWaterTop);
-            obj = instance_place_ixy(j, ix, iy, 16, 0, OBJ_oWater);
-            if (obj != NOONE && (PX(obj).spr == GSPR_sWaterTop || PX(obj).spr == GSPR_sLavaTop))
-                pin_set_sprite(j, lava ? GSPR_sLavaTop : GSPR_sWaterTop);
-            if (!pw_filled_xy(OBJ_oWater, ix - 16, iy) || !pw_filled_xy(OBJ_oWater, ix + 16, iy) ||
-                !pw_filled_xy(OBJ_oWater, ix, iy + 16)) {
+            if (pw_water_tests(j, ix, iy, lava ? GSPR_sLavaTop : GSPR_sWaterTop)) {
                 pin_destroy(j);
                 waterCounter += 1;
             }
