@@ -56,9 +56,29 @@ static int16_t evobj0[17];
 static int16_t evnz[EVNZ_N], evnzn[16];
 static uint32_t evnzg[16], evnzk[16], evkn[16];
 
+/* the objects with instances by runtime index: bit rt of onzb set when obj_byrt[rt]'s list is non-empty (prun_onz
+   keeps it at each change, prun_onz_reset clears it with the lists at a level start); evkm[key]: bit rt set when
+   obj_byrt[rt] is in evobj's range of key (evobj_init). evnz_sync's rebuild takes the bits of both, in runtime order:
+   the objects a walk over evobj's range testing pw_ohead finds, in its order (evobj is in runtime order) */
+#define RTW ((RTOBJ_COUNT + 31) / 32)
+static uint32_t onzb[RTW], evkm[EVK_DRAW][RTW];
+static const uint32_t bit32[32] = {
+    1u << 0, 1u << 1, 1u << 2, 1u << 3, 1u << 4, 1u << 5, 1u << 6, 1u << 7, 1u << 8, 1u << 9, 1u << 10, 1u << 11,
+    1u << 12, 1u << 13, 1u << 14, 1u << 15, 1u << 16, 1u << 17, 1u << 18, 1u << 19, 1u << 20, 1u << 21, 1u << 22,
+    1u << 23, 1u << 24, 1u << 25, 1u << 26, 1u << 27, 1u << 28, 1u << 29, 1u << 30, 1u << 31
+};
+
+void prun_onz_reset(void)
+{
+    int w;
+    for (w = 0; w < RTW; w++) onzb[w] = 0;
+}
+
 void prun_onz(int obj)
 {
-    unsigned m = (unsigned)(pobj[obj].alarms & 0xfff), ev = objev(obj), key;
+    unsigned m = (unsigned)(pobj[obj].alarms & 0xfff), ev = objev(obj), key, rt = (unsigned)pobj[obj].rt;
+    if (pw_ohead[obj] >= 0) onzb[rt >> 5] |= bit32[rt & 31];
+    else onzb[rt >> 5] &= ~bit32[rt & 31];
     if (ev & EV_STEP) m |= 1u << EVK_STEP;
     if (ev & EV_OUTSIDE) m |= 1u << EVK_OUTSIDE;
     if (ev & EV_END) m |= 1u << EVK_END;
@@ -80,6 +100,10 @@ static void evobj_init(void)
             if (!has) continue;
             if (n == (int)(sizeof evobj / sizeof evobj[0])) { PUNTR(9004); break; }
             evobj[n++] = (int16_t)o;
+            if (key < EVK_DRAW) evkm[key][rt >> 5] |= bit32[rt & 31];
+#ifdef PLAY_STATS
+            if (pobj[o].rt != rt) { fprintf(stderr, "evobj_init: object %d's runtime index %d, not %d\n", o, pobj[o].rt, rt); abort(); }
+#endif
         }
     }
     evobj0[16] = (int16_t)n;
@@ -88,7 +112,10 @@ static void evobj_init(void)
 
 static void evnz_sync(int k0, int k1)
 {
-    int key, j, n;
+    int key, n;
+#ifdef PLAY_STATS
+    int j;
+#endif
     for (key = k0; key < k1; key++) {
         if (evnzg[key] == pw_onz_gen + 1 && evnzk[key] == evkn[key]) {
 #ifdef PLAY_STATS
@@ -105,8 +132,32 @@ static void evnz_sync(int k0, int k1)
 #endif
             continue;
         }
-        for (j = evobj0[key], n = 0; j < evobj0[key + 1]; j++)
-            if (pw_ohead[evobj[j]] >= 0 && evobj0[key] + n < EVNZ_N) evnz[evobj0[key] + n++] = evobj[j];
+        {
+            int16_t *out = &evnz[evobj0[key]];
+            int lim = EVNZ_N - evobj0[key], w;
+            n = 0;
+            for (w = 0; w < RTW; w++) {
+                uint32_t b = onzb[w] & evkm[key][w];
+                int r = w * 32;
+                while (b) {
+                    if (!(b & 0xff)) { b >>= 8; r += 8; continue; }
+                    if ((b & 1) && n < lim) out[n++] = (int16_t)obj_byrt[r];
+                    b >>= 1;
+                    r++;
+                }
+            }
+        }
+#ifdef PLAY_STATS
+        {   /* the host builds: the list is the walk over evobj's range */
+            int m = 0;
+            for (j = evobj0[key]; j < evobj0[key + 1]; j++)
+                if (pw_ohead[evobj[j]] >= 0 && evobj0[key] + m < EVNZ_N) {
+                    if (m >= n || evnz[evobj0[key] + m] != evobj[j]) { fprintf(stderr, "evnz_sync: key %d rebuilt wrong\n", key); abort(); }
+                    m++;
+                }
+            if (m != n) { fprintf(stderr, "evnz_sync: key %d rebuilt %d objects, the walk %d\n", key, n, m); abort(); }
+        }
+#endif
         evnzn[key] = (int16_t)n;
         evnzg[key] = pw_onz_gen + 1;
         evnzk[key] = evkn[key];

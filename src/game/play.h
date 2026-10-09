@@ -371,6 +371,7 @@ int pin_box_outside(int i, int w, int h);          /* its box is outside [0, w] 
 extern int16_t pw_ohead[OBJ_COUNT], pw_inext[PIN_MAX];
 extern uint32_t pw_onz_gen;                    /* pworld.c: a level start (every event list) */
 void prun_onz(int obj);                        /* prun.c: obj's list went empty <-> non-empty */
+void prun_onz_reset(void);                     /* prun.c: every list empty (pworld.c olists_reset) */
 extern int16_t pw_ahead, pw_anext[PIN_MAX];        /* every alive instance in creation order */
 int pw_count(int obj);                            /* alive instances of obj with its descendants */
 /* the drawing's dirty list: the instances whose x, y, sprite, mask, scales, angle, image_index, visible or depth

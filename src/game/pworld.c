@@ -218,6 +218,7 @@ static void olists_reset(void)
         olive[o] = 0;
     }
     pw_onz_gen++;
+    prun_onz_reset();
     pw_ahead = pw_atail = NOONE;
     pw_nthead = pw_nttail = NOONE;
     pw_tahead = tatail = NOONE;
