@@ -3488,11 +3488,10 @@ int collision_rect_i(int32_t x1, int32_t y1, int32_t x2, int32_t y2, int obj, in
    (|.| < 29900: xy_int_near) the corners are whole doubles below 2^14 in magnitude or not, and collision_rect_p's
    steps are taken on the ints: pcol_query, the far test (its dfloor14 of a whole corner is the corner; the range test
    as dfloor14's), rq_init's whole path (collision_rect_i's query), the search */
-int collision_rect_at(int i, int32_t l, int32_t t, int32_t r, int32_t b, int obj)
+int (collision_rect_at)(int i, int32_t l, int32_t t, int32_t r, int32_t b, int obj)
 {
     int32_t x, y;
     int q;
-    if (pw_noinst_tree(obj)) return NOONE;
     if (!xy_int_near(i, &x, &y))
         return (collision_rect_p)(PTOD(PW.in[i].x) + l, PTOD(PW.in[i].y) + t, PTOD(PW.in[i].x) + r, PTOD(PW.in[i].y) + b,
                                   obj, 0, NOONE);

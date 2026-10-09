@@ -249,6 +249,13 @@ static inline int fne(float a, float b)
     return x.u != y.u && ((x.u | y.u) << 1) != 0;
 }
 #define POS_NE(a, b) fne((a), (b))
+/* a and b have the same bits (no call) */
+static inline int fsame(float a, float b)
+{
+    union { float f; uint32_t u; } x, y;
+    x.f = a; y.f = b;
+    return x.u == y.u;
+}
 /* pin_xy_int's shadows (struct pin ix, iy): PXY_UNK until read after a change of the float (a value unchanged as POS_NE
    sees it, +0 / -0, keeps the same int). PIN_SETX_RAW / PIN_SETY_RAW: a write of x / y without the dirty marks (moveTo's
    walk, pin_add) */
@@ -421,11 +428,13 @@ int ik_side(int i, int side, int d);   /* collision_rectangle(.., oSolid, 1, not
 int (collision_rect_any)(double x1, double y1, double x2, double y2, int obj, int prec, int notme_self);   /* collision_rect_p(..) != NOONE */
 int (collision_rect_any_at)(int i, int32_t l, int32_t t, int32_t r, int32_t b, int obj);   /* at i's x, y; prec 0 */
 int (collision_point_any_at)(int i, int32_t dx, int32_t dy, int obj);                     /* at i's x, y; prec 0 */
-int collision_rect_at(int i, int32_t l, int32_t t, int32_t r, int32_t b, int obj);   /* collision_rect_p at i's x, y; prec 0, noone */
+int (collision_rect_at)(int i, int32_t l, int32_t t, int32_t r, int32_t b, int obj);   /* collision_rect_p at i's x, y; prec 0, noone */
 #define collision_rect_any_at(i, l, t, r, b, obj) \
     (pw_noinst_tree(obj) ? 0 : (collision_rect_any_at)((i), (l), (t), (r), (b), (obj)))
 #define collision_point_any_at(i, dx, dy, obj) \
     (pw_noinst_point(obj) ? 0 : (collision_point_any_at)((i), (dx), (dy), (obj)))
+#define collision_rect_at(i, l, t, r, b, obj) \
+    (pw_noinst_tree(obj) ? NOONE : (collision_rect_at)((i), (l), (t), (r), (b), (obj)))
 #ifdef FCOL_STATS
 /* test/host playhost_fcol (docs/AST-GREP.md): every call of the double collision queries that reaches the function,
    counted by call site (CP / CPn: penhelp.h names their caller's line) and by whether every coordinate was a whole
@@ -525,6 +534,10 @@ uint32_t pw_watch_end(void);
 int instance_place_p(int self, double px, double py, int obj);
 int instance_place_ixy(int self, int32_t x, int32_t y, int32_t idx, int32_t idy, int obj);   /* at whole x, y + idx, idy */
 int instance_place_at(int self, int32_t idx, int32_t idy, int obj);   /* instance_place_p at self's x, y + idx, idy */
+/* a query on doubles x, y read as PTOD(x0), PTOD(y0) from instance i's position (x0 = PX(i).x, y0 = PX(i).y at the
+   read): its _at form `at` while i's x, y still have x0's and y0's bits (PTOD of them is x, y), else `dbl`, the query
+   as written on x, y (a call between the read and the query may have moved i) */
+#define AT_XY(i, x0, y0, at, dbl) (fsame(PW.in[i].x, (x0)) && fsame(PW.in[i].y, (y0)) ? (at) : (dbl))
 #define place_meeting_p(self, px, py, obj) (instance_place_p((self), (px), (py), (obj)) != NOONE)
 #ifdef FCOL_STATS
 #define instance_place_p(self, px, py, obj) FCOL_Q(FK_PLACE, 2, (px), (py), 0, 0, NOONE, 0, \
