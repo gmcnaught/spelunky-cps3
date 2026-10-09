@@ -41,10 +41,13 @@ static void grid_reset(void);
 static void grid_unlink(int i);
 static void grid_dirty(int i);
 static inline void grid_dirty_g(int i, int o, int g);
-/* per object, computed at its first grid_dirty (after the first level start: xbits is set then): bit 1 its instances
-   go in the grid (obj_is(o, oSolid) || !pin_needs_ext(o): constant per object), bit 2 xbits[o] != 0 (the static-family
-   index; constant), bit 0 computed */
-static uint8_t gobj[OBJ_COUNT];
+/* per object, one byte for pw_changed's two tests (one cache line read a move):
+   - bits 0-2, gobj: computed at the object's first grid_dirty (after the first level start: xbits is set then): bit 1
+     its instances go in the grid (obj_is(o, oSolid) || !pin_needs_ext(o): constant per object), bit 2 xbits[o] != 0
+     (the static-family index; constant), bit 0 computed;
+   - bits 4-7, nc_ofam (below) */
+static uint8_t pwob[OBJ_COUNT];
+#define GOBJ(o) (pwob[o] & 7)
 static void grid_flush_run(void);
 static int16_t ghead[GRID_H][GRID_W];       /* the oSolid family (point queries) */
 static int16_t thead[GRID_H][GRID_W];       /* the other terrain (the drawing only) */
@@ -173,8 +176,8 @@ static int16_t olive[OBJ_COUNT];
 static uint8_t nc_any;                           /* instance_nearest_p's cache (nc) is in use */
 /* bit e: obj_is(o, nc[e].obj), for each slot e that nc_get has filled (nc_slot keeps it at every change of the slot's
    obj): pw_changed calls nc_moved only for an instance of a kept family. A bit is set only after nc_get has set
-   nc_any (never cleared), so nc_ofam[o] != 0 implies nc_any */
-static uint8_t nc_ofam[OBJ_COUNT];
+   nc_any (never cleared), so nc_ofam[o] != 0 implies nc_any. Kept in pwob's high bits (NC_OFAM) */
+#define NC_OFAM(o) (pwob[o] >> 4)                /* (pwob's bits 4-7) */
 static void nc_inval(int obj);
 static void nc_moved(int i);
 static void nc_reset(void);
@@ -398,7 +401,7 @@ void pw_draw_dirty_clear(void)
 /* pw_changed past the watch count when nc_moved runs or the object's gobj byte is not computed yet */
 static __attribute__((noinline)) void pw_changed_slow(int i)
 {
-    if (nc_ofam[PW.in[i].obj]) nc_moved(i);            /* (nc_moved does nothing for an object of no kept family) */
+    if (NC_OFAM(PW.in[i].obj)) nc_moved(i);            /* (nc_moved does nothing for an object of no kept family) */
     pw_draw_mark(i);
     PW.in[i].bbk = 0;
     grid_dirty(i);
@@ -415,8 +418,8 @@ void pw_changed(int i)
     nc_ofam_check(PW.in[i].obj);
 #endif
     o = PW.in[i].obj;
-    g = gobj[o];
-    if (nc_ofam[o] || !g) {
+    g = pwob[o];
+    if (g >> 4 || !g) {                           /* nc_ofam, gobj not computed */
         pw_changed_slow(i);
         return;
     }
@@ -1793,7 +1796,7 @@ static __attribute__((noinline)) void grid_dirty_new(int i, int o)
 #ifndef PCOL_EXACT
     if (xbits[o]) g |= 4;
 #endif
-    gobj[o] = (uint8_t)g;
+    pwob[o] = (uint8_t)((pwob[o] & 0xf0) | g);
     grid_dirty(i);
 }
 
@@ -1821,7 +1824,7 @@ static inline void grid_dirty_g(int i, int o, int g)
 
 static void grid_dirty(int i)
 {
-    int o = PW.in[i].obj, g = gobj[o];
+    int o = PW.in[i].obj, g = GOBJ(o);
     if (!g) {
         grid_dirty_new(i, o);
         return;
@@ -3959,7 +3962,7 @@ static void nc_fam_bit(int root, uint8_t b, int set)
     int o = root;
     pcol_obj_tree();
     for (;;) {
-        nc_ofam[o] = (uint8_t)(set ? nc_ofam[o] | b : nc_ofam[o] & ~b);
+        pwob[o] = (uint8_t)(set ? pwob[o] | b << 4 : pwob[o] & ~(b << 4));
         if (pcol_ochild[o] >= 0) { o = pcol_ochild[o]; continue; }
         while (o != root && pcol_osib[o] < 0) o = objdefs[o].parent;
         if (o == root) return;
@@ -3972,7 +3975,7 @@ static void nc_ofam_check(int obj)
 {
     int e;
     for (e = 0; e < NC_N; e++)
-        if (!(nc_ofam[obj] >> e & 1) != !((nc_asg >> e & 1) && obj_is(obj, nc[e].obj))) {
+        if (!(NC_OFAM(obj) >> e & 1) != !((nc_asg >> e & 1) && obj_is(obj, nc[e].obj))) {
             fprintf(stderr, "nc_ofam[%d] bit %d differs from obj_is\n", obj, e);
             abort();
         }
@@ -4005,7 +4008,7 @@ static __attribute__((noinline)) void nc_moved(int i)
     for (e = 0; e < NC_N; e++) {
         struct ncache *c = &nc[e];
         int32_t xk, yk;
-        if (!c->ok || !(nc_ofam[obj] >> e & 1)) continue;       /* (bit e: obj_is(obj, c->obj)) */
+        if (!c->ok || !(NC_OFAM(obj) >> e & 1)) continue;       /* (bit e: obj_is(obj, c->obj)) */
         if (c->ok != 1) { c->ok = 0; continue; }
         for (j = 0; j < c->n && c->k[j] != i; j++) {}
         if (j == c->n || !pl_floor(PW.in[i].x, &xk) || !pl_floor(PW.in[i].y, &yk) ||
