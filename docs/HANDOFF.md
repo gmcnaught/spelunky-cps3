@@ -1,5 +1,17 @@
 # Handoff
 
+## 2026-10-09 00:05: frame-dip batches 2-4 merged and pushed
+
+jtcps3 (.62, tests/gametime SMOOTH=1), pairs over 2 frames (c_swamp_drain / c_items_damselexpl): main 832c069
+113 / 70; batch 1 33 / 46; icetemple 32 / 28; moves 28 / 19; spawn + floatcol 28 / 15. Host output byte-identical
+to 832c069 on all 184 runs after every batch; CTALL 59/59, EQUIV 88/88, playsh2 9,701/9,701, game_check p4_exit559 /
+p5_shop / p5_spider and smooth 0 px, shell, capture. Branches: icetemple (integer fractional-position side tests),
+moves (deferred collision marks for unqueried objects: EQUIV.md notes the later put-in), spawn (transition room's
+first step 826 -> 46 K MAME; level step 1 halved), floatcol (ast-grep rules in tools/sg/rules, tools/sgfix_at.py;
+190 double-query call sites to integer forms; docs/AST-GREP.md). Left: the drain itself (c_swamp_drain 270-274,
+check_water ~2 M jtcps3), explosion aftermath collision searches (pgrid_search ~1 K instructions a search), debris
+creation (~11.5 K each), set conflicts (docs/PERF3.md last sections).
+
 ## 2026-10-08 19:00: frame-dip batch 1 merged (4e61879, not pushed)
 
 Goal (the user): keep the frame rate locked at 60 fps. A step and its draw get 2 frames (838,940 jtcps3 clocks); over
