@@ -4,6 +4,9 @@
  * points) but newest first, from a uniform grid, instead of in the tree's order. Gameplay-equivalent, not
  * bit-exact: the order of hits differs where several overlap (explosion debris). The level generator keeps the tree
  * (bit-exact, gmode). -DPCOL_EXACT builds the R-tree in play too: the translation reference (test/host's playhost).
+ * The put-in points of one kind of entry differ: a stale entry of an object no query has asked for this room waits on
+ * pcol.c's deferred list (fhead) until a query asks for its family or it can make a collision pair; no answer reads
+ * its rectangle before that, and the hits' order does not depend on when an entry went in (pcol.c ask_fam).
  *
  * Included by pcol.c once, after its entry tables (er, erw, ef) and search state (s_r, s_k, s_cb, s_ctx). Hooks in
  * pcol.c: PCOL_GRID_ON (a play-time entry or search uses the grid), pgrid_put / pgrid_out / pgrid_clear /

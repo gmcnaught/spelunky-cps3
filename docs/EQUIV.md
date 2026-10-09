@@ -7,6 +7,11 @@
   `pgrid_put` / `pgrid_out` / `pgrid_clear` / `pgrid_search` / `pgrid_load`.
 - **How it works:** during play, the entries the runner's R-tree would hold (same set, same rectangles, same put-in
   / take-out points) sit in a grid of 16 px cells. A search returns them newest first.
+- **Deferred entries (since branch moves):** a stale entry of an object no query has asked for this room waits on a
+  deferred list (pcol.c `fhead`) and goes in when a query asks for its family (`ask_fam`) or it can make a pair
+  (`flush_pairable`). Its rectangle reaches no answer before that (the callbacks drop other families; pairs need
+  `can_pair`), and the hits' order is by creation number, so the answers and their order are the same. PERF3.md,
+  the section of branch moves.
 - **Generator:** keeps the tree (bit-exact).
 - **Exact build:** `-DPCOL_EXACT` gives the tree in play too. It is the translation reference.
 
