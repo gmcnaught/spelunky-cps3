@@ -986,7 +986,7 @@ message carries its exactness argument; hostident 184 / 184 after each one.
 | d0c641c | play_transition_start ends with pcol_load_flush (pcol.c's flush() in the grid build; nothing in the exact build): the loaded blocks' stale boxes (gen_create_event's sprites) go into the grid in the load, not in the first step |
 | 853cbfe | play_level_start: the same after pcol_load_done |
 | be35c8f | ev_create: the debris objects (blood, flames, trails, smoke, rubble, explosion, drips) skip the four P5 Create hooks, which have no case for them |
-| f35d765 | pcol_handle: direct_pairs only for rv lists up to 8 (RV_DIRECT), as before 5e56d91 (see below) |
+| f35d765 | pcol_handle: direct_pairs only for the objects it served before 5e56d91 (on main: OI_DIRECT, targets + rv list <= 8; see below) |
 
 **jtcost** (fit, modelled jtcps3 K; fa = the fully associative bound; ins = instructions K):
 
@@ -1027,6 +1027,29 @@ c_temple_xroom3x step 443 (the transition room's first step): 871.7 K -> 357.9 K
 work: 8.95 M. The explosion routes' MAME means hardly move: these changes cut data and literal misses, which MAME does
 not count; jtcost and jtcps3 do. Default set at f35d765: 281 of 9,480 steps more than 1 % slower than base, the
 largest p5_giant's (+6.6 %, steps of about 60 K; its mean 73.3 -> 70.2 K).
+
+**Rebased onto main 365247a (moves merged), HEAD 58edd68.** The commits keep their order; two changed in the rebase:
+- af8252b (was 2176d56): moves's NC_OFAM(o) already holds "slot e's family contains o", so olive_add drops
+  NC_OFAM(obj) & nc_okm (nc_okm: bit e = nc[e].ok != 0) instead of comparing the parent walk with keys; nc_moved
+  loops over those bits with a moving mask (no variable shift: a first version with `x >> e` cost lush steps
+  +1.4 K MAME each); nc_get keeps its own ok test (obj and ok share a line).
+- 17d41aa (was f35d765): direct_pairs eligibility by oinfo's OI_DIRECT (targets + rv list <= 8, exactly the objects
+  of before 5e56d91). `rv_n <= 8` alone let objects with 9-13 targets and a short rv list take it (their target
+  family walks: p5_giant steps +6.6 %).
+
+| On main | temple 444 (fa, ins) | damselexpl 121 (fa, ins) |
+|---|---|---|
+| 365247a | 1,815.2 K (1,711.2, 910.3) | 744.2 K (726.2, 166.5) |
+| 58edd68 | 132.5 K (132.2, 42.3) | 724.8 K (710.0, 162.0) |
+
+MAME SOFTFP, steps after step 1 (365247a -> 58edd68): c_temple_xroom3x step 443 826.0 -> 46.0 K, max 826.0 -> 157.7 K,
+> 175 K 1 -> 0; c_items_damselexpl mean 102.1 -> 102.2, max 206.6 -> 196.7; c_swamp_drain 101.7 -> 101.1, max 463.1 ->
+452.5; c_jungle_firefrog 91.5 -> 89.1 (> 150 K 17 -> 15); c_swamp_vampkill 117.6 -> 116.4; c_swamp_grave 110.3 ->
+110.0; level first steps 0.9-1.5 M -> 0.53-0.84 M. Default 27 routes: mean 64.5 -> 64.5 K, > 150 K 63 -> 60, > 175 K
+7 -> 5, step 1 mean 1,294 -> 645 K; 283 of 9,480 steps more than 1 % slower, none more than 1.7 % (p4_spikes' 23 K
+steps +350). Gates at 58edd68: hostident 184 / 184 against a 365247a baseline (also at af8252b); CTALL 59 / 59; EQUIV
+88 / 88; playsh2 9,701 / 9,701 in both builds, 2,399 / 2,399 on the six routes; game_check p4_exit559 0 px; tests/game
+.bss ends at 0x02076b50 (38,064 B of stack).
 
 - **Gates (f35d765):** hostident 184 / 184 after every commit; CTALL 59 / 59 and EQUIV 88 / 88 at 853cbfe and
   f35d765; playsh2 9,701 / 9,701 in the SOFTFP and default builds at 853cbfe and f35d765; game_check p4_exit559 0 px
