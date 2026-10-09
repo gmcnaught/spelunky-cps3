@@ -1249,3 +1249,107 @@ Drain 275-289: 199 / 214 / 194 / 194 / 181 / 180 / 181 / 172 / 166 / 170 / 166 /
     old block destroyed by an explosion starts it near the front).
   - creation: 8.9 K modelled a drip on damselexpl 191 (pin_add 2.2 K with ext_defaults_fast's 50 stores, olink,
     olive_add's parent chain, ta_on, ev_create).
+
+### Debris dispatch, the detritus walks and bounce tests (branch aftermath3, 2026-10-09, on main 57f63f3)
+
+Targets (hardware .62 on main: c_swamp_drain 24 of 370 pairs over two frames, c_items_damselexpl 13 of 308): the
+steps just over budget, drain 275-278 (MAME 175-189 K), damselexpl 193 / 196 / 199 / 204 / 205 (166-174 K), then
+c_swamp_vampkill 287-297, c_swamp_grave, c_jungle_firefrog. jtcost: fit constants, plain link, modelled jtcps3 K
+("fa": the fully associative bound; "ins": thousands of instructions); records drain 277 / 279 (steps 276 / 278),
+damselexpl 194 / 205 (steps 193 / 204), vampkill 289 (step 288). MAME: SOFTFP playsh2, steps after step 1.
+
+**Attribution on main (JTC_BYOBJ, JTC_PCHIST):**
+- drain 276 (744 K, 205 K ins): the 72 debris pieces 218 K (an oDrip 2.9 K modelled: 882 instructions, about 30
+  data and 32 fetch misses; rubblepiece_step 273, pw_piece_fast 182, two ___adddf3 and a ___truncdfsf2 205, the
+  marks 113, the dispatch through play_step's loop and ev_step 110), the pass 87 K (pcol_handle's walk 9.8 K
+  instructions), oBlood 96 K, oPlayer1 103 K (pw_release's batch 29 K). Steps 275-278 alike (the pieces 24-27 % of
+  each).
+- damselexpl 204 (708 K, 180 K ins): oBlood 143 K (9 bloods, 16 K each: moveTo_walk's two pixel walks
+  (solid_walk_any, ik_line, ik_cells), the four bounce tests (ik_side, ik_line), vel_parts, two ___adddf3), the pass
+  billed to oYeti 139 K (9 grid searches, 9 oBlood and 3-5 oEnemySight direct pairs, has_col 62 calls), oPlayer1
+  83 K.
+- vampkill 288 (798 K, 224 K ins): the pass billed to oZombie 210 K (overlap_at's float precise test of the player
+  and a blood at a fractional y, 3 calls: about 29 K instructions with pcinst_of_b, pin_bbox and 200 soft-float
+  calls), oBlood 169 K.
+- play_step's own instructions (18-22 K) are its per-instance loops: the alarm passes (about 4 K), the Step
+  dispatch (3.4 K), the draw and deactivation walks (2.2 K); no single one large.
+
+| Commit | Change | Exactness |
+|---|---|---|
+| 4c1f878 | ev_step_run: consecutive debris pieces' Steps run from play_step's loop (rubblepiece_step), the idle treasure test with it; SK_RUBBLE3 for oRubble / oRubbleSmall | codegen-only |
+| beec52a | play_step tests stepk inline (SK_TREASURE, the debris kinds) before the call; stepk and SK_* in play.h | codegen-only |
+| 4c70da6 | pw_detritus_clear: detritus_step's four bounce tests 0 at once when no oSolid entry reaches the cells around the box | value (message; PLAY_STATS makes the tests) |
+| b0b62f0 | pw_walk_clear: moveTo_walk's two pixel walks unblocked at once when the cells of the box of their lines (and of the moved instance's bounce lines) hold no oSolid entry; the bounce tests then skip their cell check | value (message; PLAY_STATS walks too) |
+
+- **Piece run (4c1f878, beec52a):** for a piece ev_step only calls rubblepiece_step (stepk SK_RUBBLE nops 0, or
+  oRubble / oRubbleSmall's own case nops 3); the run takes the following order entries while each is an alive piece,
+  with play_cur_obj and pcol_event_done as the loop. 4c1f878's first form (a call for every instance, a full
+  register-save prologue) cost damselexpl 205 +1.4 % instructions; the leaf form +0.7 %; beec52a's inline test
+  makes it neutral there.
+- **Clear cells (4c70da6, b0b62f0):** each test or walk line is ik_line's: pcol_query(oSolid) (made where the first
+  test or walk would), then ik_cells over the line's cells; with no block and no other oSolid entry (gfull, gother 0)
+  in a box holding every line, each answers 0, sure. Host counts: the bounce shortcut on 486 of 510 bounce steps on
+  damselexpl, 182 of 241 on vampkill.
+
+**jtcost** (modelled K / fa K / ins K):
+
+| Record | main 57f63f3 | beec52a | 4c70da6 | b0b62f0 |
+|---|---|---|---|---|
+| drain 277 | 744.4 / 635.8 / 204.9 | 697.9 / 630.8 / 200.9 | 698.9 / 624.0 / 196.9 | 713.7 / 617.4 / 194.7 (-4.1 %; fa -2.9 %; ins -5.0 %) |
+| drain 279 | 737.5 / 644.8 / 192.7 | 694.6 / 638.2 / 188.9 | 692.0 / 627.7 / 185.2 | 707.5 / 621.9 / 183.2 (-4.1 %; fa -3.5 %; ins -4.9 %) |
+| damselexpl 194 | 757.3 / 731.1 / 186.6 | 757.9 / 735.3 / 186.4 | 744.3 / 721.3 / 180.5 | 741.8 / 716.4 / 179.5 (-2.0 %; fa -2.0 %; ins -3.8 %) |
+| damselexpl 205 | 707.9 / 673.1 / 180.1 | 708.6 / 677.0 / 180.2 | 697.8 / 666.7 / 173.5 | 685.1 / 650.5 / 168.9 (-3.2 %; fa -3.4 %; ins -6.2 %) |
+| vampkill 289 | 798.2 / 766.4 / 224.4 | | 810.5 / 770.5 / 220.0 | 791.8 / 755.9 / 216.6 (-0.8 %; fa -1.4 %; ins -3.5 %) |
+
+4c1f878 alone: drain 277 693.6 / 632.4 / 201.7. The modelled drop on drain at beec52a (-6 %) is mostly layout (fa
+-0.8 %); b0b62f0's +2 % modelled on drain against 4c70da6 is layout too (fa -1.1 %, ins -1.1 %). Per oDrip on drain
+277: 882 -> 826 instructions (ev_step and the loop's tests gone, piece_run's loop added).
+
+**MAME** (SOFTFP playsh2 at b0b62f0; base 57f63f3):
+
+| Route | mean (K) | max (K) | > 150 K | > 165 K | > 175 K |
+|---|---|---|---|---|---|
+| c_swamp_drain | 92.7 -> 92.1 | 339.9 -> 336.3 | 17 -> 13 | 10 -> 9 | 9 -> 7 |
+| c_items_damselexpl | 96.6 -> 95.7 | 183.9 -> 185.6 | 17 -> 8 | 6 -> 2 | 1 -> 1 |
+| c_swamp_grave | 102.8 -> 102.3 | 251.0 -> 238.2 | 24 -> 13 | 10 -> 8 | 6 -> 6 |
+| c_jungle_firefrog | 82.6 -> 81.2 | 336.6 -> 327.3 | 10 -> 8 | 7 -> 6 | 6 -> 6 |
+| c_swamp_vampkill | 108.8 -> 108.7 | 201.9 -> 193.7 | 14 -> 14 | 12 -> 11 | 11 -> 7 |
+| five routes | 96.1 -> 95.4 | | 82 -> 56 | 45 -> 36 | 33 -> 27 |
+| default 27 routes | 61.2 -> 61.0 | | 37 -> 18 | 6 -> 6 | 3 -> 4 |
+
+Drain 275-278: 179 / 189 / 175 / 176 -> 169 / 178 / 164.5 / 165.5 K; 279-289 -4 to -6 %; 270-274 -1 to -4 %.
+damselexpl 193 / 196 / 199 / 204 / 205: 174 / 169 / 172 / 168 / 166 -> 167 / 158 / 161 / 156 / 159 K (191, the
+explosion: 184 -> 186). vampkill 287-297: -2 to -4 % (191 / 194 / 173 / 186 / 172 / 170 / 164 / 172 / 180 / 185 /
+175 K). Steps more than 1 % slower than the base: 1 of 1,822 on the five routes (damselexpl 159, 96.8 -> 97.8 K);
+114 of the default set's, mostly small steps (mean +1.0 K), and p5_reg_l14s16 40-43 (163.6 / 168.6 / 174.2 ->
+166.2 / 172.6 / 178.1 K: 15 bloods at rest beside solids that are not blocks, where pw_detritus_clear's check fails
+and the four tests run after it: jtcost +4.5 K instructions on step 43). Default set total -0.27 %.
+
+- **Gates (b0b62f0):** hostident 184/184 after every commit; CTALL 59/59; EQUIV 88/88; playsh2 9,701 / 9,701 in the
+  SOFTFP and the default build, 1,827 / 1,827 on the five routes; game_check p4_exit559 0 px (records 30, 150, 300);
+  the tests/game link with no compiler warning; .bss +16 B (stack room 39,832 B).
+- **Measured, not kept** (jtcost against the commit before; patches kept outside the repository):
+  - integer binary64 adds for the pieces (pfa_dadd / pfa_fadd inlined into rubblepiece_step): drain 277 +2.3 %
+    instructions, +9 % modelled (GCC spilled: about 135 instructions an add against the soft-float calls' 100);
+  - pfa_fdadd, the y move as one non-inlined integer function: neutral (drain 277 -0.2 % instructions, fa +0.5 %;
+    137 instructions a call against fwiden + ___adddf3 + ___truncdfsf2's 157). The assembly soft-float is close to
+    what C reaches; an assembly fused add is what is left;
+  - integer binary32 add for animate's image_index (pfa_fadd, all 59 adds on its fast path): play_step +5.3 K
+    instructions against ___addsf3's -5.0 K (inlined: spills); modelled +3.6 % on drain;
+  - parked test-list entries (unpairable entries kept off the list, a front log for an exact merge; tested with
+    forced merges and 1- and 8-entry logs): pcol_handle's walk -6.8 K instructions on drain 277, but tlist_front +4 K,
+    the park pass +2.4 K: net +1.5 K, fa +3.4 %; damselexpl 194 +4.2 K;
+  - a vel_parts memo by the velocity's bits (42 % hits): +0.2 to +0.65 % instructions;
+  - collision_result's has_col memo: +-0.1 % instructions, fa +0.8 to +1 %;
+  - pw_detritus_clear / pw_walk_clear with the cells read first and the query only for a clear answer, and the
+    bounce shortcut only after a clear walk: p5_reg_l14s16 43 -2.8 K instructions (still +1.7 K over main), the
+    targets +0.2 to +1.1 % (damselexpl 194 +2 K): dropped for the targets.
+- **What is left (measured):**
+  - the pieces stay 24-27 % of every drain aftermath step: 826 instructions and about 2.5 K modelled a piece
+    (rubblepiece_step 273, pw_piece_fast 182 with two pfloor_int of a changed y, three soft-float calls 205, the
+    marks 113); most of the modelled cost is misses between pieces;
+  - pw_release's batch (10.9 K instructions, pw_ord's compaction over about 1,100 entries) lands on drain 276;
+  - vampkill's player / blood precise test at a fractional y (overlap_at's float path, about 10 K instructions a
+    call) and its oBlood (oZombie and oBlood each about 20 % of steps 287-297);
+  - damselexpl's pass: 9 grid searches (pgrid_search 600 instructions each) and its flush (cupdate, pgrid_put);
+  - p5_reg_l14s16 40-43: bloods at rest beside non-block solids pay pw_detritus_clear's failed check (+1.5 to +2.3 %).
