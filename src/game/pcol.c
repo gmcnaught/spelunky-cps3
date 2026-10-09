@@ -1111,6 +1111,30 @@ static void ebbox(int e, float dx, float dy, float *o)
     ebbox_f(e, dx, dy, o);
 }
 
+/* ebbox_f's side pair at a scale of +-1 (neg: -1) when the position v is a whole number, |v| < 2^15, not -0: lo = v +- a
+   and hi = lo +- w (a = the mask box's side less the origin, w its size, both int16-range) are sums of integers below
+   2^24 in magnitude, so the float sums (v + (float)(+-a), then lo + (float)(+-w)) are exact: the floats of the int
+   sums (kf(ikey(n)) is (float)n). A zero sum is +0 in both (x + -x is +0; -0 + -0 cannot occur: v is not -0 and a
+   nonzero lo plus +-0 is lo). PLAY_STATS builds compare with the float sums. 0: v not so (the float sums) */
+static int ebbox_whole(float v, int32_t a, int32_t w, int neg, float *lo, float *hi)
+{
+    int32_t vi, li;
+    if (fbits_u(v) == 0x80000000u || !fwhole(v, &vi)) return 0;
+    li = neg ? vi - a : vi + a;
+    *lo = kf(ikey(li));
+    *hi = kf(ikey(neg ? li - w : li + w));
+#ifdef PLAY_STATS
+    {
+        float fa = kf(ikey(a)), fw = kf(ikey(w)), fl = v + (neg ? -fa : fa), fh = fl + (neg ? -fw : fw);
+        if (fbits_u(fl) != fbits_u(*lo) || fbits_u(fh) != fbits_u(*hi)) {
+            fprintf(stderr, "ebbox_whole: %d %d %d %d differs\n", (int)vi, (int)a, (int)w, neg);
+            abort();
+        }
+    }
+#endif
+    return 1;
+}
+
 /* ebbox past its whole-box case. ang == 0 as fzero (the bits: +-0; no __eqsf2 call) */
 static void ebbox_f(int e, float dx, float dy, float *o)
 {
@@ -1150,19 +1174,23 @@ static void ebbox_f(int e, float dx, float dy, float *o)
            the float sum c + (+-a) (the software fmaf is about 700 jtcps3 clocks; debris and most sprites have scale
            1). a0, a1: the small integers' floats (exact), negated (the sign bit) for -1 */
         if (fbits_pm1(xs)) {
-            float a0 = kf(ikey(c->l - c->xo));
             int neg = fbits_u(xs) >> 31;
-            l = x + (neg ? -a0 : a0);
-            r = l + (neg ? -w : w);
+            if (!ebbox_whole(x, c->l - c->xo, c->r - c->l + 1, neg, &l, &r)) {
+                float a0 = kf(ikey(c->l - c->xo));
+                l = x + (neg ? -a0 : a0);
+                r = l + (neg ? -w : w);
+            }
         } else {
             l = fmaf((float)(c->l - c->xo), xs, x);
             r = fmaf(w, xs, l);
         }
         if (fbits_pm1(ys)) {
-            float a1 = kf(ikey(c->t - c->yo));
             int neg = fbits_u(ys) >> 31;
-            t = y + (neg ? -a1 : a1);
-            b = t + (neg ? -h : h);
+            if (!ebbox_whole(y, c->t - c->yo, c->b - c->t + 1, neg, &t, &b)) {
+                float a1 = kf(ikey(c->t - c->yo));
+                t = y + (neg ? -a1 : a1);
+                b = t + (neg ? -h : h);
+            }
         } else {
             t = fmaf((float)(c->t - c->yo), ys, y);
             b = fmaf(h, ys, t);
