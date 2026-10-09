@@ -1347,7 +1347,7 @@ int pjungle_world(int site, int i, int arg)
     struct pin *p = &PX(i);
     switch (site) {
     case 1011: {                                                     /* oSolid Destroy :14 the tiki torch */
-        int obj = instance_place_p(i, X(i) + 8, Y(i) - 1, OBJ_oTikiTorch);
+        int obj = instance_place_at(i, 8, -1, OBJ_oTikiTorch);
         if (obj != NOONE) pin_destroy(obj);
         return 1;
     }

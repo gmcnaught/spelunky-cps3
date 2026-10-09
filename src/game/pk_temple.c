@@ -84,7 +84,7 @@ static void hawkman_sight(int i)
         pen_sight_speed(dir, &h, &v);                                  /* speed = 10 (the kept pcos_cr / psin_cr) */
         PEN(&PX(s))->hspeed = h;
         PEN(&PX(s))->vspeed = v;
-        PEN(&PX(s))->owner = (int16_t)instance_place_p(i, X(i), Y(i), OBJ_oHawkman);
+        PEN(&PX(s))->owner = (int16_t)instance_place_at(i, 0, 0, OBJ_oHawkman);
         PEN(&PX(i))->sightCounter = 5;
     }
 }

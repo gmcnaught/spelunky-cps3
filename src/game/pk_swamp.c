@@ -1405,7 +1405,7 @@ int pswamp_world(int site, int i, int arg)
     (void)arg;
     switch (site) {
     case 1012: {                                               /* oSolid Destroy :19: the grave on top */
-        int obj = instance_place_p(i, X(i) + 8, Y(i) - 1, OBJ_oGrave);
+        int obj = instance_place_at(i, 8, -1, OBJ_oGrave);
         if (obj != NOONE) pin_destroy(obj);
         return 1;
     }

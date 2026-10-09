@@ -63,7 +63,7 @@ static void damsel_step(int i)
     item_step(i);                                                      /* action_inherited */
     p = &PX(i);
     if (PE(p)->active && collision_point_any_at(i, 0, 0, OBJ_oExit) && PE(p)->hp > 0 && !PE(p)->held && PE(p)->status != D_THROWN) {   /* :2 */
-        int door = instance_place_p(i, X(i), Y(i), OBJ_oExit);
+        int door = instance_place_at(i, 0, 0, OBJ_oExit);
         PG.damsels += 1;
         PG.xdamsels += 1;
         pin_setx(p, PX(door).x + PI(8));
@@ -117,7 +117,7 @@ static void damsel_step(int i)
         }
         if (collision_point_any_at(i, 0, 6, OBJ_oLava)) PUNTR(6010);
         if (collision_point_any_at(i, 0, 6, OBJ_oSpikes) && NGT(PE(p)->yVel, N(2))) {  /* :92 */
-            int obj = instance_place_p(i, X(i), Y(i) + 6, OBJ_oSpikes);
+            int obj = instance_place_at(i, 0, 6, OBJ_oSpikes);
             if (obj != NOONE) pin_set_sprite(obj, GSPR_sSpikesBlood);
             if (PE(p)->hp > 0) {
                 scrCreateBlood(i, p->x, p->y, 3);

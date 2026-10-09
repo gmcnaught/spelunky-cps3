@@ -103,7 +103,7 @@ static void yeti_sight(int i)                                      /* :65-74, :1
         pen_sight_speed(dir, &h, &v);                                  /* speed = 10 */
         PEN(&PX(s))->hspeed = h;
         PEN(&PX(s))->vspeed = v;
-        PEN(&PX(s))->owner = (int16_t)instance_place_p(i, X(i), Y(i), OBJ_oYeti);
+        PEN(&PX(s))->owner = (int16_t)instance_place_at(i, 0, 0, OBJ_oYeti);
         PEN(&PX(i))->sightCounter = 5;
     }
 }
@@ -974,7 +974,7 @@ static void ice_destroy(int i)                                     /* objects/oI
     if (!p->cleanDeath && !G.cleanSolids) {
         three_drips(i);
         if (collision_point_any_at(i, 8, 8, OBJ_oFrozenCaveman)) {
-            int f = instance_place_p(i, X(i) + 8, Y(i) + 8, OBJ_oFrozenCaveman);
+            int f = instance_place_at(i, 8, 8, OBJ_oFrozenCaveman);
             if (f != NOONE) pin_destroy(f);
         }
     }

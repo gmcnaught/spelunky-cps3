@@ -361,7 +361,7 @@ void pen_parent_step(int i)
     if (collision_rect_at(i, 2, 2, 14, 14, OBJ_oSpearsLeft) != NOONE)
         pcontent_enemy(5013, i, 0);                                                     /* P7 hook */
     if (collision_point_any_at(i, 8, 16, OBJ_oSpikes) && NGT(PE(p)->yVel, N(2))) {  /* :108 */
-        int spikes = instance_place_p(i, X(i) + 8, Y(i) + 14, OBJ_oSpikes);
+        int spikes = instance_place_at(i, 8, 14, OBJ_oSpikes);
         if (!bloodless_of(i) && spikes != NOONE) pin_set_sprite(spikes, GSPR_sSpikesBlood);
         if (PE(p)->hp > 0) {
             PE(p)->hp = 0;
@@ -730,7 +730,7 @@ static void caveman_sight(int i)
         pen_sight_speed(dir, &h, &v);                                          /* speed = 10 */
         PEN(&PX(s))->hspeed = h;
         PEN(&PX(s))->vspeed = v;
-        PEN(&PX(s))->owner = (int16_t)instance_place_p(i, X(i), Y(i), OBJ_oCaveman);
+        PEN(&PX(s))->owner = (int16_t)instance_place_at(i, 0, 0, OBJ_oCaveman);
         PEN(&PX(i))->sightCounter = 5;
     }
 }

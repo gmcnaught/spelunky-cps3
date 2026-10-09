@@ -155,7 +155,7 @@ static void use_teleporter(int i)
         m = pw_with(OBJ_oChain, w, 64);
         for (k = 0; k < m; k++) if (PX(w[k]).alive) pin_setxy(&PX(w[k]), PX(PL.idx).x, PX(PL.idx).y);
     }
-    obj = instance_place_p(i, X(i), Y(i), OBJ_oEnemy);
+    obj = instance_place_at(i, 0, 0, OBJ_oEnemy);
     if (obj != NOONE) {
         scrCreateBlood(obj, PX(PL.idx).x, PX(PL.idx).y, 3);
         PE(&PX(obj))->hp -= 99;
@@ -544,7 +544,7 @@ static void bomb_arrow_held(int i)
 /* oPlayer1 Step :653-670: up + attack at a flare crate opens it */
 static void open_flare_crate(int i)
 {
-    int chest = instance_place_p(i, X(i), Y(i), OBJ_oFlareCrate), k;
+    int chest = instance_place_at(i, 0, 0, OBJ_oFlareCrate), k;
     if (chest == NOONE) { PUNTR(2042); return; }
     for (k = 0; k < 3; k++) {
         int obj = pin_create(PX(chest).x, PX(chest).y, OBJ_oFlare);
@@ -600,10 +600,10 @@ static void mattock_hit_end(int i)
     struct pin *p = &PX(i);
     int hit = 0, obj = NOONE;
     if (collision_point_any_at(i, 0, 0, OBJ_oSolid)) {
-        obj = instance_place_p(i, X(i), Y(i), OBJ_oSolid);
+        obj = instance_place_at(i, 0, 0, OBJ_oSolid);
         if (obj != NOONE && !PX(obj).invincible) hit = 1;
     } else if (collision_point_any_at(i, 0, 9, OBJ_oSolid)) {
-        obj = instance_place_p(i, X(i), Y(i) + 9, OBJ_oSolid);
+        obj = instance_place_at(i, 0, 9, OBJ_oSolid);
         if (obj != NOONE && !PX(obj).invincible) hit = 1;
     }
     if (hit && !isRoomIs(R_rTitle) && !isRoomIs(R_rHighscores)) {

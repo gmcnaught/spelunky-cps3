@@ -371,7 +371,7 @@ void moveTo(int i, num a0, num a1, int32_t *xio, int32_t *yio)
             if (solidId != NOONE) {
                 if (objdefs[PX(solidId).obj].parent == OBJ_oMoveableSolid && is_character(i)) {
                     /* with solidId: `break` leaves the with, not the for */
-                    if (!place_meeting_p(solidId, PTOD(PX(solidId).x) + 1, PTOD(PX(solidId).y), OBJ_oSolid)) {
+                    if (!(instance_place_at(solidId, 1, 0, OBJ_oSolid) != NOONE)) {
                         pin_setx(&PX(solidId), PX(solidId).x + (PI(1)));
                         if (!snd_is_playing(SND_xpush)) snd_play(SND_xpush);          /* :59 */
                     }
@@ -389,7 +389,7 @@ void moveTo(int i, num a0, num a1, int32_t *xio, int32_t *yio)
             solidId = (!raw || anyCollisionLeft(i, 1)) ? getIdCollisionLeft(i, 1) : NOONE;
             if (solidId != NOONE) {
                 if (objdefs[PX(solidId).obj].parent == OBJ_oMoveableSolid && is_character(i)) {
-                    if (!place_meeting_p(solidId, PTOD(PX(solidId).x) - 1, PTOD(PX(solidId).y), OBJ_oSolid)) {
+                    if (!(instance_place_at(solidId, -1, 0, OBJ_oSolid) != NOONE)) {
                         pin_setx(&PX(solidId), PX(solidId).x - (PI(1)));
                         if (!snd_is_playing(SND_xpush)) snd_play(SND_xpush);          /* :87 */
                     }
