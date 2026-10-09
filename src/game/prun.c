@@ -318,6 +318,19 @@ static int anim_one(int k)
     return 0;
 }
 
+/* instance k would leave anim_one with nothing done but pw_ta_off (its first branch: image_index 0, image_speed and
+   the sprite's advance and frame count 1, no Animation End event); then taking it off the list now is what the next
+   animation pass does to it (ptrans.c: the transition room's blocks, off before its first step) */
+int prun_anim_idle(int k)
+{
+    const struct pin *p = &PW.in[k];
+    const float *an;
+    if (!p->alive || p->spr < 0) return 0;
+    an = pspr_anim[p->spr];
+    return fbits(p->img) == 0 && fbits(p->ispd) == 0x3f800000u && fbits(an[0]) == 0x3f800000u &&
+           fbits(an[1]) == 0x3f800000u && !(pobj[p->obj].ev & EV_ANIMEND);
+}
+
 #ifdef PLAY_STATS
 #include <stdio.h>
 #include <stdlib.h>

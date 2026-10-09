@@ -188,6 +188,7 @@ extern int16_t pw_seq[PIN_MAX];
 extern int16_t pw_tahead, pw_tanext[PIN_MAX];     /* pworld.c: the terrain to animate (prun.c animate) */
 void pw_ta_off(int i);
 int pw_ta_is_on(int i);
+int prun_anim_idle(int k);                      /* prun.c: the animation pass would only take k off its list */
 int pw_last_with_sprite(int16_t s0);
 extern int16_t pw_ord[PIN_MAX];
 #define PIN_OLDER(a, b) (pw_seq[a] < pw_seq[b])

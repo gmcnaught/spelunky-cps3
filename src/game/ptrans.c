@@ -95,6 +95,10 @@ void play_transition_start(int room)
         pin_setspr(&PX(i), g->spr);
         pin_setdepth(&PX(i), g->depth);
         if (obj_is(g->obj, OBJ_oSolid)) PX(i).invincible = (g->flags & IF_INVINCIBLE) != 0;
+        /* off the animation list now when the room's first animation pass would only take it off (the blocks: about
+           540 instances that pass visits once, 175 K jtcps3 clocks of the room's first step). Later it is as an instance
+           that pass took off: a change of its sprite, image_index or image_speed puts it back (pworld.c pw_tahead) */
+        if (prun_anim_idle(i)) pw_ta_off(i);
     }
     pin_add(OBJ_oGamepad, 0, 0, RUNNER_ID_GAMEPAD);
     {
