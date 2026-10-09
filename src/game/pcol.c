@@ -1457,12 +1457,11 @@ static __attribute__((noinline)) void mark_dirty(int e, int oi, int f)
    (mark_dirty) or, in play for an object no query has asked for, the deferred list; then the test list (F08). ef is
    read once and written once (the stores to stk and the lists would make the compiler read it again); every call is
    a tail call (no frame) */
-static void mark_e(int e)
+static inline __attribute__((always_inline)) void mark_ef(int e, int oi, int f, int play)
 {
-    int oi = oinfo[eobj(e)], f = ef[e];
     if (oi & (OI_MEMBER | OI_DYN | OI_SOLID)) {
 #ifndef PCOL_EXACT
-        if (!(oi & OI_ASKED) && !gmode) {         /* the deferred list (fhead), not the stale stack */
+        if (!(oi & OI_ASKED) && play) {           /* the deferred list (fhead), not the stale stack */
             if (!(f & EF_OND)) {                  /* (on a list already: it stays where it is) */
                 dp[e] = -1;
                 dn[e] = fhead;
@@ -1481,15 +1480,28 @@ static void mark_e(int e)
     if (oi & OI_F08) tlist_front(e);
 }
 
+/* (mark_ef: e's oinfo, its ef, play: !gmode) */
+static void mark_e(int e)
+{
+    mark_ef(e, oinfo[eobj(e)], ef[e], !gmode);
+}
+
 /* ---- changes of play instances: the pin_set* setters (play.h) call pcol_changed on a real change of x, y,
    sprite_index, mask_index, image_xscale / yscale / angle (SetPosition, SetSpriteIndex, ...: CollisionMarkDirty
    then). An instance loaded with the level (EF_NOSNAP) takes its loader's writes without a mark until pcol.c
    first looks at it (sync1) or any UpdateTree (sync_all) */
 void pcol_changed(int i)
 {
+    int f;
     if (i == pm_e) pm_e = -1;
-    if (!PW.in[i].alive || (ef[i] & EF_NOSNAP)) return;
-    mark_e(i);
+    if (!PW.in[i].alive) return;
+    f = ef[i];
+    if (f & EF_NOSNAP) return;
+    if (gmode) {
+        mark_e(i);
+        return;
+    }
+    mark_ef(i, oinfo[PW.in[i].obj], f, 1);        /* mark_e in play, ef already read */
 }
 
 static void sync1(int i)
