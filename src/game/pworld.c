@@ -172,7 +172,8 @@ static int16_t olive[OBJ_COUNT];
 
 static uint8_t nc_any;                           /* instance_nearest_p's cache (nc) is in use */
 /* bit e: obj_is(o, nc[e].obj), for each slot e that nc_get has filled (nc_slot keeps it at every change of the slot's
-   obj): pw_changed calls nc_moved only for an instance of a kept family */
+   obj): pw_changed calls nc_moved only for an instance of a kept family. A bit is set only after nc_get has set
+   nc_any (never cleared), so nc_ofam[o] != 0 implies nc_any */
 static uint8_t nc_ofam[OBJ_COUNT];
 static void nc_inval(int obj);
 static void nc_moved(int i);
@@ -397,7 +398,7 @@ void pw_draw_dirty_clear(void)
 /* pw_changed past the watch count when nc_moved runs or the object's gobj byte is not computed yet */
 static __attribute__((noinline)) void pw_changed_slow(int i)
 {
-    if (nc_any && nc_ofam[PW.in[i].obj]) nc_moved(i);   /* (nc_moved does nothing for an object of no kept family) */
+    if (nc_ofam[PW.in[i].obj]) nc_moved(i);            /* (nc_moved does nothing for an object of no kept family) */
     pw_draw_mark(i);
     PW.in[i].bbk = 0;
     grid_dirty(i);
@@ -415,7 +416,7 @@ void pw_changed(int i)
 #endif
     o = PW.in[i].obj;
     g = gobj[o];
-    if ((nc_any && nc_ofam[o]) || !g) {
+    if (nc_ofam[o] || !g) {
         pw_changed_slow(i);
         return;
     }
