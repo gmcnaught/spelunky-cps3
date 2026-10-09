@@ -523,6 +523,7 @@ void play_level_start(int32_t next_id)
     play_rooms_entered++;
     PW.room_new = 1;
     pcol_load_done();
+    pcol_load_flush();                         /* the grid build's pending collision updates (ptrans.c's reason) */
     /* the solid grid's first build (every loaded oSolid-family entry: grid_flush_run, bbkind_set) here instead of at
        the first play_step's first query (about 0.6 M jtcps3 clocks there on p5_l4). The grid's answers do not depend
        on when its pending updates are applied: grid_point keeps the oldest hit (PIN_OLDER), the line scans and the
