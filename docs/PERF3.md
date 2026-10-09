@@ -963,3 +963,92 @@ family and flush_pairable's walk).
   8-10, 22 K NC); a third of it the stack spills of the query's sides and the per-cell loop. oEnemySight fails
   direct_pairs (more than 16 candidates); the RV_LONG objects always search.
 - Set conflicts: drain 281's NC model is 119 K above its fa bound (cached .text and data placement).
+||||||| parent of dec0d5d (AST-GREP.md: the floatcol rules and the call-site survey; PERF3.md: double collision queries (branch floatcol))
+
+
+### Double collision queries (branch floatcol, 2026-10-08, on main 8b3d544)
+
+Request: find the slow floating-point collision tests with ast-grep and replace them, with the same answers as the
+double path (positions stay binary64 / float32). Rules, counts and the call-site survey: docs/AST-GREP.md.
+
+**Inventory and ranking.** The query calls in src/game outside pworld.c / penhelp.h / play.h: 451 (genent.c's 94 are
+the generator). scripts/fcol_survey.sh (playhost_fcol, FCOL_STATS) on the 92 hostident runs: 574,488 calls reached a
+double query, 33,046 with a coordinate not whole. On the seven routes still dropping frames, 5-7.6 K calls a route
+(about 19 a step), almost all at whole positions: the cost was the call sites' PTOD / __adddf3 / __floatsidf and
+pq_init / rq_init's decode, 0.4-1.5 K modelled a call, not the searches. Top sites on those routes: penemy.c :338
+(CPn oWaterSwim), pplayer.c's per-step player tests (oTreasure / oExit / crushed / spikes / rock), pk_ice.c :133 / :141,
+collision_point_any_at's oSolid fallback. jtcost (JTC_CALLERS) found the larger float paths: drain step 273
+explosion_solid's 18 spike tests (collision_point_p at PTOD + 16: 55.6 K), l9s5 step 359 pw_piece_tests' fallback
+(pq_init 16.8 K of 55.2 K), vampkill step 288 overlap_at's float precise test (3 zombie pairs, 103.6 K) and the
+player's rectangles at a fractional position (rq_init 5.4 K a call).
+
+| Commit | Change (exactness argument in the message) |
+|---|---|
+| a0e1fb5 | FCOL_STATS counter, scripts/fcol_survey.sh (no change outside FCOL_STATS) |
+| 4843820 | collision_point_any_at on ints for every object; collision_rect_at; instance_place_at; rect_far_none_i |
+| 5d054a0 | cp-at: 97 point queries (every object) |
+| 0d4f720 | rect-at: 14 rectangles; collision_rect_any_at's oSolid by rect_any_i |
+| 02aa7e4 | place-at: 15 instance_place / place_meeting |
+| db5c623, d4230bf | cp-at-p / rect-at-p / place-at-p: 36 sites at PTOD(p->x), p = &PX(i) |
+| 141debc | AT_XY: 28 pplayer.c queries on copies x, y of the player's position (the _at form while the bits are unchanged) |
+| d966e99, a7774a8 | precise_collision's unrotated loop: each row's floats once, when first needed (pc_rows); 1 / s and v * s at s = +-1 without soft-float; pcinst_of takes overlap_at's boxes |
+| 4616e50 | pw_piece_tests: the oSolid search on the piece's own query |
+| 061c66e | pcinst_of_raw: sprite ints by fint15, a zero test on the bits |
+| ef8fa7a | the _at forms at a fractional x, y (pfrac_ok: +-0 or 1/2 <= \|x\| < 2^13): float sums, pfloor_int / pfr ints, no doubles |
+
+Proofs beyond the value arguments: PLAY_STATS compares every new query struct (pq, rq, qrect's rectangle, the
+pcinst floats and boxes) with the double path's and every pc_rows answer with the old loop; test/host/pcrows (20 M
+random instance pairs) and test/host/pfrac (pfrac_ok's identities for all 234,881,026 floats it accepts at 31
+offsets, and every offset in [-100, 100] for one float in 64).
+
+**jtcost** (fit, modelled jtcps3 K; fa the fully associative bound; ins thousands of instructions):
+
+| Step (record) | a0e1fb5 | db5c623 | d966e99 | 061c66e | ef8fa7a |
+|---|---|---|---|---|---|
+| drain 273 (274) | 2,069.7 (fa 1,877.1, ins 578.9) | 2,020.1 | 1,990.5 | 1,963.4 | 1,988.0 (fa 1,816.3, ins 554.2) |
+| damselexpl 193 (194) | 1,001.4 (974.1, 245.7) | 1,003.5 | 996.6 | 992.7 | 994.9 (964.1, 241.7) |
+| vampkill 288 (289) | 930.0 (890.3, 258.2) | 925.9 | 921.6 | 915.4 | 900.9 (864.9, 240.8) |
+| grave 351 (352) | 1,214.7 (1,096.0, 346.6) | 1,220.1 | 1,211.2 | 1,192.4 | 1,214.8 (1,085.6, 343.3) |
+| firefrog 271 (272) | 1,648.8 (1,491.6, 459.6) | 1,654.1 | 1,625.5 | 1,626.5 | 1,625.9 (1,485.2, 457.1) |
+| l9s5 359 (360) | 866.2 (817.2, 212.3) | 860.0 | 850.9 | 833.4 | 827.0 (784.7, 203.6) |
+| l14s16 21 (22) | 911.3 (891.5, 230.7) | 902.6 | 899.7 | 900.8 | 895.4 (878.4, 225.1) |
+
+Base -> ef8fa7a: modelled +0.0 to -4.5 %, the fa bound -0.4 to -4.0 %, instructions -0.5 to -6.7 % (vampkill). grave
+351 at ef8fa7a: +22 K modelled against 061c66e with the same instructions (layout). By call site: explosion_solid
+55.6 -> 12.5 K; pw_piece_tests' fallback 55.2 -> 35.9 K (the search left); overlap_at <- pcol_handle on vampkill
+103.6 -> 87.3 K; vampkill's hurt_logic / pl_step rectangles 24.1 / 18.0 -> 19.5 / 14.8 K (rq_init gone; the rest is
+pcol_search_i).
+
+**MAME** (SOFTFP playsh2, the seven routes, steps after step 1, 2,544 / 2,544 checksums at both):
+
+| Route | mean (K) | max (K) | > 150 K | > 175 K |
+|---|---|---|---|---|
+| c_swamp_drain | 110.0 -> 106.7 (-3.0 %) | 525 -> 503 | 33 -> 33 | 28 -> 25 |
+| c_items_damselexpl | 108.4 -> 105.9 (-2.3 %) | 231 -> 228 | 29 -> 28 | 16 -> 15 |
+| c_swamp_vampkill | 120.6 -> 118.5 (-1.7 %) | 232 -> 219 | 26 -> 25 | 15 -> 13 |
+| c_swamp_grave | 114.3 -> 112.0 (-2.0 %) | 320 -> 317 | 33 -> 33 | 24 -> 24 |
+| c_jungle_firefrog | 95.7 -> 93.3 (-2.6 %) | 432 -> 430 | 20 -> 18 | 14 -> 13 |
+| p5_reg_l9s5 | 74.4 -> 72.7 (-2.3 %) | 199 -> 192 | 26 -> 26 | 19 -> 17 |
+| p5_reg_l14s16 | 98.0 -> 95.8 (-2.2 %) | 212 -> 208 | 18 -> 13 | 4 -> 4 |
+| all | 101.4 -> 99.1 (-2.3 %) | | 185 -> 176 | 120 -> 111 |
+
+At 061c66e (before ef8fa7a) the same set was 99.0 K, 176, 112.
+Default 27 routes (SOFTFP, steps after step 1): mean 66,969 -> 65,434 (-2.3 %), > 150 K 112 -> 105, > 175 K 43 -> 39;
+no step more than 1 % slower.
+
+- **Gates (ef8fa7a; 59a8c36 is its SH-2 warning fix):** hostident 184/184 after every commit; CTALL 59/59; EQUIV
+  88/88; playsh2 9,701 / 9,701 in the SOFTFP and default builds (59a8c36: SOFTFP again, 9,701 / 9,701); game_check
+  p4_exit559 0 px (records 30, 150, 300); tests/game .bss end 0x02076a84 as on main (38,268 B of stack); the SH-2
+  build has no compiler warning at 59a8c36. After the batch the double queries reach 125,692 calls in the 92 host
+  runs (574,488 before), 10,988 not whole, 95 sites.
+
+- **Measured, not kept:** d966e99's rows computed up front: on vampkill step 288 more float operations than the
+  old loop (__addsf3 104 -> 120: few columns pass), overlap_at unchanged (101.5 K); a7774a8 computes a row when a
+  column first needs it (85.5 K).
+- **What is left (measured):** the queries' remaining cost is the searches and flushes, not floats: pcol_search_i
+  under the player's rectangles (15-19 K a call on vampkill), flush_run <- ik_line (115 K on damselexpl 193: moves'),
+  check_water's instance_place_ixy (114-170 calls, 160-254 K on drain / grave / firefrog: ints already). overlap_at's
+  precise float test is still 29 K a call (pin_bbox's doubles for BB_DBL boxes, the column floats).
+- **Not done:** scrUseItem's 6 point tests (p of a local index), pshop.c's b, ptrans.c (the transition room),
+  pplayer.c's hang / door / exit-level tests on x, y copies (rare: AT_XY applies as in 141debc), genent.c (the
+  generator), collision_line_p (9 sites, scripts' bounds), positions with 0 < |x| < 1/2 or |x| >= 2^13 (the doubles).
