@@ -60,6 +60,12 @@ $(OUT)/playhost_eq: playhost.c $(SRC) $(PSRC) $(ROOT)/src/game/*.h $(GEN)/playta
 	mkdir -p $(OUT)
 	$(CC) $(CFLAGS) -DPLAY_STATS -DPLAY_RNGLOG $(INC) -o $@ playhost.c $(SRC) $(PSRC) $(HSRC)
 
+# the grid build counting the double collision queries by call site (play.h FCOL_STATS; FCOL_OUT=<file>); no
+# PLAY_STATS (its checks call the double queries)
+$(OUT)/playhost_fcol: playhost.c $(SRC) $(PSRC) $(ROOT)/src/game/*.h $(GEN)/playtables.h $(ROOT)/build/snd/sndnames.h $(ROOT)/src/snd/snd.h
+	mkdir -p $(OUT)
+	$(CC) $(CFLAGS) -DPLAY_RNGLOG -DFCOL_STATS $(INC0) -o $@ playhost.c $(SRC) $(PSRC) $(HSRC)
+
 # binary64 with no floating-point contraction anywhere (clang on arm64 contracts a * b + c by default; the runner's
 # fused operations are explicit fmaf calls in pcol.c): the routes must give the same records as playhost
 #   PLAYHOST=build/host/playhost_nc scripts/p4_trace.sh <route> <seed> --no-run

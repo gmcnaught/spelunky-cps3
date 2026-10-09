@@ -3690,6 +3690,55 @@ static int precise_collision_int(int a, int32_t dx, int32_t dy, const int32_t *i
     }
 }
 
+#ifdef FCOL_STATS
+/* play.h FCOL_STATS: the per-call-site counts (playhost_fcol) */
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+struct fcol_e { const char *file; int line, kind; unsigned long calls, frac; };
+static struct fcol_e fcol_t[8192];
+static const char *fcol_pf, *fcol_of;
+static int fcol_pl, fcol_ol, fcol_depth, fcol_reg;
+static void fcol_dump(void)
+{
+    const char *o = getenv("FCOL_OUT");
+    FILE *f;
+    int k;
+    if (!o || !(f = fopen(o, "a"))) return;
+    for (k = 0; k < 8192; k++)
+        if (fcol_t[k].file) {
+            const char *b = strrchr(fcol_t[k].file, '/');
+            fprintf(f, "%s %d %d %lu %lu\n", b ? b + 1 : fcol_t[k].file, fcol_t[k].line, fcol_t[k].kind, fcol_t[k].calls,
+                    fcol_t[k].frac);
+        }
+    fclose(f);
+}
+static void fcol_add(const char *file, int line, int kind, int frac)
+{
+    unsigned h = ((unsigned)(size_t)file * 31u + (unsigned)line * 7u + (unsigned)kind) & 8191u;
+    if (!fcol_reg) { fcol_reg = 1; atexit(fcol_dump); }
+    while (fcol_t[h].file && !(fcol_t[h].file == file && fcol_t[h].line == line && fcol_t[h].kind == kind))
+        h = (h + 1) & 8191u;
+    fcol_t[h].file = file; fcol_t[h].line = line; fcol_t[h].kind = kind;
+    fcol_t[h].calls++;
+    fcol_t[h].frac += frac != 0;
+}
+void fcol_site(const char *file, int line) { if (!fcol_pf && !fcol_depth) { fcol_pf = file; fcol_pl = line; } }
+void fcol_clear(void) { if (!fcol_depth) fcol_pf = NULL; }
+static int fcol_int(double v) { return v > -30000 && v < 30000 && v == (double)(int32_t)v; }
+int fcol_note(int kind, int n, double a, double b, double c, double d)
+{
+    int frac;
+    if (fcol_depth++) return 0;
+    frac = !fcol_int(a) || !fcol_int(b) || (n == 4 && (!fcol_int(c) || !fcol_int(d)));
+    fcol_add(fcol_pf, fcol_pl, kind, frac);
+    fcol_of = fcol_pf; fcol_ol = fcol_pl;
+    fcol_pf = NULL;
+    return 1;
+}
+void fcol_done(int counted) { fcol_depth--; if (counted) fcol_of = NULL; }
+#endif
+
 /* instance a (its bbox moved by dx, dy) against instance b */
 static int overlap_at(int a, double dx, double dy, int b)
 {
@@ -3702,6 +3751,9 @@ static int overlap_at(int a, double dx, double dy, int b)
             return 1;
         return precise_collision_int(a, idx, idy, ia, b, ib);
     }
+#ifdef FCOL_STATS
+    fcol_add(fcol_of ? fcol_of : "overlap_at(pass)", fcol_of ? fcol_ol : 0, FK_OVL, 1);
+#endif
     if (!pin_bbox(a, &l, &t, &r, &bb) || !pin_bbox(b, &l2, &t2, &r2, &b2))
         return 0;
     l += dx; r += dx; t += dy; bb += dy;
@@ -3855,7 +3907,7 @@ static int place_after_query(int self, int q, double px, double py, double dx, d
     return NOONE;
 }
 
-int instance_place_p(int self, double px, double py, int obj)
+int (instance_place_p)(int self, double px, double py, int obj)
 {
     PWST(place, 1);
     int q = pcol_query(obj);

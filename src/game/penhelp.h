@@ -17,6 +17,10 @@ PENHELP int CP(double x, double y, int obj) { return collision_point_any(x, y, o
    (bounding box only) and notme (self not excluded). Observed: c_ice_alienboss record 213, oYeti's ledge test at
    (528, 48) hits an oDarkFall at 528, 48 whose precise mask has pixel (0, 0) clear */
 PENHELP int CPn(double x, double y, int obj, int self) { (void)self; return collision_point_any(x, y, obj, 0, NOONE); }
+#ifdef FCOL_STATS
+#define CP(x, y, o) (fcol_site(__FILE__, __LINE__), (CP)((x), (y), (o)))
+#define CPn(x, y, o, s) (fcol_site(__FILE__, __LINE__), (CPn)((x), (y), (o), (s)))
+#endif
 PENHELP int sprw(int i) { int s = PX(i).spr; return s >= 0 ? spr_dim(psprite[s].w, PX(i).xscale) : 0; }
 PENHELP int sprh(int i) { int s = PX(i).spr; return s >= 0 ? spr_dim(psprite[s].h, PX(i).yscale) : 0; }
 PENHELP double dabs(double d) { return d < 0 ? -d : d; }

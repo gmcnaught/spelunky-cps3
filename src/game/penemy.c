@@ -1449,6 +1449,10 @@ static int isCollisionRectangle(double a0, double a1, double a2, double a3, doub
                                 double a7)
 {
     double w1 = a2 - a0, h1 = a3 - a1, w2 = a6 - a4, h2 = a7 - a5;
+#ifdef FCOL_STATS
+    fcol_site(__FILE__, __LINE__);
+    fcol_done(fcol_note(FK_ISRECT, 4, a0, a1, a2, a3));
+#endif
     if (DLE(w2, 0) || DLE(h2, 0) || DLE(w1, 0) || DLE(h1, 0)) return 0;
     w2 += a4;
     h2 += a5;
