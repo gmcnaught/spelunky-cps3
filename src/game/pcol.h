@@ -18,6 +18,7 @@ void pcol_mark(int i);                 /* a change of position / sprite / mask /
 void pcol_destroyed(int i);            /* instance_destroy: removed from the tree at the next RemoveMarked */
 void pcol_touch(int i);                /* the runner computes i's bounding box (Compute_BoundingBox(true)) */
 void pcol_load_done(void);              /* play_level_start loaded the level: no instance is quiet now */
+void pcol_load_flush(void);             /* a room's load ends: the grid build's pending updates now */
 int pcol_quiet(void);                   /* some level-load instance is not yet looked at (pcol_touch_stale inexact) */
 void pcol_box(int i, float *o);         /* play instance i's bounding box l, t, r, b (floats; image_angle included) */
 void pcol_sincosf(float a, float *s, float *c);  /* sinf, cosf as glibc's sincosf (the runner's) */

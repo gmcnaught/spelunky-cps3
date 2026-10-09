@@ -10,6 +10,7 @@
 #include "../snd/sndgame.h"                     /* the GML sound calls (src/snd) */
 #include "pmsg.h"                                /* the HUD messages (trMessages) */
 #include "pcontent.h"                            /* P7 content packages (docs/CONTENT.md) */
+#include "pcol.h"                                /* pcol_load_flush */
 
 struct ptrans { int32_t drawLoot, drawPosX, drawPosY, moneyCount; uint8_t hurryup, isLoot, isKills; };
 static struct ptrans TR;
@@ -125,6 +126,9 @@ void play_transition_start(int room)
         }
     }
     }
+    /* the blocks' boxes the Creates left stale (gen_create_event's sprites: about 410 entries, 0.55 M jtcps3 clocks
+       of the room's first step) go into the grid here, in the load */
+    pcol_load_flush();
 }
 
 /* objects/oTransition/Alarm_0.gml: one loot (or kill) sprite every 3 steps, then drawLoot = 2 */

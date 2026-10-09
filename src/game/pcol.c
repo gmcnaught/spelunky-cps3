@@ -1617,6 +1617,18 @@ int pcol_quiet(void) { return quiet_any; }
 /* the level is loaded (play_level_start): the loader's writes are done; from here every change is a mark */
 void pcol_load_done(void) { sync_all(); }
 
+/* a room's load ends (ptrans.c's transition rooms, play_level_start): the grid build applies the loaded entries'
+   pending updates (sync_all, then cupdate of each on the dirty list: the boxes the generator's Creates left stale)
+   now instead of at the room's first query or collision pass. The grid build's searches do not depend on when an
+   entry is flushed (pgrid_search orders its hits by creation number; an entry changed later is marked and put again
+   at the next flush). The exact build's R-tree depends on the order of its inserts: it keeps the flush where it was */
+void pcol_load_flush(void)
+{
+#ifndef PCOL_EXACT
+    if (PCOL_GRID_ON) flush();
+#endif
+}
+
 /* the touches of a creation-order scan of obj's instances (but notme) up to and including `upto` (NOONE: all) that
    change the tree: those of the stale members, in creation order */
 static void touch_stale(int obj, int notme, int upto)
