@@ -250,6 +250,13 @@ static inline int fne(float a, float b)
     return x.u != y.u && ((x.u | y.u) << 1) != 0;
 }
 #define POS_NE(a, b) fne((a), (b))
+/* a and b have the same bits (no call) */
+static inline int fsame(float a, float b)
+{
+    union { float f; uint32_t u; } x, y;
+    x.f = a; y.f = b;
+    return x.u == y.u;
+}
 /* pin_xy_int's shadows (struct pin ix, iy): PXY_UNK until read after a change of the float (a value unchanged as POS_NE
    sees it, +0 / -0, keeps the same int). PIN_SETX_RAW / PIN_SETY_RAW: a write of x / y without the dirty marks (moveTo's
    walk, pin_add) */
@@ -423,10 +430,42 @@ int ik_side(int i, int side, int d);   /* collision_rectangle(.., oSolid, 1, not
 int (collision_rect_any)(double x1, double y1, double x2, double y2, int obj, int prec, int notme_self);   /* collision_rect_p(..) != NOONE */
 int (collision_rect_any_at)(int i, int32_t l, int32_t t, int32_t r, int32_t b, int obj);   /* at i's x, y; prec 0 */
 int (collision_point_any_at)(int i, int32_t dx, int32_t dy, int obj);                     /* at i's x, y; prec 0 */
+int (collision_rect_at)(int i, int32_t l, int32_t t, int32_t r, int32_t b, int obj);   /* collision_rect_p at i's x, y; prec 0, noone */
 #define collision_rect_any_at(i, l, t, r, b, obj) \
     (pw_noinst_tree(obj) ? 0 : (collision_rect_any_at)((i), (l), (t), (r), (b), (obj)))
 #define collision_point_any_at(i, dx, dy, obj) \
     (pw_noinst_point(obj) ? 0 : (collision_point_any_at)((i), (dx), (dy), (obj)))
+#define collision_rect_at(i, l, t, r, b, obj) \
+    (pw_noinst_tree(obj) ? NOONE : (collision_rect_at)((i), (l), (t), (r), (b), (obj)))
+#ifdef FCOL_STATS
+/* test/host playhost_fcol (docs/AST-GREP.md): every call of the double collision queries that reaches the function,
+   counted by call site (CP / CPn: penhelp.h names their caller's line) and by whether every coordinate was a whole
+   number in (-30000, 30000); written to $FCOL_OUT at exit. Calls made inside a counted call are not counted */
+enum { FK_PT, FK_PTANY, FK_LINE, FK_RECT, FK_RANY, FK_PLACE, FK_ISRECT, FK_OVL, FK_N };
+void fcol_site(const char *file, int line);
+void fcol_clear(void);
+int fcol_note(int kind, int n, double a, double b, double c, double d);   /* 1: counted (call fcol_done after) */
+void fcol_done(int counted);
+#undef collision_point_p
+#undef collision_point_any
+#undef collision_line_p
+#undef collision_rect_p
+#undef collision_rect_any
+#define FCOL_Q(kind, n, a, b, c, d, none, noinst, call) ({ int r_, c_; fcol_site(__FILE__, __LINE__); \
+    if (noinst) { fcol_clear(); r_ = (none); } \
+    else { double a_ = (a), b_ = (b), c_d = (c), d_d = (d); (void)c_d; (void)d_d; \
+           c_ = fcol_note((kind), (n), a_, b_, c_d, d_d); r_ = call; fcol_done(c_); } r_; })
+#define collision_point_p(px, py, obj, prec, notme) FCOL_Q(FK_PT, 2, (px), (py), 0, 0, NOONE, pw_noinst_point(obj), \
+    (collision_point_p)(a_, b_, (obj), (prec), (notme)))
+#define collision_point_any(px, py, obj, prec, notme) FCOL_Q(FK_PTANY, 2, (px), (py), 0, 0, 0, pw_noinst_point(obj), \
+    (collision_point_any)(a_, b_, (obj), (prec), (notme)))
+#define collision_line_p(x1, y1, x2, y2, obj, prec, notme) FCOL_Q(FK_LINE, 4, (x1), (y1), (x2), (y2), NOONE, \
+    pw_noinst_tree(obj), (collision_line_p)(a_, b_, c_d, d_d, (obj), (prec), (notme)))
+#define collision_rect_p(x1, y1, x2, y2, obj, prec, notme) FCOL_Q(FK_RECT, 4, (x1), (y1), (x2), (y2), NOONE, \
+    pw_noinst_tree(obj), (collision_rect_p)(a_, b_, c_d, d_d, (obj), (prec), (notme)))
+#define collision_rect_any(x1, y1, x2, y2, obj, prec, notme) FCOL_Q(FK_RANY, 4, (x1), (y1), (x2), (y2), 0, \
+    pw_noinst_tree(obj), (collision_rect_any)(a_, b_, c_d, d_d, (obj), (prec), (notme)))
+#endif
 /* v as an int in (-30000, 30000) when it is a whole number; x and y as ints when both are (inline: the results stay
    in registers, no stack traffic in the collision helpers) */
 static inline int pos_int(pos v, int32_t *o)
@@ -496,7 +535,16 @@ void pw_watch(int i);
 uint32_t pw_watch_end(void);
 int instance_place_p(int self, double px, double py, int obj);
 int instance_place_ixy(int self, int32_t x, int32_t y, int32_t idx, int32_t idy, int obj);   /* at whole x, y + idx, idy */
+int instance_place_at(int self, int32_t idx, int32_t idy, int obj);   /* instance_place_p at self's x, y + idx, idy */
+/* a query on doubles x, y read as PTOD(x0), PTOD(y0) from instance i's position (x0 = PX(i).x, y0 = PX(i).y at the
+   read): its _at form `at` while i's x, y still have x0's and y0's bits (PTOD of them is x, y), else `dbl`, the query
+   as written on x, y (a call between the read and the query may have moved i) */
+#define AT_XY(i, x0, y0, at, dbl) (fsame(PW.in[i].x, (x0)) && fsame(PW.in[i].y, (y0)) ? (at) : (dbl))
 #define place_meeting_p(self, px, py, obj) (instance_place_p((self), (px), (py), (obj)) != NOONE)
+#ifdef FCOL_STATS
+#define instance_place_p(self, px, py, obj) FCOL_Q(FK_PLACE, 2, (px), (py), 0, 0, NOONE, 0, \
+    (instance_place_p)((self), a_, b_, (obj)))
+#endif
 int instance_nearest_p(double px, double py, int obj);
 int instance_box_maybe(int obj, int32_t x0, int32_t x1, int32_t y0, int32_t y1);
 int instance_exists_p(int obj);

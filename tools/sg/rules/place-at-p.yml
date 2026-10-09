@@ -1,0 +1,29 @@
+id: place-at-p
+severity: hint
+message: "instance_place at PTOD(p->x) / PTOD(p->y) plus int offsets, p = &PX(i) and self i: instance_place_at"
+note: "branch floatcol: as place-at, with the instance's x / y read through a struct pin pointer P; tools/sgfix_at.py place-at-p resolves P to i from the enclosing function's one `struct pin *P = &PX(i);` (P and i not assigned again there) and rewrites"
+language: c
+files: ["src/game/**"]
+rule:
+  any:
+    - pattern: "instance_place_p($I, PTOD($P->x), PTOD($P->y), $O)"
+    - pattern: "place_meeting_p($I, PTOD($P->x), PTOD($P->y), $O)"
+    - pattern: "instance_place_p($I, PTOD($P->x), PTOD($P->y) + $DY, $O)"
+    - pattern: "place_meeting_p($I, PTOD($P->x), PTOD($P->y) + $DY, $O)"
+    - pattern: "instance_place_p($I, PTOD($P->x), PTOD($P->y) - $DY, $O)"
+    - pattern: "place_meeting_p($I, PTOD($P->x), PTOD($P->y) - $DY, $O)"
+    - pattern: "instance_place_p($I, PTOD($P->x) + $DX, PTOD($P->y), $O)"
+    - pattern: "place_meeting_p($I, PTOD($P->x) + $DX, PTOD($P->y), $O)"
+    - pattern: "instance_place_p($I, PTOD($P->x) + $DX, PTOD($P->y) + $DY, $O)"
+    - pattern: "place_meeting_p($I, PTOD($P->x) + $DX, PTOD($P->y) + $DY, $O)"
+    - pattern: "instance_place_p($I, PTOD($P->x) + $DX, PTOD($P->y) - $DY, $O)"
+    - pattern: "place_meeting_p($I, PTOD($P->x) + $DX, PTOD($P->y) - $DY, $O)"
+    - pattern: "instance_place_p($I, PTOD($P->x) - $DX, PTOD($P->y), $O)"
+    - pattern: "place_meeting_p($I, PTOD($P->x) - $DX, PTOD($P->y), $O)"
+    - pattern: "instance_place_p($I, PTOD($P->x) - $DX, PTOD($P->y) + $DY, $O)"
+    - pattern: "place_meeting_p($I, PTOD($P->x) - $DX, PTOD($P->y) + $DY, $O)"
+    - pattern: "instance_place_p($I, PTOD($P->x) - $DX, PTOD($P->y) - $DY, $O)"
+    - pattern: "place_meeting_p($I, PTOD($P->x) - $DX, PTOD($P->y) - $DY, $O)"
+constraints:
+  DX: { regex: '^([0-9]|1[0-6])$' }
+  DY: { regex: '^([0-9]|1[0-6])$' }

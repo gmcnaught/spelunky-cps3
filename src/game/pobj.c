@@ -392,15 +392,15 @@ void destroy_solid(int i)
     struct pin *p = &PX(i);
     int obj;
     if (p->shopWall) PUNTR(1010);
-    if (collision_point_p(PTOD(p->x) + 8, PTOD(p->y) - 1, OBJ_oSpikes, 0, NOONE) != NOONE) {
-        obj = instance_place_p(i, PTOD(p->x) + 8, PTOD(p->y) - 1, OBJ_oSpikes);
+    if (collision_point_any_at(i, 8, -1, OBJ_oSpikes)) {
+        obj = instance_place_at(i, 8, -1, OBJ_oSpikes);
         if (obj != NOONE) pin_destroy(obj);
     }
-    if (collision_point_p(PTOD(p->x) + 8, PTOD(p->y) - 1, OBJ_oTikiTorch, 0, NOONE) != NOONE) pjungle_world(1011, i, 0);
-    if (collision_point_p(PTOD(p->x) + 8, PTOD(p->y) - 1, OBJ_oGrave, 0, NOONE) != NOONE) pswamp_world(1012, i, 0);
-    if (collision_point_p(PTOD(p->x) + 8, PTOD(p->y) + 18, OBJ_oLampRed, 0, NOONE) != NOONE) PUNTR(1013);
-    if (collision_point_p(PTOD(p->x) + 8, PTOD(p->y) + 18, OBJ_oLamp, 0, NOONE) != NOONE) {
-        obj = instance_place_p(i, PTOD(p->x) + 8, PTOD(p->y) + 16, OBJ_oLamp);
+    if (collision_point_any_at(i, 8, -1, OBJ_oTikiTorch)) pjungle_world(1011, i, 0);
+    if (collision_point_any_at(i, 8, -1, OBJ_oGrave)) pswamp_world(1012, i, 0);
+    if (collision_point_any_at(i, 8, 18, OBJ_oLampRed)) PUNTR(1013);
+    if (collision_point_any_at(i, 8, 18, OBJ_oLamp)) {
+        obj = instance_place_at(i, 8, 16, OBJ_oLamp);
         if (obj != NOONE) {
             pin_create(PX(obj).x + PI(8), PX(obj).y + PI(12), OBJ_oLampItem);
             pin_destroy(obj);
@@ -757,7 +757,7 @@ void item_step(int i)
     } else if (p->type != T_BOMB && p->type != T_ARROW && rest_skip(i, &br)) {
         /* the terrain part as its last full run (rest_skip); the lava tests below still run */
     } else if (rest = p->type != T_BOMB && p->type != T_ARROW, rest ? rest_begin(i) : (void)0,   /* (comma: only on */
-               !collision_point_any(PTOD(p->x), PTOD(p->y), OBJ_oSolid, 0, NOONE)) {   /* :69   reaching here) */
+               !collision_point_any_at(i, 0, 0, OBJ_oSolid)) {   /* :69   reaching here) */
         br = 1;
         moveTo(i, PE(p)->xVel, PE(p)->yVel, 0, 0);
         PE(p)->colLeft = PE(p)->colRight = PE(p)->colBot = PE(p)->colTop = 0;
@@ -895,7 +895,7 @@ static void jar_step(int i, int skull)
             if (NGT_COLD(NABS(PE(p)->xVel), skull ? N(2) : N(3))) destroy = 1;
             PE(p)->xVel = NMUL(-PE(p)->xVel, N(0.5));
         }
-        if (!skull && collision_point_any(PTOD(p->x), PTOD(p->y), OBJ_oSolid, 0, NOONE)) destroy = 1;
+        if (!skull && collision_point_any_at(i, 0, 0, OBJ_oSolid)) destroy = 1;
         if (PE(p)->colBot) {
             if (CGT(PE(p)->yVel, 3, CMPC_H_3)) destroy = 1;
             if (CGT(PE(p)->yVel, 1, CMPC_H_1)) PE(p)->yVel = NMUL(-PE(p)->yVel, N(0.5));
@@ -1104,10 +1104,10 @@ static void ropethrow_step(int i)
     if (PE(p)->armed && NGE(PE(p)->yVel, N(0))) {
         move_snap(i, 16, 1);
         if (PE(p)->px < NP(p->x)) {
-            if (!collision_point_any(PTOD(p->x) - 8, PTOD(p->y), OBJ_oSolid, 0, NOONE)) pin_setx(p, p->x - (PI(8)));
+            if (!collision_point_any_at(i, -8, 0, OBJ_oSolid)) pin_setx(p, p->x - (PI(8)));
             else pin_setx(p, p->x + (PI(8)));
         } else {
-            if (!collision_point_any(PTOD(p->x) + 8, PTOD(p->y), OBJ_oSolid, 0, NOONE)) pin_setx(p, p->x + (PI(8)));
+            if (!collision_point_any_at(i, 8, 0, OBJ_oSolid)) pin_setx(p, p->x + (PI(8)));
             else pin_setx(p, p->x - (PI(8)));
         }
         pin_create(p->x, p->y, OBJ_oRopeTop);
@@ -1157,7 +1157,7 @@ static void goldidol_step(int i)
     p = &PX(i);
     if (inview(i, 8)) {
         if (isLevel()) {
-            if (!PE(p)->held && collision_point_p(PTOD(p->x), PTOD(p->y) + 4, OBJ_oBrickSmooth, 0, NOONE) != NOONE &&
+            if (!PE(p)->held && collision_point_any_at(i, 0, 4, OBJ_oBrickSmooth) &&
                 instance_exists_p(OBJ_oShopkeeper) && G.thiefLevel == 0 && !G.murderer)
                 pitems_world(1043, i, 0);
         }
@@ -1695,7 +1695,7 @@ static void explosion_solid(int self, int other)
         for (k = 0; k < n; k++) {
             int s = w[k];
             if (!PX(s).alive) continue;
-            if (collision_point_p(PTOD(PX(s).x), PTOD(PX(s).y) + 16, OBJ_oSolid, 0, NOONE) == NOONE) pin_destroy(s);
+            if (!collision_point_any_at(s, 0, 16, OBJ_oSolid)) pin_destroy(s);
         }
     }
 }

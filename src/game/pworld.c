@@ -1408,21 +1408,54 @@ struct pcinst {
     const uint8_t *mask;                        /* NULL: the sprite has no mask (its box counts) */
 };
 
-static int pcinst_of_raw(int i, double dx, double dy, struct pcinst *q)
+static uint32_t pcf(float f) { union { float f; uint32_t u; } v; v.f = f; return v.u; }
+static uint64_t pcd(double d) { union { double d; uint64_t u; } v; v.d = d; return v.u; }
+
+/* (float)v of a box side: fint15's bits below 2^15 in magnitude (no __floatsisf call) */
+#define PLACE_F(v) ((v) > -32768 && (v) < 32768 ? fint15(v) : (float)(v))
+
+/* (float)v of the sprite's ints (PLACE_F) */
+static float pc_fi(int32_t v) { return PLACE_F(v); }
+
+/* (float)(v + d): v's own float when d is +0 (v + +0 is v but for -0, which gives +0), else the double sum */
+static float pc_addf(double v, double d)
+{
+    if (pcd(d) == 0) return dzero(v) ? 0.0f : (float)v;
+    return (float)(v + d);
+}
+
+/* box: i's pin_bbox (l, t, r, b) when the caller has it (overlap_at: nothing changes between), else NULL */
+static int pcinst_of_raw(int i, double dx, double dy, struct pcinst *q, const double *box)
 {
     const struct pin *p = &PW.in[i];
     int s = spr_of(p);
     const struct gsprcol *c;
     const struct psprite *ps;
     double l, t, r, b;
-    if (s < 0 || !pin_bbox(i, &l, &t, &r, &b)) return 0;
+    if (s < 0) return 0;
+    if (box) { l = box[0]; t = box[1]; r = box[2]; b = box[3]; }
+    else if (!pin_bbox(i, &l, &t, &r, &b)) return 0;
     c = &gsprcol[s];
     ps = &psprite[s];
-    q->x = (float)(PTOD(p->x) + dx); q->y = (float)(PTOD(p->y) + dy);
+    q->x = pcd(dx) == 0 ? (fzero(p->x) ? 0.0f : p->x) : (float)(PTOD(p->x) + dx);
+    q->y = pcd(dy) == 0 ? (fzero(p->y) ? 0.0f : p->y) : (float)(PTOD(p->y) + dy);
     q->xs = p->xscale; q->ys = p->yscale; q->ang = p->angle;
-    q->bl = (float)(l + dx); q->bt = (float)(t + dy); q->br = (float)(r + dx); q->bb = (float)(b + dy);
-    q->xo = (float)c->xo; q->yo = (float)c->yo;
-    q->ml = (float)c->l; q->mt = (float)c->t; q->mr = (float)c->r; q->mb = (float)c->b;
+    q->bl = pc_addf(l, dx); q->bt = pc_addf(t, dy); q->br = pc_addf(r, dx); q->bb = pc_addf(b, dy);
+#ifdef PLAY_STATS
+    {   /* the box given is pin_bbox's; the floats are the double sums' */
+        double m[4];
+        if ((box && (!pin_bbox(i, &m[0], &m[1], &m[2], &m[3]) || pcd(m[0]) != pcd(l) || pcd(m[1]) != pcd(t) ||
+                     pcd(m[2]) != pcd(r) || pcd(m[3]) != pcd(b))) ||
+            pcf(q->x) != pcf((float)(PTOD(p->x) + dx)) || pcf(q->y) != pcf((float)(PTOD(p->y) + dy)) ||
+            pcf(q->bl) != pcf((float)(l + dx)) || pcf(q->bt) != pcf((float)(t + dy)) || pcf(q->br) != pcf((float)(r + dx)) ||
+            pcf(q->bb) != pcf((float)(b + dy))) {
+            fprintf(stderr, "pcinst_of_raw: box or floats differ (%d)\n", i);
+            abort();
+        }
+    }
+#endif
+    q->xo = pc_fi(c->xo); q->yo = pc_fi(c->yo);
+    q->ml = pc_fi(c->l); q->mt = pc_fi(c->t); q->mr = pc_fi(c->r); q->mb = pc_fi(c->b);
     q->bpr = ((c->r - c->l + 1) + 7) >> 3;
     q->mask = 0;
     if (c->kind == 1 && ps->nmasks > 0) {
@@ -1447,10 +1480,8 @@ struct pcc { uint32_t x, y, xs, ys, ang, img; uint64_t dx, dy; int16_t s; uint8_
 static struct pcc pccache[2];
 static unsigned pcnext;
 
-static uint32_t pcf(float f) { union { float f; uint32_t u; } v; v.f = f; return v.u; }
-static uint64_t pcd(double d) { union { double d; uint64_t u; } v; v.d = d; return v.u; }
 
-static int pcinst_of(int i, double dx, double dy, struct pcinst *q)
+static int pcinst_of_b(int i, double dx, double dy, struct pcinst *q, const double *box)
 {
     const struct pin *p = &PW.in[i];
     uint32_t x = pcf(p->x), y = pcf(p->y), xs = pcf(p->xscale), ys = pcf(p->yscale), ang = pcf(p->angle),
@@ -1463,7 +1494,7 @@ static int pcinst_of(int i, double dx, double dy, struct pcinst *q)
             c->s == s && c->dx == bx && c->dy == by) {
 #ifdef PLAY_STATS
             struct pcinst f;
-            int fr = pcinst_of_raw(i, dx, dy, &f);
+            int fr = pcinst_of_raw(i, dx, dy, &f, NULL);
             if (fr != c->ret || (fr && (pcf(f.x) != pcf(c->q.x) || pcf(f.y) != pcf(c->q.y) || pcf(f.xs) != pcf(c->q.xs) ||
                 pcf(f.ys) != pcf(c->q.ys) || pcf(f.ang) != pcf(c->q.ang) || pcf(f.bl) != pcf(c->q.bl) ||
                 pcf(f.bt) != pcf(c->q.bt) || pcf(f.br) != pcf(c->q.br) || pcf(f.bb) != pcf(c->q.bb) ||
@@ -1478,7 +1509,7 @@ static int pcinst_of(int i, double dx, double dy, struct pcinst *q)
             return c->ret;
         }
     }
-    r = pcinst_of_raw(i, dx, dy, q);
+    r = pcinst_of_raw(i, dx, dy, q, box);
     {
         struct pcc *c = &pccache[pcnext++ & 1];
         c->x = x; c->y = y; c->xs = xs; c->ys = ys; c->ang = ang; c->img = img; c->s = (int16_t)s;
@@ -1487,6 +1518,8 @@ static int pcinst_of(int i, double dx, double dy, struct pcinst *q)
     }
     return r;
 }
+
+static int pcinst_of(int i, double dx, double dy, struct pcinst *q) { return pcinst_of_b(i, dx, dy, q, NULL); }
 
 static int pc_bit(const struct pcinst *q, float lx, float ly)
 {
@@ -1545,6 +1578,141 @@ static int sa_collision(const struct pcinst *a, const struct pcinst *b)
 
 static int rotated_eps(float ang) { double d = ang; return d > GML_EPS || d < -GML_EPS; }
 
+/* 1 / s for a scale; s = +-1: itself (1 / 1 and 1 / -1 are exact), without __divsf3 */
+static float pc_inv(float s)
+{
+    union { float f; uint32_t u; } v;
+    v.f = s;
+    if ((v.u & 0x7fffffffu) == 0x3f800000u) return s;
+    return 1.0f / s;
+}
+
+/* v * s; s = +-1: v or -v (exact for a finite v; the operands here are positions and box sides), without __mulsf3 */
+static float pc_mul(float v, float s)
+{
+    union { float f; uint32_t u; } a, b;
+    b.f = s;
+    if (b.u == 0x3f800000u) return v;
+    if (b.u == 0xbf800000u) { a.f = v; a.u ^= 0x80000000u; return a.f; }
+    return v * s;
+}
+
+/* pc_bit at the mask column and row cx = (int)(lx - ml), cy = (int)(ly - mt) */
+static int pc_bitc(const struct pcinst *q, int cx, int cy)
+{
+    static const uint8_t bit[8] = { 0x80, 0x40, 0x20, 0x10, 0x08, 0x04, 0x02, 0x01 };
+    return (q->mask[cy * q->bpr + (cx >> 3)] & bit[cx & 7]) != 0;
+}
+
+/* precise_collision's unrotated loop as the runner has it (A: this sprite; x0 .. iyB as there) */
+static int pc_loop(const struct pcinst *A, const struct pcinst *B, float x0, float y0, float x1, float y1, float ixA,
+                   float ixB, float iyA, float iyB)
+{
+    float lxA, lxB, xc, yc;
+    float arA = A->mr + 1.0f, abA = A->mb + 1.0f, arB = B->mr + 1.0f, abB = B->mb + 1.0f;
+    if (!(x1 > x0)) return 0;
+    lxB = (x0 - B->x) * ixB + B->xo;
+    lxA = (x0 - A->x) * ixA + A->xo;
+    for (xc = x0; x1 > xc; xc = xc + 1.0f, lxB = lxB + ixB, lxA = lxA + ixA) {
+        int okA, okB;
+        float tA, tB;
+        if (A->ml > lxA || lxA >= arA || B->ml > lxB || lxB >= arB || !(y1 > y0)) continue;
+        tA = (float)(int)lxA; tB = (float)(int)lxB;
+        okA = !(A->ml > tA) && !(tA > A->mr);
+        okB = !(B->ml > tB) && !(tB > B->mr);
+        for (yc = y0; y1 > yc; yc = yc + 1.0f) {
+            float lyA = (yc - A->y) * iyA + A->yo, lyB, ty;
+            if (A->mt > lyA || lyA >= abA) continue;
+            if (A->mask) {
+                if (!okA) continue;
+                ty = (float)(int)lyA;
+                if (A->mt > ty || ty > A->mb || !pc_bit(A, tA, ty)) continue;
+            }
+            lyB = (yc - B->y) * iyB + B->yo;
+            if (B->mt > lyB || lyB >= abB) continue;
+            if (!B->mask) return 1;
+            if (!okB) continue;
+            ty = (float)(int)lyB;
+            if (B->mt > ty || ty > B->mb) continue;
+            if (pc_bit(B, tB, ty)) return 1;
+        }
+    }
+    return 0;
+}
+
+#define PC_ROWS 64
+
+/* precise_collision's unrotated loop (A: this sprite; x0 .. iyB as there). A row's tests depend on yc alone, and yc
+   runs from y0 by + 1.0f in every column: each row's floats are computed once, when a column first needs them (the
+   same operations on the same values, never more of them than pc_loop makes), kept in rw (bit 0 A's row in its
+   box, 1 A's mask row, 2 B's row in its box, 3 B's mask row, 4 / 5 A's / B's computed; cy the mask rows), and the
+   columns run on them in pc_loop's order. The rows' yc when the first column passes its tests (pc_loop adds them in
+   each such column). More rows than PC_ROWS: pc_loop */
+static int pc_rows(const struct pcinst *A, const struct pcinst *B, float x0, float y0, float x1, float y1, float ixA,
+                   float ixB, float iyA, float iyB)
+{
+    float lxA, lxB, xc, yc;
+    float arA = A->mr + 1.0f, abA = A->mb + 1.0f, arB = B->mr + 1.0f, abB = B->mb + 1.0f;
+    float ycs[PC_ROWS];
+    uint8_t rw[PC_ROWS];
+    int16_t cyA[PC_ROWS], cyB[PC_ROWS];
+    int n = -1, k;
+    if (!(x1 > x0)) return 0;
+    lxB = pc_mul(x0 - B->x, ixB) + B->xo;
+    lxA = pc_mul(x0 - A->x, ixA) + A->xo;
+    for (xc = x0; x1 > xc; xc = xc + 1.0f, lxB = lxB + ixB, lxA = lxA + ixA) {
+        int okA, okB, cxA = 0, cxB = 0;
+        float tA, tB;
+        if (A->ml > lxA || lxA >= arA || B->ml > lxB || lxB >= arB || !(y1 > y0)) continue;
+        if (n < 0) {
+            for (n = 0, yc = y0; y1 > yc; yc = yc + 1.0f) {
+                if (n == PC_ROWS) return pc_loop(A, B, x0, y0, x1, y1, ixA, ixB, iyA, iyB);
+                rw[n] = 0;
+                ycs[n++] = yc;
+            }
+        }
+        tA = (float)(int)lxA; tB = (float)(int)lxB;
+        okA = !(A->ml > tA) && !(tA > A->mr);
+        okB = !(B->ml > tB) && !(tB > B->mr);
+        if (A->mask && okA) cxA = (int)(tA - A->ml);
+        if (B->mask && okB) cxB = (int)(tB - B->ml);
+        for (k = 0; k < n; k++) {
+            int f = rw[k];
+            if (!(f & 16)) {
+                float ly = pc_mul(ycs[k] - A->y, iyA) + A->yo, ty;
+                f |= 16;
+                if (!(A->mt > ly || ly >= abA)) {
+                    f |= 1;
+                    if (A->mask) {
+                        ty = (float)(int)ly;
+                        if (!(A->mt > ty || ty > A->mb)) { f |= 2; cyA[k] = (int16_t)(int)(ty - A->mt); }
+                    }
+                }
+                rw[k] = (uint8_t)f;
+            }
+            if (!(f & 1)) continue;
+            if (A->mask && (!okA || !(f & 2) || !pc_bitc(A, cxA, cyA[k]))) continue;
+            if (!(f & 32)) {
+                float ly = pc_mul(ycs[k] - B->y, iyB) + B->yo, ty;
+                f |= 32;
+                if (!(B->mt > ly || ly >= abB)) {
+                    f |= 4;
+                    if (B->mask) {
+                        ty = (float)(int)ly;
+                        if (!(B->mt > ty || ty > B->mb)) { f |= 8; cyB[k] = (int16_t)(int)(ty - B->mt); }
+                    }
+                }
+                rw[k] = (uint8_t)f;
+            }
+            if (!(f & 4)) continue;
+            if (!B->mask) return 1;
+            if (!okB || !(f & 8)) continue;
+            if (pc_bitc(B, cxB, cyB[k])) return 1;
+        }
+    }
+    return 0;
+}
+
 /* CSprite::PreciseCollision (A: this sprite) */
 static int precise_collision(const struct pcinst *A, const struct pcinst *B)
 {
@@ -1558,39 +1726,18 @@ static int precise_collision(const struct pcinst *A, const struct pcinst *B)
     y0 = (float)((int)(bt + 32768.0f) - 32768) + 0.5f;
     x1 = (float)(32768 - (int)(32768.0f - br));
     y1 = (float)(32768 - (int)(32768.0f - bb));
-    ixA = 1.0f / A->xs; ixB = 1.0f / B->xs; iyA = 1.0f / A->ys; iyB = 1.0f / B->ys;
+    ixA = pc_inv(A->xs); ixB = pc_inv(B->xs); iyA = pc_inv(A->ys); iyB = pc_inv(B->ys);
     rA = rotated_eps(A->ang);
     rB = rotated_eps(B->ang);
     if (!rA && !rB) {
-        float lxA, lxB;
-        if (!(x1 > x0)) return 0;
-        lxB = (x0 - B->x) * ixB + B->xo;
-        lxA = (x0 - A->x) * ixA + A->xo;
-        for (xc = x0; x1 > xc; xc = xc + 1.0f, lxB = lxB + ixB, lxA = lxA + ixA) {
-            int okA, okB;
-            float tA, tB;
-            if (A->ml > lxA || lxA >= arA || B->ml > lxB || lxB >= arB || !(y1 > y0)) continue;
-            tA = (float)(int)lxA; tB = (float)(int)lxB;
-            okA = !(A->ml > tA) && !(tA > A->mr);
-            okB = !(B->ml > tB) && !(tB > B->mr);
-            for (yc = y0; y1 > yc; yc = yc + 1.0f) {
-                float lyA = (yc - A->y) * iyA + A->yo, lyB, ty;
-                if (A->mt > lyA || lyA >= abA) continue;
-                if (A->mask) {
-                    if (!okA) continue;
-                    ty = (float)(int)lyA;
-                    if (A->mt > ty || ty > A->mb || !pc_bit(A, tA, ty)) continue;
-                }
-                lyB = (yc - B->y) * iyB + B->yo;
-                if (B->mt > lyB || lyB >= abB) continue;
-                if (!B->mask) return 1;
-                if (!okB) continue;
-                ty = (float)(int)lyB;
-                if (B->mt > ty || ty > B->mb) continue;
-                if (pc_bit(B, tB, ty)) return 1;
-            }
+        int r = pc_rows(A, B, x0, y0, x1, y1, ixA, ixB, iyA, iyB);
+#ifdef PLAY_STATS
+        if (r != pc_loop(A, B, x0, y0, x1, y1, ixA, ixB, iyA, iyB)) {
+            fprintf(stderr, "precise_collision: row answer %d differs\n", r);
+            abort();
         }
-        return 0;
+#endif
+        return r;
     }
     {
         float sA = 0, cA = 0, sB = 0, cB = 0;
@@ -2111,29 +2258,27 @@ static __attribute__((noinline)) int ik_cells(int i, int n, int step, int nm)
 
 /* Command_CollisionPoint tests the object's instances in creation order (Collision_Point computes each stale box:
    pcol_touch) */
-int (collision_point_p)(double px, double py, int obj, int prec, int notme_self)
+/* collision_point_p's search after pq_init (pq_q: a query made of whole ints, nodbl, gives what pq_init gives for
+   those values as doubles) */
+static int point_q(const struct pq *q, int obj, int prec, int notme_self)
 {
     int k;
-    struct pq q;
     struct fam it;
-    PWST(point, 1);
-    if (fam_none(obj)) return NOONE;
-    pq_init(&q, px, py);
 #ifndef PCOL_EXACT
-    if (obj >= 0 && xf_of[obj] >= 0 && !pcol_quiet() && xpoint_none(xf_of[obj], &q)) {
+    if (obj >= 0 && xf_of[obj] >= 0 && !pcol_quiet() && xpoint_none(xf_of[obj], q)) {
 #ifdef PLAY_STATS
         fam_begin(&it, obj);
         while ((k = fam_get(&it)) != NOONE)
-            if (k != notme_self && point_hit(k, &q, prec)) {
-                fprintf(stderr, "collision_point_p: static-family index miss differs (%d %.17g %.17g)\n", obj, px, py);
+            if (k != notme_self && point_hit(k, q, prec)) {
+                fprintf(stderr, "collision_point_p: static-family index miss differs (%d %d %d)\n", obj, q->ix, q->iy);
                 abort();
             }
 #endif
         return NOONE;
     }
 #endif
-    if (q.iok && obj >= 0 && obj_is(obj, OBJ_oSolid) && !pcol_quiet()) {
-        k = grid_point(obj, notme_self, &q, prec);
+    if (q->iok && obj >= 0 && obj_is(obj, OBJ_oSolid) && !pcol_quiet()) {
+        k = grid_point(obj, notme_self, q, prec);
         pcol_touch_stale(obj, notme_self, k);
         return k;
     }
@@ -2141,10 +2286,19 @@ int (collision_point_p)(double px, double py, int obj, int prec, int notme_self)
     while ((k = fam_get(&it)) != NOONE) {
         if (k == notme_self) continue;
         pcol_touch(k);
-        if (point_hit(k, &q, prec))
+        if (point_hit(k, q, prec))
             return k;
     }
     return NOONE;
+}
+
+int (collision_point_p)(double px, double py, int obj, int prec, int notme_self)
+{
+    struct pq q;
+    PWST(point, 1);
+    if (fam_none(obj)) return NOONE;
+    pq_init(&q, px, py);
+    return point_q(&q, obj, prec, notme_self);
 }
 
 /* collision_point(px, py, obj, prec, notme) != noone. For oSolid in the grid build (PCOL_EXACT keeps collision_point_p),
@@ -2286,15 +2440,39 @@ int (collision_point_any)(double px, double py, int obj, int prec, int notme_sel
    doubles within dwhole's range, which rq_init / pq_init take as these ints (collision_rect_i's query; the point's
    cell for the static-family index), without the double sums; otherwise collision_rect_any / collision_point_any on
    the doubles */
+/* a position for the fractional _at queries: +-0 or 1/2 <= |x| < 2^13 (exponents 126 .. 139). x + d for an int
+   |d| < 100 is then an exact double (x's lowest bit is >= 2^-24, the sum below 2^14), so (float)(PTOD(x) + d) is the
+   float sum x + (float)d (one rounding of the same exact value), its floor pfloor_int's (dfloor_int's range), its
+   rounding floor(x + d + 1/2) pfr's floor plus d plus (the fraction >= 1/2), and floor(x + d) pfloor_int(x) + d */
+static int pfrac_ok(float x)
+{
+    union { float f; uint32_t u; } v;
+    uint32_t e;
+    v.f = x;
+    e = (v.u >> 23) & 0xffu;
+    return (v.u << 1) == 0 || (e >= 126 && e <= 139);
+}
+static int rect_at_frac(int i, int32_t l, int32_t t, int32_t r, int32_t b, int obj, int *res);
+
 static int xy_int_near(int i, int32_t *x, int32_t *y)
 {
     return pin_xy_int(i, x, y) && *x > -29900 && *x < 29900 && *y > -29900 && *y < 29900;
 }
 
+static int rect_any_i(int32_t l, int32_t t, int32_t r, int32_t b, int prec, int notme_self);
+
 int (collision_rect_any_at)(int i, int32_t l, int32_t t, int32_t r, int32_t b, int obj)
 {
     int32_t x, y;
-    if (xy_int_near(i, &x, &y)) return collision_rect_i(x + l, y + t, x + r, y + b, obj, 0, NOONE) != NOONE;
+    if (xy_int_near(i, &x, &y)) {
+        /* oSolid: collision_rect_any's whole-corner path (rect_any_i on the same ints; l <= r, t <= b as given) */
+        if (obj == OBJ_oSolid && l <= r && t <= b) return rect_any_i(x + l, y + t, x + r, y + b, 0, NOONE);
+        return collision_rect_i(x + l, y + t, x + r, y + b, obj, 0, NOONE) != NOONE;
+    }
+    {   /* a fractional x or y: collision_rect_any is collision_rect_p there (its oSolid path needs whole corners) */
+        int k;
+        if (rect_at_frac(i, l, t, r, b, obj, &k)) return k != NOONE;
+    }
     return (collision_rect_any)(PTOD(PW.in[i].x) + l, PTOD(PW.in[i].y) + t, PTOD(PW.in[i].x) + r, PTOD(PW.in[i].y) + b,
                                 obj, 0, NOONE);
 }
@@ -2416,7 +2594,11 @@ int (collision_point_any_at)(int i, int32_t dx, int32_t dy, int obj)
             int r;
             q.iok = 1; q.ix = x + dx; q.iy = y + dy;                 /* (solid_point_sum reads iok, ix, iy) */
             r = fam_none(obj) ? 0 : solid_point_sum(&q, 0, NOONE);
-            if (r < 0) r = collision_point_p(q.ix, q.iy, obj, 0, NOONE) != NOONE;
+            if (r < 0) {           /* collision_point_p at the whole ix, iy (not fam_none): pq_init's query is q, nodbl */
+                PWST(point, 1);
+                q.nodbl = 1;
+                r = point_q(&q, obj, 0, NOONE) != NOONE;
+            }
 #ifdef PLAY_STATS
             if (r != (collision_point_p(PTOD(PW.in[i].x) + dx, PTOD(PW.in[i].y) + dy, obj, 0, NOONE) != NOONE)) {
                 fprintf(stderr, "collision_point_any_at: solid answer %d differs (%d %d)\n", r, q.ix, q.iy);
@@ -2468,6 +2650,66 @@ int (collision_point_any_at)(int i, int32_t dx, int32_t dy, int obj)
         }
     }
 #endif
+    /* the other objects (and the branches above off their grid paths) at whole x, y (|.| < 29900): the point
+       PTOD(x) + dx, PTOD(y) + dy is whole, so collision_point_any is collision_point_p there (its static-family branch
+       needs pcol_quiet() 0 and obj's index, its oSolid branch gfar 0 as well, which return above at a near whole
+       x, y), and pq_init gives iok, these ints and their values (nodbl's meaning): point_q on them */
+    {
+        int32_t x, y;
+        if (xy_int_near(i, &x, &y)) {
+            struct pq q;
+            PWST(point, 1);
+            if (fam_none(obj)) return 0;
+            q.iok = 1; q.ix = x + dx; q.iy = y + dy; q.nodbl = 1;
+#ifdef PLAY_STATS
+            {
+                struct pq c;
+                pq_init(&c, PTOD(PW.in[i].x) + dx, PTOD(PW.in[i].y) + dy);
+                if (!c.iok || c.ix != q.ix || c.iy != q.iy || c.px != (double)q.ix || c.py != (double)q.iy) {
+                    fprintf(stderr, "collision_point_any_at: int query differs (%d %d %d)\n", i, (int)dx, (int)dy);
+                    abort();
+                }
+            }
+#endif
+            return point_q(&q, obj, 0, NOONE) != NOONE;
+        }
+    }
+    /* x or y fractional, both pfrac_ok: pq_init's query of PTOD(x) + dx, PTOD(y) + dy is made of the float sums (a
+       whole coordinate's sum is itself a float, and pq_init converts both when either is not whole), their values
+       and floors; collision_point_any's branches then take it as there: a static family's index (its dwhole test
+       fails), the oSolid summary, else collision_point_p's search */
+    if (obj >= 0 && pfrac_ok(PW.in[i].x) && pfrac_ok(PW.in[i].y)) {
+        const struct pin *p = &PW.in[i];
+        struct pq q;
+        float fx = p->x + PLACE_F(dx), fy = p->y + PLACE_F(dy);
+        q.px = TOD(fx); q.py = TOD(fy);
+        q.iok = pfloor_int(fx, &q.ix) && pfloor_int(fy, &q.iy);
+        q.nodbl = 0;
+#ifdef PLAY_STATS
+        {
+            struct pq c;
+            pq_init(&c, PTOD(p->x) + dx, PTOD(p->y) + dy);
+            if (c.iok != q.iok || (c.iok && (c.ix != q.ix || c.iy != q.iy)) || pcd(c.px) != pcd(q.px) ||
+                pcd(c.py) != pcd(q.py) || c.nodbl) {
+                fprintf(stderr, "collision_point_any_at: fractional query differs (%d %d %d)\n", i, (int)dx, (int)dy);
+                abort();
+            }
+        }
+#endif
+#ifndef PCOL_EXACT
+        if (obj != OBJ_oSolid && xf_of[obj] >= 0 && !pcol_quiet())
+            return fam_none(obj) ? 0 : xstatic_any(obj, NOONE, &q, 0);
+        if (obj == OBJ_oSolid && !gfar && !pcol_quiet()) {
+            int r;
+            if (fam_none(obj)) return 0;
+            r = solid_point_sum(&q, 0, NOONE);
+            if (r >= 0) return r;
+        }
+#endif
+        PWST(point, 1);
+        if (fam_none(obj)) return 0;
+        return point_q(&q, obj, 0, NOONE) != NOONE;
+    }
     return (collision_point_any)(PTOD(PW.in[i].x) + dx, PTOD(PW.in[i].y) + dy, obj, 0, NOONE);
 }
 
@@ -2526,7 +2768,29 @@ int pw_piece_tests(int i)
     if (pw_noinst_point(OBJ_oSolid)) s = 0;
     else if (!gfar && !pcol_quiet()) {
         s = fam_none(OBJ_oSolid) ? 0 : solid_point_sum(&q, 0, NOONE);
-        if (s < 0) s = collision_point_p(PTOD(PW.in[i].x) + 0, PTOD(PW.in[i].y) + 0, OBJ_oSolid, 0, NOONE) != NOONE;
+        if (s < 0) {
+            /* collision_point_p at PTOD(x) + 0, PTOD(y) + 0 (fam_none 0 here): pq_init makes q of that point - a whole
+               near one: iok, the ints, their values (nodbl 1); otherwise the floats themselves ((float) of x + 0 is x
+               but for -0, which gives +0) and their floors, which q's ints are (pfloor_int: dfloor_int's range) */
+            PWST(point, 1);
+            if (q.nodbl == 2) {
+                q.px = fzero(PW.in[i].x) ? 0.0 : TOD(PW.in[i].x);
+                q.py = fzero(PW.in[i].y) ? 0.0 : TOD(PW.in[i].y);
+                q.nodbl = 0;
+            }
+#ifdef PLAY_STATS
+            {
+                struct pq c;
+                pq_init(&c, PTOD(PW.in[i].x) + 0, PTOD(PW.in[i].y) + 0);
+                if (c.iok != q.iok || (c.iok && (c.ix != q.ix || c.iy != q.iy)) ||
+                    pcd(c.px) != pcd(q.nodbl ? (double)q.ix : q.px) || pcd(c.py) != pcd(q.nodbl ? (double)q.iy : q.py)) {
+                    fprintf(stderr, "pw_piece_tests: query differs (%d)\n", i);
+                    abort();
+                }
+            }
+#endif
+            s = point_q(&q, OBJ_oSolid, 0, NOONE) != NOONE;
+        }
     } else
         s = (collision_point_any_at)(i, 0, 0, OBJ_oSolid);
 #ifdef PLAY_STATS
@@ -3413,12 +3677,39 @@ static int dfloor14(double v, int32_t *o);
    So no instance is hit, whatever the search order. The skipped walk's only other effects are the stale touches
    (pcol_touch), which the grid build's searches do not depend on (pobj.c PLAY_REST), and the tree search's caches
    (pcol_query, which runs before, did the flush). The host builds test every instance with rect_hit */
+static int rect_far_none_i(int32_t a, int32_t b, int32_t c, int32_t d, int obj, int prec, int notme_self);
 static int rect_far_none(double x1, double y1, double x2, double y2, int obj, int prec, int notme_self)
 {
-    int32_t a, b, c, d, X0, X1, Y0, Y1, ib[4];
+    int32_t a, b, c, d;
+    if (obj < 0 || olive[obj] > 4 || !dfloor14(x1, &a) || !dfloor14(x2, &c) || !dfloor14(y1, &b) || !dfloor14(y2, &d))
+        return 0;
+    if (!rect_far_none_i(a, b, c, d, obj, prec, notme_self)) return 0;
+#ifdef PLAY_STATS
+    {
+        struct rq rq;
+        struct fam it;
+        int k;
+        rq_init(&rq, x1, y1, x2, y2);
+        fam_begin(&it, obj);
+        while ((k = fam_get(&it)) != NOONE)
+            if (match(k, obj, notme_self) && rect_hit(k, &rq, prec)) {
+                fprintf(stderr, "collision_rect_p: far answer misses %d (%.17g %.17g %.17g %.17g)\n", k, x1, y1, x2, y2);
+                abort();
+            }
+    }
+#endif
+    return 1;
+}
+
+/* rect_far_none on the corners' floors a = floor(x1), b = floor(y1), c, d (|.| < 2^14: dfloor14's range; whole corners
+   are their own floors) */
+static int rect_far_none_i(int32_t a, int32_t b, int32_t c, int32_t d, int obj, int prec, int notme_self)
+{
+    int32_t X0, X1, Y0, Y1, ib[4];
     int k;
     struct fam it;
-    if (obj < 0 || olive[obj] > 4 || !dfloor14(x1, &a) || !dfloor14(x2, &c) || !dfloor14(y1, &b) || !dfloor14(y2, &d))
+    if (obj < 0 || olive[obj] > 4 || a <= -16384 || a >= 16384 || b <= -16384 || b >= 16384 || c <= -16384 ||
+        c >= 16384 || d <= -16384 || d >= 16384)
         return 0;
     X0 = a < c ? a : c; X1 = a < c ? c : a;
     Y0 = b < d ? b : d; Y1 = b < d ? d : b;
@@ -3426,13 +3717,13 @@ static int rect_far_none(double x1, double y1, double x2, double y2, int obj, in
     while ((k = fam_get(&it)) != NOONE)
         if (!pin_ibox(k, ib) || !(ib[2] < X0 || ib[0] > X1 + 1 || ib[3] < Y0 || ib[1] > Y1 + 1)) return 0;
 #ifdef PLAY_STATS
-    {
+    {   /* (the floors' query: the far answer holds for every rectangle with these floors) */
         struct rq rq;
-        rq_init(&rq, x1, y1, x2, y2);
+        rq_init(&rq, a, b, c, d);
         fam_begin(&it, obj);
         while ((k = fam_get(&it)) != NOONE)
             if (match(k, obj, notme_self) && rect_hit(k, &rq, prec)) {
-                fprintf(stderr, "collision_rect_p: far answer misses %d (%.17g %.17g %.17g %.17g)\n", k, x1, y1, x2, y2);
+                fprintf(stderr, "collision_rect_p: far answer misses %d (%d %d %d %d)\n", k, a, b, c, d);
                 abort();
             }
     }
@@ -3460,19 +3751,103 @@ int (collision_rect_p)(double x1, double y1, double x2, double y2, int obj, int 
     return rect_run(&rq, q, r, obj, prec, notme_self);
 }
 
+static int rect_q_i(int q, int32_t x1, int32_t y1, int32_t x2, int32_t y2, int obj, int prec, int notme_self);
+
 /* collision_rectangle with whole-number corners (|v| < 30000): floor(v + 0.5) is v */
 int collision_rect_i(int32_t x1, int32_t y1, int32_t x2, int32_t y2, int obj, int prec, int notme_self)
 {
     int q = pcol_query(obj);
-    struct rq rq;
     PWST(rect, 1);
     if (q < 0) return NOONE;
+    return rect_q_i(q, x1, y1, x2, y2, obj, prec, notme_self);
+}
+
+/* collision_rect_p(x + l, y + t, x + r, y + b, obj, 0, noone) at instance i's x, y (|l|, ... <= 16): at a whole x, y
+   (|.| < 29900: xy_int_near) the corners are whole doubles below 2^14 in magnitude or not, and collision_rect_p's
+   steps are taken on the ints: pcol_query, the far test (its dfloor14 of a whole corner is the corner; the range test
+   as dfloor14's), rq_init's whole path (collision_rect_i's query), the search */
+int (collision_rect_at)(int i, int32_t l, int32_t t, int32_t r, int32_t b, int obj)
+{
+    int32_t x, y;
+    int q;
+    if (!xy_int_near(i, &x, &y)) {
+        if (rect_at_frac(i, l, t, r, b, obj, &q)) return q;
+        return (collision_rect_p)(PTOD(PW.in[i].x) + l, PTOD(PW.in[i].y) + t, PTOD(PW.in[i].x) + r, PTOD(PW.in[i].y) + b,
+                                  obj, 0, NOONE);
+    }
+    q = pcol_query(obj);
+    PWST(rect, 1);
+    if (q < 0) return NOONE;
+#if !defined(PCOL_EXACT)
+    if (obj >= 0 && olive[obj] <= 4 && rect_far_none_i(x + l, y + t, x + r, y + b, obj, 0, NOONE)) return NOONE;
+#endif
+    return rect_q_i(q, x + l, y + t, x + r, y + b, obj, 0, NOONE);
+}
+
+static int rect_q_i(int q, int32_t x1, int32_t y1, int32_t x2, int32_t y2, int obj, int prec, int notme_self)
+{
+    struct rq rq;
     rq.iok = 1;
     rq.ilx = x1 < x2 ? x1 : x2; rq.ihx = x1 < x2 ? x2 : x1;
     rq.ily = y1 < y2 ? y1 : y2; rq.ihy = y1 < y2 ? y2 : y1;
     rq.fok = 0;                                 /* (the float corners were left unset before 2026-10-04) */
     if (rq_static_none(&rq, obj, prec, notme_self)) return NOONE;
     return rect_run(&rq, q, 0, obj, prec, notme_self);
+}
+
+/* collision_rect_p(PTOD(x) + l, PTOD(y) + t, PTOD(x) + r, PTOD(y) + b, obj, 0, noone) at instance i's x, y when
+   both pass pfrac_ok and l <= r, t <= b: its steps with the corners' values from the floats (pfrac_ok's identities) -
+   pcol_query, the far test on the corners' floors, rq_init's float path (the floats x + l ...: x1 <= x2 keeps their
+   order; the ints floor(v + 1/2); iok as they are below 30000), qrect's rectangle (the floats -+ 1), the search.
+   1 with *res its answer; 0 (nothing done) otherwise */
+static int rect_at_frac(int i, int32_t l, int32_t t, int32_t r, int32_t b, int obj, int *res)
+{
+    const struct pin *p = &PW.in[i];
+    int32_t vx, vy, rx, ry, fx, fy, q;
+    struct rq rq;
+    float rr[4];
+    if (l > r || t > b || !pfrac_ok(p->x) || !pfrac_ok(p->y) || !pfr(p->x, &vx) || !pfr(p->y, &vy) ||
+        !pfloor_int(p->x, &fx) || !pfloor_int(p->y, &fy))
+        return 0;
+    q = pcol_query(obj);
+    PWST(rect, 1);
+    if (q < 0) { *res = NOONE; return 1; }
+#if !defined(PCOL_EXACT)
+    if (obj >= 0 && olive[obj] <= 4 && rect_far_none_i(fx + l, fy + t, fx + r, fy + b, obj, 0, NOONE)) {
+        *res = NOONE;
+        return 1;
+    }
+#else
+    (void)fx; (void)fy;
+#endif
+    rx = (vx >> 2) + ((vx & 3) >= 2);
+    ry = (vy >> 2) + ((vy & 3) >= 2);
+    rq.ilx = rx + l; rq.ihx = rx + r; rq.ily = ry + t; rq.ihy = ry + b;
+    rq.iok = 1;
+    rq.lx = rq.ilx; rq.hx = rq.ihx; rq.ly = rq.ily; rq.hy = rq.ihy;
+    rq.flx = p->x + PLACE_F(l); rq.fhx = p->x + PLACE_F(r); rq.fly = p->y + PLACE_F(t); rq.fhy = p->y + PLACE_F(b);
+    rq.fok = 1;
+#ifdef PLAY_STATS
+    {
+        struct rq c;
+        float cr[4];
+        double x1 = PTOD(p->x) + l, y1 = PTOD(p->y) + t, x2 = PTOD(p->x) + r, y2 = PTOD(p->y) + b;
+        rq_init(&c, x1, y1, x2, y2);
+        qrect(x1, y1, x2, y2, cr);
+        if (c.iok != 1 || c.fok != 1 || c.ilx != rq.ilx || c.ihx != rq.ihx || c.ily != rq.ily || c.ihy != rq.ihy ||
+            pcd(c.lx) != pcd(rq.lx) || pcd(c.hx) != pcd(rq.hx) || pcd(c.ly) != pcd(rq.ly) || pcd(c.hy) != pcd(rq.hy) ||
+            pcf(c.flx) != pcf(rq.flx) || pcf(c.fhx) != pcf(rq.fhx) || pcf(c.fly) != pcf(rq.fly) ||
+            pcf(c.fhy) != pcf(rq.fhy) || pcf(cr[0]) != pcf(rq.flx - 1.0f) || pcf(cr[1]) != pcf(rq.fly - 1.0f) ||
+            pcf(cr[2]) != pcf(rq.fhx + 1.0f) || pcf(cr[3]) != pcf(rq.fhy + 1.0f)) {
+            fprintf(stderr, "rect_at_frac: query differs (%d %d %d %d %d)\n", i, l, t, r, b);
+            abort();
+        }
+    }
+#endif
+    if (rq_static_none(&rq, obj, 0, NOONE)) { *res = NOONE; return 1; }
+    rr[0] = rq.flx - 1.0f; rr[1] = rq.fly - 1.0f; rr[2] = rq.fhx + 1.0f; rr[3] = rq.fhy + 1.0f;
+    *res = rect_run(&rq, q, rr, obj, 0, NOONE);
+    return 1;
 }
 
 static int rect_run(struct rq *rq, int q, const float *r, int obj, int prec, int notme_self)
@@ -3741,10 +4116,59 @@ static int precise_collision_int(int a, int32_t dx, int32_t dy, const int32_t *i
     }
 }
 
+#ifdef FCOL_STATS
+/* play.h FCOL_STATS: the per-call-site counts (playhost_fcol) */
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+struct fcol_e { const char *file; int line, kind; unsigned long calls, frac; };
+static struct fcol_e fcol_t[8192];
+static const char *fcol_pf, *fcol_of;
+static int fcol_pl, fcol_ol, fcol_depth, fcol_reg;
+static void fcol_dump(void)
+{
+    const char *o = getenv("FCOL_OUT");
+    FILE *f;
+    int k;
+    if (!o || !(f = fopen(o, "a"))) return;
+    for (k = 0; k < 8192; k++)
+        if (fcol_t[k].file) {
+            const char *b = strrchr(fcol_t[k].file, '/');
+            fprintf(f, "%s %d %d %lu %lu\n", b ? b + 1 : fcol_t[k].file, fcol_t[k].line, fcol_t[k].kind, fcol_t[k].calls,
+                    fcol_t[k].frac);
+        }
+    fclose(f);
+}
+static void fcol_add(const char *file, int line, int kind, int frac)
+{
+    unsigned h = ((unsigned)(size_t)file * 31u + (unsigned)line * 7u + (unsigned)kind) & 8191u;
+    if (!fcol_reg) { fcol_reg = 1; atexit(fcol_dump); }
+    while (fcol_t[h].file && !(fcol_t[h].file == file && fcol_t[h].line == line && fcol_t[h].kind == kind))
+        h = (h + 1) & 8191u;
+    fcol_t[h].file = file; fcol_t[h].line = line; fcol_t[h].kind = kind;
+    fcol_t[h].calls++;
+    fcol_t[h].frac += frac != 0;
+}
+void fcol_site(const char *file, int line) { if (!fcol_pf && !fcol_depth) { fcol_pf = file; fcol_pl = line; } }
+void fcol_clear(void) { if (!fcol_depth) fcol_pf = NULL; }
+static int fcol_int(double v) { return v > -30000 && v < 30000 && v == (double)(int32_t)v; }
+int fcol_note(int kind, int n, double a, double b, double c, double d)
+{
+    int frac;
+    if (fcol_depth++) return 0;
+    frac = !fcol_int(a) || !fcol_int(b) || (n == 4 && (!fcol_int(c) || !fcol_int(d)));
+    fcol_add(fcol_pf, fcol_pl, kind, frac);
+    fcol_of = fcol_pf; fcol_ol = fcol_pl;
+    fcol_pf = NULL;
+    return 1;
+}
+void fcol_done(int counted) { fcol_depth--; if (counted) fcol_of = NULL; }
+#endif
+
 /* instance a (its bbox moved by dx, dy) against instance b */
 static int overlap_at(int a, double dx, double dy, int b)
 {
-    double l, t, r, bb, l2, t2, r2, b2;
+    double l, t, r, bb, l2, t2, r2, b2, ba[4];
     int32_t ia[4], ib[4], idx, idy;
     if (pin_ibox_s(a, ia) && pin_ibox_s(b, ib) && whole(dx, &idx) && whole(dy, &idy)) {
         if (!(ia[0] + idx < ib[2] && ib[0] < ia[2] + idx && ia[1] + idy < ib[3] && ib[1] < ia[3] + idy))
@@ -3753,8 +4177,12 @@ static int overlap_at(int a, double dx, double dy, int b)
             return 1;
         return precise_collision_int(a, idx, idy, ia, b, ib);
     }
+#ifdef FCOL_STATS
+    fcol_add(fcol_of ? fcol_of : "overlap_at(pass)", fcol_of ? fcol_ol : 0, FK_OVL, 1);
+#endif
     if (!pin_bbox(a, &l, &t, &r, &bb) || !pin_bbox(b, &l2, &t2, &r2, &b2))
         return 0;
+    ba[0] = l; ba[1] = t; ba[2] = r; ba[3] = bb;
     l += dx; r += dx; t += dy; bb += dy;
     if (!(l < r2 && l2 < r && t < b2 && t2 < bb))
         return 0;
@@ -3769,7 +4197,9 @@ static int overlap_at(int a, double dx, double dy, int b)
     }
     {   /* one precise: SeparatingAxisCollision when either is rotated, then CSprite::PreciseCollision */
         struct pcinst A, B;
-        if (!pcinst_of(a, dx, dy, &A) || !pcinst_of(b, 0, 0, &B)) return 0;
+        double bbx[4];
+        bbx[0] = l2; bbx[1] = t2; bbx[2] = r2; bbx[3] = b2;
+        if (!pcinst_of_b(a, dx, dy, &A, ba) || !pcinst_of_b(b, 0, 0, &B, bbx)) return 0;
         if ((A.ang != 0 || B.ang != 0) && !sa_collision(&A, &B)) return 0;
         return precise_collision(&A, &B);
     }
@@ -3906,7 +4336,7 @@ static int place_after_query(int self, int q, double px, double py, double dx, d
     return NOONE;
 }
 
-int instance_place_p(int self, double px, double py, int obj)
+int (instance_place_p)(int self, double px, double py, int obj)
 {
     PWST(place, 1);
     int q = pcol_query(obj);
@@ -3915,8 +4345,15 @@ int instance_place_p(int self, double px, double py, int obj)
     return place_after_query(self, q, px, py, dx, dy, moved, obj);
 }
 
-/* (float)v of a box side: fint15's bits below 2^15 in magnitude (no __floatsisf call) */
-#define PLACE_F(v) ((v) > -32768 && (v) < 32768 ? fint15(v) : (float)(v))
+
+/* instance_place_p(self, PTOD(x) + idx, PTOD(y) + idy, obj) at self's x, y: instance_place_ixy at a whole near x, y
+   (xy_int_near; |idx|, |idy| <= 16), else the doubles */
+int instance_place_at(int self, int32_t idx, int32_t idy, int obj)
+{
+    int32_t x, y;
+    if (xy_int_near(self, &x, &y)) return instance_place_ixy(self, x, y, idx, idy, obj);
+    return (instance_place_p)(self, PTOD(PW.in[self].x) + idx, PTOD(PW.in[self].y) + idy, obj);
+}
 
 /* instance_place_p(self, x + idx, y + idy, obj) for self at whole x, y (|.| < 29900) and |idx|, |idy| <= 16, without
    the doubles where self's box is cached whole (BB_INT / BB_INTS): px, py are whole, so dx, dy are idx, idy exactly,

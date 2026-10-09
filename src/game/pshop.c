@@ -244,7 +244,7 @@ static void shopkeeper_step(int i)
     if (PE(p)->colBot && PE(p)->status != S_STUNNED) PE(p)->yVel = 0;
     if (PEN(p)->throwCount > 0) PEN(p)->throwCount -= 1;
     if (PE(p)->status >= S_STUNNED) {                                      /* :26 crushed */
-        if (CP(X(i) + 8, Y(i) + 12, OBJ_oSolid)) {
+        if (collision_point_any_at(i, 8, 12, OBJ_oSolid)) {
             scrCreateBlood(i, p->x + PI(8), p->y + PI(8), 3);
             snd_play(SND_xcavemandie);                                         /* :31 */
             p = &PX(i);
@@ -255,7 +255,7 @@ static void shopkeeper_step(int i)
             G.murderer = 1;
             pin_destroy(i);
         }
-    } else if (!PE(p)->held && CP(X(i) + 8, Y(i) + 8, OBJ_oSolid)) {
+    } else if (!PE(p)->held && collision_point_any_at(i, 8, 8, OBJ_oSolid)) {
         scrCreateBlood(i, p->x + PI(8), p->y + PI(8), 3);
         snd_play(SND_xcavemandie);                                             /* :45 */
         p = &PX(i);
@@ -377,14 +377,14 @@ static void shopkeeper_step(int i)
         pin_setispd(p, (img_t)0.5);
         if (isCollisionLeft(i, 1) || isCollisionRight(i, 1)) PE(p)->facing = PE(p)->facing == E_LEFT ? E_RIGHT : E_LEFT;
         if (PE(p)->facing == E_LEFT) {
-            if (!CPn(X(i) - 1, Y(i), OBJ_oSolid, i)) {
+            if (!collision_point_any_at(i, -1, 0, OBJ_oSolid)) {
                 PE(p)->status = S_PATROL;
                 PE(p)->counter = (int16_t)RAND(20, 50);
                 PE(p)->xVel = 0;
             }
             PE(p)->xVel = N(-1.5);
         } else {
-            if (!CPn(X(i) + 16, Y(i), OBJ_oSolid, i)) {
+            if (!collision_point_any_at(i, 16, 0, OBJ_oSolid)) {
                 PE(p)->status = S_PATROL;
                 PE(p)->counter = (int16_t)RAND(20, 50);
                 PE(p)->xVel = 0;
@@ -427,12 +427,12 @@ static void shopkeeper_step(int i)
             }
         }
         if (DGT(PTOD(q->y), Y(i)) && DLT(dabs(PTOD(q->x) - (X(i) + 8)), 64)) {   /* :418 jump */
-        } else if ((PE(p)->facing == E_LEFT && CPn(X(i) - 16, Y(i), OBJ_oSolid, i)) ||
-                   (PE(p)->facing == E_RIGHT && CPn(X(i) + 32, Y(i), OBJ_oSolid, i))) {
+        } else if ((PE(p)->facing == E_LEFT && collision_point_any_at(i, -16, 0, OBJ_oSolid)) ||
+                   (PE(p)->facing == E_RIGHT && collision_point_any_at(i, 32, 0, OBJ_oSolid))) {
             if (PE(p)->colBot && !isCollisionTop(i, 4)) PE(p)->yVel = NI(-1 * RAND(7, 8));
         } else if (DLE(PTOD(q->y), Y(i) + 16) &&
-                   ((PE(p)->facing == E_LEFT && !CPn(X(i) - 16, Y(i) + 16, OBJ_oSolid, i)) ||
-                    (PE(p)->facing == E_RIGHT && !CPn(X(i) + 32, Y(i) + 16, OBJ_oSolid, i)))) {
+                   ((PE(p)->facing == E_LEFT && !collision_point_any_at(i, -16, 16, OBJ_oSolid)) ||
+                    (PE(p)->facing == E_RIGHT && !collision_point_any_at(i, 32, 16, OBJ_oSolid)))) {
             if (PE(p)->colBot && !isCollisionTop(i, 4)) PE(p)->yVel = NI(-1 * RAND(7, 8));
         }
         if (!PE(p)->colBot && DGT(PTOD(q->y), Y(i) + 8)) PE(p)->xVel = PE(p)->facing == E_LEFT ? N(-1.5) : N(1.5);
@@ -556,7 +556,7 @@ static void shop_hit_player(int i, int c)
             snd_play(SND_xhit);                                                /* :19 */
         }
     } else if (PL.invincible == 0 && PE(p)->status < S_STUNNED) {
-        if (CP(X(i) + 8, Y(i) - 4, OBJ_oSolid)) {
+        if (collision_point_any_at(i, 8, -4, OBJ_oSolid)) {
             PL.blink = 30;
             PL.invincible = 30;
             PE(o)->xVel = DLT(PTOD(o->x), X(i)) ? N(-6) : N(6);

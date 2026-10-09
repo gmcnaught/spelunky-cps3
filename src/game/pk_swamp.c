@@ -516,8 +516,8 @@ int pswamp_piranha_run(const int16_t *ord, int n)
             int k = instance_first_p(OBJ_oCharacter), sv;
             struct pin_ext *e = PE(p);
             int nr = pdist_lt_at(p->x, p->y, 4, 4, PX(k).x, PX(k).y, 90) && PL.swimming && !PL.dead;
-            int ok = d > 0 ? collision_point_any_at(i, 8 + 2, 0, OBJ_oWater) && !CP(X(i) + 10, Y(i), OBJ_oSolid)
-                           : collision_point_any_at(i, -2, 0, OBJ_oWater) && !CP(X(i) - 2, Y(i), OBJ_oSolid);
+            int ok = d > 0 ? collision_point_any_at(i, 8 + 2, 0, OBJ_oWater) && !collision_point_any_at(i, 10, 0, OBJ_oSolid)
+                           : collision_point_any_at(i, -2, 0, OBJ_oWater) && !collision_point_any_at(i, -2, 0, OBJ_oSolid);
             sv = solid_vline_any(d > 0 ? ix[j] + e->rbo : ix[j] + e->lbo - 1, iy[j] + e->tbo + 5, iy[j] + e->bbo - 1, i);
             if (!ok || nr != !!(a & 4) || sv != !!(a & 2) || pw_fam_swims(prey_objs, 4)) {
                 fprintf(stderr, "pswamp_piranha_run: phase T differs (%d)\n", i);
@@ -667,10 +667,10 @@ static void jaws_step(int i)
     if (PE(p)->status == J_IDLE) {                             /* :36 */
         if (DEQ(DIR(p), 0)) {
             if (collision_point_any_at(i, 18, 16, OBJ_oWater) && !collision_point_any_at(i, 18, 16, OBJ_oSolid)) moveTo(i, N(2), 0, 0, 0);
-            else if (collision_rect_p(X(i) - 32, Y(i), X(i), Y(i) + 32, OBJ_oSolid, 0, NOONE) == NOONE) jaws_turn_left(i);
+            else if (collision_rect_at(i, -32, 0, 0, 32, OBJ_oSolid) == NOONE) jaws_turn_left(i);
         } else {
             if (collision_point_any_at(i, -2, 16, OBJ_oWater) && !collision_point_any_at(i, -2, 16, OBJ_oSolid)) moveTo(i, N(-2), 0, 0, 0);
-            else if (collision_rect_p(X(i) + 16, Y(i), X(i) + 48, Y(i) + 32, OBJ_oSolid, 0, NOONE) == NOONE)
+            else if (collision_rect_at(i, 16, 0, 48, 32, OBJ_oSolid) == NOONE)
                 jaws_turn_right(i);
         }
         p = &PX(i);
@@ -689,7 +689,7 @@ static void jaws_step(int i)
                 DIR(p) = point_direction_d(X(i) + 8, Y(i) + 16, X(pl), Y(pl) - 8);
             if (DLT(X(pl), X(i) + 8)) {
                 if (p->spr == GSPR_sJawsRight &&
-                    collision_rect_p(X(i) - 32, Y(i), X(i), Y(i) + 32, OBJ_oSolid, 0, NOONE) == NOONE) {
+                    collision_rect_at(i, -32, 0, 0, 32, OBJ_oSolid) == NOONE) {
                     jaws_turn_left(i);
                     turn = 1;
                 }
@@ -1299,7 +1299,7 @@ int pswamp_player(int site, int i, int arg)
     case 2009:                                                 /* characterStepEvent :764: under water */
         if (instance_exists_p(OBJ_oCape)) cape_set_open(0);
         if (PL.state == FALLING && NGT(PE(p)->yVel, 0)) PL.yFric = N(0.5);
-        else if (!collision_point_any(X(i), Y(i) - 9, OBJ_oWater, 0, NOONE)) PL.yFric = N(1);
+        else if (!collision_point_any_at(i, 0, -9, OBJ_oWater)) PL.yFric = N(1);
         else PL.yFric = N(0.9);
         return 1;
     case 2011:                                                 /* characterStepEvent :886 */
@@ -1405,7 +1405,7 @@ int pswamp_world(int site, int i, int arg)
     (void)arg;
     switch (site) {
     case 1012: {                                               /* oSolid Destroy :19: the grave on top */
-        int obj = instance_place_p(i, X(i) + 8, Y(i) - 1, OBJ_oGrave);
+        int obj = instance_place_at(i, 8, -1, OBJ_oGrave);
         if (obj != NOONE) pin_destroy(obj);
         return 1;
     }

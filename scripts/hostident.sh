@@ -7,6 +7,7 @@
 #   scripts/hostident.sh save [file]      default build/hostident_<HEAD>.txt
 #   scripts/hostident.sh check <file>     -> one line per differing run, then HOSTIDENT <equal>/<runs>; exit 1 on any
 #   P=<jobs> (default 8): runs in parallel. RUNTAG=<tag>: the work files in build/hostident_<tag>.
+#   RUNS_ONLY=1: write the run list (<work dir>/runs.txt) and stop.
 cd "$(dirname "$0")/.."
 M=${1:-save}; F=${2:-build/hostident_$(git rev-parse --short HEAD).txt}
 make -s -C test/host "$PWD/build/host/playhost" "$PWD/build/host/playhost_grid" >/dev/null || exit 2
@@ -24,6 +25,7 @@ gv() { sed -n "s/^# *$1 \([^ ]*\).*/\1/p" "$2" | head -1; }
     echo "${r}_s${s:-1} $f ${s:-1} --enemies --level ${L:-1} --money ${Mo:-0} ${G:+--global $G} ${RM:+--room $RM} ${ND:+--nodark $ND}"
   done
 } | sed 's/ *$//' > "$W/runs.txt"     # (xargs -L joins a line ending in a blank with the next)
+[ -n "${RUNS_ONLY:-}" ] && exit 0                           # (scripts/fcol_survey.sh: the run list alone)
 # one line per run: <route>_s<seed> <build> <md5 of its stdout>
 t0=$(date +%s)
 xargs -P "${P:-8}" -L 1 sh -c 'n=$0; for b in playhost playhost_grid; do echo "$n $b $(build/host/$b "$@" 2>/dev/null | md5)"; done' \

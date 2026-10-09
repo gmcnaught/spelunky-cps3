@@ -1,0 +1,47 @@
+id: place-at
+severity: hint
+message: "instance_place at the instance's own x / y plus whole offsets: instance_place_at(i, dx, dy, obj) takes instance_place_ixy's int path at a whole x, y"
+note: "branch floatcol: instance_place_ixy is instance_place_p at a whole near x, y with |dx|, |dy| <= 16 (pworld.c: dx, dy, moved and the boxes are the ints'); instance_place_at tests xy_int_near and falls back to the doubles. The instance must be the query's self (the rule's $I twice)"
+language: c
+files: ["src/**"]
+rule:
+  any:
+    - pattern: "instance_place_p($I, X($I), Y($I), $O)"
+    - pattern: "place_meeting_p($I, X($I), Y($I), $O)"
+    - pattern: "instance_place_p($I, X($I), Y($I) + $DY, $O)"
+    - pattern: "place_meeting_p($I, X($I), Y($I) + $DY, $O)"
+    - pattern: "instance_place_p($I, X($I), Y($I) - $DY, $O)"
+    - pattern: "place_meeting_p($I, X($I), Y($I) - $DY, $O)"
+    - pattern: "instance_place_p($I, X($I) + $DX, Y($I), $O)"
+    - pattern: "place_meeting_p($I, X($I) + $DX, Y($I), $O)"
+    - pattern: "instance_place_p($I, X($I) + $DX, Y($I) + $DY, $O)"
+    - pattern: "place_meeting_p($I, X($I) + $DX, Y($I) + $DY, $O)"
+    - pattern: "instance_place_p($I, X($I) + $DX, Y($I) - $DY, $O)"
+    - pattern: "place_meeting_p($I, X($I) + $DX, Y($I) - $DY, $O)"
+    - pattern: "instance_place_p($I, X($I) - $DX, Y($I), $O)"
+    - pattern: "place_meeting_p($I, X($I) - $DX, Y($I), $O)"
+    - pattern: "instance_place_p($I, X($I) - $DX, Y($I) + $DY, $O)"
+    - pattern: "place_meeting_p($I, X($I) - $DX, Y($I) + $DY, $O)"
+    - pattern: "instance_place_p($I, X($I) - $DX, Y($I) - $DY, $O)"
+    - pattern: "place_meeting_p($I, X($I) - $DX, Y($I) - $DY, $O)"
+    - pattern: "instance_place_p($I, PTOD(PX($I).x), PTOD(PX($I).y), $O)"
+    - pattern: "place_meeting_p($I, PTOD(PX($I).x), PTOD(PX($I).y), $O)"
+    - pattern: "instance_place_p($I, PTOD(PX($I).x), PTOD(PX($I).y) + $DY, $O)"
+    - pattern: "place_meeting_p($I, PTOD(PX($I).x), PTOD(PX($I).y) + $DY, $O)"
+    - pattern: "instance_place_p($I, PTOD(PX($I).x), PTOD(PX($I).y) - $DY, $O)"
+    - pattern: "place_meeting_p($I, PTOD(PX($I).x), PTOD(PX($I).y) - $DY, $O)"
+    - pattern: "instance_place_p($I, PTOD(PX($I).x) + $DX, PTOD(PX($I).y), $O)"
+    - pattern: "place_meeting_p($I, PTOD(PX($I).x) + $DX, PTOD(PX($I).y), $O)"
+    - pattern: "instance_place_p($I, PTOD(PX($I).x) + $DX, PTOD(PX($I).y) + $DY, $O)"
+    - pattern: "place_meeting_p($I, PTOD(PX($I).x) + $DX, PTOD(PX($I).y) + $DY, $O)"
+    - pattern: "instance_place_p($I, PTOD(PX($I).x) + $DX, PTOD(PX($I).y) - $DY, $O)"
+    - pattern: "place_meeting_p($I, PTOD(PX($I).x) + $DX, PTOD(PX($I).y) - $DY, $O)"
+    - pattern: "instance_place_p($I, PTOD(PX($I).x) - $DX, PTOD(PX($I).y), $O)"
+    - pattern: "place_meeting_p($I, PTOD(PX($I).x) - $DX, PTOD(PX($I).y), $O)"
+    - pattern: "instance_place_p($I, PTOD(PX($I).x) - $DX, PTOD(PX($I).y) + $DY, $O)"
+    - pattern: "place_meeting_p($I, PTOD(PX($I).x) - $DX, PTOD(PX($I).y) + $DY, $O)"
+    - pattern: "instance_place_p($I, PTOD(PX($I).x) - $DX, PTOD(PX($I).y) - $DY, $O)"
+    - pattern: "place_meeting_p($I, PTOD(PX($I).x) - $DX, PTOD(PX($I).y) - $DY, $O)"
+constraints:
+  DX: { regex: '^([0-9]|1[0-6])$' }
+  DY: { regex: '^([0-9]|1[0-6])$' }

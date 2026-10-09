@@ -60,6 +60,12 @@ $(OUT)/playhost_eq: playhost.c $(SRC) $(PSRC) $(ROOT)/src/game/*.h $(GEN)/playta
 	mkdir -p $(OUT)
 	$(CC) $(CFLAGS) -DPLAY_STATS -DPLAY_RNGLOG $(INC) -o $@ playhost.c $(SRC) $(PSRC) $(HSRC)
 
+# the grid build counting the double collision queries by call site (play.h FCOL_STATS; FCOL_OUT=<file>); no
+# PLAY_STATS (its checks call the double queries)
+$(OUT)/playhost_fcol: playhost.c $(SRC) $(PSRC) $(ROOT)/src/game/*.h $(GEN)/playtables.h $(ROOT)/build/snd/sndnames.h $(ROOT)/src/snd/snd.h
+	mkdir -p $(OUT)
+	$(CC) $(CFLAGS) -DPLAY_RNGLOG -DFCOL_STATS $(INC0) -o $@ playhost.c $(SRC) $(PSRC) $(HSRC)
+
 # binary64 with no floating-point contraction anywhere (clang on arm64 contracts a * b + c by default; the runner's
 # fused operations are explicit fmaf calls in pcol.c): the routes must give the same records as playhost
 #   PLAYHOST=build/host/playhost_nc scripts/p4_trace.sh <route> <seed> --no-run
@@ -71,6 +77,16 @@ $(OUT)/playhost_nc: playhost.c $(SRC) $(PSRC) $(ROOT)/src/game/*.h $(GEN)/playta
 $(OUT)/pcolxv: pcolxv.c $(SRC) $(PSRC) $(ROOT)/src/game/*.h $(GEN)/playtables.h $(ROOT)/build/snd/sndnames.h $(ROOT)/src/snd/snd.h
 	mkdir -p $(OUT)
 	$(CC) $(CFLAGS) -ffp-contract=off $(INC) -o $@ pcolxv.c $(SRC) $(filter-out $(ROOT)/src/game/pcol.c,$(PSRC) $(HSRC)) -lm
+
+# pworld.c pc_rows against pc_loop (precise_collision's unrotated loop) on random instance pairs (it includes pworld.c)
+$(OUT)/pcrows: pcrows.c $(SRC) $(PSRC) $(ROOT)/src/game/*.h $(GEN)/playtables.h $(ROOT)/build/snd/sndnames.h $(ROOT)/src/snd/snd.h
+	mkdir -p $(OUT)
+	$(CC) $(CFLAGS) -ffp-contract=off $(INC0) -o $@ pcrows.c $(SRC) $(filter-out $(ROOT)/src/game/pworld.c,$(PSRC) $(HSRC)) -lm
+
+# pworld.c pfrac_ok's identities (the fractional _at queries) for every float it accepts (it includes pworld.c)
+$(OUT)/pfrac: pfrac.c $(SRC) $(PSRC) $(ROOT)/src/game/*.h $(GEN)/playtables.h $(ROOT)/build/snd/sndnames.h $(ROOT)/src/snd/snd.h
+	mkdir -p $(OUT)
+	$(CC) $(CFLAGS) -ffp-contract=off $(INC0) -o $@ pfrac.c $(SRC) $(filter-out $(ROOT)/src/game/pworld.c,$(PSRC) $(HSRC)) -lm
 
 # struct pin_ext checked (play.h PIN_EXT_CHECK): exits 3 when the shared record 0 (the terrain's defaults) was
 # written or a removed instance's record is read; run it over the routes and generated levels

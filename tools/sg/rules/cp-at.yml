@@ -1,22 +1,101 @@
 id: cp-at
 severity: hint
-message: "collision_point at an instance's x / y plus constants for a static-index object: collision_point_any_at(i, dx, dy, obj) answers a miss from the index's cell counts at whole x, y (no double sums)"
-note: "PERF3 batches 21-22; pworld.c xf_obj: oLava, oWater (oWaterSwim), oLadder, oLadderTop, oSpikes, oWeb, oTree / oLeaves. For other objects the _at form ends in the same collision_point_any. X(i) is PTOD(PX(i).x) in every file that defines it; dx, dy must be ints"
+message: "collision_point at an instance's x / y plus whole offsets: collision_point_any_at(i, dx, dy, obj) takes the point on ints at a whole x, y (no double sums)"
+note: "PERF3 batches 21-22 (static-index objects), branch floatcol (every object): at a whole x, y (|.| < 29900) the point PTOD(x) + dx, PTOD(y) + dy is whole (|dx|, |dy| < 100), and collision_point_any_at's int paths make pq_init's query of it (iok, the ints, their values); otherwise it calls collision_point_any on the same doubles. X(i) is PTOD(PX(i).x) in every file that defines it; CPn ignores its self (notme NOONE, as here). dx, dy must be ints (the constraint lists the forms seen); the `!= NOONE` / `== NOONE` forms only"
 language: c
 files: ["src/**"]
 rule:
   any:
-    - pattern: collision_point_any(PTOD($P->x) + $DX, PTOD($P->y) + $DY, $O, 0, NOONE)
-    - pattern: collision_point_any(X($I) + $DX, Y($I) + $DY, $O, 0, NOONE)
-    - pattern: CP(X($I) + $DX, Y($I) + $DY, $O)
-    - pattern: CP(X($I) - $DX, Y($I) + $DY, $O)
-    - pattern: CP(X($I) + $DX, Y($I) - $DY, $O)
-    - pattern: CP(X($I) - $DX, Y($I) - $DY, $O)
-    - pattern: CP(X($I), Y($I) + $DY, $O)
-    - pattern: CP(X($I), Y($I) - $DY, $O)
-    - pattern: CP(X($I) + $DX, Y($I), $O)
-    - pattern: CP(X($I) - $DX, Y($I), $O)
-    - pattern: CP(X($I), Y($I), $O)
+    - pattern: "CP(X($I), Y($I), $O)"
+    - pattern: "CPn(X($I), Y($I), $O, $S)"
+    - pattern: "collision_point_any(X($I), Y($I), $O, 0, NOONE)"
+    - pattern: "collision_point_p(X($I), Y($I), $O, 0, NOONE) != NOONE"
+    - pattern: "collision_point_p(X($I), Y($I), $O, 0, NOONE) == NOONE"
+    - pattern: "CP(X($I), Y($I) + $DY, $O)"
+    - pattern: "CPn(X($I), Y($I) + $DY, $O, $S)"
+    - pattern: "collision_point_any(X($I), Y($I) + $DY, $O, 0, NOONE)"
+    - pattern: "collision_point_p(X($I), Y($I) + $DY, $O, 0, NOONE) != NOONE"
+    - pattern: "collision_point_p(X($I), Y($I) + $DY, $O, 0, NOONE) == NOONE"
+    - pattern: "CP(X($I), Y($I) - $DY, $O)"
+    - pattern: "CPn(X($I), Y($I) - $DY, $O, $S)"
+    - pattern: "collision_point_any(X($I), Y($I) - $DY, $O, 0, NOONE)"
+    - pattern: "collision_point_p(X($I), Y($I) - $DY, $O, 0, NOONE) != NOONE"
+    - pattern: "collision_point_p(X($I), Y($I) - $DY, $O, 0, NOONE) == NOONE"
+    - pattern: "CP(X($I) + $DX, Y($I), $O)"
+    - pattern: "CPn(X($I) + $DX, Y($I), $O, $S)"
+    - pattern: "collision_point_any(X($I) + $DX, Y($I), $O, 0, NOONE)"
+    - pattern: "collision_point_p(X($I) + $DX, Y($I), $O, 0, NOONE) != NOONE"
+    - pattern: "collision_point_p(X($I) + $DX, Y($I), $O, 0, NOONE) == NOONE"
+    - pattern: "CP(X($I) + $DX, Y($I) + $DY, $O)"
+    - pattern: "CPn(X($I) + $DX, Y($I) + $DY, $O, $S)"
+    - pattern: "collision_point_any(X($I) + $DX, Y($I) + $DY, $O, 0, NOONE)"
+    - pattern: "collision_point_p(X($I) + $DX, Y($I) + $DY, $O, 0, NOONE) != NOONE"
+    - pattern: "collision_point_p(X($I) + $DX, Y($I) + $DY, $O, 0, NOONE) == NOONE"
+    - pattern: "CP(X($I) + $DX, Y($I) - $DY, $O)"
+    - pattern: "CPn(X($I) + $DX, Y($I) - $DY, $O, $S)"
+    - pattern: "collision_point_any(X($I) + $DX, Y($I) - $DY, $O, 0, NOONE)"
+    - pattern: "collision_point_p(X($I) + $DX, Y($I) - $DY, $O, 0, NOONE) != NOONE"
+    - pattern: "collision_point_p(X($I) + $DX, Y($I) - $DY, $O, 0, NOONE) == NOONE"
+    - pattern: "CP(X($I) - $DX, Y($I), $O)"
+    - pattern: "CPn(X($I) - $DX, Y($I), $O, $S)"
+    - pattern: "collision_point_any(X($I) - $DX, Y($I), $O, 0, NOONE)"
+    - pattern: "collision_point_p(X($I) - $DX, Y($I), $O, 0, NOONE) != NOONE"
+    - pattern: "collision_point_p(X($I) - $DX, Y($I), $O, 0, NOONE) == NOONE"
+    - pattern: "CP(X($I) - $DX, Y($I) + $DY, $O)"
+    - pattern: "CPn(X($I) - $DX, Y($I) + $DY, $O, $S)"
+    - pattern: "collision_point_any(X($I) - $DX, Y($I) + $DY, $O, 0, NOONE)"
+    - pattern: "collision_point_p(X($I) - $DX, Y($I) + $DY, $O, 0, NOONE) != NOONE"
+    - pattern: "collision_point_p(X($I) - $DX, Y($I) + $DY, $O, 0, NOONE) == NOONE"
+    - pattern: "CP(X($I) - $DX, Y($I) - $DY, $O)"
+    - pattern: "CPn(X($I) - $DX, Y($I) - $DY, $O, $S)"
+    - pattern: "collision_point_any(X($I) - $DX, Y($I) - $DY, $O, 0, NOONE)"
+    - pattern: "collision_point_p(X($I) - $DX, Y($I) - $DY, $O, 0, NOONE) != NOONE"
+    - pattern: "collision_point_p(X($I) - $DX, Y($I) - $DY, $O, 0, NOONE) == NOONE"
+    - pattern: "CP(PTOD(PX($I).x), PTOD(PX($I).y), $O)"
+    - pattern: "CPn(PTOD(PX($I).x), PTOD(PX($I).y), $O, $S)"
+    - pattern: "collision_point_any(PTOD(PX($I).x), PTOD(PX($I).y), $O, 0, NOONE)"
+    - pattern: "collision_point_p(PTOD(PX($I).x), PTOD(PX($I).y), $O, 0, NOONE) != NOONE"
+    - pattern: "collision_point_p(PTOD(PX($I).x), PTOD(PX($I).y), $O, 0, NOONE) == NOONE"
+    - pattern: "CP(PTOD(PX($I).x), PTOD(PX($I).y) + $DY, $O)"
+    - pattern: "CPn(PTOD(PX($I).x), PTOD(PX($I).y) + $DY, $O, $S)"
+    - pattern: "collision_point_any(PTOD(PX($I).x), PTOD(PX($I).y) + $DY, $O, 0, NOONE)"
+    - pattern: "collision_point_p(PTOD(PX($I).x), PTOD(PX($I).y) + $DY, $O, 0, NOONE) != NOONE"
+    - pattern: "collision_point_p(PTOD(PX($I).x), PTOD(PX($I).y) + $DY, $O, 0, NOONE) == NOONE"
+    - pattern: "CP(PTOD(PX($I).x), PTOD(PX($I).y) - $DY, $O)"
+    - pattern: "CPn(PTOD(PX($I).x), PTOD(PX($I).y) - $DY, $O, $S)"
+    - pattern: "collision_point_any(PTOD(PX($I).x), PTOD(PX($I).y) - $DY, $O, 0, NOONE)"
+    - pattern: "collision_point_p(PTOD(PX($I).x), PTOD(PX($I).y) - $DY, $O, 0, NOONE) != NOONE"
+    - pattern: "collision_point_p(PTOD(PX($I).x), PTOD(PX($I).y) - $DY, $O, 0, NOONE) == NOONE"
+    - pattern: "CP(PTOD(PX($I).x) + $DX, PTOD(PX($I).y), $O)"
+    - pattern: "CPn(PTOD(PX($I).x) + $DX, PTOD(PX($I).y), $O, $S)"
+    - pattern: "collision_point_any(PTOD(PX($I).x) + $DX, PTOD(PX($I).y), $O, 0, NOONE)"
+    - pattern: "collision_point_p(PTOD(PX($I).x) + $DX, PTOD(PX($I).y), $O, 0, NOONE) != NOONE"
+    - pattern: "collision_point_p(PTOD(PX($I).x) + $DX, PTOD(PX($I).y), $O, 0, NOONE) == NOONE"
+    - pattern: "CP(PTOD(PX($I).x) + $DX, PTOD(PX($I).y) + $DY, $O)"
+    - pattern: "CPn(PTOD(PX($I).x) + $DX, PTOD(PX($I).y) + $DY, $O, $S)"
+    - pattern: "collision_point_any(PTOD(PX($I).x) + $DX, PTOD(PX($I).y) + $DY, $O, 0, NOONE)"
+    - pattern: "collision_point_p(PTOD(PX($I).x) + $DX, PTOD(PX($I).y) + $DY, $O, 0, NOONE) != NOONE"
+    - pattern: "collision_point_p(PTOD(PX($I).x) + $DX, PTOD(PX($I).y) + $DY, $O, 0, NOONE) == NOONE"
+    - pattern: "CP(PTOD(PX($I).x) + $DX, PTOD(PX($I).y) - $DY, $O)"
+    - pattern: "CPn(PTOD(PX($I).x) + $DX, PTOD(PX($I).y) - $DY, $O, $S)"
+    - pattern: "collision_point_any(PTOD(PX($I).x) + $DX, PTOD(PX($I).y) - $DY, $O, 0, NOONE)"
+    - pattern: "collision_point_p(PTOD(PX($I).x) + $DX, PTOD(PX($I).y) - $DY, $O, 0, NOONE) != NOONE"
+    - pattern: "collision_point_p(PTOD(PX($I).x) + $DX, PTOD(PX($I).y) - $DY, $O, 0, NOONE) == NOONE"
+    - pattern: "CP(PTOD(PX($I).x) - $DX, PTOD(PX($I).y), $O)"
+    - pattern: "CPn(PTOD(PX($I).x) - $DX, PTOD(PX($I).y), $O, $S)"
+    - pattern: "collision_point_any(PTOD(PX($I).x) - $DX, PTOD(PX($I).y), $O, 0, NOONE)"
+    - pattern: "collision_point_p(PTOD(PX($I).x) - $DX, PTOD(PX($I).y), $O, 0, NOONE) != NOONE"
+    - pattern: "collision_point_p(PTOD(PX($I).x) - $DX, PTOD(PX($I).y), $O, 0, NOONE) == NOONE"
+    - pattern: "CP(PTOD(PX($I).x) - $DX, PTOD(PX($I).y) + $DY, $O)"
+    - pattern: "CPn(PTOD(PX($I).x) - $DX, PTOD(PX($I).y) + $DY, $O, $S)"
+    - pattern: "collision_point_any(PTOD(PX($I).x) - $DX, PTOD(PX($I).y) + $DY, $O, 0, NOONE)"
+    - pattern: "collision_point_p(PTOD(PX($I).x) - $DX, PTOD(PX($I).y) + $DY, $O, 0, NOONE) != NOONE"
+    - pattern: "collision_point_p(PTOD(PX($I).x) - $DX, PTOD(PX($I).y) + $DY, $O, 0, NOONE) == NOONE"
+    - pattern: "CP(PTOD(PX($I).x) - $DX, PTOD(PX($I).y) - $DY, $O)"
+    - pattern: "CPn(PTOD(PX($I).x) - $DX, PTOD(PX($I).y) - $DY, $O, $S)"
+    - pattern: "collision_point_any(PTOD(PX($I).x) - $DX, PTOD(PX($I).y) - $DY, $O, 0, NOONE)"
+    - pattern: "collision_point_p(PTOD(PX($I).x) - $DX, PTOD(PX($I).y) - $DY, $O, 0, NOONE) != NOONE"
+    - pattern: "collision_point_p(PTOD(PX($I).x) - $DX, PTOD(PX($I).y) - $DY, $O, 0, NOONE) == NOONE"
 constraints:
-  O:
-    regex: '^OBJ_o(Water|WaterSwim|Lava|Ladder|LadderTop|Spikes|Web|Tree|Leaves)$'
+  DX: { regex: '^(\d+|\(spr[wh]\(\w+\) >> 1\)|\(giant \? \d+ : \d+\))$' }
+  DY: { regex: '^(\d+|\(spr[wh]\(\w+\) >> 1\)|\(giant \? \d+ : \d+\))$' }

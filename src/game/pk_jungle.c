@@ -250,7 +250,7 @@ static void frog_step(int i)                                         /* objects/
     moveTo(i, PE(p)->xVel, PE(p)->yVel, 0, 0);
     PE(p)->yVel += PE(p)->myGrav;
     if (NGT(PE(p)->yVel, PEN(p)->yVelLimit)) PE(p)->yVel = PEN(p)->yVelLimit;
-    if (CP(X(i) + 8, Y(i) + 8, OBJ_oSolid)) PE(p)->hp = -999;
+    if (collision_point_any_at(i, 8, 8, OBJ_oSolid)) PE(p)->hp = -999;
     if (PE(p)->hp < 1) {                                                   /* :12 */
         if (!fire) scrCreateBlood(i, P(X(i) + 8), P(Y(i) + 8), 3);
         p = &PX(i);
@@ -376,8 +376,8 @@ static void mantrap_step(int i)                                      /* objects/
                 if (PE(p)->held) {
                     struct pin *q = &PX(pl());
                     PE(p)->held = 0;
-                    if (CP(X(i) + 16, Y(i) + 8, OBJ_oSolid)) pin_setx(p, q->x - PI(12));
-                    else if (CP(X(i), Y(i) + 8, OBJ_oSolid)) pin_setx(p, q->x - PI(4));
+                    if (collision_point_any_at(i, 16, 8, OBJ_oSolid)) pin_setx(p, q->x - PI(12));
+                    else if (collision_point_any_at(i, 0, 8, OBJ_oSolid)) pin_setx(p, q->x - PI(4));
                     pin_sety(p, q->y - PI(8));
                     PL.holdItem = NOONE;
                     PL.pickupItemType = T_NONE;
@@ -479,8 +479,8 @@ static void monkey_step(int i)                                       /* objects/
     moveTo(i, PE(p)->xVel, PE(p)->yVel, 0, 0);
     if (PE(p)->status != M_HANG && PE(p)->status != M_CLIMB && PE(p)->status != M_GRAB) PE(p)->yVel += PE(p)->myGrav;
     if (NGT(PE(p)->yVel, PEN(p)->yVelLimit)) PE(p)->yVel = PEN(p)->yVelLimit;
-    if (CP(X(i) + 8, Y(i) + 8, OBJ_oSolid)) PE(p)->hp = -999;
-    if (CPn(X(i) + 8, Y(i) + 8, OBJ_oWater, i)) {                         /* :15 */
+    if (collision_point_any_at(i, 8, 8, OBJ_oSolid)) PE(p)->hp = -999;
+    if (collision_point_any_at(i, 8, 8, OBJ_oWater)) {                         /* :15 */
         if (!PEN(p)->swimming) {
             pin_create(p->x + PI(8), p->y, OBJ_oSplash);
             p = &PX(i);
@@ -563,14 +563,14 @@ static void monkey_step(int i)                                       /* objects/
         PE(p)->xVel = 0;
         if (j->dir == 0) {
             PE(p)->yVel = N(-1);
-            if (!CP(X(i) + 8, Y(i), OBJ_oVine)) {
+            if (!collision_point_any_at(i, 8, 0, OBJ_oVine)) {
                 j->dir = 1;
                 PE(p)->status = M_HANG;
                 PE(p)->counter = (int16_t)RAND(10, 40);
             }
         } else {
             PE(p)->yVel = N(1);
-            if (!CP(X(i) + 8, Y(i) + 22, OBJ_oVine)) {
+            if (!collision_point_any_at(i, 8, 22, OBJ_oVine)) {
                 j->dir = 0;
                 PE(p)->status = M_HANG;
                 PE(p)->counter = (int16_t)RAND(10, 40);
@@ -624,7 +624,7 @@ static void scarab_step(int i)                                       /* objects/
     double dist, dir;
     if (!eview(i, 20, 4)) return;
     moveTo(i, PE(p)->xVel, PE(p)->yVel, 0, 0);
-    if (CP(X(i) + 8, Y(i) + 8, OBJ_oSolid)) PE(p)->hp = -999;
+    if (collision_point_any_at(i, 8, 8, OBJ_oSolid)) PE(p)->hp = -999;
     if (PE(p)->hp < 1) {                                                   /* :8 */
         int k;
         for (k = 0; k < 3; k++) {
@@ -928,7 +928,7 @@ static void speartrap_step(int i)                                    /* objects/
     p = &PX(i);
     if (eview(i, 8, 8) && !VEG_QUIET(i)) {                                /* :79 */
         /* (the memo of the support as oTree's: the solid grid's clock at the point's cell) */
-        if (!CP(X(i), Y(i) + 16, OBJ_oSolid)) pin_destroy(i);
+        if (!collision_point_any_at(i, 0, 16, OBJ_oSolid)) pin_destroy(i);
         else VEG_NOTE(i, pw_rest_clock(), 1);
     }
     if (p->obj == OBJ_oSpearTrapBottom && !pin_xy_int(i, &ix, &iy)) {     /* :87 (Bottom only) */
@@ -966,7 +966,7 @@ static int jungle_step(int i)
     case OBJ_oLeaves: leaves_step(i); return 1;
     case OBJ_oTree:                                                  /* objects/oTree/Step_0.gml */
         if (eview(i, 16, 16)) {
-            if (!CP(X(i), Y(i) + 16, OBJ_oSolid)) pin_destroy(i);
+            if (!collision_point_any_at(i, 0, 16, OBJ_oSolid)) pin_destroy(i);
             else VEG_NOTE(i, pw_rest_clock(), 1);
         }
         return 1;
@@ -980,12 +980,12 @@ static int jungle_step(int i)
     case OBJ_oSpearsLeft:                                            /* objects/oSpearsLeft/Step_0.gml */
         if ((p->spr == GSPR_sSpearsLeft || p->spr == GSPR_sSpearsRight) && !VEG_QUIET(i)) {
             /* (the trap's point tests: the vegetation memo, noted when the spear stays) */
-            if (p->spr == GSPR_sSpearsLeft && !CP(X(i) + 16, Y(i), OBJ_oSpearTrapTop) &&
-                !CP(X(i) + 16, Y(i), OBJ_oSpearTrapBottom))
+            if (p->spr == GSPR_sSpearsLeft && !collision_point_any_at(i, 16, 0, OBJ_oSpearTrapTop) &&
+                !collision_point_any_at(i, 16, 0, OBJ_oSpearTrapBottom))
                 pin_destroy(i);
             p = &PX(i);
-            if (p->spr == GSPR_sSpearsRight && !CP(X(i) - 16, Y(i), OBJ_oSpearTrapTop) &&
-                !CP(X(i) - 16, Y(i), OBJ_oSpearTrapBottom))
+            if (p->spr == GSPR_sSpearsRight && !collision_point_any_at(i, -16, 0, OBJ_oSpearTrapTop) &&
+                !collision_point_any_at(i, -16, 0, OBJ_oSpearTrapBottom))
                 pin_destroy(i);
             if (PX(i).alive) VEG_NOTE(i, pw_rest_clock(), 1);
         }
@@ -1236,11 +1236,11 @@ static void monkey_item(int i, int it)
         if (PE(o)->falling) return;
         PE(o)->xVel = PE(p)->facing == E_RIGHT ? N(5) : N(-5);
         PE(o)->yVel = N(-4);
-        if (!CP(X(it), Y(it), OBJ_oSolid)) pin_sety(o, P(Y(i) - 2));
+        if (!collision_point_any_at(it, 0, 0, OBJ_oSolid)) pin_sety(o, P(Y(i) - 2));
     } else {
         PE(o)->xVel = PE(p)->facing == E_RIGHT ? N(5) : N(-5);
         PE(o)->yVel = N(-4);
-        if (!CP(X(it), Y(it) - 2, OBJ_oSolid)) pin_sety(o, o->y - PI(2));
+        if (!collision_point_any_at(it, 0, -2, OBJ_oSolid)) pin_sety(o, o->y - PI(2));
     }
     j->throwCounter = 60;
     PE(p)->status = F_IDLE;
@@ -1347,7 +1347,7 @@ int pjungle_world(int site, int i, int arg)
     struct pin *p = &PX(i);
     switch (site) {
     case 1011: {                                                     /* oSolid Destroy :14 the tiki torch */
-        int obj = instance_place_p(i, X(i) + 8, Y(i) - 1, OBJ_oTikiTorch);
+        int obj = instance_place_at(i, 8, -1, OBJ_oTikiTorch);
         if (obj != NOONE) pin_destroy(obj);
         return 1;
     }
