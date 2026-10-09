@@ -1,5 +1,20 @@
 # Handoff
 
+## 2026-10-09 10:05: frame-dip batch 8 (branch softadd) merged and pushed; frame-dip work closed
+
+jtcps3 (.62, tests/gametime SMOOTH=1), pairs over 2 frames: c_swamp_drain 21 of 370, c_items_damselexpl 8 of 308
+(two runs: 9 then 8; batch 7 21 / 8). Since main 832c069 (2026-10-08): drain 113 -> 21, damselexpl 70 -> 8. MAME
+(playsh2 SOFTFP), five aftermath routes: steps > 175 K 27 -> 22; drain 275-278 all under 165 K (276: 178 -> 158);
+vampkill 287-290 191-194 -> 159-175 K. Changes: asm __truncdfsf2 fast path and softfp_piece_y (src/sh2/softfp_sh2.S;
+tests/softfp: edge sets, 1e9 random each, host-run tuples, 0 differ from fp-bit; FPCHECK playsh2 checks every game
+call), ovl_frac (overlap_at's float precise path on ints; 50 M random pairs 0 differ), pw_release batch deferred while
+> 8 debris / detritus stepped (scheduling only). Gates: hostident 184/184 (vs 832c069), CTALL 59/59, EQUIV 88/88,
+playsh2 9,701 (SOFTFP and default builds), game_check p4_exit559 / p5_shop / p5_spider and smooth 0 px, shell,
+capture 1,101/1,101. Known: vampkill 287 crosses 175 K by 32 clocks; 7 small default-set steps +1 % (< 100 K).
+Left (docs/PERF3.md last sections): drain 270-274 (~300 K MAME, the bomb's collision pass and check_water), vampkill
+290-297, damselexpl 191/193, __addsf3 same-sign asm path (drafted, not applied). Housekeeping 2026-10-09: 20 merged
+worktrees removed; colima restarted (VM held ~44 GB; memory colima-disk-leak).
+
 ## 2026-10-09 06:20: frame-dip batch 7 (branch aftermath3) merged and pushed
 
 jtcps3 (.62, tests/gametime SMOOTH=1), pairs over 2 frames: c_swamp_drain 24 -> 21 of 370, c_items_damselexpl 13 ->
