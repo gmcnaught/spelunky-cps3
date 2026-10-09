@@ -774,6 +774,8 @@ static void sticky_attach(int i, int e)
     int k = sticky_slot(p->id, 1);
     PE(p)->enemyID = (int16_t)e;
     PEN(&PX(e))->bombID = (int16_t)i;
+    pw_ref(i);
+    pw_ref(e);
     sticky[k].dx = X(e) - X(i);
     sticky[k].dy = Y(e) - Y(i);
 }

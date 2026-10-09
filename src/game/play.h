@@ -400,7 +400,11 @@ extern int16_t pw_nthead, pw_ntnext[PIN_MAX];
    instance: NTF_DRAW the object has a Draw event, NTF_DCAND it is an off-view deactivation candidate (prun.c) */
 #define NTF_DRAW 1
 #define NTF_DCAND 2
+#define NTF_REF 4                                /* a reference field (trapID, enemyID, bombID) was set: pw_ref */
 extern uint8_t pw_ntfl[PIN_MAX];
+/* instance i's trapID, enemyID or pin_en bombID is set to an instance (the only writes of one other than NOONE and
+   the defaults): pw_release's walk takes it (pworld.c) */
+static inline void pw_ref(int i) { pw_ntfl[i] |= NTF_REF; }
 int prun_ntfl(int obj);                          /* prun.c: obj's NTF_DRAW and NTF_DCAND bits */
 void pw_draw_dirty_clear(void);
 int collision_point_p(double px, double py, int obj, int prec, int notme_self);

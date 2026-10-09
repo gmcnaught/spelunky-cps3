@@ -465,6 +465,7 @@ int pw_count(int obj) { return olive[obj]; }
 struct pin_ext pin_ext[EXT_MAX];
 static int16_t extfree[EXT_MAX];
 static int nextfree;
+static uint8_t ext_scr;                          /* a scratch record went to an instance in this room (pw_release) */
 static uint8_t needs_ext[OBJ_COUNT];        /* 0 unknown, 1 no, 2 yes */
 static int ext_used, ext_used_max;
 
@@ -557,6 +558,7 @@ static void ext_reset(void)
     for (k = EN_SCRATCH - 1; k >= 1; k--) enfree[nenfree++] = (int16_t)k;     /* EN_SCRATCH kept out */
     en_zero(&pin_en[EN_SCRATCH]);
     en_used = 0;
+    ext_scr = 0;
 }
 
 typedef uint32_t __attribute__((may_alias)) u32a;
@@ -589,6 +591,7 @@ static int ext_alloc(void)
     int e;
     if (nextfree == 0) {                             /* full: the scratch record (never record 0, the defaults) */
         PUNTR(9005);
+        ext_scr = 1;
         ext_defaults(&pin_ext[EXT_SCRATCH]);
         return EXT_SCRATCH;
     }
@@ -604,6 +607,7 @@ int pw_ext_used_max(void) { return ext_used_max; }
    inlined grew it by 472 bytes, which moved the cached code after it: jtcps3 route steps +1 to +4 %) */
 static __attribute__((noinline)) int en_scratch(void)
 {
+    ext_scr = 1;
     en_zero(&pin_en[EN_SCRATCH]);
     return EN_SCRATCH;
 }
@@ -672,7 +676,7 @@ static void dead_init(void)
    alive instances; the per-slot state of pcol.c went in RemoveMarked, the grid's dirty list is flushed here */
 void pw_release(void)
 {
-    int k, j, s, n, lo, hi, smin = 32767, flush = 0;
+    int k, j, s, n, lo, hi, smin = 32767, flush = 0, all;
     /* in batches (the compaction of pw_ord and the sweep cost about PW.nord): 64 removed, at the end of a step that
        removed none (not the step whose removals filled the batch: an explosion's, the frame budget's spike, p5_snakes
        record 203), or the unused slots and the free ones close to running out (a step creates fewer than
@@ -694,8 +698,26 @@ void pw_release(void)
     REL(PL.idx);
     REL(PL.ladder);
     REL(PL.holdItem);
+    /* the references of the instances on pw_nthead's list. One never given an instance (pw_ref) holds NOONE or a
+       default (bombID 0 of a pin_en record: REL changes it only when slot 0 goes back), and its records are its own
+       unless a scratch record was handed out (ext_scr: shared, so any holder's write reaches them): then the whole
+       list, else the pw_ref ones (REL leaves the others as they are) */
+    all = ext_scr || relmark[0];
     for (s = pw_nthead; s >= 0; s = pw_ntnext[s]) {
         struct pin_ext *x;
+        if (!all && !(pw_ntfl[s] & NTF_REF)) {
+#ifdef PLAY_STATS
+            if (PW.in[s].ext > 0) {                  /* the host builds: REL would change none of its fields */
+                x = &pin_ext[PW.in[s].ext];
+                if ((x->trapID >= 0 && relmark[x->trapID]) || (x->enemyID >= 0 && relmark[x->enemyID]) ||
+                    (x->en > 0 && pin_en[x->en].bombID >= 0 && relmark[pin_en[x->en].bombID])) {
+                    fprintf(stderr, "pw_release: instance %d without NTF_REF holds a released slot\n", s);
+                    abort();
+                }
+            }
+#endif
+            continue;
+        }
         if (PW.in[s].ext <= 0) continue;
         x = &pin_ext[PW.in[s].ext];
         REL(x->trapID);

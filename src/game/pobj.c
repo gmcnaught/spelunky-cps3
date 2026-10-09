@@ -1575,6 +1575,7 @@ void ev_alarm(int i, int a)
             obj = pin_create(PI(xAct), p->y, OBJ_oArrowTrapTest);
             pin_setxscale(&PX(obj), dceil(((PFLOOR(PX(i).x) - 1) - xAct) / 16.0));
             PE(&PX(obj))->trapID = (int16_t)i;
+            pw_ref(obj);
         }
         break;
     case OBJ_oArrowTrapRight: case OBJ_oArrowTrapRightLit:
@@ -1592,6 +1593,7 @@ void ev_alarm(int i, int a)
             obj = pin_create(PI(x + 16), p->y, OBJ_oArrowTrapTest);
             pin_setxscale(&PX(obj), dceil((xAct - 16) / 16.0));
             PE(&PX(obj))->trapID = (int16_t)i;
+            pw_ref(obj);
         }
         break;
     case OBJ_oWhipPre: if (a == 0) pin_destroy(i); break;
