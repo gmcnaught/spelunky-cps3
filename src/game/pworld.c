@@ -1360,10 +1360,16 @@ struct pcinst {
 static uint32_t pcf(float f) { union { float f; uint32_t u; } v; v.f = f; return v.u; }
 static uint64_t pcd(double d) { union { double d; uint64_t u; } v; v.d = d; return v.u; }
 
+/* (float)v of a box side: fint15's bits below 2^15 in magnitude (no __floatsisf call) */
+#define PLACE_F(v) ((v) > -32768 && (v) < 32768 ? fint15(v) : (float)(v))
+
+/* (float)v of the sprite's ints (PLACE_F) */
+static float pc_fi(int32_t v) { return PLACE_F(v); }
+
 /* (float)(v + d): v's own float when d is +0 (v + +0 is v but for -0, which gives +0), else the double sum */
 static float pc_addf(double v, double d)
 {
-    if (pcd(d) == 0) return v == 0 ? 0.0f : (float)v;
+    if (pcd(d) == 0) return dzero(v) ? 0.0f : (float)v;
     return (float)(v + d);
 }
 
@@ -1397,8 +1403,8 @@ static int pcinst_of_raw(int i, double dx, double dy, struct pcinst *q, const do
         }
     }
 #endif
-    q->xo = (float)c->xo; q->yo = (float)c->yo;
-    q->ml = (float)c->l; q->mt = (float)c->t; q->mr = (float)c->r; q->mb = (float)c->b;
+    q->xo = pc_fi(c->xo); q->yo = pc_fi(c->yo);
+    q->ml = pc_fi(c->l); q->mt = pc_fi(c->t); q->mr = pc_fi(c->r); q->mb = pc_fi(c->b);
     q->bpr = ((c->r - c->l + 1) + 7) >> 3;
     q->mask = 0;
     if (c->kind == 1 && ps->nmasks > 0) {
@@ -4173,8 +4179,6 @@ int (instance_place_p)(int self, double px, double py, int obj)
     return place_after_query(self, q, px, py, dx, dy, moved, obj);
 }
 
-/* (float)v of a box side: fint15's bits below 2^15 in magnitude (no __floatsisf call) */
-#define PLACE_F(v) ((v) > -32768 && (v) < 32768 ? fint15(v) : (float)(v))
 
 /* instance_place_p(self, PTOD(x) + idx, PTOD(y) + idy, obj) at self's x, y: instance_place_ixy at a whole near x, y
    (xy_int_near; |idx|, |idy| <= 16), else the doubles */
