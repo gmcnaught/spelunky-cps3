@@ -1023,6 +1023,17 @@ int detritus_step(int i)
     if (PE(p)->bounce) {
         if (CLT(PE(p)->yVel, 6, CMPC_L_6)) PE(p)->yVel += PE(p)->grav;
 #if !defined(PCOL_EXACT) && !defined(NUM_IS_CLASS)
+        /* no oSolid near the box: the four tests are 0 (pworld.c pw_detritus_clear; the host builds make them too) */
+        if (pw_detritus_clear(i)) {
+#ifdef PLAY_STATS
+            if (isCollisionTop(i, 1) || isCollisionLeft(i, 1) || isCollisionRight(i, 1) || isCollisionBottom(i, 1)) {
+                fprintf(stderr, "pw_detritus_clear: a bounce test hits (instance %d)\n", i);
+                abort();
+            }
+#endif
+            NOPS(6);
+            return 0;
+        }
         /* yVel < 0 first: the query writes nothing the compare reads, and skipping it skips only flushes, which the
            grid build's searches do not depend on (the count build keeps the order: its compare count) */
         if (NLT(PE(p)->yVel, N(0)) && isCollisionTop(i, 1)) PE(p)->yVel = NMUL(-PE(p)->yVel, N(0.8));

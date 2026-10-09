@@ -577,6 +577,7 @@ int pw_with(int obj, int16_t *out, int max);
 int pdist_lt_at(pos x1, pos y1, int32_t ox, int32_t oy, pos x2, pos y2, double c);
 int pw_piece_tests(int i);                        /* pobj.c rubblepiece_step: its three point tests (grid build) */
 int pw_piece_fast(int i);                         /* pw_piece_tests' answer from the cells, else -1 */
+int pw_detritus_clear(int i);                     /* pworld.c: detritus_step's four bounce tests all 0 (cells) */
 int pw_static_xy(int obj, int32_t x, int32_t y);   /* collision_point_any_at's common answers at its whole query, else -1 */
 void pw_xstep(int i, int32_t x, int d);           /* pin_setx(x + d) of a whole x, the whole box cache kept */
 int pw_solid_vline_q(int32_t x, int32_t y1, int32_t y2, int notme_self);   /* solid_vline_any without its flush, else -1 */

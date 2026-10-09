@@ -2817,6 +2817,37 @@ int pw_piece_fast(int i)
     return s;
 }
 
+/* detritus_step's bounce tests (pobj.c: isCollisionTop / Left / Right / Bottom (i, 1)) all 0 at once, at the point
+   where the first of them would run: x, y whole (the shadows) and a box with lbo < rbo, tbo < bbo, so each test is
+   ik_side's line (Left x + lbo - 1 and Right x + rbo over y + tbo .. y + bbo - 1, Top y + tbo - 1 and Bottom y + bbo
+   over x + lbo .. x + rbo - 1), all inside [x + lbo - 1, x + rbo] x [y + tbo - 1, y + bbo]; pcol_query(oSolid) made
+   here as the first test's ik_line makes it (the later ones' then find nothing to do: ask, query_dyn and the flush
+   are done, nothing moves between the tests): < 0 (no oSolid instance) every line is 0; 1 with gfar 0 and that
+   region inside the grid with no oSolid entry reaching its cells (gfull and gother 0: no block, no other entry),
+   each line's ik_cells (its cells are among them) answers 0, sure. 1: the four answers are 0; 0: the caller tests */
+int pw_detritus_clear(int i)
+{
+    const struct pin *p = &PW.in[i];
+    const struct pin_ext *e;
+    int32_t x, y, l, t, r, b, cx, cy, cx1, cy1;
+    int q;
+    if (!pin_xy_int_p(p, &x, &y)) return 0;
+    e = PE(p);
+    if (e->lbo >= e->rbo || e->tbo >= e->bbo) return 0;
+    q = pcol_query(OBJ_oSolid);
+    if (q < 0) return 1;
+    if (q != 1) return 0;
+    grid_flush();
+    if (gfar) return 0;
+    l = x + e->lbo - 1; r = x + e->rbo; t = y + e->tbo - 1; b = y + e->bbo;
+    if (l < 0 || t < 0 || r >= GRID_W * 16 || b >= GRID_H * 16) return 0;
+    cx1 = r >> 4; cy1 = b >> 4;
+    for (cy = t >> 4; cy <= cy1; cy++)
+        for (cx = l >> 4; cx <= cx1; cx++)
+            if (gfull[cy][cx] || gother[cy][cx]) return 0;
+    return 1;
+}
+
 /* rubblepiece_step's point tests (pobj.c) at i's position, its query made once: 1 collision_point_any_at(i, 0, 0,
    oWaterSwim), 2 the same for oLava (asked only without 1), 4 for oSolid. collision_point_any_at's query of the
    position (dx = dy = 0) is q below: the ints of a whole near position (nodbl), else the floats and their floors.
