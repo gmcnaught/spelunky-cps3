@@ -771,3 +771,83 @@ oPlayer1, oBloodTrail.
   - oBlood / oFlame: vel_parts twice a Step (xVel changes only at a wall), isCollisionLeft || Right as one query,
     the alarms' oBloodTrail / oFlameTrail creation, the animation pass's float image_index;
   - oBloodTrail (43 K at drain 281: the deactivation pass's doutside and the animation).
+
+### Ice, temple and swamp steps (branch icetemple, 2026-10-08, on fpsbatch 7af3758)
+
+Targets (MAME survey on fpsbatch, SOFTFP playsh2, steps over 175 K): p5_reg_l9s5 (level 9, ice) steps 335-361,
+p5_reg_l14s16 (level 14, temple) 21-45, c_items_damselexpl (level 12, ice; the explosion aftermath is the debris
+branch's), c_swamp_vampkill 283-298, c_temple_tomblord. Developed on 4a8284c, rebased onto 7af3758 (debris merged);
+every commit is its own exactness argument (in its message).
+
+**Attribution (jtcost, JTC_BYOBJ, JTC_CALLERS, JTC_PCHIST; 4a8284c, modelled K):**
+- l9s5 step 359 (1,019): debris (oBlood, oRubbleDarkSmall, oFlame, oDrip, oRubbleSmall, oBurn) about 45 %; oYeti 231
+  (its Steps 87, the collision pass 83 billed to it, play_step's Outside pass 29); oDarkFall 76 (11 blocks: each
+  Step's isCollisionCharacterTop through calculateCollisionBounds doubles and four drounds, ~30 soft-float calls);
+  oUFO 61 (mostly the flush its query triggers); the flushes (flush_run <- ik_line) 102 in all.
+- vampkill step 288 (1,128): oBlood 379; oZombie 205 (the collision pass, precise float overlaps; isCollisionTop /
+  Bottom at fractional y through doubles); oPlayer1 175.
+- damselexpl step 193 (1,109): the collision pass 221 (explosion vs oIce, oPlayer1 vs oBlood: debris), oFlame / oBlood
+  / oDrip 413, oPlayer1 110, oDarkFall 50.
+- l14s16 step 21 (938): oPlayer1 331 (characterStepEvent 103, scrCreateBlood 51: six oBlood Creates), the collision
+  pass 135 (six new oBlood searchers paired with oPlayer1), oSmashTrap 80 (attack: isCollision* at fractional x,
+  isCollisionCharacter* through doubles). Steps 40-45 are oBlood (39 %) and the pass.
+
+| Commit | Change |
+|---|---|
+| b8b45bd | pfr / pfr_k: isCollisionLeft / Right / Top / Bottom and anyCollisionLeft / Right at a fractional position on ints |
+| c85d27e | line_solid_k: cct / ccr / ccl / ccb and oDarkFall's char_on_top on ints (pw_test_line_i) |
+| b22b37d | pin_box_outside: a BB_DBL box at scales +-1 compared on pfr |
+| 613e61d | pcolgrid.h pg_kcell: a float rectangle's cells from s_kfloor, not a binary search |
+| b68ae89 | ebbox: the float box at scales +-1 with 4 soft-float calls, not 16 |
+| c2b85f4 | prun.c DCAND: the candidate bit by a table (GCC made a __ashrsi3 call of it) |
+| 682b441 | anim_one: the wrap compares on the float keys; ispd * sp skipped for sp exactly 1 |
+
+Proofs: pfr_k against dround((double)x + k) for every float with |x| < 2^22 times 15 offsets (37.5 G cases); the
+animation compares for all 2^32 floats against 11 operands both ways plus 400 M random pairs; temporary host checks
+(removed) beside the old code on every call of the hostident runs: line_solid_k 59,236 calls, pin_box_outside 88,786,
+ebbox 65,202 (bit-identical floats); pg_kcell keeps a PLAY_STATS compare (121,276 calls).
+
+**jtcost** (fit, modelled jtcps3 K; the middle columns are the commits before the rebase, on 4a8284c; the last the
+rebased branch against its base):
+
+| Step | 4a8284c | c85d27e | 613e61d | b68ae89 | 682b441 (on 4a8284c) | 7af3758 -> HEAD |
+|---|---|---|---|---|---|---|
+| l9s5 349 (record 350) | 979.7 | 931.4 | | | 869.5 | 902.1 -> 790.3 (-12.4 %) |
+| l9s5 359 | 1,019.2 | 965.8 | 944.7 | 934.3 | 919.1 | 960.4 -> 866.2 (-9.8 %) |
+| l14s16 21 | 937.6 | 929.1 | | 921.0 | 911.6 | 930.0 -> 911.3 (-2.0 %) |
+| l14s16 43 | 868.6 | 887.3 | | | 864.3 | 795.3 -> 784.3 (-1.4 %) |
+| damselexpl 193 | 1,108.6 | 1,089.3 | 1,089.0 | 1,067.1 | 1,056.4 | 1,051.9 -> 1,001.4 (-4.8 %) |
+| vampkill 288 | 1,127.7 | 992.1 | 985.6 | | 964.6 | 1,080.1 -> 930.0 (-13.9 %) |
+
+l14s16 43 at c85d27e: +18.7 K with the same instruction count (layout). By object on l9s5 359 (4a8284c ->
+682b441): oDarkFall 76 -> 20 K.
+
+**MAME** (SOFTFP playsh2, steps after step 1; 7af3758 -> HEAD):
+
+| Route | mean (K) | max (K) | > 150 K | > 175 K |
+|---|---|---|---|---|
+| p5_reg_l9s5 | 95.7 -> 74.4 | 235 -> 199 | 33 -> 26 | 26 -> 19 |
+| p5_reg_l14s16 | 101.4 -> 97.9 | 223 -> 212 | 26 -> 18 | 5 -> 4 |
+| c_items_damselexpl | 123.8 -> 108.4 | 251 -> 230 | 52 -> 29 | 25 -> 16 |
+| c_swamp_vampkill | 125.6 -> 120.5 | 288 -> 232 | 26 -> 26 | 18 -> 15 |
+| c_temple_tomblord | 127.0 -> 122.2 | 216 -> 210 | 4 -> 3 | 1 -> 1 |
+| default 27 routes | 70.1 -> 67.0 (-4.5 %) | | 146 -> 112 | 62 -> 43 |
+
+No step of the default set is more than 1 % slower. p5_reg_l12s13 (also ice): 77.9 -> 61.8, > 175 K 4 -> 0.
+
+- **Gates (HEAD 682b441):** hostident 184/184 after every commit (on 4a8284c, and again on 7af3758 for each rebased
+  commit); CTALL 59/59; EQUIV 88/88; playsh2 9,701 / 9,701 in the SOFTFP and default builds, 1,732 / 1,732 on the
+  five routes; game_check p4_exit559 0 px (records 30, 150, 300); tests/game links with no compiler warning from the
+  changed files, .bss end 0x02076a84 (38,268 B of stack: no .bss added; the new tables are const).
+- **Measured, not kept:** collision_result keeping the last (searcher object, hit object) pair's has_col answer
+  (5 bytes of .bss): instructions -200 a step, but every traced step +22 to +32 K modelled (the fully associative
+  bound too: data layout); dropped.
+- **What is left (measured):**
+  - The l9s5 cluster (now 175-199 K MAME) is about half debris (oBlood, oRubbleDarkSmall, oFlame, oDrip, oBurn) and
+    the per-move bookkeeping their moves cause (cupdate_at -> ebbox_rect -> pgrid_put in the flushes, pw_changed,
+    mark_e, grid_dirty: about 3 K modelled a moved entry, mostly data misses across small tables).
+  - The collision pass (82-157 K): pgrid_search 2.5-3.9 K a call, a fifth of it four missing loads (pg_head, pg_next,
+    erw, pw_seq: separate arrays); has_col / tlist_* per searcher; ev_collision's dispatch chain.
+  - vampkill's oZombie pairs take overlap_at's float precise path (pcinst_of, precise_collision: 104 __addsf3 calls
+    a step); an integer form needs a proof for fractional positions.
+  - pin_add (about 7 K a creation with its Create: scrCreateBlood's six bloods are 51 K of l14s16 step 21).
