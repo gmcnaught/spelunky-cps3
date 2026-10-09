@@ -637,7 +637,7 @@ void ev_create(int i);
 void ev_destroy(int i);
 void ev_step(int i);
 int ev_step_is_pkg(int o, int (*pkg_ev)(int ev, int i, int arg));   /* pobj.c: ev_step(i) of o is pkg_ev's Step */
-int ev_step_idle(int i);                          /* pobj.c: 1 when ev_step(i) would do nothing (front_on 0) */
+int ev_step_run(const int16_t *ord, int n);      /* pobj.c: prun.c's Step loop (front_on 0): instances whose Step it ran */
 void ev_end_step(int i);
 void ev_alarm(int i, int a);
 void ev_animend(int i);
