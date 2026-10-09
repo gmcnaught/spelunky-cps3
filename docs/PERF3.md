@@ -851,3 +851,115 @@ No step of the default set is more than 1 % slower. p5_reg_l12s13 (also ice): 77
   - vampkill's oZombie pairs take overlap_at's float precise path (pcinst_of, precise_collision: 104 __addsf3 calls
     a step); an integer form needs a proof for fractional positions.
   - pin_add (about 7 K a creation with its Create: scrCreateBlood's six bloods are 51 K of l14s16 step 21).
+
+### Per-move bookkeeping and the collision pass (branch moves, 2026-10-08, on main 8b3d544)
+
+Target: the debris steps after an explosion (c_swamp_drain 275-295, c_items_damselexpl 120-200): each moved
+collision entry's marks (pw_changed, mark_e, grid_dirty, tlist_front), the flush that brings its grid rectangle up to
+date (flush_run, cupdate, ebbox, pgrid_put) and the collision pass (pcol_handle, pgrid_search). Owned code only:
+pworld.c pw_changed / grid_dirty / the nc_moved test, pcol.c's marks, flush and pass, pcolgrid.h untouched.
+
+**Models.** jtcost fit (the plain link, as before) and, for drain records 281 / 290, the shipping layout:
+`build/sc/jtnc.sh` (not committed) builds tests/playsh2 with `NC=nc_robust.txt NCSHADOW=1`, traces it with
+scripts/lua/jtcost.lua and models the trace with tools/jtbypass.py, the list's functions and arrays charged as
+uncached ("NC" below; "NC fa": the same with a fully associative 4 KB cache, the layout-free bound). On hardware
+pw_changed, mark_e, grid_dirty, tlist_front, dlist_remove, ebbox and the arrays dn, dp, tn, tp, pg_*, pw_seq,
+oinfo, ocnt, xbits, inst_mem run past the cache, so instruction counts there cost 2.5+ clocks each.
+
+**Where drain 281 went (NC model, base 996 K):** marks 168 K (pw_changed 55 K: nc_moved's loop over 4 slots with
+obj_is on every move; mark_e 39 K; grid_dirty 24 K with a pin_needs_ext call; tlist_front 16 K; pcol_changed 14 K);
+flush 194 K (86 CollisionUpdates, 30 of them float boxes: ebbox's 4 __addsf3 and an __eqsf2, rset_f, pg_kcell, two
+ebbox_int calls); pass 54 K. Host count (drain steps 275-290): 77-93 CollisionUpdates a step, 60-76 of them of
+objects no query asks for and that cannot pair (oDrip, oRubble, oRubbleSmall, oBlood).
+
+| Commit | Change | Exactness |
+|---|---|---|
+| 16f8777 | pw_changed: nc_moved only for an object of a kept nearest family (nc_ofam bits, kept by nc_slot) | value; PLAY_STATS compares every bit with obj_is |
+| b1d3814 | grid_dirty: membership from a lazy per-object byte (gobj) | value (a constant memoized) |
+| 71a5c91 | mark_e: OI_SOLID in oinfo, ef read / written once, unlink only when on the list | value |
+| f913ee0 | pcol_handle: the test list's head off inline | codegen |
+| 81a83e5 | flush_run: the dirty list's head off inline | codegen |
+| f237637 | cupdate: play's grid path without cupdate_at (cupdate_grid) | codegen |
+| c4f2933 | ebbox_rect: no repeated whole-box test (ebbox_f); ang == 0 on the bits | value |
+| 79eeecd | ebbox_whole: at scale +-1 and a whole position the side pair by int sums | value; 1.68 G cases, PLAY_STATS compares |
+| 0c5ff4e | **deferred marks**: a member of an object no query has asked for this room waits on fhead; ask_fam (first query of a family) and flush_pairable (the pass) bring it up to date | value (below) |
+| dc6dcd7 | nc_robust.txt: ebbox_f for ebbox | layout |
+| 1afd63a | mark_e: a deferred entry on a list keeps its place | value |
+| b82ed80 | pcol_handle: can_pair once per run of one object | value; PLAY_STATS compares |
+| e1bf167 | grid_dirty: gobj also holds xbits != 0, read before gond; no frame | value |
+| 1291832 | tlist_front: an entry already on the list out of line (no frame) | codegen |
+| 596d2d2 | mark_e: the dirty-list branch out of line (mark_dirty, in nc_robust.txt), all tail calls | codegen |
+| 308118f | pw_changed: no frame on the common path | codegen |
+| 62b7563 | pw_changed: nc_ofam alone (it implies nc_any) | value |
+| fd70d06 | gobj and nc_ofam in one byte per object (pwob) | layout (.bss -460 B) |
+| 8e39cda | pcol_changed: mark_e's body inline for play (mark_ef) | codegen |
+| 01d5414 | pcol_handle: both has_col answers kept from collision_result (pf) | value |
+| 34781a8 | EQUIV.md, pcolgrid.h: the deferred entries described | docs |
+
+**The deferral's argument (0c5ff4e).** A grid rectangle reaches an answer only through: pgrid_search's callbacks
+(line_cb / rect_cb / place_cb / probe_cb drop entries outside the query's family before any other effect, after
+pcol_query of that family, which asks for it; collision_result keeps a hit only when has_col relates it to the
+searcher, so both can_pair); pcol_search_has(k) && match(k, obj): k outside the family fails match; direct_pairs'
+candidates (related: can_pair); touch_stale's scan (asks for its family first); pcol_handle's searcher rectangle (its
+box either way). The grid orders hits by creation number (unique among the grid's entries), so when an entry went in
+does not change the hits' order. The stale stack keeps every stale member of an asked object. PLAY_STATS builds
+check after every query and pass that no deferred entry is asked for or can pair. The put-in times of the deferred
+entries differ from the runner's tree (EQUIV.md section "The shipping build" notes it).
+
+**jtcost** (fit, modelled jtcps3 K; plain link; per-commit traces of drain 281 / damselexpl 194 were cut after three
+commits to free the heavy slot; the rest measured with the batch):
+
+| Step | 8b3d544 | 16f8777 | b1d3814 | 71a5c91 | 79eeecd | 0c5ff4e | 308118f | 01d5414 |
+|---|---|---|---|---|---|---|---|---|
+| drain 281 | 1,172.9 | 1,117.6 | 1,084.7 | 1,100.8 | 1,067.5 | 891.0 | 823.8 | 783.4 (-33.2 %) |
+| drain 281 instructions | 296.1 | 288.1 | 285.6 | 283.9 | 274.1 | 213.8 | 203.7 | 202.3 (-31.7 %) |
+| drain 281 fa bound | 1,181.6 | 1,132.7 | 1,095.8 | 1,091.6 | 1,074.4 | 937.9 | 701.3 | 669.8 (-43.3 %) |
+| drain 282 | 1,118.4 | | | | 1,016.0 | 905.1 | 838.8 | 802.1 (-28.3 %) |
+| drain 290 | 988.5 | | | | 930.4 | 791.6 | 749.4 | 734.6 (-25.7 %) |
+| damselexpl 121 | 802.7 | | | | 765.0 | 752.7 | 748.9 | 744.2 (-7.3 %) |
+| damselexpl 194 | 1,001.4 | 982.8 | 983.8 | 983.4 | 964.5 | 856.8 | 830.5 | 822.5 (-17.9 %) |
+
+NC model (shipping layout) on drain 281 / 290: base 996.5 / 847.5 -> 79eeecd 913.1 / 801.5 -> 0c5ff4e 709.8 / 653.4
+-> 308118f 706.6 / 655.0 -> 01d5414 696.3 / 643.3 (-30.1 % / -24.1 %); NC fa 832.3 / 746.9 -> 621.5 / 598.4 -> 587.4
+/ 580.4 -> 577.5 / 574.5. Between 0c5ff4e and 308118f the owned functions fell 50 K (mark_e -16 K, grid_dirty
+-15 K, dlist_remove -8 K, tlist_front -4 K, can_pair -4 K) while unchanged cached functions rose 45 K (ik_cells,
+rubblepiece_step, solid_point_sum, ik_xpt, ev_step: same instructions, set conflicts of the moved .text); the fa bound
+fell 34 K. Drain 281 by part (NC): marks 168 -> 58 K, flush 194 -> 22 K, pass 54 -> 57 K.
+
+**MAME** (SOFTFP playsh2, the six routes, 2328 / 2328 checksums at 79eeecd, 0c5ff4e, 308118f, 01d5414; steps after
+step 1):
+
+| Route | mean (K) | max (K) | > 150 K | > 175 K |
+|---|---|---|---|---|
+| c_swamp_drain | 110.0 -> 101.7 | 525 -> 463 | 33 -> 28 | 28 -> 15 |
+| c_swamp_grave | 114.3 -> 110.3 | 320 -> 303 | 33 -> 26 | 24 -> 12 |
+| c_jungle_firefrog | 95.7 -> 91.5 | 432 -> 416 | 20 -> 17 | 14 -> 9 |
+| c_items_damselexpl | 108.4 -> 102.1 | 231 -> 207 | 29 -> 23 | 16 -> 7 |
+| c_swamp_vampkill | 120.6 -> 117.6 | 232 -> 226 | 26 -> 25 | 15 -> 12 |
+| p5_reg_l9s5 | 74.4 -> 70.4 | 199 -> 174 | 26 -> 22 | 19 -> 0 |
+
+Steps more than 1 % slower than the base: 4 (drain 107, 112; vampkill 146, 203: +1.2 to +2.2 %, first asks of a
+family and flush_pairable's walk).
+
+**Gates (01d5414; 34781a8 adds comments and docs only):**
+- hostident 184/184 after every commit;
+- CTALL 59/59 and EQUIV 88/88 at 79eeecd, 0c5ff4e and 01d5414;
+- playsh2 on the default routes: 9,701 / 9,701 checksums in both the SOFTFP and the default build;
+- game_check p4_exit559: 0 px at records 30, 150 and 300;
+- the tests/game link: no compiler warning; mknc --check finds every list entry at its mirror after dc6dcd7; .bss end 0x02076d50 (stack room 37,552 B; the base had 38,268 B: gobj / pwob 460 B, pf 256 B).
+- On the default 27 routes (SOFTFP, steps after step 1), base -> 01d5414:
+  - mean 67.0 -> 64.5 K (-3.6 %);
+  - steps over 150 K: 112 -> 63; over 175 K: 43 -> 7;
+  - one step more than 1 % slower (job 50 step 77: 55.3 -> 55.9 K).
+
+**Measured, not kept:** pcol_changed past the cache (nc_robust.txt): NC model -2.5 % on drain 281 but the fa bound
++1.0 % (conflicts, not work); not listed.
+
+**Not done (measured):**
+- The test list still takes every debris move (tlist_front about 130 NC a move) and pcol_handle walks it (about 250 NC
+  an entry that cannot pair: unlink, alive, keeps_testing's sprite reads). Skipping it for objects that cannot pair
+  needs the searcher order kept for entries that become pairable before the pass (a mark counter and a merge).
+- pgrid_search: about 1,000 instructions a search of 9 cells and 3-8 hits (damselexpl 194: 15 searches, 30 K; drain:
+  8-10, 22 K NC); a third of it the stack spills of the query's sides and the per-cell loop. oEnemySight fails
+  direct_pairs (more than 16 candidates); the RV_LONG objects always search.
+- Set conflicts: drain 281's NC model is 119 K above its fa bound (cached .text and data placement).
