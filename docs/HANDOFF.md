@@ -1,5 +1,17 @@
 # Handoff
 
+## 2026-10-09 06:20: frame-dip batch 7 (branch aftermath3) merged and pushed
+
+jtcps3 (.62, tests/gametime SMOOTH=1), pairs over 2 frames: c_swamp_drain 24 -> 21 of 370, c_items_damselexpl 13 ->
+8 of 308 (step av 434 -> 429 K). MAME (playsh2 SOFTFP), five aftermath routes steps > 150 K 82 -> 56, > 175 K 33 ->
+27; default set > 150 K 37 -> 18. Known regression: p5_reg_l14s16 step 43 174.2 -> 178.1 K (resting bloods pay the
+failed clear-cell check; steps 40-43 +1.5-2.3 %), accepted. Changes: debris pieces run directly from play_step's Step
+loop, pw_detritus_clear (blood / flame bounce tests from clear cells), pw_walk_clear (moveTo_walk's walks from one
+clear-cell check). Gates: hostident 184/184 (vs 832c069), CTALL 59/59, EQUIV 88/88, playsh2 9,701, game_check
+p4_exit559 / p5_shop / p5_spider and smooth 0 px, shell, capture 1,101/1,101. Left (docs/PERF3.md last section):
+debris pieces' three soft-float adds (~205 instructions each; an asm fused add), pw_release's batch, vampkill's
+float precise player / blood test, damselexpl's collision pass.
+
 ## 2026-10-09 03:45: frame-dip batch 6 (branch aftermath2) merged and pushed
 
 jtcps3 (.62, tests/gametime SMOOTH=1), pairs over 2 frames: c_swamp_drain 27 -> 24 of 370, c_items_damselexpl 15 ->
