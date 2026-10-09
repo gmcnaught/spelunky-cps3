@@ -834,8 +834,10 @@ static int f08_of(int o)
 /* pcol_handle's searcher test (can_pair, direct_pairs): for each object d, the objects whose collision events (pobj's
    lists, with the inherited ones) have a target that d is or descends from (has_col(o, d) for an instance of o and
    one of d), as lists rv_obj[rv_beg[d] .. + rv_n[d]); built by obj_init. Kept only when d's targets and list hold at
-   most RV_SHORT objects (the HD tables: 311 objects, 55 entries); rv_n 255: longer (the search, as before) */
-#define RV_SHORT 8
+   most RV_SHORT objects; rv_n 255: longer (the search, as before). Equal lists are stored once (the HD tables: 416
+   objects kept, 95 entries in 17 distinct lists; the oSolid family's 52 objects share one of 13: oBoulder, oBullet,
+   oDarkFall, oEnemySight, ..., so a block searches only when one of those is alive) */
+#define RV_SHORT 13
 #define RV_MAX 128
 #define RV_LONG 255
 static uint8_t rv_beg[OBJ_COUNT], rv_n[OBJ_COUNT];
@@ -843,7 +845,7 @@ static int16_t rv_obj[RV_MAX];
 
 static void rv_build(void)
 {
-    int d, o, k, n = 0;
+    int d, o, k, j, n = 0;
     for (d = 0; d < OBJ_COUNT; d++) {
         int m = 0;
         rv_beg[d] = (uint8_t)n;
@@ -856,7 +858,14 @@ static void rv_build(void)
                 }
         /* (m is RV_LONG once the list is too long: the loop above stops adding) */
         rv_n[d] = (uint8_t)(m == RV_LONG || pobj[d].ncol > RV_SHORT ? RV_LONG : m);
-        if (rv_n[d] != RV_LONG) n += m;
+        if (rv_n[d] == RV_LONG) continue;
+        for (j = 0; j < d; j++) {                 /* an earlier object's equal list: d reads that one */
+            if (rv_n[j] != m) continue;
+            for (k = 0; k < m && rv_obj[rv_beg[j] + k] == rv_obj[n + k]; k++) {}
+            if (k == m) break;
+        }
+        if (j < d) rv_beg[d] = rv_beg[j];
+        else n += m;
     }
 }
 
