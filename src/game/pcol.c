@@ -2232,19 +2232,19 @@ static int direct_pairs(int s)
 
 void pcol_handle(void)
 {
-    int k, nkeep = 0, lo = -1, lr = 0;            /* lo, lr: the last searcher's object and its can_pair */
-    static int16_t keep[PIN_MAX];
+    int k, lo = -1, lr = 0, s, lastk = -1;        /* lo, lr: the last searcher's object and its can_pair */
     npairs = 0;
     flush();
 #ifndef PCOL_EXACT
     if (fhead >= 0) flush_pairable();
 #endif
-    while (tchead >= 0) {
-        int s = tchead, sn = tn[s];
-        tchead = (int16_t)sn;                     /* tlist_remove(s) of the head (on the list: EF_ONT; tp[s] -1) */
-        if (sn >= 0) tp[sn] = -1;
-        ef[s] &= (uint8_t)~EF_ONT;
-        if (edead(s) || !PW.in[s].alive) continue;
+    /* the test list in order: an entry that keeps testing stays where it is, the others leave it. The list is then the
+       kept entries, then the ones not yet taken (lastk: the last one kept); at the end the kept ones in their order,
+       which is the order in which HandleCollision pushes them back (each kept searcher on the front of a local list,
+       then each of that list on the front of the test list). Nothing in the loop reads the list or EF_ONT */
+    for (s = tchead; s >= 0; ) {
+        int sn = tn[s];
+        if (edead(s) || !PW.in[s].alive) goto drop;
         if (PW.in[s].obj != lo) {                 /* can_pair: the object and ocnt (fixed in this loop) */
             lo = PW.in[s].obj;
             lr = can_pair(s);
@@ -2308,12 +2308,17 @@ void pcol_handle(void)
 #else
     searched:
 #endif
-        if (keeps_testing(s)) {                   /* pushed on the front of a local list */
-            for (k = nkeep; k > 0; k--) keep[k] = keep[k - 1];
-            keep[0] = (int16_t)s;
-            nkeep++;
-        }
         epass[s] = pass_no;
+        if (keeps_testing(s)) {                   /* it stays on the list */
+            lastk = s;
+            s = sn;
+            continue;
+        }
+    drop:                                         /* tlist_remove(s) */
+        if (lastk >= 0) tn[lastk] = (int16_t)sn; else tchead = (int16_t)sn;
+        if (sn >= 0) tp[sn] = (int16_t)lastk;
+        ef[s] &= (uint8_t)~EF_ONT;
+        s = sn;
     }
     PCST((uint32_t)npairs > pcol_st.pairs_max ? (pcol_st.pairs_max = (uint32_t)npairs) : 0);
     if (++pass_no == EPASS_NONE) {                /* wrap: no entry has searched in the passes to come */
@@ -2321,8 +2326,6 @@ void pcol_handle(void)
         for (e = 0; e < ENT_MAX; e++) epass[e] = EPASS_NONE;
         pass_no = 0;
     }
-    for (k = 0; k < nkeep; k++)                   /* each pushed on the front of the test list */
-        tlist_front(keep[k]);
     for (k = 0; k < npairs; k++) {
         int a = pa[k], b = pb[k];
         if (!PX(a).alive || !PX(b).alive || !pin_overlap(a, b))
