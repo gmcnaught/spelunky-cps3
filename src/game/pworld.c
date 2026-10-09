@@ -798,6 +798,24 @@ void pw_reset(void)
     pcol_after_reset();
 }
 
+/* pin_add's constants of the object created last (creations come in runs of one object: an explosion's rubble, a
+   blood spray, the transition room's blocks): its sprite, visible, depth as a float (objdefs' int: a __floatsisf
+   call), and whether it gets a pin_ext / pin_en record. All are functions of the object alone (const tables;
+   pin_needs_ext's memo is too), so a kept entry holds what the tables give */
+static int16_t pa_obj = -1, pa_spr;
+static uint8_t pa_vis, pa_ext, pa_en;
+static float pa_depth;
+
+static __attribute__((noinline)) void pa_fill(int obj)
+{
+    pa_obj = (int16_t)obj;
+    pa_spr = gobjspr[obj];
+    pa_vis = pobj[obj].visible;
+    pa_depth = objdefs[obj].depth;
+    pa_ext = (uint8_t)pin_needs_ext(obj);
+    pa_en = (uint8_t)pin_needs_en(obj);
+}
+
 int pin_add(int obj, pos x, pos y, int32_t id)
 {
     int i, k;
@@ -820,22 +838,27 @@ int pin_add(int obj, pos x, pos y, int32_t id)
         unsigned k2;
         for (k2 = 0; k2 < sizeof *p / 4; k2++) b[k2] = 0;
     }
+    if (obj != pa_obj) pa_fill(obj);
+#ifdef PLAY_STATS
+    if (pa_spr != gobjspr[obj] || pa_vis != pobj[obj].visible || pa_depth != (float)objdefs[obj].depth ||
+        pa_ext != pin_needs_ext(obj) || pa_en != pin_needs_en(obj)) { fprintf(stderr, "pin_add: kept constants of %d differ\n", obj); abort(); }
+#endif
     p->id = id;
     p->obj = (int16_t)obj;
-    PIN_WR(int16_t, p->spr) = gobjspr[obj];         /* a new instance: pcol_added takes it as it is */
+    PIN_WR(int16_t, p->spr) = pa_spr;               /* a new instance: pcol_added takes it as it is */
     PIN_WR(int16_t, p->mask) = -1;
     p->alive = 1;
-    PIN_WR(uint8_t, p->visible) = pobj[obj].visible;
+    PIN_WR(uint8_t, p->visible) = pa_vis;
     PIN_SETX_RAW(p, x);
     PIN_SETY_RAW(p, y);
-    PIN_WR(float, p->depth) = objdefs[obj].depth;
+    PIN_WR(float, p->depth) = pa_depth;
     PIN_WR(img_t, p->img) = 0;
     PIN_WR(img_t, p->ispd) = 1;
     PIN_WR(float, p->xscale) = PIN_WR(float, p->yscale) = 1;
     PIN_WR(float, p->angle) = 0;
-    pin_set_ext(p, pin_needs_ext(obj) ? ext_alloc() : 0);         /* with pin_add's defaults (ext_defaults) */
+    pin_set_ext(p, pa_ext ? ext_alloc() : 0);       /* with pin_add's defaults (ext_defaults) */
     if (obj == OBJ_oPlayer1 && p->ext) PE(p)->xprev = x;
-    if (p->ext && pin_needs_en(obj)) pin_ext[p->ext].en = (int16_t)en_alloc();   /* (a scratch ext holder's: never freed) */
+    if (p->ext && pa_en) pin_ext[p->ext].en = (int16_t)en_alloc();   /* (a scratch ext holder's: never freed) */
     pw_ta_off(i);                                    /* (a reused slot is placed again by its creation number) */
     ta_on(i);
     pw_draw_mark(i);                                 /* (a reused slot may still be on the list: marked once) */
