@@ -1394,13 +1394,13 @@ static __attribute__((noinline)) void flush_run(void)
 {
     sync_all();
     PCST(pcol_st.flushes++);
-    while (dhead >= 0) {
-        int e = dhead;
-        dlist_remove(e);
-        if (!edead(e)) {
-            ef[e] &= (uint8_t)~EF_STALE;
-            cupdate(e);
-        }
+    while (dhead >= 0) {                          /* the head each time: dlist_remove's writes for it inline (on the */
+        int e = dhead, n = dn[e], f = ef[e] & ~EF_OND;              /* list: EF_OND set; a head's dp is -1) */
+        dhead = (int16_t)n;
+        if (n >= 0) dp[n] = -1;
+        if (!(f & EF_PEND)) f &= ~EF_STALE;       /* (not edead) */
+        ef[e] = (uint8_t)f;
+        if (!(f & EF_PEND)) cupdate(e);
     }
     if (nstk > 32) stk_clean();                   /* (a short stack is left for stk_compact) */
 }
