@@ -1429,9 +1429,34 @@ static void stk_clean(void)
     nstk = n;
 }
 
-/* CollisionMarkDirty (with the stale bounding box flag its callers set). A member (emember) is pushed on the stale stack
-   when it was not stale and goes to the front of the dirty list (out of it first when on it); ef is read
-   once and written once (the stores to stk and the lists would make the compiler read it again) */
+/* mark_e of a member on the dirty list (not deferred): pushed on the stale stack when it was not stale, to the front of
+   the dirty list (out of it first when on it); then the test list as mark_e */
+static __attribute__((noinline)) void mark_dirty(int e, int oi, int f)
+{
+    if (!(f & EF_STALE)) {
+        if (nstk == ENT_MAX) stk_compact();
+        stk[nstk++] = (int16_t)e;
+#ifdef PLAY_STATS
+        if (onstk == ENT_MAX) onstk = stk_compact_a(ostk, onstk);
+        ostk[onstk++] = (int16_t)e;
+#endif
+    }
+    if (f & EF_OND) {                             /* (dlist_remove clears EF_OND) */
+        dlist_remove(e);
+        f &= ~EF_OND;
+    }
+    dp[e] = -1;
+    dn[e] = dhead;
+    if (dhead >= 0) dp[dhead] = (int16_t)e;
+    dhead = (int16_t)e;
+    ef[e] = (uint8_t)(f | EF_STALE | EF_OND);
+    if (oi & OI_F08) tlist_front(e);
+}
+
+/* CollisionMarkDirty (with the stale bounding box flag its callers set): a member (emember) to the dirty list
+   (mark_dirty) or, in play for an object no query has asked for, the deferred list; then the test list (F08). ef is
+   read once and written once (the stores to stk and the lists would make the compiler read it again); every call is
+   a tail call (no frame) */
 static void mark_e(int e)
 {
     int oi = oinfo[eobj(e)], f = ef[e];
@@ -1449,25 +1474,10 @@ static void mark_e(int e)
             return;
         }
 #endif
-        if (!(f & EF_STALE)) {
-            if (nstk == ENT_MAX) stk_compact();
-            stk[nstk++] = (int16_t)e;
-#ifdef PLAY_STATS
-            if (onstk == ENT_MAX) onstk = stk_compact_a(ostk, onstk);
-            ostk[onstk++] = (int16_t)e;
-#endif
-        }
-        if (f & EF_OND) {                         /* (dlist_remove clears EF_OND) */
-            dlist_remove(e);
-            f &= ~EF_OND;
-        }
-        dp[e] = -1;
-        dn[e] = dhead;
-        if (dhead >= 0) dp[dhead] = (int16_t)e;
-        dhead = (int16_t)e;
-        ef[e] = (uint8_t)(f | EF_STALE | EF_OND);
-    } else
-        ef[e] = (uint8_t)(f | EF_STALE);
+        mark_dirty(e, oi, f);
+        return;
+    }
+    ef[e] = (uint8_t)(f | EF_STALE);
     if (oi & OI_F08) tlist_front(e);
 }
 

@@ -14,6 +14,7 @@ f isCollisionTop
 f item_step
 f jar_step
 f mark_e
+f mark_dirty
 f moveTo
 f pen_collision
 f pen_parent_step
