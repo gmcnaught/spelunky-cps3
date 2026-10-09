@@ -4264,6 +4264,40 @@ static void pci_span(int32_t x, int s, int o, int lo, int hi, int32_t *c0, int32
     if (b < *c1) *c1 = b;
 }
 
+/* precise_collision_int's scan (its comment): some pixel (c, r), c0 <= c <= c1, r0 <= r <= r1, with both mask bits set
+   (no mask: set); the region within both instances' column and row spans (pci_span), masks' boxes starting at column
+   and row >= 0 */
+static int pci_scan(const struct pci *Ap, const struct pci *Bp, int32_t c0, int32_t c1, int32_t r0, int32_t r1)
+{
+    const struct pci A = *Ap, B = *Bp;
+    int32_t c, r;
+    if (c0 > c1 || r0 > r1) return 0;
+    if (!A.mask && !B.mask) return 1;
+    for (c = c0; c <= c1; c += 25) {
+        int n = c1 - c + 1 < 25 ? c1 - c + 1 : 25;
+        /* the lowest mask column of the n, its offset in the row, and whether the word is reversed */
+        int32_t ka = (A.sx > 0 ? c - A.x + A.xo : A.x + A.xo - 1 - (c + n - 1)) - A.ml;
+        int32_t kb = (B.sx > 0 ? c - B.x + B.xo : B.x + B.xo - 1 - (c + n - 1)) - B.ml;
+        int flip = A.sx != B.sx;
+        for (r = r0; r <= r1; r++) {
+            uint32_t v = 0xffffffffu, w;
+            if (A.mask) {
+                int32_t j = (A.sy > 0 ? r - A.y + A.yo : A.y + A.yo - 1 - r) - A.mt;
+                v = pci_row(A.mask + j * A.bpr, ka, n);
+                if (!v) continue;
+                if (flip && B.mask) v = rev32(v) << (32 - n);
+            }
+            if (B.mask) {
+                int32_t j = (B.sy > 0 ? r - B.y + B.yo : B.y + B.yo - 1 - r) - B.mt;
+                w = pci_row(B.mask + j * B.bpr, kb, n);
+                v &= w;
+            }
+            if (v) return 1;
+        }
+    }
+    return 0;
+}
+
 /* CSprite::PreciseCollision for two BB_INT / BB_INTS instances (pci_loop) by mask rows. Both scales are +-1, so the
    loop's column test is k in [ml, mr] for k above (an interval of c: pci_span), and where a mask's box starts at
    column and row >= 0 its column trunc((2k + 1) / 2) is k itself (2k + 1 > 0) and okA always holds: the loop finds a
@@ -4274,7 +4308,7 @@ static void pci_span(int32_t x, int s, int o, int lo, int hi, int32_t *c0, int32
 static int precise_collision_int(int a, int32_t dx, int32_t dy, const int32_t *ia, int b, const int32_t *ib)
 {
     struct pci A, B;
-    int32_t c0, c1, r0, r1, c, r;
+    int32_t c0, c1, r0, r1;
     pci_of(a, dx, dy, &A);
     pci_of(b, 0, 0, &B);
     if ((A.mask && (A.ml < 0 || A.mt < 0)) || (B.mask && (B.ml < 0 || B.mt < 0)))
@@ -4288,32 +4322,7 @@ static int precise_collision_int(int a, int32_t dx, int32_t dy, const int32_t *i
     pci_span(A.y, A.sy, A.yo, A.mt, A.mb, &r0, &r1);
     pci_span(B.y, B.sy, B.yo, B.mt, B.mb, &r0, &r1);
     {
-        int res = 0;
-        if (c0 > c1 || r0 > r1) goto done;
-        if (!A.mask && !B.mask) { res = 1; goto done; }
-        for (c = c0; c <= c1; c += 25) {
-            int n = c1 - c + 1 < 25 ? c1 - c + 1 : 25;
-            /* the lowest mask column of the n, its offset in the row, and whether the word is reversed */
-            int32_t ka = (A.sx > 0 ? c - A.x + A.xo : A.x + A.xo - 1 - (c + n - 1)) - A.ml;
-            int32_t kb = (B.sx > 0 ? c - B.x + B.xo : B.x + B.xo - 1 - (c + n - 1)) - B.ml;
-            int flip = A.sx != B.sx;
-            for (r = r0; r <= r1; r++) {
-                uint32_t v = 0xffffffffu, w;
-                if (A.mask) {
-                    int32_t j = (A.sy > 0 ? r - A.y + A.yo : A.y + A.yo - 1 - r) - A.mt;
-                    v = pci_row(A.mask + j * A.bpr, ka, n);
-                    if (!v) continue;
-                    if (flip && B.mask) v = rev32(v) << (32 - n);
-                }
-                if (B.mask) {
-                    int32_t j = (B.sy > 0 ? r - B.y + B.yo : B.y + B.yo - 1 - r) - B.mt;
-                    w = pci_row(B.mask + j * B.bpr, kb, n);
-                    v &= w;
-                }
-                if (v) { res = 1; goto done; }
-            }
-        }
-    done:
+        int res = pci_scan(&A, &B, c0, c1, r0, r1);
 #ifdef PLAY_STATS
         if (res != pci_loop(&A, &B, dx, dy, ia, ib)) {
             fprintf(stderr, "precise_collision_int: row answer %d differs (%d, %d)\n", res, a, b);
