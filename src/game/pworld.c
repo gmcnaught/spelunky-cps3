@@ -3577,6 +3577,51 @@ int solid_hline_any(int32_t y, int32_t x1, int32_t x2, int notme_self)
     return ik_line(y, x1, x2, notme_self * 2 + 1);
 }
 
+/* moveTo's pixel walks (pscript.c): the first k in [0, n) whose line at a0 + k (dir > 0) or a0 - k hits, n if none,
+   for solid_vline_any(a, lo, hi, notme) (nm = notme * 2) or solid_hline_any(a, lo, hi, notme) (nm = notme * 2 + 1)
+   of each line in turn. The first line is ik_line's. The walk writes nothing, so a later line's pcol_query and
+   grid_flush find nothing to do (ask, query_dyn and flush are done; the summary and gfar stay as they are): with
+   pcol_query 1 and gfar 0 (pcol_query_kind 1 after the first query) a line inside the grid is ik_line's ik_cells of
+   its cells, then any_scan when that is unsure. Lines of one cell column (row) read the same cells: ik_cells once a
+   column, its answer kept for the column's other lines */
+int solid_walk_any(int32_t a0, int dir, int32_t n, int32_t lo, int32_t hi, int nm)
+{
+    int32_t k, a, l = lo < hi ? lo : hi, h = lo < hi ? hi : lo, pc = -1;
+    int notme = nm >> 1, r, pr = 0;
+    if (n <= 0) return n;
+    if (ik_line(a0, lo, hi, nm)) return 0;
+    if (pcol_query_kind(OBJ_oSolid) != 1 || gfar) {
+        for (k = 1; k < n; k++)
+            if (ik_line(dir > 0 ? a0 + k : a0 - k, lo, hi, nm)) return k;
+        return n;
+    }
+    for (k = 1; k < n; k++) {
+        a = dir > 0 ? a0 + k : a0 - k;
+        if (a < 0 || l < 0 || (nm & 1 ? a >= GRID_H * 16 || h >= GRID_W * 16 : a >= GRID_W * 16 || h >= GRID_H * 16)) {
+            if (ik_line(a, lo, hi, nm)) return k;
+            pc = -1;
+            continue;
+        }
+        PWST(line, 1);
+        if ((a >> 4) != pc) {
+            pc = a >> 4;
+            pr = nm & 1 ? ik_cells(pc * GRID_W + (l >> 4), (h >> 4) - (l >> 4) + 1, 1, notme * 2 + 1)
+                        : ik_cells((l >> 4) * GRID_W + pc, (h >> 4) - (l >> 4) + 1, GRID_W, notme * 2 + 1);
+        }
+        r = pr;
+#ifdef PLAY_STATS
+        if (pcol_query(OBJ_oSolid) != 1 || gfar) { fprintf(stderr, "solid_walk_any: the query changed\n"); abort(); }
+        if (r >= 0 && r != (nm & 1 ? any_scan(lo, a, hi, a, OBJ_oSolid, 1, notme) : any_scan(a, lo, a, hi, OBJ_oSolid, 1, notme))) {
+            fprintf(stderr, "solid_walk_any %d differs from the scan at %d\n", r, (int)a);
+            abort();
+        }
+#endif
+        if (r < 0) r = nm & 1 ? any_scan(lo, a, hi, a, OBJ_oSolid, 1, notme) : any_scan(a, lo, a, hi, OBJ_oSolid, 1, notme);
+        if (r) return k;
+    }
+    return n;
+}
+
 /* a rectangle query: its sides rounded (floor(v + 0.5)) once */
 /* f*: the corners as the runner's floats (CInstance::Collision_Rectangle takes floats) */
 /* with whole-number corners (fok 0) the float corners are the ints', made when first needed (rq_floats) */

@@ -432,6 +432,7 @@ int collision_line_i(int32_t x1, int32_t y1, int32_t x2, int32_t y2, int obj, in
 int collision_rect_i(int32_t x1, int32_t y1, int32_t x2, int32_t y2, int obj, int prec, int notme_self);
 int solid_vline_any(int32_t x, int32_t y1, int32_t y2, int notme_self);   /* collision_line(x, y1, x, y2, oSolid, 1, notme) != NOONE */
 int solid_hline_any(int32_t y, int32_t x1, int32_t x2, int notme_self);   /* collision_line(x1, y, x2, y, oSolid, 1, notme) != NOONE */
+int solid_walk_any(int32_t a0, int dir, int32_t n, int32_t lo, int32_t hi, int nm);   /* moveTo's walks: the first line hit */
 int solid_rect_any(int32_t l, int32_t t, int32_t r, int32_t b, int notme_self);
 /* isCollisionLeft / Right / Top / Bottom and the anyCollision lines on whole x, y: the answer, -1 when x or y is not
    whole (nothing done) */

@@ -348,8 +348,7 @@ void moveTo(int i, num a0, num a1, int32_t *xio, int32_t *yio)
     raw = !obj_is(p->obj, OBJ_oSolid) && !obj_is(p->obj, OBJ_oPlatform);
     if (xVelInteger != 0 && !ch && !obj_is(p->obj, OBJ_oSolid) && ibounds(i, &il, &it, &ir, &ib)) {
         int32_t n = xVelInteger > 0 ? xVelInteger : -xVelInteger, k;
-        for (k = 0; k < n; k++)
-            if (solid_vline_any(xVelInteger > 0 ? ir + k : il - 1 - k, it + 5, ib - 1, i)) break;
+        k = solid_walk_any(xVelInteger > 0 ? ir : il - 1, xVelInteger, n, it + 5, ib - 1, i * 2);   /* (the vlines) */
         if (k) {
             /* x is whole (ibounds: the shadow ix holds it), so mtXPrev + PI(+-k) is the float of ix +- k (exact below
                2^24; ix + (-ix) gives +0, as fint15(0)): fint15 below 2^15, and the shadow keeps the new x (a cache) */
@@ -400,8 +399,7 @@ void moveTo(int i, num a0, num a1, int32_t *xio, int32_t *yio)
 #if PLAY_WALK
     if (yVelInteger != 0 && (yVelInteger < 0 || !ch) && !obj_is(p->obj, OBJ_oSolid) && ibounds(i, &il, &it, &ir, &ib)) {
         int32_t n = yVelInteger > 0 ? yVelInteger : -yVelInteger, k;
-        for (k = 0; k < n; k++)
-            if (solid_hline_any(yVelInteger > 0 ? ib + k : it - 1 - k, il, ir - 1, i)) break;
+        k = solid_walk_any(yVelInteger > 0 ? ib : it - 1, yVelInteger, n, il, ir - 1, i * 2 + 1);   /* (the hlines) */
         if (k) {                                                       /* (as the x walk's) */
             int32_t ny = p->iy + (yVelInteger > 0 ? k : -k);
             MT_SETY(ny > -32768 && ny < 32768 ? fint15(ny) : PI(ny));
@@ -496,8 +494,7 @@ void moveTo_walk(int i, num a0, num a1)
     NOPS(10);
     if (xv != 0) {                                                 /* moveTo's x walk */
         n = xv > 0 ? xv : -xv;
-        for (k = 0; k < n; k++)
-            if (solid_vline_any(xv > 0 ? ir + k : il - 1 - k, it + 5, ib - 1, i)) break;
+        k = solid_walk_any(xv > 0 ? ir : il - 1, xv, n, it + 5, ib - 1, i * 2);   /* (the vlines) */
         if (k) {
             int32_t nx = p->ix + (xv > 0 ? k : -k);
             PIN_SETX_RAW(p, nx > -32768 && nx < 32768 ? fint15(nx) : PI(nx));
@@ -508,8 +505,7 @@ void moveTo_walk(int i, num a0, num a1)
     if (yv != 0) {
         if (ibounds(i, &il, &it, &ir, &ib)) {                      /* moveTo's y walk */
             n = yv > 0 ? yv : -yv;
-            for (k = 0; k < n; k++)
-                if (solid_hline_any(yv > 0 ? ib + k : it - 1 - k, il, ir - 1, i)) break;
+            k = solid_walk_any(yv > 0 ? ib : it - 1, yv, n, il, ir - 1, i * 2 + 1);   /* (the hlines) */
             if (k) {
                 int32_t ny = p->iy + (yv > 0 ? k : -k);
                 PIN_SETY_RAW(p, ny > -32768 && ny < 32768 ? fint15(ny) : PI(ny));
