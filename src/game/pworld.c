@@ -4422,7 +4422,7 @@ int instance_place_ixy(int self, int32_t x, int32_t y, int32_t idx, int32_t idy,
 /* filled_grid(oWater, f, px, py, cx, cy) with no grid or index update pending (grid_flush, xflush_run: nothing),
    xfar[f] 0 and xsat[f] 0: its answer where it reads only the cell; -1 where it would go on (to point_at_xy or
    xstatic_any) */
-static inline int water_filled(int f, int32_t px, int32_t py, int cx, int cy)
+static __attribute__((noinline)) int water_filled(int f, int32_t px, int32_t py, int cx, int cy)
 {
     int n, k;
     const struct pin *h;
@@ -4499,47 +4499,82 @@ static inline int top_spr(int k) { return k != NOONE && (PW.in[k].spr == GSPR_sW
    true */
 #define FILLED_W(px, py, cx, cy) \
     (!gfar && !pcol_quiet() ? filled_grid(OBJ_oWater, f, px, py, cx, cy) : pw_filled_xy(OBJ_oWater, px, py))
-/* FILLED_W, from the cell while clean (water_filled; its -1: FILLED_W, the state then not clean) */
-#define WATER_F(px, py, cx, cy) \
-    (clean && (r = water_filled(f, px, py, cx, cy)) >= 0 ? r : (clean = 0, FILLED_W(px, py, cx, cy)))
+
+/* pw_water_tests from stage st on (0 the cell above, 1 the place at -16, 2 at +16, 3 .. 5 the cells left, right,
+   below) with FILLED_W and place_ixy, the four points in the grid */
+static __attribute__((noinline)) int water_rest(int j, int32_t ix, int32_t iy, int top, int f, int st)
+{
+    int cx = ix >> 4, cy = iy >> 4, k;
+    switch (st) {
+    case 0:
+        if (!FILLED_W(ix, iy - 16, cx, cy - 1)) pin_set_sprite(j, top);
+        /* fall through */
+    case 1:
+        k = place_ixy(j, ix, iy, -16, 0, OBJ_oWater);
+        if (top_spr(k)) pin_set_sprite(j, top);
+        /* fall through */
+    case 2:
+        k = place_ixy(j, ix, iy, 16, 0, OBJ_oWater);
+        if (top_spr(k)) pin_set_sprite(j, top);
+        /* fall through */
+    case 3:
+        if (!FILLED_W(ix - 16, iy, cx - 1, cy)) return 1;
+        /* fall through */
+    case 4:
+        if (!FILLED_W(ix + 16, iy, cx + 1, cy)) return 1;
+        /* fall through */
+    default:
+        return !FILLED_W(ix, iy + 16, cx, cy + 1);
+    }
+}
 #endif
 
 /* pk_swamp.c check_water's tests of water j at whole ix, iy (|.| < 29900), in its order: pw_filled_xy(oWater, ix,
    iy - 16) (0: j's sprite to top), instance_place_ixy(j, ix, iy, -16 then 16, 0, oWater) (a hit whose sprite is
    sWaterTop or sLavaTop: j's sprite to top), then !pw_filled_xy left || !right || !below: 1 (j to be destroyed).
-   With the four points in the grid: FILLED_W and place_ixy, and while the state is clean the same answers from the
-   cells. Clean (on entry, kept until a sprite change or a further call): no grid / index / collision update pending,
-   gfar 0, f's index not far, saturated or with empty boxes, j's box one 16 x 16 cell with both side cells in the grid,
-   pcol_place_clean(j, oWater). In it the flushes are nothing, FILLED_W is filled_grid, and the places' entries change
-   only the test list (pcol_place_front once: j is then its head, and the second place's move of the head changes
-   nothing); a pin_set_sprite that changes nothing (the sprite already top) is skipped as it does nothing */
+   With the four points in the grid: water_rest (FILLED_W and place_ixy), and while the state is clean the same answers
+   from the cells. Clean (on entry, kept until a sprite change or a further call): no grid / index / collision update
+   pending, gfar 0, f's index not far, saturated or with empty boxes, j's box one 16 x 16 cell with both side cells in
+   the grid, pcol_place_clean(j, oWater). In it the flushes are nothing, FILLED_W is filled_grid, and the places'
+   entries change only the test list (pcol_place_front once: j is then its head, and the second place's move of the
+   head changes nothing); a pin_set_sprite that changes nothing (the sprite already top) is skipped as it does
+   nothing. Where the cell does not answer, or after a sprite change, water_rest goes on from that test */
 int pw_water_tests(int j, int32_t ix, int32_t iy, int top)
 {
     int k;
 #ifndef PCOL_EXACT
     int f = xf_of[OBJ_oWater];
     if (f >= 0 && ix >= 16 && iy >= 16 && ix < (GRID_W - 1) * 16 && iy < (GRID_H - 1) * 16) {
-        int cx = ix >> 4, cy = iy >> 4, clean, r, pj = 0;
+        int cx = ix >> 4, cy = iy >> 4, r, pj, wx, wy;
         int32_t ia[4];
-        clean = gdhead < 0 && xdhead < 0 && !gfar && !xfar[f] && !xsat[f] && !xemp[f] && pin_ibox_s(j, ia) &&
-                (ia[0] & 15) == 0 && (ia[1] & 15) == 0 && ia[2] == ia[0] + 16 && ia[3] == ia[1] + 16 && ia[0] >= 16 &&
-                ia[1] >= 0 && ia[0] < (GRID_W - 1) * 16 && ia[1] < GRID_H * 16 && pcol_place_clean(j, OBJ_oWater);
-        if (clean) pj = precise(j);
-        if (!WATER_F(ix, iy - 16, cx, cy - 1) && PW.in[j].spr != top) { pin_set_sprite(j, top); clean = 0; }
-        if (clean) {
-            pcol_place_front(j);
-            k = water_place(j, ia, -16, f, (ia[0] >> 4) - 1, ia[1] >> 4, pj);
-            if (k == -2) { k = place_ixy(j, ix, iy, -16, 0, OBJ_oWater); clean = 0; }
-        } else
-            k = place_ixy(j, ix, iy, -16, 0, OBJ_oWater);
-        if (top_spr(k) && PW.in[j].spr != top) { pin_set_sprite(j, top); clean = 0; }
-        if (clean) {
-            k = water_place(j, ia, 16, f, (ia[0] >> 4) + 1, ia[1] >> 4, pj);
-            if (k == -2) { k = place_ixy(j, ix, iy, 16, 0, OBJ_oWater); clean = 0; }
-        } else
-            k = place_ixy(j, ix, iy, 16, 0, OBJ_oWater);
-        if (top_spr(k) && PW.in[j].spr != top) { pin_set_sprite(j, top); clean = 0; }
-        return !WATER_F(ix - 16, iy, cx - 1, cy) || !WATER_F(ix + 16, iy, cx + 1, cy) || !WATER_F(ix, iy + 16, cx, cy + 1);
+        if (!(gdhead < 0 && xdhead < 0 && !gfar && !xfar[f] && !xsat[f] && !xemp[f] && pin_ibox_s(j, ia) &&
+              (ia[0] & 15) == 0 && (ia[1] & 15) == 0 && ia[2] == ia[0] + 16 && ia[3] == ia[1] + 16 && ia[0] >= 16 &&
+              ia[1] >= 0 && ia[0] < (GRID_W - 1) * 16 && ia[1] < GRID_H * 16 && pcol_place_clean(j, OBJ_oWater)))
+            return water_rest(j, ix, iy, top, f, 0);
+        pj = precise(j);
+        wx = ia[0] >> 4; wy = ia[1] >> 4;
+        if ((r = water_filled(f, ix, iy - 16, cx, cy - 1)) < 0) return water_rest(j, ix, iy, top, f, 0);
+        if (!r && PW.in[j].spr != top) {
+            pin_set_sprite(j, top);
+            return water_rest(j, ix, iy, top, f, 1);
+        }
+        pcol_place_front(j);
+        if ((k = water_place(j, ia, -16, f, wx - 1, wy, pj)) == -2) return water_rest(j, ix, iy, top, f, 1);
+        if (top_spr(k) && PW.in[j].spr != top) {
+            pin_set_sprite(j, top);
+            return water_rest(j, ix, iy, top, f, 2);
+        }
+        if ((k = water_place(j, ia, 16, f, wx + 1, wy, pj)) == -2) return water_rest(j, ix, iy, top, f, 2);
+        if (top_spr(k) && PW.in[j].spr != top) {
+            pin_set_sprite(j, top);
+            return water_rest(j, ix, iy, top, f, 3);
+        }
+        if ((r = water_filled(f, ix - 16, iy, cx - 1, cy)) < 0) return water_rest(j, ix, iy, top, f, 3);
+        if (!r) return 1;
+        if ((r = water_filled(f, ix + 16, iy, cx + 1, cy)) < 0) return water_rest(j, ix, iy, top, f, 4);
+        if (!r) return 1;
+        if ((r = water_filled(f, ix, iy + 16, cx, cy + 1)) < 0) return water_rest(j, ix, iy, top, f, 5);
+        return !r;
     }
 #endif
     if (!pw_filled_xy(OBJ_oWater, ix, iy - 16)) pin_set_sprite(j, top);
