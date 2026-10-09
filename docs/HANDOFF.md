@@ -1,5 +1,16 @@
 # Handoff
 
+## 2026-10-09 03:45: frame-dip batch 6 (branch aftermath2) merged and pushed
+
+jtcps3 (.62, tests/gametime SMOOTH=1), pairs over 2 frames: c_swamp_drain 27 -> 24 of 370, c_items_damselexpl 15 ->
+13 of 308 (step av 438 -> 434 K). MAME (playsh2 SOFTFP): drain 275-289 -8-12 % (276: 214 -> 189 K), damselexpl
+191-205 -1-5 %; default set steps > 150 K 50 -> 37. Changes: pw_piece_fast (drip / rubble point tests from cell
+counts), pw_release reference walk on NTF_REF only, pw_ntfl per-slot byte for the draw / deactivation walks,
+solid_walk_any per-column summary reads, pcol_handle keeps test-list entries in place (.bss -3.5 KB; stack room
+39,848 B). Gates: hostident 184/184 (vs 832c069), CTALL 59/59, EQUIV 88/88, playsh2 9,701, game_check p4_exit559 /
+p5_shop / p5_spider and smooth 0 px, shell, capture 1,101/1,101. Left (docs/PERF3.md last section): drain 276-278 and
+270-274 still over; damselexpl's cost spread (blood / flame ~10.7 K modelled each over ~15 functions).
+
 ## 2026-10-09 02:00: frame-dip batch 5 (branch aftermath) merged and pushed
 
 jtcps3 (.62, tests/gametime SMOOTH=1), pairs over 2 frames: c_swamp_drain 28 -> 27 of 370, c_items_damselexpl 15 ->
