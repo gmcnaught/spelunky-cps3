@@ -145,6 +145,9 @@ static int16_t freel[PIN_MAX];
 #define PW_RELEASE_BATCH 64
 #endif
 #define PW_RELEASE_ROOM 256
+#ifndef PW_RELEASE_BUSY
+#define PW_RELEASE_BUSY 8
+#endif
 #ifndef PW_SEQ_RENUM
 #define PW_SEQ_RENUM (32766 - PIN_MAX)           /* at most PIN_MAX creations between two releases */
 #endif
@@ -674,15 +677,20 @@ static void dead_init(void)
 /* the end of a step: the slots of the instances RemoveMarked removed go back on the free list. Kept across steps
    (pint.h, play.h): oPlayer1's idx / ladder / holdItem, the instance variables trapID, enemyID, bombID of the
    alive instances; the per-slot state of pcol.c went in RemoveMarked, the grid's dirty list is flushed here */
+uint16_t pw_debris;
+
 void pw_release(void)
 {
-    int k, j, s, n, lo, hi, smin = 32767, flush = 0, all;
+    int k, j, s, n, lo, hi, smin = 32767, flush = 0, all, busy = pw_debris;
     /* in batches (the compaction of pw_ord and the sweep cost about PW.nord): 64 removed, at the end of a step that
        removed none (not the step whose removals filled the batch: an explosion's, the frame budget's spike, p5_snakes
-       record 203), or the unused slots and the free ones close to running out (a step creates fewer than
-       PW_RELEASE_ROOM). Which slots go back when is not seen by the game (instances are reached through pw_ord, the
-       per-object lists and creation numbers) */
-    if (nfree + (PIN_DEAD - PW.n) >= PW_RELEASE_ROOM && (nrmq < PW_RELEASE_BATCH || nrmq != nrmq_prev)) {
+       record 203) and stepped at most PW_RELEASE_BUSY debris pieces and detritus (pw_debris: an aftermath's steps
+       are the slowest, drain 276 and vampkill 293 took the batch; up to 4 batches wait), or the unused slots and the
+       free ones close to running out (a step creates fewer than PW_RELEASE_ROOM). Which slots go back when is not
+       seen by the game (instances are reached through pw_ord, the per-object lists and creation numbers) */
+    pw_debris = 0;
+    if (nfree + (PIN_DEAD - PW.n) >= PW_RELEASE_ROOM &&
+        (nrmq < PW_RELEASE_BATCH || nrmq != nrmq_prev || (busy > PW_RELEASE_BUSY && nrmq < 4 * PW_RELEASE_BATCH))) {
         nrmq_prev = nrmq;
         return;
     }

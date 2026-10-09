@@ -1014,6 +1014,7 @@ int detritus_step(int i)
     struct pin *p = &PX(i);
     pos x = p->x, y = p->y;
     int bot = -1;
+    pw_debris++;
     view_read();
     if (pout_ab(x, p->ix, PW.xview - 4, PW.xview + 320 + 4) || pout_ab(y, p->iy, PW.yview - 4, PW.yview + 240 + 4))
         pin_destroy(i);
@@ -1408,6 +1409,7 @@ static __attribute__((noinline)) int piece_run(const int16_t *ord, int n, int k)
         i = ord[j];
         if (!PX(i).alive || (k = stepk[PX(i).obj]) < SK_RUBBLE) break;
     }
+    pw_debris += j;
     return j;
 }
 

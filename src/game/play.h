@@ -402,6 +402,8 @@ extern int16_t pw_nthead, pw_ntnext[PIN_MAX];
 #define NTF_DCAND 2
 #define NTF_REF 4                                /* a reference field (trapID, enemyID, bombID) was set: pw_ref */
 extern uint8_t pw_ntfl[PIN_MAX];
+extern uint16_t pw_debris;                    /* debris pieces and detritus stepped since the last pw_release (its batch
+                                                 waits while they run: pworld.c) */
 /* instance i's trapID, enemyID or pin_en bombID is set to an instance (the only writes of one other than NOONE and
    the defaults): pw_release's walk takes it (pworld.c) */
 static inline void pw_ref(int i) { pw_ntfl[i] |= NTF_REF; }
