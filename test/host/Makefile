@@ -78,6 +78,11 @@ $(OUT)/pcolxv: pcolxv.c $(SRC) $(PSRC) $(ROOT)/src/game/*.h $(GEN)/playtables.h 
 	mkdir -p $(OUT)
 	$(CC) $(CFLAGS) -ffp-contract=off $(INC) -o $@ pcolxv.c $(SRC) $(filter-out $(ROOT)/src/game/pcol.c,$(PSRC) $(HSRC)) -lm
 
+# pworld.c pc_rows against pc_loop (precise_collision's unrotated loop) on random instance pairs (it includes pworld.c)
+$(OUT)/pcrows: pcrows.c $(SRC) $(PSRC) $(ROOT)/src/game/*.h $(GEN)/playtables.h $(ROOT)/build/snd/sndnames.h $(ROOT)/src/snd/snd.h
+	mkdir -p $(OUT)
+	$(CC) $(CFLAGS) -ffp-contract=off $(INC0) -o $@ pcrows.c $(SRC) $(filter-out $(ROOT)/src/game/pworld.c,$(PSRC) $(HSRC)) -lm
+
 # struct pin_ext checked (play.h PIN_EXT_CHECK): exits 3 when the shared record 0 (the terrain's defaults) was
 # written or a removed instance's record is read; run it over the routes and generated levels
 $(OUT)/playhost_extchk: playhost.c $(SRC) $(PSRC) $(ROOT)/src/game/*.h $(GEN)/playtables.h $(ROOT)/build/snd/sndnames.h $(ROOT)/src/snd/snd.h

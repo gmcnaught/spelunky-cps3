@@ -1494,6 +1494,125 @@ static int sa_collision(const struct pcinst *a, const struct pcinst *b)
 
 static int rotated_eps(float ang) { double d = ang; return d > GML_EPS || d < -GML_EPS; }
 
+/* 1 / s for a scale; s = +-1: itself (1 / 1 and 1 / -1 are exact), without __divsf3 */
+static float pc_inv(float s)
+{
+    union { float f; uint32_t u; } v;
+    v.f = s;
+    if ((v.u & 0x7fffffffu) == 0x3f800000u) return s;
+    return 1.0f / s;
+}
+
+/* v * s; s = +-1: v or -v (exact for a finite v; the operands here are positions and box sides), without __mulsf3 */
+static float pc_mul(float v, float s)
+{
+    union { float f; uint32_t u; } a, b;
+    b.f = s;
+    if (b.u == 0x3f800000u) return v;
+    if (b.u == 0xbf800000u) { a.f = v; a.u ^= 0x80000000u; return a.f; }
+    return v * s;
+}
+
+/* pc_bit at the mask column and row cx = (int)(lx - ml), cy = (int)(ly - mt) */
+static int pc_bitc(const struct pcinst *q, int cx, int cy)
+{
+    static const uint8_t bit[8] = { 0x80, 0x40, 0x20, 0x10, 0x08, 0x04, 0x02, 0x01 };
+    return (q->mask[cy * q->bpr + (cx >> 3)] & bit[cx & 7]) != 0;
+}
+
+/* precise_collision's unrotated loop as the runner has it (A: this sprite; x0 .. iyB as there) */
+static int pc_loop(const struct pcinst *A, const struct pcinst *B, float x0, float y0, float x1, float y1, float ixA,
+                   float ixB, float iyA, float iyB)
+{
+    float lxA, lxB, xc, yc;
+    float arA = A->mr + 1.0f, abA = A->mb + 1.0f, arB = B->mr + 1.0f, abB = B->mb + 1.0f;
+    if (!(x1 > x0)) return 0;
+    lxB = (x0 - B->x) * ixB + B->xo;
+    lxA = (x0 - A->x) * ixA + A->xo;
+    for (xc = x0; x1 > xc; xc = xc + 1.0f, lxB = lxB + ixB, lxA = lxA + ixA) {
+        int okA, okB;
+        float tA, tB;
+        if (A->ml > lxA || lxA >= arA || B->ml > lxB || lxB >= arB || !(y1 > y0)) continue;
+        tA = (float)(int)lxA; tB = (float)(int)lxB;
+        okA = !(A->ml > tA) && !(tA > A->mr);
+        okB = !(B->ml > tB) && !(tB > B->mr);
+        for (yc = y0; y1 > yc; yc = yc + 1.0f) {
+            float lyA = (yc - A->y) * iyA + A->yo, lyB, ty;
+            if (A->mt > lyA || lyA >= abA) continue;
+            if (A->mask) {
+                if (!okA) continue;
+                ty = (float)(int)lyA;
+                if (A->mt > ty || ty > A->mb || !pc_bit(A, tA, ty)) continue;
+            }
+            lyB = (yc - B->y) * iyB + B->yo;
+            if (B->mt > lyB || lyB >= abB) continue;
+            if (!B->mask) return 1;
+            if (!okB) continue;
+            ty = (float)(int)lyB;
+            if (B->mt > ty || ty > B->mb) continue;
+            if (pc_bit(B, tB, ty)) return 1;
+        }
+    }
+    return 0;
+}
+
+#define PC_ROWS 64
+
+/* precise_collision's unrotated loop (A: this sprite; x0 .. iyB as there). A row's tests depend on yc alone, and yc
+   runs from y0 by + 1.0f in every column: each row's floats once (the same operations on the same values), its
+   answers in rw (bit 0 A's row in its box, 1 A's mask row, 2 B's row in its box, 3 B's mask row; cy the mask rows),
+   then the columns on them, in pc_loop's order. More rows than PC_ROWS: pc_loop */
+static int pc_rows(const struct pcinst *A, const struct pcinst *B, float x0, float y0, float x1, float y1, float ixA,
+                   float ixB, float iyA, float iyB)
+{
+    float lxA, lxB, xc, yc;
+    float arA = A->mr + 1.0f, abA = A->mb + 1.0f, arB = B->mr + 1.0f, abB = B->mb + 1.0f;
+    uint8_t rw[PC_ROWS];
+    int16_t cyA[PC_ROWS], cyB[PC_ROWS];
+    int n = 0, k;
+    if (!(x1 > x0)) return 0;
+    for (yc = y0; y1 > yc; yc = yc + 1.0f) {
+        float lyA, lyB, ty;
+        int f = 0;
+        if (n == PC_ROWS) return pc_loop(A, B, x0, y0, x1, y1, ixA, ixB, iyA, iyB);
+        lyA = pc_mul(yc - A->y, iyA) + A->yo;
+        if (!(A->mt > lyA || lyA >= abA)) {
+            f = 1;
+            ty = (float)(int)lyA;
+            if (!(A->mt > ty || ty > A->mb)) { f |= 2; cyA[n] = (int16_t)(int)(ty - A->mt); }
+        }
+        lyB = pc_mul(yc - B->y, iyB) + B->yo;
+        if (!(B->mt > lyB || lyB >= abB)) {
+            f |= 4;
+            ty = (float)(int)lyB;
+            if (!(B->mt > ty || ty > B->mb)) { f |= 8; cyB[n] = (int16_t)(int)(ty - B->mt); }
+        }
+        rw[n++] = (uint8_t)f;
+    }
+    lxB = pc_mul(x0 - B->x, ixB) + B->xo;
+    lxA = pc_mul(x0 - A->x, ixA) + A->xo;
+    for (xc = x0; x1 > xc; xc = xc + 1.0f, lxB = lxB + ixB, lxA = lxA + ixA) {
+        int okA, okB, cxA = 0, cxB = 0;
+        float tA, tB;
+        if (A->ml > lxA || lxA >= arA || B->ml > lxB || lxB >= arB || n == 0) continue;
+        tA = (float)(int)lxA; tB = (float)(int)lxB;
+        okA = !(A->ml > tA) && !(tA > A->mr);
+        okB = !(B->ml > tB) && !(tB > B->mr);
+        if (A->mask && okA) cxA = (int)(tA - A->ml);
+        if (B->mask && okB) cxB = (int)(tB - B->ml);
+        for (k = 0; k < n; k++) {
+            int f = rw[k];
+            if (!(f & 1)) continue;
+            if (A->mask && (!okA || !(f & 2) || !pc_bitc(A, cxA, cyA[k]))) continue;
+            if (!(f & 4)) continue;
+            if (!B->mask) return 1;
+            if (!okB || !(f & 8)) continue;
+            if (pc_bitc(B, cxB, cyB[k])) return 1;
+        }
+    }
+    return 0;
+}
+
 /* CSprite::PreciseCollision (A: this sprite) */
 static int precise_collision(const struct pcinst *A, const struct pcinst *B)
 {
@@ -1507,39 +1626,18 @@ static int precise_collision(const struct pcinst *A, const struct pcinst *B)
     y0 = (float)((int)(bt + 32768.0f) - 32768) + 0.5f;
     x1 = (float)(32768 - (int)(32768.0f - br));
     y1 = (float)(32768 - (int)(32768.0f - bb));
-    ixA = 1.0f / A->xs; ixB = 1.0f / B->xs; iyA = 1.0f / A->ys; iyB = 1.0f / B->ys;
+    ixA = pc_inv(A->xs); ixB = pc_inv(B->xs); iyA = pc_inv(A->ys); iyB = pc_inv(B->ys);
     rA = rotated_eps(A->ang);
     rB = rotated_eps(B->ang);
     if (!rA && !rB) {
-        float lxA, lxB;
-        if (!(x1 > x0)) return 0;
-        lxB = (x0 - B->x) * ixB + B->xo;
-        lxA = (x0 - A->x) * ixA + A->xo;
-        for (xc = x0; x1 > xc; xc = xc + 1.0f, lxB = lxB + ixB, lxA = lxA + ixA) {
-            int okA, okB;
-            float tA, tB;
-            if (A->ml > lxA || lxA >= arA || B->ml > lxB || lxB >= arB || !(y1 > y0)) continue;
-            tA = (float)(int)lxA; tB = (float)(int)lxB;
-            okA = !(A->ml > tA) && !(tA > A->mr);
-            okB = !(B->ml > tB) && !(tB > B->mr);
-            for (yc = y0; y1 > yc; yc = yc + 1.0f) {
-                float lyA = (yc - A->y) * iyA + A->yo, lyB, ty;
-                if (A->mt > lyA || lyA >= abA) continue;
-                if (A->mask) {
-                    if (!okA) continue;
-                    ty = (float)(int)lyA;
-                    if (A->mt > ty || ty > A->mb || !pc_bit(A, tA, ty)) continue;
-                }
-                lyB = (yc - B->y) * iyB + B->yo;
-                if (B->mt > lyB || lyB >= abB) continue;
-                if (!B->mask) return 1;
-                if (!okB) continue;
-                ty = (float)(int)lyB;
-                if (B->mt > ty || ty > B->mb) continue;
-                if (pc_bit(B, tB, ty)) return 1;
-            }
+        int r = pc_rows(A, B, x0, y0, x1, y1, ixA, ixB, iyA, iyB);
+#ifdef PLAY_STATS
+        if (r != pc_loop(A, B, x0, y0, x1, y1, ixA, ixB, iyA, iyB)) {
+            fprintf(stderr, "precise_collision: row answer %d differs\n", r);
+            abort();
         }
-        return 0;
+#endif
+        return r;
     }
     {
         float sA = 0, cA = 0, sB = 0, cB = 0;
