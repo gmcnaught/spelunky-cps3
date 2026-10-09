@@ -2093,7 +2093,7 @@ static int direct_pairs(int s)
 
 void pcol_handle(void)
 {
-    int k, nkeep = 0;
+    int k, nkeep = 0, lo = -1, lr = 0;            /* lo, lr: the last searcher's object and its can_pair */
     static int16_t keep[PIN_MAX];
     npairs = 0;
     flush();
@@ -2106,10 +2106,15 @@ void pcol_handle(void)
         if (sn >= 0) tp[sn] = -1;
         ef[s] &= (uint8_t)~EF_ONT;
         if (edead(s) || !PW.in[s].alive) continue;
+        if (PW.in[s].obj != lo) {                 /* can_pair: the object and ocnt (fixed in this loop) */
+            lo = PW.in[s].obj;
+            lr = can_pair(s);
+        }
 #ifndef PLAY_STATS
-        if (!can_pair(s)) goto searched;
+        if (!lr) goto searched;
 #else
-        int skip = !can_pair(s), np0 = npairs;    /* the host builds search anyway and check that nothing was kept */
+        int skip = !lr, np0 = npairs;             /* the host builds search anyway and check that nothing was kept */
+        if (lr != can_pair(s)) { fprintf(stderr, "pcol_handle: can_pair memo differs (entry %d)\n", s); abort(); }
 #endif
         /* the search rectangle of its box: as pcol_search with ebbox's floats (rset_f takes whole ones as ints). A
            tree member that is not stale has it as its tree rectangle (cupdate_at put ebbox_rect(s, 0, 0) there, and
