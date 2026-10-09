@@ -1762,16 +1762,30 @@ static void grid_unlink(int i)
     gcell[i] = NOONE;
 }
 
+/* per object: 2 when its instances go in the grid (obj_is(o, oSolid) || !pin_needs_ext(o): constant per object), 1 when
+   not, 0 not computed yet */
+static uint8_t gobj[OBJ_COUNT];
+
+static __attribute__((noinline)) int gobj_set(int o)
+{
+    gobj[o] = (uint8_t)(obj_is(o, OBJ_oSolid) || !pin_needs_ext(o) ? 2 : 1);
+    return gobj[o];
+}
+
 /* a solid's box may have changed (or it was added): placed again at the next query */
 static void grid_dirty(int i)
 {
+    int o = PW.in[i].obj, g;
 #ifndef PCOL_EXACT
-    if (xbits[PW.in[i].obj]) {
+    if (xbits[o]) {
         xchg++;
         if (!xond[i]) xdirty(i);
     }
 #endif
-    if (gond[i] || !(obj_is(PW.in[i].obj, OBJ_oSolid) || !pin_needs_ext(PW.in[i].obj))) return;
+    if (gond[i]) return;
+    g = gobj[o];
+    if (!g) g = gobj_set(o);
+    if (g == 1) return;
     gond[i] = 1;
     gdnext[i] = gdhead;
     gdhead = (int16_t)i;
