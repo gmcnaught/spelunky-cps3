@@ -179,7 +179,13 @@ static uint8_t nc_any;                           /* instance_nearest_p's cache (
    obj): pw_changed calls nc_moved only for an instance of a kept family. A bit is set only after nc_get has set
    nc_any (never cleared), so nc_ofam[o] != 0 implies nc_any. Kept in pwob's high bits (NC_OFAM) */
 #define NC_OFAM(o) (pwob[o] >> 4)                /* (pwob's bits 4-7) */
-static void nc_inval(int obj);
+/* bit e: nc[e].ok is not 0 (every write of ok keeps it): with NC_OFAM, the kept entries of an object's families
+   without a read of the entries */
+static uint8_t nc_okm;
+static void nc_drop(unsigned hit);
+#ifdef PLAY_STATS
+static void nc_okm_check(void);
+#endif
 static void nc_moved(int i);
 static void nc_reset(void);
 #ifdef PLAY_STATS
@@ -233,7 +239,16 @@ static void olive_add(int obj, int d)
 #ifndef PCOL_EXACT
     if (xbits[obj]) xchg++;                       /* (xbits is set at the first level start, before any instance) */
 #endif
-    if (nc_any) nc_inval(obj);
+    if (nc_any) {
+        /* the kept nearest-instance entries of obj's families are dropped (an instance linked or unlinked): NC_OFAM's
+           bit e is obj_is(obj, nc[e].obj) for a filled slot, nc_okm's bit e nc[e].ok != 0 (only a filled slot is ok) */
+        unsigned hit = NC_OFAM(obj) & nc_okm;
+#ifdef PLAY_STATS
+        nc_okm_check();
+        nc_ofam_check(obj);
+#endif
+        if (hit) nc_drop(hit);
+    }
     olive_gen++;
     for (a = obj; a >= 0; a = objdefs[a].parent) olive[a] = (int16_t)(olive[a] + d);
 }
@@ -4028,28 +4043,43 @@ static void nc_slot(int e, int obj)
     nc_asg |= b;
 }
 
-static void nc_inval(int obj)
+typedef char nc_okm_bits[NC_N <= 4 ? 1 : -1];  /* (NC_OFAM holds 4 bits) */
+
+/* the entries of hit's bits are dropped (olive_add) */
+static void nc_drop(unsigned hit)
 {
     int e;
-    for (e = 0; e < NC_N; e++)
-        if (nc[e].ok && obj_is(obj, nc[e].obj)) nc[e].ok = 0;
+    nc_okm &= (uint8_t)~hit;
+    for (e = 0; hit; e++, hit >>= 1)
+        if (hit & 1) nc[e].ok = 0;
 }
+
+#ifdef PLAY_STATS
+static void nc_okm_check(void)
+{
+    int e;
+    for (e = 0; e < NC_N; e++)                    /* the host builds check the bits */
+        if (!(nc_okm >> e & 1) != !nc[e].ok) { fprintf(stderr, "nc_okm bit %d stale\n", e); abort(); }
+}
+#endif
 
 /* instance i (alive and linked, or not) may have changed position: a kept entry of a family holding it takes its
    new floors in place (k[]'s order is the lists' walk, which a move does not change); one where it is not found,
-   whose floors do not fit, or that did not fit (ok 2) is dropped as nc_inval drops it */
+   whose floors do not fit, or that did not fit (ok 2) is dropped as olive_add drops it */
 static __attribute__((noinline)) void nc_moved(int i)
 {
     int e, j, obj = PW.in[i].obj;
-    for (e = 0; e < NC_N; e++) {
+    unsigned m = NC_OFAM(obj) & nc_okm, b;           /* bit e: ok, and obj_is(obj, nc[e].obj) */
+    for (e = 0, b = 1; m; e++, b <<= 1, m >>= 1) {   /* (no variable shift: the SH-2 has none) */
         struct ncache *c = &nc[e];
         int32_t xk, yk;
-        if (!c->ok || !(NC_OFAM(obj) >> e & 1)) continue;       /* (bit e: obj_is(obj, c->obj)) */
-        if (c->ok != 1) { c->ok = 0; continue; }
+        if (!(m & 1)) continue;
+        if (c->ok != 1) { c->ok = 0; nc_okm &= (uint8_t)~b; continue; }
         for (j = 0; j < c->n && c->k[j] != i; j++) {}
         if (j == c->n || !pl_floor(PW.in[i].x, &xk) || !pl_floor(PW.in[i].y, &yk) ||
             xk < -16384 || xk >= 16384 || yk < -16384 || yk >= 16384) {
             c->ok = 0;
+            nc_okm &= (uint8_t)~b;
             continue;
         }
         c->x[j] = (int16_t)xk;
@@ -4061,6 +4091,7 @@ static void nc_reset(void)
 {
     int e;
     for (e = 0; e < NC_N; e++) nc[e].ok = 0;
+    nc_okm = 0;
 }
 
 static void nc_fill(struct ncache *c, int obj)
@@ -4109,6 +4140,7 @@ static struct ncache *nc_get(int obj)
     nc_any = 1;
     nc_slot(e, obj);
     nc_fill(&nc[e], obj);
+    nc_okm |= (uint8_t)(1u << (e & 3));           /* (ok 1 or 2; NC_N 4) */
     return &nc[e];
 }
 
