@@ -1,5 +1,16 @@
 # Handoff
 
+## 2026-10-09 02:00: frame-dip batch 5 (branch aftermath) merged and pushed
+
+jtcps3 (.62, tests/gametime SMOOTH=1), pairs over 2 frames: c_swamp_drain 28 -> 27 of 370, c_items_damselexpl 15 ->
+15 of 308. MAME (playsh2 SOFTFP): drain 270-274 396-417 -> 299-351 K (still ~2x the step budget), drain 161-176 all
+under 150 K (psincos_cr's soft-float fallback replaced by sc_fast2, checked on all 3,407,609,862 float directions).
+Changes: check_water fused per-water path, pcol_has_whole, deferred CollisionInsert of unpairable new objects,
+pin_add 2-entry constants cache. Gates: hostident 184/184 (vs 832c069), CTALL 59/59, EQUIV 88/88, playsh2 9,701,
+game_check p4_exit559 / p5_shop / p5_spider and smooth 0 px, shell 26/26, capture 1,101/1,101. Left (docs/PERF3.md
+last section): creation bookkeeping (~10 K each), explosion_solid's per-pair treasure / spike loops (~14 K a pair),
+pw_release's batch (51 K on drain 276), two per-step walks over PW.in[i].obj (~15 K each), flush_pairable 22-26 K.
+
 ## 2026-10-09 00:05: frame-dip batches 2-4 merged and pushed
 
 jtcps3 (.62, tests/gametime SMOOTH=1), pairs over 2 frames (c_swamp_drain / c_items_damselexpl): main 832c069
