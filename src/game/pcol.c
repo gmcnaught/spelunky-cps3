@@ -787,6 +787,8 @@ void pcol_search(float l, float t, float r, float b, int (*cb)(int e, void *ctx)
 #define OI_SOLID 16    /* objdefs[o].solid (obj_init): a member of the tree with OI_MEMBER / OI_DYN (emember) */
 #define OI_ASKED 32    /* (grid build, play) a family holding the object has been queried this room (ask) */
 #define OI_ASKROOT 64  /* (grid build, play) the object's own family has been queried this room */
+#define OI_DIRECT 128  /* pcol_handle may take direct_pairs for a searcher of the object: its targets and rv list hold at
+                          most RV_DIRECT objects together (obj_init) */
 static uint8_t oinfo[OBJ_COUNT];
 static int16_t ocnt[OBJ_COUNT];        /* instances of the object and its descendants (the runner's 0x78) */
 static uint8_t otarget[OBJ_COUNT];     /* the target of a collision event */
@@ -838,6 +840,10 @@ static int f08_of(int o)
    objects kept, 95 entries in 17 distinct lists; the oSolid family's 52 objects share one of 13: oBoulder, oBullet,
    oDarkFall, oEnemySight, ..., so a block searches only when one of those is alive) */
 #define RV_SHORT 13
+#define RV_DIRECT 8                            /* pcol_handle's direct_pairs: targets and rv list up to 8 objects together,
+                                                  the old RV_SHORT (OI_DIRECT). Longer lists search: direct_pairs' pend scan
+                                                  per block made p5_l4's first step 1.8x, its target family walks made
+                                                  p5_giant's steps +6 % */
 #define RV_MAX 128
 #define RV_LONG 255
 static uint8_t rv_beg[OBJ_COUNT], rv_n[OBJ_COUNT];
@@ -892,6 +898,8 @@ static void obj_init(void)
     for (o = 0; o < OBJ_COUNT; o++)
         oinfo[o] = (uint8_t)(OI_DONE | (f08_of(o) ? OI_F08 : 0) | (objdefs[o].solid ? OI_SOLID : 0));
     rv_build();
+    for (o = 0; o < OBJ_COUNT; o++)
+        if (rv_n[o] != RV_LONG && pobj[o].ncol + rv_n[o] <= RV_DIRECT) oinfo[o] |= OI_DIRECT;
     for (o = 0; o < OBJ_COUNT; o++) {
         int a;
         for (a = o; a >= 0; a = objdefs[a].parent)
@@ -2209,7 +2217,7 @@ void pcol_handle(void)
         rlock = 1;
         PCST(pcol_st.searches++);
 #ifndef PCOL_EXACT
-        if (PCOL_GRID_ON && rv_n[PW.in[s].obj] != RV_LONG) {
+        if (PCOL_GRID_ON && (oinfo[PW.in[s].obj] & OI_DIRECT)) {
             int np1 = npairs;
             if (!direct_pairs(s)) search_run();
 #ifdef PLAY_STATS
