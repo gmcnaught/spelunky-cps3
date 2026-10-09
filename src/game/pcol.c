@@ -1992,6 +1992,7 @@ int pcol_count(int obj) { return ocnt[obj]; }
    levels); more stops the play loop with untranslated code 9102 */
 #define PAIRS_MAX 256
 static int16_t pa[PAIRS_MAX], pb[PAIRS_MAX];
+static uint8_t pf[PAIRS_MAX];          /* bit 0: has_col(pa, pb), bit 1: has_col(pb, pa) (a function of the two objects) */
 static int npairs;
 static int hc_self;
 
@@ -2008,14 +2009,17 @@ static int has_col(int a, int b)
 static int collision_result(int e, void *ctx)
 {
     (void)ctx;
+    int h;
     if (e == hc_self || epass[e] == pass_no) return 1;
-    if (has_col(hc_self, e) || has_col(e, hc_self)) {
+    h = has_col(hc_self, e) | has_col(e, hc_self) << 1;   /* (both kept for the events: pf) */
+    if (h) {
         if (npairs == PAIRS_MAX) {
             PUNTR(9102);
             return 0;
         }
         pa[npairs] = (int16_t)hc_self;
         pb[npairs] = (int16_t)e;
+        pf[npairs] = (uint8_t)h;
         npairs++;
     }
     return 1;
@@ -2232,8 +2236,10 @@ void pcol_handle(void)
         if (!PX(a).alive || !PX(b).alive || !pin_overlap(a, b))
             continue;
         if (oinfo[PX(b).obj] & OI_F08) tlist_front(b);                   /* CollisionMarkTest */
-        if (has_col(a, b)) { ev_collision(a, b); pcol_event_done(a); }   /* Perform_Event(a, b) */
-        if (has_col(b, a)) { ev_collision(b, a); pcol_event_done(b); }   /* Perform_Event(b, a), unchecked */
+        /* has_col of the two objects, kept when the pair was recorded (an instance's object does not change, and a
+           slot is not reused before remove_marked) */
+        if (pf[k] & 1) { ev_collision(a, b); pcol_event_done(a); }      /* Perform_Event(a, b) */
+        if (pf[k] & 2) { ev_collision(b, a); pcol_event_done(b); }      /* Perform_Event(b, a), unchecked */
     }
 }
 
