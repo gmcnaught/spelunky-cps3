@@ -963,3 +963,88 @@ family and flush_pairable's walk).
   8-10, 22 K NC); a third of it the stack spills of the query's sides and the per-cell loop. oEnemySight fails
   direct_pairs (more than 16 candidates); the RV_LONG objects always search.
 - Set conflicts: drain 281's NC model is 119 K above its fa bound (cached .text and data placement).
+||||||| parent of 91658b2 (PERF3.md: instance creation and the transition room's first step (branch spawn))
+
+### Instance creation, the transition room's first step (branch spawn, 2026-10-08, on main 8b3d544)
+
+Targets: pin_add / evnz_sync / Create on explosion steps (c_items_damselexpl step 120, c_swamp_drain steps 2 and
+271), and the transition room's first step (c_temple_xroom3x step 443: 1.96 M modelled, a 4-frame stall at every
+level end). Measured: jtcost (fit, JTC_BYOBJ; record = step + 1) on temple 444, damselexpl 121, drain 3 and 272;
+MAME SOFTFP playsh2 on the three routes (1254 / 1254 checksums every run) and the default 27 routes. Every commit's
+message carries its exactness argument; hostident 184 / 184 after each one.
+
+| Commit | Change |
+|---|---|
+| 5e56d91 | rv_build: rv lists up to 13 objects (RV_SHORT 8 -> 13), equal lists stored once (95 entries in 17 lists, RV_MAX 128 holds). The oSolid family's list (oBoulder, oBullet, oDarkFall, oEnemySight, ... 13) was RV_LONG, so every block on the test list searched the grid; can_pair now answers 0 when none of the 13 is alive |
+| 70a585c | evnz_sync: the rebuild from a bitmap (bit rt: obj_byrt[rt]'s list non-empty, kept by prun_onz) ANDed with each key's objects, not a walk over evobj with a pw_ohead load each (.bss +960 B) |
+| 1c25975 | ext_defaults_fast: the pin_ext defaults by word stores, not a copy of a 200-byte template (13 data lines a creation) |
+| e0ffcfe | evnz_sync: each set bit by de Bruijn multiplication (the shift loop kept the word on the stack) |
+| be4b575 | pin_add: the created object's constants kept (sprite, visible, depth as a float: a __floatsisf call, the pin_ext / pin_en flags); creations come in runs of one object |
+| 2176d56 | olive_add: the nearest-instance cache's entries dropped without nc_inval (four 390-byte-apart lines and obj_anc / obj_bit on SIMM per call). On 8b3d544: a compare of the parent walk with nc_ko[4] keys; rebased onto moves (50b170d): NC_OFAM(obj) & nc_okm (moves's family bits, an ok-bit byte) |
+| aa29458 | play_transition_start: blocks the first animation pass would only take off its list (prun_anim_idle) are taken off at load |
+| 5db8c48 | play_level_start: the same at the level load's end |
+| d0c641c | play_transition_start ends with pcol_load_flush (pcol.c's flush() in the grid build; nothing in the exact build): the loaded blocks' stale boxes (gen_create_event's sprites) go into the grid in the load, not in the first step |
+| 853cbfe | play_level_start: the same after pcol_load_done |
+| be35c8f | ev_create: the debris objects (blood, flames, trails, smoke, rubble, explosion, drips) skip the four P5 Create hooks, which have no case for them |
+| f35d765 | pcol_handle: direct_pairs only for rv lists up to 8 (RV_DIRECT), as before 5e56d91 (see below) |
+
+**jtcost** (fit, modelled jtcps3 K; fa = the fully associative bound; ins = instructions K):
+
+| Commit | temple 444 | damselexpl 121 | drain 3 | drain 272 |
+|---|---|---|---|---|
+| 8b3d544 | 1,964.9 (fa 1,804.0, ins 950.0) | 802.7 (777.3) | 540.1 (520.8) | 2,004.2 (1,793.6) |
+| 5e56d91 | 945.8 (864.4, 375.7) | 799.2 | 532.6 | 1,998.1 |
+| 70a585c | 905.2 (859.4) | 793.6 | 531.6 | 2,066.6 (fa 1,796.1) |
+| 1c25975 | | 787.2 (766.1) | 534.6 | 2,060.2 (fa 1,791.1) |
+| e0ffcfe | 935.2 (879.3) | 787.2 | 531.6 | 2,043.0 |
+| be4b575 | 884.8 | 785.3 | | 1,983.3 |
+| aa29458 | 767.1 (699.0, 321.1) | 775.0 | 525.4 | 1,922.5 |
+| 853cbfe | 196.3 (197.3, 94.5) | 790.6 (764.3) | 531.0 | 1,954.0 (1,759.9) |
+| be35c8f | | 766.7 (752.6) | 525.2 | 1,896.5 (1,735.0) |
+| f35d765 | 195.1 (197.3) | 765.2 (749.5) | 524.0 (510.7) | 1,888.5 (1,733.1) |
+
+Base -> f35d765: temple 444 -90.1 %; damselexpl 121 -4.7 % (fa -3.6 %, instructions -2.6 %); drain 3 -3.0 %; drain
+272 -5.8 % (fa -3.4 %, instructions -1.6 %). The 70a585c / 853cbfe rises on drain 272 / damselexpl come with fewer
+instructions and a flat fa bound (layout). By function (base -> f35d765):
+- pin_add self 3.1 -> 2.2 K a call (damselexpl 49.5 -> 35.6 K for 16; drain 272 79.1 -> 55.5 K for 25);
+- olive_add 1.06 -> 0.67 K a call (drain 272: 40.8 -> 26.1 K for 39);
+- evnz_sync 15.1 -> 8.8 K (drain 3), 9.7 -> 6.4 K (damselexpl);
+- ev_create 17.0 -> 15.0 K (drain 272, 25 calls).
+
+Temple 444 at f35d765: pcol_handle self 122 K (412 searchers, can_pair 0 each), tlist_remove 31 K, play_step 18 K.
+
+**MAME** (SOFTFP playsh2, K; steps after step 1):
+
+| Route | mean | max | > 150 K | > 175 K | step 1 |
+|---|---|---|---|---|---|
+| c_temple_xroom3x (8b3d544 -> f35d765) | 50.5 -> 49.2 | 871.7 @443 -> 171.9 @45 | 5 -> 3 | 1 -> 0 | 763 -> 721 |
+| c_items_damselexpl | 108.4 -> 108.5 | 230.5 -> 225.9 | 29 -> 29 | 16 -> 15 | 908 -> 865 |
+| c_swamp_drain | 110.0 -> 109.5 | 525.4 -> 522.2 | 33 -> 33 | 28 -> 28 | 1,399 -> 650 |
+| default 27 routes | 67.0 -> 66.9 | | 112 -> 107 | 43 -> 38 | mean 1,289 -> 719, max 1,680 -> 1,359 |
+
+c_temple_xroom3x step 443 (the transition room's first step): 871.7 K -> 357.9 K (be4b575) -> 308.5 K (aa29458) ->
+107.3 K (f35d765). The room-change step before it (kind 4, the transition room's load: 8.77 M) takes the moved
+work: 8.95 M. The explosion routes' MAME means hardly move: these changes cut data and literal misses, which MAME does
+not count; jtcost and jtcps3 do. Default set at f35d765: 281 of 9,480 steps more than 1 % slower than base, the
+largest p5_giant's (+6.6 %, steps of about 60 K; its mean 73.3 -> 70.2 K).
+
+- **Gates (f35d765):** hostident 184 / 184 after every commit; CTALL 59 / 59 and EQUIV 88 / 88 at 853cbfe and
+  f35d765; playsh2 9,701 / 9,701 in the SOFTFP and default builds at 853cbfe and f35d765; game_check p4_exit559 0 px
+  (records 30, 150, 300); tests/game links with .bss ending at 0x020768a0 (38,752 B of stack). .bss: evkm / onzb
+  +960 B, pa_* +12 B, nc_ko 8 B (.data); the pin_ext template (200 B) is gone outside PLAY_STATS builds.
+- **Measured, not kept:** 5e56d91 alone made the oSolid family eligible for direct_pairs: its scan of the pending
+  destroyed entries (has_col both ways per pend entry, per block) made a level's first step slower (MAME p5_l4 step 1
+  1.40 M -> 2.54 M, p5_caveman 1.16 M -> 1.36 M); f35d765 keeps direct_pairs to the old bound (p5_l4 1.36 M).
+- **Measured, not kept:** can_pair's answer kept for the last object while ocnt does not change (a generation
+  bumped by obj_count): temple 444 195.1 -> 137.3 K modelled, MAME step 443 107.3 -> 53.8 K, but the default set's
+  steps got slower (MAME: 1,288 of 9,480 steps more than 1 % slower against base, 281 without it; damselexpl 121
+  +2.7 K modelled): the check and the generation's store on every can_pair and count change. Step 443 is under the
+  budget without it.
+- **What is left (measured, drain 272 at 853cbfe):** a debris creation costs about 11.5 K modelled: pin_add 5.9 K
+  inclusive (self 2.3 K: 44 + 16 zero stores and the literal pool; olink 1.4 K; pcol_added 0.9 K, entry_clear half
+  of it; ta_on 0.45 K; grid_dirty 0.3 K), pcol_create 4.1 K (cupdate 3.0 K: the box and pgrid_put; mark_e 0.7 K),
+  ev_create 2.1 K (0.8 K of it the hooks be35c8f skips for debris). The rest of pin_add is one data miss in each of
+  about eight per-instance link arrays (pw_inext, iprev, pw_anext, aprev, pw_ntnext, ntprev, taprev, pw_tanext,
+  pw_seq, pw_ord, gcell, gond): a per-instance link record would be one line, but every list walk would read it.
+- **Not done:** the detritus Steps' soft-float (target 3: oDrip's y / yVel adds, oBlood's vel_parts twice and its
+  left / right queries, oBloodTrail).
