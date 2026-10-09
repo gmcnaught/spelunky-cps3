@@ -2757,6 +2757,7 @@ int (collision_point_any_at)(int i, int32_t dx, int32_t dy, int obj)
     return (collision_point_any)(PTOD(PW.in[i].x) + dx, PTOD(PW.in[i].y) + dy, obj, 0, NOONE);
 }
 
+int16_t pw_walk_clear_i = -1;                     /* (pw_walk_clear; the exact build: never set) */
 #ifndef PCOL_EXACT
 /* collision_point_any_at(i, 0, 0, obj) for a static family (xf_of[obj] >= 0) on its query q of i's position: its
    static-family branch (the macro's pw_noinst_point test first; pcol_quiet: the function itself) */
@@ -2825,12 +2826,57 @@ int pw_piece_fast(int i)
    are done, nothing moves between the tests): < 0 (no oSolid instance) every line is 0; 1 with gfar 0 and that
    region inside the grid with no oSolid entry reaching its cells (gfull and gother 0: no block, no other entry),
    each line's ik_cells (its cells are among them) answers 0, sure. 1: the four answers are 0; 0: the caller tests */
+/* moveTo_walk's two pixel walks (pscript.c: a mover outside the character, oSolid and oPlatform families, whole bounds
+   [l, r) x [t, b) from ibounds, whole steps xv, yv not both 0) neither hit, answered at once before them, where the
+   first walk's first line (ik_line) makes pcol_query(oSolid): the x walk's vertical lines at x = r .. r + xv - 1 (or
+   l - 1 down to l + xv) over y between t + 5 and b - 1, the y walk's horizontal lines at y = b .. b + yv - 1 (or t - 1
+   down to t + yv) over x between l + xv and r + xv - 1 (the bounds after a full x walk), and the bounce tests at the
+   end (pw_detritus_clear's lines at the moved bounds, lbo < rbo, tbo < bbo) all lie in the box of those ranges; with
+   pcol_query < 0 every line is 0, and with 1, gfar 0 and the box inside the grid with gfull and gother 0 in all its
+   cells every line's ik_cells answers 0, sure (solid_walk_any then returns n). The walks write no oSolid entry (the
+   mover is not one), so the cells stay so through them and the moved instance's bounce tests (pw_walk_clear_i:
+   pw_detritus_clear of i next, nothing else between) */
+int pw_walk_clear(int i, int32_t l, int32_t t, int32_t r, int32_t b, int32_t xv, int32_t yv)
+{
+    int32_t x0, x1, y0, y1, a, cx, cy;
+    int q = pcol_query(OBJ_oSolid);
+    pw_walk_clear_i = -1;
+    if (q < 0) return 1;
+    if (q != 1) return 0;
+    grid_flush();
+    if (gfar) return 0;
+    /* x: the x walk's lines (r .. r + xv - 1, or l + xv .. l - 1), the y walk's (l + xv, r + xv - 1), the bounce
+       lines at the moved bounds (l + xv - 1, r + xv); y: the x walk's (t + 5, b - 1), the y walk's (b .. b + yv - 1,
+       or t + yv .. t - 1), the bounce lines (t + yv - 1, b + yv). Each pair in either order */
+    x0 = x1 = l + xv - 1;
+#define PWC_ACC(lo, hi, v) do { a = (v); if (a < lo) lo = a; if (a > hi) hi = a; } while (0)
+    PWC_ACC(x0, x1, r + xv);
+    PWC_ACC(x0, x1, l + xv);
+    PWC_ACC(x0, x1, r + xv - 1);
+    if (xv > 0) { PWC_ACC(x0, x1, r); PWC_ACC(x0, x1, r + xv - 1); }
+    if (xv < 0) { PWC_ACC(x0, x1, l + xv); PWC_ACC(x0, x1, l - 1); }
+    y0 = y1 = t + yv - 1;
+    PWC_ACC(y0, y1, b + yv);
+    PWC_ACC(y0, y1, t + 5);
+    PWC_ACC(y0, y1, b - 1);
+    if (yv > 0) { PWC_ACC(y0, y1, b); PWC_ACC(y0, y1, b + yv - 1); }
+    if (yv < 0) { PWC_ACC(y0, y1, t + yv); PWC_ACC(y0, y1, t - 1); }
+#undef PWC_ACC
+    if (x0 < 0 || y0 < 0 || x1 >= GRID_W * 16 || y1 >= GRID_H * 16) return 0;
+    for (cy = y0 >> 4; cy <= y1 >> 4; cy++)
+        for (cx = x0 >> 4; cx <= x1 >> 4; cx++)
+            if (gfull[cy][cx] || gother[cy][cx]) return 0;
+    pw_walk_clear_i = (int16_t)i;
+    return 1;
+}
+
 int pw_detritus_clear(int i)
 {
     const struct pin *p = &PW.in[i];
     const struct pin_ext *e;
     int32_t x, y, l, t, r, b, cx, cy, cx1, cy1;
-    int q;
+    int q, known = pw_walk_clear_i == i;
+    pw_walk_clear_i = -1;
     if (!pin_xy_int_p(p, &x, &y)) return 0;
     e = PE(p);
     if (e->lbo >= e->rbo || e->tbo >= e->bbo) return 0;
@@ -2839,6 +2885,7 @@ int pw_detritus_clear(int i)
     if (q != 1) return 0;
     grid_flush();
     if (gfar) return 0;
+    if (known) return 1;                          /* (pw_walk_clear's cells hold this region: unchanged since) */
     l = x + e->lbo - 1; r = x + e->rbo; t = y + e->tbo - 1; b = y + e->bbo;
     if (l < 0 || t < 0 || r >= GRID_W * 16 || b >= GRID_H * 16) return 0;
     cx1 = r >> 4; cy1 = b >> 4;

@@ -477,7 +477,8 @@ void moveTo_walk(int i, num a0, num a1)
     pos mtXPrev = p->x, mtYPrev = p->y;
     struct vparts vx, vy;
     int32_t xv = 0, yv = 0, il, it, ir, ib, k, n;
-    int moved = 0;
+    int moved = 0, clear = 0;
+    pw_walk_clear_i = -1;
     if (is_character(i) || obj_is(p->obj, OBJ_oSolid) || obj_is(p->obj, OBJ_oPlatform) ||
         !ibounds(i, &il, &it, &ir, &ib)) {
         moveTo(i, a0, a1, 0, 0);
@@ -492,9 +493,19 @@ void moveTo_walk(int i, num a0, num a1)
     if (vx.neg) xv = -xv;
     if (vy.neg) yv = -yv;
     NOPS(10);
+    /* no oSolid entry near either walk (pworld.c pw_walk_clear, at the first walk's first query): each walks to its end */
+#ifndef PCOL_EXACT
+    if (xv != 0 || yv != 0) clear = pw_walk_clear(i, il, it, ir, ib, xv, yv);
+#endif
     if (xv != 0) {                                                 /* moveTo's x walk */
         n = xv > 0 ? xv : -xv;
-        k = solid_walk_any(xv > 0 ? ir : il - 1, xv, n, it + 5, ib - 1, i * 2);   /* (the vlines) */
+        k = clear ? n : solid_walk_any(xv > 0 ? ir : il - 1, xv, n, it + 5, ib - 1, i * 2);   /* (the vlines) */
+#ifdef PLAY_STATS
+        if (clear && solid_walk_any(xv > 0 ? ir : il - 1, xv, n, it + 5, ib - 1, i * 2) != n) {
+            fprintf(stderr, "pw_walk_clear: the x walk hits (instance %d)\n", i);
+            abort();
+        }
+#endif
         if (k) {
             int32_t nx = p->ix + (xv > 0 ? k : -k);
             PIN_SETX_RAW(p, nx > -32768 && nx < 32768 ? fint15(nx) : PI(nx));
@@ -505,7 +516,13 @@ void moveTo_walk(int i, num a0, num a1)
     if (yv != 0) {
         if (ibounds(i, &il, &it, &ir, &ib)) {                      /* moveTo's y walk */
             n = yv > 0 ? yv : -yv;
-            k = solid_walk_any(yv > 0 ? ib : it - 1, yv, n, il, ir - 1, i * 2 + 1);   /* (the hlines) */
+            k = clear ? n : solid_walk_any(yv > 0 ? ib : it - 1, yv, n, il, ir - 1, i * 2 + 1);   /* (the hlines) */
+#ifdef PLAY_STATS
+            if (clear && solid_walk_any(yv > 0 ? ib : it - 1, yv, n, il, ir - 1, i * 2 + 1) != n) {
+                fprintf(stderr, "pw_walk_clear: the y walk hits (instance %d)\n", i);
+                abort();
+            }
+#endif
             if (k) {
                 int32_t ny = p->iy + (yv > 0 ? k : -k);
                 PIN_SETY_RAW(p, ny > -32768 && ny < 32768 ? fint15(ny) : PI(ny));

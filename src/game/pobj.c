@@ -1019,7 +1019,10 @@ int detritus_step(int i)
     if (NGT(PE(p)->life, N(0))) PE(p)->life -= N(1);
     else pin_destroy(i);
     moveTo_walk(i, PE(p)->xVel, PE(p)->yVel);
-    if (collision_point_any_at(i, 0, -4, OBJ_oLava)) ptemple_world(1040, i, 0);
+    if (collision_point_any_at(i, 0, -4, OBJ_oLava)) {
+        pw_walk_clear_i = -1;                     /* (the bounce tests' cells: pw_detritus_clear looks again) */
+        ptemple_world(1040, i, 0);
+    }
     if (PE(p)->bounce) {
         if (CLT(PE(p)->yVel, 6, CMPC_L_6)) PE(p)->yVel += PE(p)->grav;
 #if !defined(PCOL_EXACT) && !defined(NUM_IS_CLASS)
