@@ -1900,6 +1900,20 @@ void pcol_added(int i)
 void pcol_create(int i)
 {
     mark_e(i);
+#ifndef PCOL_EXACT
+    /* in play, a member of an object no query has asked for this room: mark_e put it on the deferred list (stale),
+       where CollisionInsert waits with its later marks; it goes in when it is brought up to date (ask_fam,
+       flush_pairable, a touch, rebuild_all: cupdate inserts an entry not in the grid). The deferral's argument
+       (EQUIV.md): no answer reads such an entry's grid rectangle before then, and the grid orders hits by creation
+       number, not by when an entry went in */
+    if (!gmode) {
+        int oi = oinfo[PW.in[i].obj];
+        if ((oi & (OI_MEMBER | OI_DYN | OI_SOLID)) && !(oi & OI_ASKED)) {
+            if (oi & OI_F08) tlist_front(i);
+            return;
+        }
+    }
+#endif
     ef[i] &= (uint8_t)~EF_STALE;
     cupdate(i);                                   /* Compute_BoundingBox(true) */
     if (oinfo[PW.in[i].obj] & OI_F08) tlist_front(i);
