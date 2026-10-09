@@ -1066,6 +1066,7 @@ static int ebbox_int(int e, int32_t *ib)
 }
 
 static int fbits_pm1(float f) { union { float f; uint32_t u; } v; v.f = f; return (v.u & 0x7fffffffu) == 0x3f800000u; }
+static uint32_t fbits_u(float f) { union { float f; uint32_t u; } v; v.f = f; return v.u; }
 
 /* CInstance::Compute_BoundingBox (non-compatibility mode), normalized (CollisionUpdate): o = l, t, r, b */
 static void ebbox(int e, float dx, float dy, float *o);
@@ -1132,8 +1133,9 @@ static void ebbox(int e, float dx, float dy, float *o)
         x = (float)g->x;
         y = (float)g->y;
     }
-    x = x + dx;
-    y = y + dy;
+    /* x + dx: x itself when dx is +0 and x is not -0 (the common dx = 0; -0 + +0 is +0) */
+    if (fbits_u(dx) != 0 || fbits_u(x) == 0x80000000u) x = x + dx;
+    if (fbits_u(dy) != 0 || fbits_u(y) == 0x80000000u) y = y + dy;
     if (s < 0) {
         o[0] = o[2] = x;
         o[1] = o[3] = y;
@@ -1142,29 +1144,33 @@ static void ebbox(int e, float dx, float dy, float *o)
     c = &gsprcol[s];
     if (ang == 0) {
         float l, r, t, b;
-        /* fmadd in the runner (s registers): one rounding each */
-        w = (float)(c->r - c->l) + 1.0f;
-        h = (float)(c->b - c->t) + 1.0f;
-        /* a scale of +-1 (its bits): fmaf(a, +-1, c) is one rounding of the exact +-a + c, the float sum c + (+-a)
-           (the software fmaf is about 700 jtcps3 clocks; debris and most sprites have scale 1) */
+        /* fmadd in the runner (s registers): one rounding each. w, h: (float)(r - l) + 1.0f, the exact small
+           integer (kf(ikey(v)) is (float)v for |v| < 2^24, without the soft-float conversion) */
+        w = kf(ikey(c->r - c->l + 1));
+        h = kf(ikey(c->b - c->t + 1));
+        /* a scale of +-1 (its bits; its sign is its sign bit): fmaf(a, +-1, c) is one rounding of the exact +-a + c,
+           the float sum c + (+-a) (the software fmaf is about 700 jtcps3 clocks; debris and most sprites have scale
+           1). a0, a1: the small integers' floats (exact), negated (the sign bit) for -1 */
         if (fbits_pm1(xs)) {
-            float a0 = (float)(c->l - c->xo);
-            l = x + (xs > 0 ? a0 : -a0);
-            r = l + (xs > 0 ? w : -w);
+            float a0 = kf(ikey(c->l - c->xo));
+            int neg = fbits_u(xs) >> 31;
+            l = x + (neg ? -a0 : a0);
+            r = l + (neg ? -w : w);
         } else {
             l = fmaf((float)(c->l - c->xo), xs, x);
             r = fmaf(w, xs, l);
         }
         if (fbits_pm1(ys)) {
-            float a1 = (float)(c->t - c->yo);
-            t = y + (ys > 0 ? a1 : -a1);
-            b = t + (ys > 0 ? h : -h);
+            float a1 = kf(ikey(c->t - c->yo));
+            int neg = fbits_u(ys) >> 31;
+            t = y + (neg ? -a1 : a1);
+            b = t + (neg ? -h : h);
         } else {
             t = fmaf((float)(c->t - c->yo), ys, y);
             b = fmaf(h, ys, t);
         }
-        if (l > r) { float q = l; l = r; r = q; }
-        if (t > b) { float q = t; t = b; b = q; }
+        if (FGT(l, r)) { float q = l; l = r; r = q; }      /* (the keys: the float order, no soft-float) */
+        if (FGT(t, b)) { float q = t; t = b; b = q; }
         o[0] = l; o[1] = t; o[2] = r; o[3] = b;
     } else {
         /* rotated: the corners (A, C), (B, D) of the box around the origin, rotated by image_angle */

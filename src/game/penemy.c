@@ -1468,27 +1468,40 @@ static int line_solid(int s, double x1, double y1, double x2, double y2)
     if (q == 2) pcol_touch(s);
     return pw_test_line(s, x1, y1, x2, y2, 1);
 }
+/* (line_solid_k first: the same line on ints) */
 static int cct(int s, int d)
 {
     double lb, tb, rb, bb;
+    const struct pin_ext *e = PE(&PX(pl()));
+    int r = line_solid_k(s, e->lbo, e->bbo + d - 1, e->rbo - 1, e->bbo + d - 1);
+    if (r >= 0) return r;
     calcBounds(pl(), &lb, &tb, &rb, &bb);
     return line_solid(s, dround(lb), dround(bb + d - 1), dround(rb - 1), dround(bb + d - 1));
 }
 static int ccr(int s, int d)
 {
     double lb, tb, rb, bb;
+    const struct pin_ext *e = PE(&PX(pl()));
+    int r = line_solid_k(s, e->lbo - d, e->tbo, e->lbo - d, e->bbo - 1);
+    if (r >= 0) return r;
     calcBounds(pl(), &lb, &tb, &rb, &bb);
     return line_solid(s, dround(lb - d), dround(tb), dround(lb - d), dround(bb - 1));
 }
 static int ccl(int s, int d)
 {
     double lb, tb, rb, bb;
+    const struct pin_ext *e = PE(&PX(pl()));
+    int r = line_solid_k(s, e->rbo + d - 1, e->tbo, e->rbo + d - 1, e->bbo - 1);
+    if (r >= 0) return r;
     calcBounds(pl(), &lb, &tb, &rb, &bb);
     return line_solid(s, dround(rb + d - 1), dround(tb), dround(rb + d - 1), dround(bb - 1));
 }
 static int ccb(int s, int d)
 {
     double lb, tb, rb, bb;
+    const struct pin_ext *e = PE(&PX(pl()));
+    int r = line_solid_k(s, e->lbo, e->tbo - d, e->rbo - 1, e->tbo - d);
+    if (r >= 0) return r;
     calcBounds(pl(), &lb, &tb, &rb, &bb);
     return line_solid(s, dround(lb), dround(tb - d), dround(rb - 1), dround(tb - d));
 }

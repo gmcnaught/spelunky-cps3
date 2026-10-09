@@ -1031,6 +1031,30 @@ int gcmp_fi(float x, int32_t v)
     return (b.u >> 31) ? -r : r;
 }
 
+/* pnum.h pfr: gcmp_fi's scaling (the mantissa times 2^(e - 118) has floor(|x|) in its high word and the fraction
+   times 2^32 in its low word, for biased exponents 126 .. 148); a negative x with a fraction is -floor(|x|) - 1 with
+   the fraction 1 - l / 2^32 */
+int pfr(float x, int32_t *o)
+{
+    union { float f; uint32_t u; } b;
+    uint32_t e, l;
+    uint64_t p;
+    int32_t f;
+    int c;
+    b.f = x;
+    e = (b.u >> 23) & 0xffu;
+    if (e < 126) { *o = 0; return 1; }
+    if (e > 148) return 0;
+    p = (uint64_t)((b.u & 0x7fffffu) | 0x800000u) * ffix32_mul[e - 118];
+    f = (int32_t)(uint32_t)(p >> 32);
+    l = (uint32_t)p;
+    if (!(b.u >> 31)) c = l == 0 ? 0 : l < 0x80000000u ? 1 : l == 0x80000000u ? 2 : 3;
+    else if (l == 0) { f = -f; c = 0; }
+    else { f = -f - 1; c = l > 0x80000000u ? 1 : l == 0x80000000u ? 2 : 3; }
+    *o = f * 4 + c;
+    return 1;
+}
+
 /* PLTI(x, lo) || PGTI(x, hi) with x decoded once: gcmp_fi's steps for both bounds (a negative x compares |x| with
    -lo and -hi, the signs swapped); either bound outside gcmp_fi's integer range, or x outside its exponents: the two
    gcmp_fi calls */
@@ -1187,6 +1211,21 @@ int pin_box_outside(int i, int w, int h)
     int32_t q[4];
     double l, t, r, b;
     if (pin_ibox(i, q)) return q[2] < 0 || q[0] > w || q[3] < 0 || q[1] > h;
+    {   /* BB_DBL at scales +-1, angle 0 (debris at a fractional position): bbox_dbl's sides are x + ax, x + ax + cw and
+           y + ay, y + ay + ch, exact doubles (|x| < 2^22, small ints), so each compare is x against an int: on pfr's
+           v = 4 floor(x) + class, x < K is v < 4K and x > K is v > 4K */
+        const struct pin *p = &PW.in[i];
+        int32_t vx, vy, ax, ay;
+        int xs, ys;
+        if (p->bbk == BB_DBL && fzero(p->angle) && (xs = funit(p->xscale)) != 0 && (ys = funit(p->yscale)) != 0 &&
+            pfr(p->x, &vx) && pfr(p->y, &vy)) {
+            const struct gsprcol *c = &gsprcol[spr_of(p)];
+            ax = xs > 0 ? c->l - c->xo : -(c->r + 1 - c->xo);
+            ay = ys > 0 ? c->t - c->yo : -(c->b + 1 - c->yo);
+            return vx < 4 * -(ax + (c->r - c->l + 1)) || vx > 4 * (w - ax) || vy < 4 * -(ay + (c->b - c->t + 1)) ||
+                   vy > 4 * (h - ay);
+        }
+    }
     if (!pin_bbox(i, &l, &t, &r, &b)) return 0;
     return r < 0 || l > w || b < 0 || t > h;
 }
@@ -4319,6 +4358,20 @@ int pw_test_line(int k, double x1, double y1, double x2, double y2, int prec)
     lq_init(&c.lq, x1, y1, x2, y2);
     c.prec = prec;
     c.x1 = x1; c.y1 = y1; c.x2 = x2; c.y2 = y2; c.dbl = 1;
+    return line_hit(k, &c);
+}
+
+/* pw_test_line with whole ends, |v| < 30000 (lq_init's whole numbers: the same integer query; line_hit_f makes the
+   doubles from the ints when it needs them) */
+int pw_test_line_i(int k, int32_t x1, int32_t y1, int32_t x2, int32_t y2, int prec)
+{
+    struct qctx c;
+    c.lq.iok = 1;
+    c.lq.lx = x1 < x2 ? x1 : x2; c.lq.hx = x1 < x2 ? x2 : x1;
+    c.lq.ly = y1 < y2 ? y1 : y2; c.lq.hy = y1 < y2 ? y2 : y1;
+    c.lq.axis = x1 == x2 || y1 == y2;
+    c.prec = prec;
+    c.ix1 = x1; c.iy1 = y1; c.ix2 = x2; c.iy2 = y2; c.dbl = 0;
     return line_hit(k, &c);
 }
 

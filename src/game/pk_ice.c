@@ -1007,8 +1007,10 @@ static void dark_destroy(int i)                                    /* objects/oD
 static int char_on_top(int s)
 {
     double lb, tb, rb, bb;
-    int c = pl();
+    int c = pl(), r;
     if (c == NOONE) return 0;
+    r = line_solid_k(s, PE(&PX(c))->lbo, PE(&PX(c))->bbo, PE(&PX(c))->rbo - 1, PE(&PX(c))->bbo);   /* (ints first) */
+    if (r >= 0) return r;
     calcBounds(c, &lb, &tb, &rb, &bb);
     {   /* as penemy.c line_solid: the object's query, then s's own test */
         int q = pcol_query(PX(s).obj);

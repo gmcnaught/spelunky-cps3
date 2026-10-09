@@ -13,8 +13,8 @@
  * any room size works). An entry is in the cell of its rectangle's left / top corner when it spans at most two
  * cells each way, else on the big list. A search reads the cells from one left / above its rectangle's left / top
  * cell to its right / bottom cell, and the big list; the hits are sorted newest first (insertion sort on the
- * creation number) and called back. Cell coordinates: integer rectangles (struct rbr w) by shifts; float ones by a
- * binary search of the cell boundaries' keys (no soft-float).
+ * creation number) and called back. Cell coordinates: integer rectangles (struct rbr w) by shifts; float ones by
+ * the floor of the key's float (pg_kcell; a binary search of the cell boundaries' keys out of its range; no soft-float).
  */
 #ifndef PCOL_EXACT
 
@@ -50,6 +50,25 @@ static int pg_bsearch(rk k, const rk *bd, int n)
     return lo;
 }
 
+/* pg_bsearch(k, bd, n) without the search: for c >= 1, bd[c] = ikey(c << PCOL_GRID_SHIFT) <= k is (float)(c << s) <= v
+   (the keys order as the floats), that is c << s <= floor(v); the last such c is floor(v) >> s, 0 when floor(v) is
+   below the first boundary, clamped to n - 1. s_kfloor's range |v| < 2^15, else the search. PLAY_STATS builds
+   compare with the search */
+static int pg_kcell(rk k, const rk *bd, int n)
+{
+    int32_t f;
+    int c;
+    if (!s_kfloor(k, 0, &f)) return pg_bsearch(k, bd, n);
+    c = f < (1 << PCOL_GRID_SHIFT) ? 0 : (f >> PCOL_GRID_SHIFT) >= n ? n - 1 : (int)(f >> PCOL_GRID_SHIFT);
+#ifdef PLAY_STATS
+    if (c != pg_bsearch(k, bd, n)) {
+        fprintf(stderr, "pg_kcell: %d, the search %d\n", c, pg_bsearch(k, bd, n));
+        abort();
+    }
+#endif
+    return c;
+}
+
 /* the cell span of a rectangle (x0, y0, x1, y1), clamped to the grid */
 static void pg_cells(const rk *r, int w, int *c)
 {
@@ -57,8 +76,8 @@ static void pg_cells(const rk *r, int w, int *c)
         c[0] = pg_clampx(r[0] >> PCOL_GRID_SHIFT); c[1] = pg_clampy(r[1] >> PCOL_GRID_SHIFT);
         c[2] = pg_clampx(r[2] >> PCOL_GRID_SHIFT); c[3] = pg_clampy(r[3] >> PCOL_GRID_SHIFT);
     } else {
-        c[0] = pg_bsearch(r[0], pg_bx, PGRID_W); c[1] = pg_bsearch(r[1], pg_by, PGRID_H);
-        c[2] = pg_bsearch(r[2], pg_bx, PGRID_W); c[3] = pg_bsearch(r[3], pg_by, PGRID_H);
+        c[0] = pg_kcell(r[0], pg_bx, PGRID_W); c[1] = pg_kcell(r[1], pg_by, PGRID_H);
+        c[2] = pg_kcell(r[2], pg_bx, PGRID_W); c[3] = pg_kcell(r[3], pg_by, PGRID_H);
     }
 }
 
@@ -138,8 +157,8 @@ static void pgrid_search(void)
         x1 = pg_clampx(a2 >> PCOL_GRID_SHIFT); y1 = pg_clampy(a3 >> PCOL_GRID_SHIFT);
     } else {
         if (!s_kv) s_keys();
-        x0 = pg_bsearch(s_k[0], pg_bx, PGRID_W); y0 = pg_bsearch(s_k[1], pg_by, PGRID_H);
-        x1 = pg_bsearch(s_k[2], pg_bx, PGRID_W); y1 = pg_bsearch(s_k[3], pg_by, PGRID_H);
+        x0 = pg_kcell(s_k[0], pg_bx, PGRID_W); y0 = pg_kcell(s_k[1], pg_by, PGRID_H);
+        x1 = pg_kcell(s_k[2], pg_bx, PGRID_W); y1 = pg_kcell(s_k[3], pg_by, PGRID_H);
     }
     if (x0 > 0) x0--;
     if (y0 > 0) y0--;

@@ -216,6 +216,13 @@ static void draw_and_view(void)
 }
 
 static uint32_t fbits(float f) { union { float f; uint32_t u; } v; v.f = f; return v.u; }
+/* anim_one's float tests without soft-float: f a normal number or +-0 (then f * 1.0f is f), and the compares
+   a >= b, a < 0 on the bits (the signed-magnitude order mapped to two's complement, -0 as +0) when neither is a NaN */
+static int fnormal0(float f) { uint32_t e = fbits(f) & 0x7f800000u; return (e != 0 && e != 0x7f800000u) || (fbits(f) << 1) == 0; }
+static int32_t fkey_of(float f) { int32_t b = (int32_t)fbits(f); return b >= 0 ? b : (int32_t)((uint32_t)b ^ 0x7fffffffu) + 1; }
+static int fnan(float f) { return (fbits(f) & 0x7fffffffu) > 0x7f800000u; }
+static int fkey_ge(float a, float b) { return fnan(a) || fnan(b) ? a >= b : fkey_of(a) >= fkey_of(b); }
+static int fkey_lt0(float a) { return fnan(a) ? a < 0 : fkey_of(a) < 0; }
 
 /* image_index += image_speed x the sprite's speed (pspr_anim: speed / 30.0f for type 0, the frame count, as the
    expressions computed them); a one-frame sprite at image_index +0 advancing exactly 1 (image_speed 1, speed 1)
@@ -244,11 +251,11 @@ static int anim_one(int k)
             pw_ta_off(k);                                /* nothing to do until a field changes */
             return 0;
         }
-        pin_setimg(p, p->img + p->ispd * sp);
-        if (p->img >= fr) {
+        pin_setimg(p, p->img + (fbits(sp) == 0x3f800000u && fnormal0(p->ispd) ? p->ispd : p->ispd * sp));
+        if (fkey_ge(p->img, fr)) {
             pin_setimg(p, p->img - fr);
             if (pobj[p->obj].ev & EV_ANIMEND) { ev_animend(k); pcol_event_done(k); return 1; }
-        } else if (p->img < 0) {
+        } else if (fkey_lt0(p->img)) {
             pin_setimg(p, p->img + fr);
             if (pobj[p->obj].ev & EV_ANIMEND) { ev_animend(k); pcol_event_done(k); return 1; }
         }
@@ -493,7 +500,10 @@ static void gamepad_step(uint16_t m)
 static int16_t dl_i[DL_MAX];                      /* the instances the pass deactivated, in that order */
 static int dl_n;
 static uint8_t dbits[(OBJ_COUNT + 7) / 8], dbits_ok;   /* the candidate objects */
-#define DCAND(o) (dbits[(o) >> 3] & (1 << ((o) & 7)))
+/* the bit by a table: GCC compiled 1 << (o & 7) as a variable right shift of the byte (libgcc __ashrsi3 a call, one
+   per instance of the pass) */
+static const uint8_t dbit8[8] = { 1, 2, 4, 8, 16, 32, 64, 128 };
+#define DCAND(o) (dbits[(o) >> 3] & dbit8[(o) & 7])
 
 static void dcand_init(void)
 {

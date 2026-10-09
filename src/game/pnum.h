@@ -255,6 +255,19 @@ int gcmp_cold(double a, double b);                  /* pworld.c */
 #define PGTI(x, v) (gcmp_fi((x), (v)) > 0)
 int gout_fi(float x, int32_t lo, int32_t hi);       /* pworld.c: PLTI(x, lo) || PGTI(x, hi), x decoded once */
 #define POUTI(x, lo, hi) gout_fi((x), (lo), (hi))
+/* dround((double)x + k) for a position x (calculateCollisionBounds' sides plus the scripts' offsets, rounded) in two
+   steps without soft-float: pfr(x, &v) packs floor(x) * 4 + the class of x - floor(x) (0: zero, 1: below 1/2, 2: 1/2,
+   3: above); 0 (nothing set) when |x| >= 2^22 or x is not finite. pfr_k(v, k) is then dround((double)x + k) for
+   |k| < 2^20: x + k is exact as a double (at most 47 bits apart: x's lowest bit is >= 2^-24 when |x| >= 1/2), its
+   floor is floor(x) + k and its fraction x's; for |x| < 1/2 pfr gives 0 (floor 0, fraction 0): the rounded sum is k
+   (the double sum lies strictly between k - 1/2 and k + 1/2) */
+int pfr(float x, int32_t *o);                        /* pworld.c */
+static inline int32_t pfr_k(int32_t v, int32_t k)
+{
+    int32_t f = (v >> 2) + k;
+    int c = v & 3;
+    return f + (c == 3 || (c == 2 && (f & 1)));
+}
 #ifdef NUM_IS_CLASS
 static inline int gcmp_n(num a, num b) { play_dcount.cmp++; return gcmp_dd(a.v, b.v); }
 #else

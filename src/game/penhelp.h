@@ -4,6 +4,7 @@
 #ifndef PENHELP_H
 #define PENHELP_H
 #include "pint.h"
+#include "pcol.h"                               /* line_solid_k: pcol_query, pcol_touch */
 
 /* plain static, as the per-file copies were: `inline` changes GCC's inlining choices in the callers (measured on the
    SH-2 objects); unused: each file uses some of them */
@@ -49,6 +50,27 @@ PENHELP int isCollisionSolid(int i)
     }
     calcBounds(i, &lb, &tb, &rb, &bb);
     return collision_rect_any(lb, tb, rb - 1, bb - 1, OBJ_oSolid, 1, i);
+}
+
+/* isCollisionCharacterTop / Right / Left / Bottom's line (penemy.c cct .., pk_ice.c char_on_top) against the solid s
+   on ints: the character's x, y through pfr (pnum.h), the ends x + kx1, y + ky1, x + kx2, y + ky2 rounded (pfr_k: the
+   scripts' dround of calculateCollisionBounds' sides plus whole offsets), then the object's query as collision_line_p
+   makes it and s's own line test (pw_test_line_i: the ends are whole, |v| < 30000). -1, with nothing done, when x or y
+   is outside pfr's range or an end outside that one: the caller's doubles then */
+PENHELP int line_solid_k(int s, int32_t kx1, int32_t ky1, int32_t kx2, int32_t ky2)
+{
+    const struct pin *p = &PX(pl());
+    int32_t fx, fy, x1, y1, x2, y2;
+    int q;
+    if (!pfr(p->x, &fx) || !pfr(p->y, &fy)) return -1;
+    x1 = pfr_k(fx, kx1); y1 = pfr_k(fy, ky1); x2 = pfr_k(fx, kx2); y2 = pfr_k(fy, ky2);
+    if (x1 <= -30000 || x1 >= 30000 || y1 <= -30000 || y1 >= 30000 || x2 <= -30000 || x2 >= 30000 || y2 <= -30000 ||
+        y2 >= 30000)
+        return -1;
+    q = pcol_query(PX(s).obj);
+    if (q < 0) return 0;
+    if (q == 2) pcol_touch(s);
+    return pw_test_line_i(s, x1, y1, x2, y2, 1);
 }
 
 /* the jar's speed test (oJar / oSkull Step :104 / :148's second operand) before its collision_rectangle in the grid

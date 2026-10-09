@@ -66,11 +66,25 @@ static int solid_line_r(int32_t x1, int32_t y1, int32_t x2, int32_t y2, int i)
     return r;
 }
 
+/* the scripts' sides at a fractional position without the doubles: pfr of x and y (pnum.h); calculateCollisionBounds'
+   sides x + lbo etc. and the scripts' whole offsets from them are exact as doubles, so dround(lb - d) is
+   pfr_k(fx, lbo - d), dround(bb - 1) pfr_k(fy, bbo - 1), and so on */
+static int pfr_xy(int i, int32_t *fx, int32_t *fy)
+{
+    return pfr(PX(i).x, fx) && pfr(PX(i).y, fy);
+}
+
 int isCollisionLeft(int i, int d)
 {
     double lb, tb, rb, bb;
+    int32_t fx, fy, a;
     int r = ik_side(i, IK_LEFT, d);
     if (r >= 0) return r;
+    if (pfr_xy(i, &fx, &fy)) {
+        const struct pin_ext *e = PE(&PX(i));
+        a = pfr_k(fx, e->lbo - d);
+        return solid_line_r(a, pfr_k(fy, e->tbo), a, pfr_k(fy, e->bbo - 1), i);
+    }
     calcBounds(i, &lb, &tb, &rb, &bb);
     return solid_line_r(dround(lb - d), dround(tb), dround(lb - d), dround(bb - 1), i);
 }
@@ -78,8 +92,14 @@ int isCollisionLeft(int i, int d)
 int isCollisionRight(int i, int d)
 {
     double lb, tb, rb, bb;
+    int32_t fx, fy, a;
     int r = ik_side(i, IK_RIGHT, d);
     if (r >= 0) return r;
+    if (pfr_xy(i, &fx, &fy)) {
+        const struct pin_ext *e = PE(&PX(i));
+        a = pfr_k(fx, e->rbo + d - 1);
+        return solid_line_r(a, pfr_k(fy, e->tbo), a, pfr_k(fy, e->bbo - 1), i);
+    }
     calcBounds(i, &lb, &tb, &rb, &bb);
     return solid_line_r(dround(rb + d - 1), dround(tb), dround(rb + d - 1), dround(bb - 1), i);
 }
@@ -87,8 +107,14 @@ int isCollisionRight(int i, int d)
 int isCollisionTop(int i, int d)
 {
     double lb, tb, rb, bb;
+    int32_t fx, fy, a;
     int r = ik_side(i, IK_TOP, d);
     if (r >= 0) return r;
+    if (pfr_xy(i, &fx, &fy)) {
+        const struct pin_ext *e = PE(&PX(i));
+        a = pfr_k(fy, e->tbo - d);
+        return solid_line_r(pfr_k(fx, e->lbo), a, pfr_k(fx, e->rbo - 1), a, i);
+    }
     calcBounds(i, &lb, &tb, &rb, &bb);
     return solid_line_r(dround(lb), dround(tb - d), dround(rb - 1), dround(tb - d), i);
 }
@@ -96,8 +122,14 @@ int isCollisionTop(int i, int d)
 int isCollisionBottom(int i, int d)
 {
     double lb, tb, rb, bb;
+    int32_t fx, fy, a;
     int r = ik_side(i, IK_BOTTOM, d);
     if (r >= 0) return r;
+    if (pfr_xy(i, &fx, &fy)) {
+        const struct pin_ext *e = PE(&PX(i));
+        a = pfr_k(fy, e->bbo + d - 1);
+        return solid_line_r(pfr_k(fx, e->lbo), a, pfr_k(fx, e->rbo - 1), a, i);
+    }
     calcBounds(i, &lb, &tb, &rb, &bb);
     return solid_line_r(dround(lb), dround(bb + d - 1), dround(rb - 1), dround(bb + d - 1), i);
 }
@@ -194,8 +226,14 @@ int getIdCollisionLeft(int i, int d)
 static int anyCollisionRight(int i, int d)
 {
     double lb, tb, rb, bb;
+    int32_t fx, fy, a;
     int r = ik_side(i, IK_ANYRIGHT, d);
     if (r >= 0) return r;
+    if (pfr_xy(i, &fx, &fy)) {                    /* (a vertical line: solid_line_r's solid_vline_any) */
+        const struct pin_ext *e = PE(&PX(i));
+        a = pfr_k(fx, e->rbo + d - 1);
+        return solid_line_r(a, pfr_k(fy, e->tbo + 5), a, pfr_k(fy, e->bbo - 1), i);
+    }
     calcBounds(i, &lb, &tb, &rb, &bb);
     return collision_line_p(dround(rb + d - 1), dround(tb + 5), dround(rb + d - 1), dround(bb - 1), OBJ_oSolid, 1, i) != NOONE;
 }
@@ -203,8 +241,14 @@ static int anyCollisionRight(int i, int d)
 static int anyCollisionLeft(int i, int d)
 {
     double lb, tb, rb, bb;
+    int32_t fx, fy, a;
     int r = ik_side(i, IK_ANYLEFT, d);
     if (r >= 0) return r;
+    if (pfr_xy(i, &fx, &fy)) {
+        const struct pin_ext *e = PE(&PX(i));
+        a = pfr_k(fx, e->lbo - d);
+        return solid_line_r(a, pfr_k(fy, e->tbo + 5), a, pfr_k(fy, e->bbo - 1), i);
+    }
     calcBounds(i, &lb, &tb, &rb, &bb);
     return collision_line_p(dround(lb - d), dround(tb + 5), dround(lb - d), dround(bb - 1), OBJ_oSolid, 1, i) != NOONE;
 }

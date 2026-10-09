@@ -508,6 +508,7 @@ int pin_overlap(int a, int b);
 int pw_test_point(int k, double px, double py, int prec);
 int pw_test_rect(int k, double x1, double y1, double x2, double y2, int prec);
 int pw_test_line(int k, double x1, double y1, double x2, double y2, int prec);
+int pw_test_line_i(int k, int32_t x1, int32_t y1, int32_t x2, int32_t y2, int prec);   /* whole ends, |v| < 30000 */
 int pw_test_pair(int a, int b);                    /* Collision_Instance(a, b): bboxes and precise masks */
 /* with (obj): the matching instances when it starts, newest first except exactly two: oldest first */
 int pw_with(int obj, int16_t *out, int max);
