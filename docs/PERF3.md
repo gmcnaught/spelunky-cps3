@@ -1054,3 +1054,110 @@ no step more than 1 % slower.
 - **Not done:** scrUseItem's 6 point tests (p of a local index), pshop.c's b, ptrans.c (the transition room),
   pplayer.c's hang / door / exit-level tests on x, y copies (rare: AT_XY applies as in 141debc), genent.c (the
   generator), collision_line_p (9 sites, scripts' bounds), positions with 0 < |x| < 1/2 or |x| >= 2^13 (the doubles).
+
+### The drain and the explosion aftermath (branch aftermath, 2026-10-09, on main 52756f6)
+
+Targets (hardware .62, tests/gametime SMOOTH=1 on main: c_swamp_drain 28 of 370 pairs over two frames,
+c_items_damselexpl 15 of 308): drain steps 270-274 (check_water and the bomb's collision pass), the steps just over
+budget after explosions (drain 170-176 and 275+, damselexpl 191-202). jtcost: fit constants, plain link, modelled
+jtcps3 K ("fa": the fully associative bound; "ins": thousands of instructions); MAME: SOFTFP playsh2, steps after
+step 1.
+
+**Attribution on main (jtcost, JTC_BYOBJ, JTC_CALLERS):**
+- drain step 271 (record 272, 1,670 K): oGame 628 K (check_water 624 K inclusive: instance_place_ixy 275 K for 182
+  calls, pw_filled_xy 142 K for 358, three water Destroys 124 K: 3 drips each), the collision pass 434 K (billed to
+  oTreeBranch: explosion_solid 4 calls, its block Destroys 48 K each: rubble creations), oPlayer1 141 K, oDrip 83 K.
+  Step 273: check_water 500 K, the pass 296 K, oDrip 171 K.
+- drain step 170 (693 K): oPiranha 210 K, of it ___adddf3 457 calls and ___muldf3 229: psincos_cr's slow path
+  (sc_fast's Ziv test failed, then cr_reduce / sincos_r / sincos_r2 in soft-float). Host count: 7 such calls on the
+  drain route, at the steps of its 161-176 cluster (161, 163, 170, 174, 175, 176), 7 on c_swamp_vampkill, 116 over the
+  92 hostident runs (c_ice_alienboss 21, p7_dark 47, end_olmec 14).
+- drain step 276 (882 K): oDrip 194 K (48 drips, ~4 K each), oPlayer1 138 K (pw_release's batch 51 K), the pass 111 K.
+- damselexpl 191-205 (730-904 K): the pass (billed to oYeti) 124-399 K, oBlood 100-158 K (detritus_step ~9.7 K a
+  blood), oYeti's Step 34 K each (yeti_sight's oEnemySight creation ~16 K every sixth step), oPlayer1 75-183 K.
+  Creation is ~10 K modelled each (pin_add 5.4 K with olink / pcol_added / pa_fill, pcol_create's cupdate 2.1 K,
+  ev_create 1.2 K).
+
+| Commit | Change | Exactness |
+|---|---|---|
+| 5cf9e01 | pw_water_tests: check_water's tests of a water in one pworld.c call (filled_grid, place_ixy shared) | codegen-only |
+| 8b89641 | the clean water's tests from the cells (water_filled, water_place; pcol_place_clean / pcol_place_front) | value (message) |
+| f569289 | the clean path compact (1,008 B), water_rest(stage) for the rest | codegen-only |
+| 0ebfa0a | sc_fast2: psincos_cr / psin_cr / pcos_cr's 128-bit integer second stage before the soft-float series | value + exhaustive |
+| 10aea04 | water_place: pcol_has_whole (pcol_search_has_i's compare without writing the search state) | value (s_r dead) |
+| 35b6f97 | pcol_create: the insert of an object no query has asked for waits on the deferred list | value (0c5ff4e's) |
+| db2a31d | pin_add: the previous object's constants kept too (rubble alternates oRubble / oRubbleSmall) | value |
+| ff0bcc3 | pcol_create: defer only while the object cannot pair | performance choice |
+
+- **The clean state (8b89641):** with no grid / index / collision update pending, the water family's index not far /
+  saturated / with empty boxes, the water's box one cell with its side cells in the grid, and pcol_place_clean (the
+  family asked, a grid member, no flush to do, the water in the grid, not stale, synced), every flush is nothing and
+  each instance_place_ixy's entry changes only the test list: pcol_place_front once (the water is then the list's head;
+  tlist_front of the head relinks it to the same list). A pin_set_sprite to the sprite it has does nothing. Any test the
+  cell does not answer, or a sprite change, hands over to the old sequence from that test (water_rest). The host's
+  drain run keeps 492 of 512 waters on the clean path to the end.
+- **sc_fast2 (0ebfa0a):** R = |a| 2^188 - k P (P = pi / 2 2^188 rounded), r 2^127 = R >> 61, the Taylor series of sin
+  and cos by Horner in Q127 (32-bit limbs, dmulu, no variable shift), Ziv's test with err 2^36 / 32 units of the
+  normalized 128-bit window (bounds in the comment: sin within 2^-94 relative, cos within 8.1 2^-127). tests/sincos
+  `fast2`: every kept value against the old path at degtorad_d of every float dir in [+0, 360], dir - 1 and dir + 1:
+  3,407,609,862 arguments, 0 differ (28 min at 3 processes); `fast2rand` 3,000,000 random, 0 differ. The eight
+  arguments that took the slow path on the drain and vampkill routes are all kept.
+- **pcol_has_whole (10aea04):** s_r / s_kv are search state written by every search entry before it reads them
+  (pcol_search_i, pcol_search, pcol_search_has*, pcol_handle), so the values a test leaves are never read.
+- **Deferred creation (35b6f97, ff0bcc3):** when a deferred entry goes in changes no answer (0c5ff4e's argument);
+  host trace of the inserts: on the drain the drips and rubble never go in; on p4_bomb_drop (webs: rubble can pair)
+  35b6f97 moved the insert to the next pass (MAME step 199 170.2 -> 165.5 K, step 200 149.0 -> 152.7 K), so ff0bcc3
+  defers only while can_pair is 0 (step 200 148.5 K).
+
+**jtcost** (main 52756f6 -> 0ebfa0a -> 35b6f97 -> HEAD ff0bcc3; modelled K / fa / ins):
+
+| Step (record) | 52756f6 | 0ebfa0a | 35b6f97 | ff0bcc3 |
+|---|---|---|---|---|
+| drain 170 (171) | 693.1 / 664.3 / 228.0 | 597.7 / 563.4 / 158.3 | | 600.7 / 562.5 / 158.4 (-13.3 %) |
+| drain 271 (272) | 1,669.7 / 1,501.1 / 456.4 | 1,528.5 / 1,424.5 / 399.9 | 1,475.8 / 1,348.5 / 382.3 | 1,519.8 / 1,359.0 / 383.9 (-9.0 %; fa -9.5 %) |
+| drain 273 (274) | 1,516.3 / 1,248.7 / 422.6 | 1,369.1 / 1,177.3 / 367.7 | | 1,388.7 / 1,161.5 / 356.1 (-8.4 %) |
+| drain 276 (277) | 882.4 / 714.4 / 233.6 | | 885.5 / 794.4 / 228.4 | 899.2 / 776.0 / 228.4 (+1.9 %; ins -2.2 %) |
+| damselexpl 191 (192) | 904.3 / 907.7 / 206.0 | | | 873.3 / 878.6 / 196.9 (-3.4 %) |
+| damselexpl 199 (200) | 740.0 / 694.0 / 193.3 | | 745.3 / 688.3 / 190.0 | 744.9 / 686.2 / 190.9 (+0.7 %; fa -1.1 %) |
+
+Drain 271 by part (52756f6 -> ff0bcc3): check_water inclusive 624 -> 460 K (the water tests 417 -> 311 K: 3.4 K a
+water); pcol_create 72.5 -> 21.6 K (23 creations). 5cf9e01 alone measured +6.3 % (1,774 K: GCC kept place_ixy and
+filled_grid out of line, pw_water_tests 2.5 KB; i-misses up) and 8b89641 1,593 K; f569289 is the compact form. The
+ff0bcc3 column against 35b6f97: +1.6 K instructions (can_pair at each creation), the rest layout (fa +0.8 %).
+
+**MAME** (SOFTFP playsh2 at ff0bcc3; base 52756f6):
+
+| Route | mean (K) | max (K) | > 150 K | > 175 K |
+|---|---|---|---|---|
+| c_swamp_drain | 97.8 -> 96.2 | 417.4 -> 351.1 | 28 -> 21 | 14 -> 13 |
+| c_items_damselexpl | 99.2 -> 99.0 | 193.4 -> 186.0 | 20 -> 20 | 5 -> 5 |
+| c_swamp_grave | 107.2 -> 106.7 | 297.6 -> 260.0 | 26 -> 26 | 9 -> 8 |
+| c_jungle_firefrog | 86.6 -> 85.9 | 404.9 -> 347.1 | 14 -> 13 | 7 -> 7 |
+| c_swamp_vampkill | 113.4 -> 112.7 | 207.3 -> 207.3 | 23 -> 16 | 12 -> 12 |
+| five routes | 100.3 -> 99.6 | | 111 -> 96 | 47 -> 45 |
+| default 27 routes | 62.9 -> 62.8 | | 52 -> 50 | 4 -> 4 |
+
+Drain steps 270-274: 396 / 417 / 359 / 385 / 361 -> 324 / 351 / 299 / 324 / 301 K; 161-176 (the sincos steps):
+165 / 167 / 200 / 172 / 166 / 170 -> 137 / 140 / 147 / 144 / 138 / 142 K; 275-289: 1-4 % lower (199-214 K at
+275-278). damselexpl 191-205: 1-4 % lower (186 / 159 / 180 / 164 / 172 / 176 ...). No step crossed 150 K upward;
+steps more than 1 % slower than the base: 1 of 1,817 (damselexpl 123, +1.1 %) and 2 of the default set's (+1.2 %,
++1.0 %).
+
+- **Gates:** hostident 184/184 after every commit; CTALL 59/59 and EQUIV 88/88 at 0ebfa0a, 35b6f97 and ff0bcc3;
+  playsh2 9,701 / 9,701 in the SOFTFP and the default build, 1,827 / 1,827 on the five routes (ff0bcc3; also at
+  0ebfa0a and db2a31d); game_check p4_exit559 0 px (records 30, 150, 300); the tests/game link with no compiler
+  warning at every commit; .bss +8 B (stack room 38,056 B); sc_fast2 and sf2_* call no libgcc helper.
+- **Measured, not kept apart:** 5cf9e01's plain inlining (above); 35b6f97 unrestricted (above). The pcol_handle keep
+  list's front insertion is quadratic but holds 3-10 entries (host): not worth a change.
+- **What is left (measured):**
+  - drain 270-274 stay 2x the budget: check_water's tests 3.4 K a water (water_place 0.4 K a call, pw_water_tests
+    0.75 K, water_filled 0.17 K; misses of the per-cell tables, the hit's pin and grid entry, tlist_front), the water
+    Destroys (3 drips, 33 K a water), the bomb's pass (explosion_solid's block Destroys 40 K each: rubble creations
+    and destroy_solid's five point queries; its treasure and spike loops run again for each solid pair: ~14 K a pair).
+  - the creation cost (~10 K modelled) in every aftermath: pin_add's bookkeeping (olink's six lists, olive_add's
+    parent chain, pcol_added, ta_on), ev_create; per-step walks over every non-terrain instance reading
+    PW.in[i].obj (draw_and_view's EV_DRAW filter and deact_pass: ~15 K modelled each on drain 276, one line miss per
+    instance; a compact per-slot object array would cost 3.5 KB of .bss).
+  - pw_release's batch (51 K on drain 276: the REL scan of every non-terrain instance's references and pw_ord's
+    compaction) lands on whichever step ends a batch.
+  - flush_pairable brings 15-18 pairable deferred entries up to date every damselexpl step (cupdate each, 22-26 K).

@@ -11,7 +11,8 @@
   deferred list (pcol.c `fhead`) and goes in when a query asks for its family (`ask_fam`) or it can make a pair
   (`flush_pairable`). Its rectangle reaches no answer before that (the callbacks drop other families; pairs need
   `can_pair`), and the hits' order is by creation number, so the answers and their order are the same. PERF3.md,
-  the section of branch moves.
+  the section of branch moves. Since branch aftermath a new entry of such an object that cannot pair at its creation
+  waits there from the start (pcol.c `pcol_create`): the drain's drips and rubble never go in.
 - **Generator:** keeps the tree (bit-exact).
 - **Exact build:** `-DPCOL_EXACT` gives the tree in play too. It is the translation reference.
 
