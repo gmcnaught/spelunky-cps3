@@ -2610,7 +2610,29 @@ int pw_piece_tests(int i)
     if (pw_noinst_point(OBJ_oSolid)) s = 0;
     else if (!gfar && !pcol_quiet()) {
         s = fam_none(OBJ_oSolid) ? 0 : solid_point_sum(&q, 0, NOONE);
-        if (s < 0) s = collision_point_p(PTOD(PW.in[i].x) + 0, PTOD(PW.in[i].y) + 0, OBJ_oSolid, 0, NOONE) != NOONE;
+        if (s < 0) {
+            /* collision_point_p at PTOD(x) + 0, PTOD(y) + 0 (fam_none 0 here): pq_init makes q of that point - a whole
+               near one: iok, the ints, their values (nodbl 1); otherwise the floats themselves ((float) of x + 0 is x
+               but for -0, which gives +0) and their floors, which q's ints are (pfloor_int: dfloor_int's range) */
+            PWST(point, 1);
+            if (q.nodbl == 2) {
+                q.px = fzero(PW.in[i].x) ? 0.0 : TOD(PW.in[i].x);
+                q.py = fzero(PW.in[i].y) ? 0.0 : TOD(PW.in[i].y);
+                q.nodbl = 0;
+            }
+#ifdef PLAY_STATS
+            {
+                struct pq c;
+                pq_init(&c, PTOD(PW.in[i].x) + 0, PTOD(PW.in[i].y) + 0);
+                if (c.iok != q.iok || (c.iok && (c.ix != q.ix || c.iy != q.iy)) ||
+                    pcd(c.px) != pcd(q.nodbl ? (double)q.ix : q.px) || pcd(c.py) != pcd(q.nodbl ? (double)q.iy : q.py)) {
+                    fprintf(stderr, "pw_piece_tests: query differs (%d)\n", i);
+                    abort();
+                }
+            }
+#endif
+            s = point_q(&q, OBJ_oSolid, 0, NOONE) != NOONE;
+        }
     } else
         s = (collision_point_any_at)(i, 0, 0, OBJ_oSolid);
 #ifdef PLAY_STATS
