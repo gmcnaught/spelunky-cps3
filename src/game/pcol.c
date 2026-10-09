@@ -981,22 +981,43 @@ static void dlist_remove(int e)
     ef[e] &= (uint8_t)~EF_OND;
 }
 
-static void tlist_remove(int e)
+/* tlist_remove of an entry on the list (EF_ONT set) */
+static __attribute__((noinline)) void tlist_unlink(int e)
 {
-    if (!(ef[e] & EF_ONT)) return;
     if (tp[e] >= 0) tn[tp[e]] = tn[e]; else tchead = tn[e];
     if (tn[e] >= 0) tp[tn[e]] = tp[e];
     ef[e] &= (uint8_t)~EF_ONT;
 }
 
-static void tlist_front(int e)
+static void tlist_remove(int e)
 {
-    tlist_remove(e);
+    if (ef[e] & EF_ONT) tlist_unlink(e);
+}
+
+static inline void tlist_link(int e)
+{
+    int h = tchead;
     tp[e] = -1;
-    tn[e] = tchead;
-    if (tchead >= 0) tp[tchead] = (int16_t)e;
+    tn[e] = (int16_t)h;
+    if (h >= 0) tp[h] = (int16_t)e;
     tchead = (int16_t)e;
     ef[e] |= EF_ONT;
+}
+
+static __attribute__((noinline)) void tlist_refront(int e)
+{
+    tlist_unlink(e);
+    tlist_link(e);
+}
+
+/* (an entry on the list already out of line: the common one, not on it, takes no frame) */
+static void tlist_front(int e)
+{
+    if (ef[e] & EF_ONT) {
+        tlist_refront(e);
+        return;
+    }
+    tlist_link(e);
 }
 
 /* sin and cos of a float angle in radians (|a| <= 2 pi), rounded to float as glibc's sincosf: the polynomials in
