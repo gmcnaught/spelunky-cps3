@@ -1161,3 +1161,91 @@ steps more than 1 % slower than the base: 1 of 1,817 (damselexpl 123, +1.1 %) an
   - pw_release's batch (51 K on drain 276: the REL scan of every non-terrain instance's references and pw_ord's
     compaction) lands on whichever step ends a batch.
   - flush_pairable brings 15-18 pairable deferred entries up to date every damselexpl step (cupdate each, 22-26 K).
+
+### Debris pieces, the reference walk, the step's instance walks (branch aftermath2, 2026-10-09, on main a66600f)
+
+Targets (hardware .62 on main: c_swamp_drain 27 of 370 pairs over two frames, c_items_damselexpl 15 of 308): the
+steps just over budget after the explosions, drain 275-289 and damselexpl 191-205. jtcost: fit constants, plain link,
+modelled jtcps3 K ("fa": the fully associative bound; "ins": thousands of instructions). One fixed argument set for
+every commit: drain records 272 / 277 / 281 (steps 271 / 276 / 280) and damselexpl records 192 / 205 (steps 191 /
+204), traced in one call. MAME: SOFTFP playsh2, steps after step 1.
+
+**Attribution on main (JTC_BYOBJ, JTC_PCHIST):**
+- drain 276 (892 K): the debris pieces 319 K (oDrip 205 K for 48 drips, oRubbleSmall 77 K, oRubble 38 K: 4.3 K a
+  piece; per drip rubblepiece_step 1.1 K, pw_piece_tests and its four callees 1.4 K, two ___adddf3 0.45 K, the move's
+  marks 0.7 K, dispatch 0.5 K), oPlayer1 136 K (pw_release's batch 51 K: the REL walk reads PW.in[s].ext and the
+  pin_ext record of every non-terrain instance), oBlood 95 K, the pass 94 K (billed to oTreeBranch: pcol_handle's
+  walk of about 95 test-list entries, 270 modelled each).
+- damselexpl 204 (726 K): oBlood 141 K (a blood or flame's detritus_step is 10.7 K inclusive: moveTo_walk 6.8 K,
+  its ik_line / ik_side tests, vel_parts, the bounce tests), oYeti 138 K (the pass: pgrid_search, has_col, cupdate,
+  flush_pairable 21 K inclusive), oPlayer1 90 K, oDamsel 52 K, oDrip 52 K. damselexpl 191 (871 K): the explosion's
+  block Destroys (pin_destroy <- explosion_solid 189 K, 15 drip creations 134 K: 8.9 K a creation).
+- play_step's own instructions (11 % of damselexpl 204) are per-instance loops: the alarm passes (52 visits, 9.7 K
+  modelled), animate (58 instances, 9.5 K; 50 ___addsf3), the Step dispatch, deact_pass and draw_and_view's walks.
+
+| Commit | Change | Exactness |
+|---|---|---|
+| 33af75e | pw_ntfl: per-slot byte of the object's NTF_DRAW / NTF_DCAND bits (pin_add), read by draw_and_view's and deact_pass's walks in place of PW.in[k].obj | value (obj written only by pin_add; PLAY_STATS compares) |
+| e452c31 | pw_release: the REL walk takes only instances given a reference (NTF_REF, set at the four writes of trapID / enemyID / bombID); every instance when a scratch record was handed out or slot 0 is released | value (message; PLAY_STATS checks every skipped instance) |
+| b55b0f6 | pw_piece_fast: rubblepiece_step's three point tests from the cells (no liquid entry in the cell, oSolid by its block / other counts), else pw_piece_tests | value (message; PLAY_STATS compares every answer) |
+| 9b80d70 | solid_walk_any: moveTo's pixel walks take ik_cells once per cell column / row after the first line's query | value (message; PLAY_STATS compares with any_scan) |
+| e969f44 | pcol_handle: an entry that keeps testing stays where it is on the test list (no keep array, no re-push) | codegen (the same list; .bss -3,584 B) |
+
+**jtcost** (modelled K / fa K / ins K):
+
+| Record | a66600f | 33af75e | b55b0f6 | 9b80d70 | e969f44 |
+|---|---|---|---|---|---|
+| drain 272 | 1,531.9 / 1,356.7 / 383.9 | 1,498.8 / 1,344.4 / 381.1 | 1,487.1 / 1,315.4 / 375.2 | 1,398.0 / 1,317.4 / 374.8 | 1,398.7 / 1,318.6 / 374.7 (-8.7 %; fa -2.8 %) |
+| drain 277 | 892.1 / 786.1 / 228.4 | 882.2 / 762.7 / 223.8 | 764.2 / 633.3 / 205.4 | 731.3 / 636.7 / 205.2 | 725.4 / 635.7 / 204.9 (-18.7 %; fa -19.1 %) |
+| drain 281 | 785.3 / 688.9 / 194.4 | 771.4 / 670.9 / 190.1 | 689.0 / 579.2 / 179.1 | 660.8 / 581.0 / 178.8 | 651.0 / 579.9 / 178.4 (-17.1 %; fa -15.8 %) |
+| damselexpl 192 | 871.2 / 875.1 / 196.9 | 867.4 / 868.3 / 195.6 | 877.5 / 874.6 / 195.6 | 876.4 / 876.8 / 195.7 | 875.0 / 879.6 / 195.3 (+0.4 %; ins -0.8 %) |
+| damselexpl 205 | 726.4 / 684.2 / 186.4 | 715.1 / 672.7 / 183.6 | 705.0 / 668.4 / 182.3 | 703.5 / 672.0 / 180.8 | 696.9 / 669.9 / 180.1 (-4.1 %; fa -2.1 %) |
+
+b55b0f6 includes e452c31 (pw_release on drain 277: 51.4 -> 28.6 K, 16.9 -> 10.9 K instructions). drain 277 by object
+(a66600f -> e969f44): oDrip 204.9 -> 124.0 K (50.6 -> 42.4 K instructions), oRubbleSmall 76.8 -> 47.5 K. 9b80d70's
+modelled drop on drain (-3 to -6 %) is layout: its instructions fell 0.1 % there (0.8 % on damselexpl 205) and the fa
+bound rose 0.2-0.6 %; kept as neutral. pw_piece_fast runs 182 instructions a piece (two pfloor_int of the query,
+the two liquid families' cells, the oSolid cell), against about 400 for the old chain.
+
+**MAME** (SOFTFP playsh2 at e969f44; base a66600f; 1,827 / 1,827 checksums on the five routes):
+
+| Route | mean (K) | max (K) | > 150 K | > 165 K | > 175 K |
+|---|---|---|---|---|---|
+| c_swamp_drain | 96.2 -> 92.7 | 351.1 -> 339.9 | 21 -> 17 | 17 -> 10 | 13 -> 9 |
+| c_items_damselexpl | 99.0 -> 96.6 | 186.0 -> 183.9 | 20 -> 17 | 11 -> 6 | 5 -> 1 |
+| c_swamp_grave | 106.7 -> 102.8 | 260.0 -> 251.0 | 26 -> 24 | 19 -> 10 | 8 -> 6 |
+| c_jungle_firefrog | 85.9 -> 82.6 | 347.1 -> 336.6 | 13 -> 10 | 9 -> 7 | 7 -> 6 |
+| c_swamp_vampkill | 112.7 -> 108.8 | 207.3 -> 201.9 | 16 -> 14 | 12 -> 12 | 12 -> 11 |
+| five routes | 99.6 -> 96.1 | | 96 -> 82 | 68 -> 45 | 45 -> 33 |
+| default 27 routes | 62.8 -> 61.2 | | 50 -> 37 | 12 -> 6 | 4 -> 3 |
+
+Drain 275-289: 199 / 214 / 194 / 194 / 181 / 180 / 181 / 172 / 166 / 170 / 166 / 158 / 151 / 154 / 163 -> 179 / 189 /
+175 / 176 / 163 / 163 / 164 / 156 / 150 / 154 / 151 / 144 / 138 / 140 / 149 K (-8 to -12 %); 270-274: 318 / 340 / 282
+/ 306 / 281 K (-2 to -7 %). damselexpl 191-205: 184 / 153 / 174 / 157 / 164 / 169 / 159 / 160 / 172 / 161 / 159 /
+155 / 152 / 168 / 166 K (-1 to -5 %). No step more than 1 % slower than the base (five routes and the default set).
+
+- **Gates (e969f44; also at 9b80d70):** hostident 184/184 after every commit; CTALL 59/59; EQUIV 88/88; playsh2
+  9,701 / 9,701 in the SOFTFP and the default build; game_check p4_exit559 0 px (records 30, 150, 300); the tests/game
+  link with no compiler warning (ld's "dot moved backwards before .sprbss_a" is on main too); .bss end 0x02076458
+  (stack room 39,848 B; main 38,056 B: pw_ntfl +1,792 B, keep[] -3,584 B).
+- **Measured, not kept:**
+  - ev_step_short (the step loop calling rubblepiece_step / blood_step directly for the debris): drain 277 -1.2 K
+    instructions, damselexpl 205 +0.9 K (ev_step_idle was inlined into play_step; the new test is a call per
+    instance); fa -0.6 % / -0.2 %: neutral, dropped.
+  - fadd_memo (a 64-slot cache of animate's image_index + speed float add): about half the adds hit on damselexpl,
+    a fifth on drain; damselexpl 205 -0.7 % instructions, drain 277 +0.1 %, fa +0.1 to +0.3 % everywhere: dropped.
+- **What is left (measured):**
+  - a piece is still about 2.5 K modelled (880 instructions): rubblepiece_step 273 instructions (the y add's fwiden,
+    the fne, two pout_ab with a pfloor_int of y), pw_piece_fast 182, two ___adddf3 155 and ___truncdfsf2 49 (y +=
+    yVel in double, yVel += yAcc), the marks (pw_changed, pcol_changed, tlist_front) 113. Most of its modelled cost is
+    data misses on lines the loop evicts between pieces (the instance and pin_ext records, the stack, play_dops,
+    PW.vdirty, literal pools): about 40 modelled each.
+  - pcol_handle's walk: about 95 entries on drain 276 (drips that keep testing, the moved debris), 70 instructions
+    and 270 modelled each; parking the entries that cannot pair needs their order kept for a rise of an rv object's
+    count before the pass (oWeb for the rubble pieces).
+  - a blood / flame step: 10.7 K inclusive over about 15 functions (moveTo_walk's prologue and obj_is rows, two
+    vel_parts, two ___udivsi3 for play_time % r, the walks, the bounce tests' ik_side / ik_line).
+  - pw_release's batch: 10.9 K instructions, most of it pw_ord's compaction from the oldest removed instance (an
+    old block destroyed by an explosion starts it near the front).
+  - creation: 8.9 K modelled a drip on damselexpl 191 (pin_add 2.2 K with ext_defaults_fast's 50 stores, olink,
+    olive_add's parent chain, ta_on, ev_create).
