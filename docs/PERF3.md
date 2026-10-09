@@ -1353,3 +1353,121 @@ and the four tests run after it: jtcost +4.5 K instructions on step 43). Default
     call) and its oBlood (oZombie and oBlood each about 20 % of steps 287-297);
   - damselexpl's pass: 9 grid searches (pgrid_search 600 instructions each) and its flush (cupdate, pgrid_put);
   - p5_reg_l14s16 40-43: bloods at rest beside non-block solids pay pw_detritus_clear's failed check (+1.5 to +2.3 %).
+
+### Piece soft-float, the fractional precise test, the release batch (branch softadd, 2026-10-09, on main 3297b29)
+
+Targets (hardware .62 on main: c_swamp_drain 21 of 370 pairs over two frames, c_items_damselexpl 8 of 308): the
+soft-float of the debris pieces' y move (drain 275-278, MAME 164.5-178.1 K), c_swamp_vampkill's overlap_at float precise
+test (287-290), pw_release's batch (drain 276). jtcost: fit constants, plain link, modelled jtcps3 K ("fa": the fully
+associative bound; "ins": thousands of instructions); records drain 277 / 279 (steps 276 / 278), damselexpl 194 / 205
+(steps 193 / 204), vampkill 288 / 289 (steps 287 / 288). MAME: SOFTFP playsh2, steps after step 1. The host disk filled
+at about 06:58 (the colima VM); every MAME / docker / host check run between 06:30 and 07:52 was run again after the
+restart, and only those runs are reported here.
+
+**Attribution on main (JTC_CALLERS, JTC_BYOBJ):**
+- drain 276 (713.7 K, 194.7 K ins): the pieces' soft-float 28 K modelled: ___adddf3 <- rubblepiece_step 144 calls
+  (21.6 K), ___truncdfsf2 72 (6.5 K); ___adddf3 77 instructions a call, ___truncdfsf2 (C) 49. Host: 85 % of drain's
+  piece moves (78 % damselexpl) add the same yVel + yAcc as the piece before (one explosion's or drain's pieces fall
+  together).
+- vampkill 287 / 288 (785.7 / 791.8 K): the pass billed to oZombie 212 K, of it overlap_at's float precise path
+  (oBlood, precise, against oPlayer1 at a fractional y; host: 7 calls on the whole route, 3 / 2 / 1 / 1 at steps
+  287-290): 154 ___addsf3, pin_bbox's and pcinst_of_b's doubles, about 10 K instructions a call.
+- pw_release's batch (64 removed, at the end of a step that removed none) lands on drain 276 (29 K modelled: pw_ord's
+  compaction over about 1,000 entries) and vampkill 293.
+
+| Commit | Change | Exactness |
+|---|---|---|
+| 75c7329 | softfp_sh2.S __truncdfsf2: normal to normal in assembly (rebias in place, 3-place shift, nearest even); the rest softfp.c's C | value + tests (below) |
+| 6606031 | softfp_piece_y: rubblepiece_step's y + yVel (y widened, ADD, the truncation inline) and yVel += yAcc (ADD through a one-entry memo of its operand bits) in one call (SOFTFP_ASM builds; the others keep the C) | value + tests (below) |
+| 18a3a43 | pci_scan: precise_collision_int's mask-row scan as a function | codegen-only |
+| 13ad5e0 | ovl_frac: overlap_at's float path on ints for angle 0, scales +-1, 1 <= x, y < 2^22 (whole or not), moved by +0 | value (message) + test/host/ovlfrac |
+| 92ef2ae | tests/softfp: edge sets, bulk mode (OPMASK), the host runs' piece tuples; FPCHECK wraps __truncdfsf2 and softfp_piece_y | tests only |
+| ce92555 | pw_release: the batch waits while the step ran more than 8 debris pieces / detritus (pw_debris; up to 4 batches; the room rule unchanged) | scheduling (not seen by the game) |
+
+- **softfp_piece_y (6606031):** about 160 instructions with the memo's hit against about 250 for fwiden, two
+  ___adddf3 and ___truncdfsf2 (MAME: 161 clocks a call, fp-bit's three calls 1,004). The zeroed memo holds +0 + +0 =
+  +0, ADD's sum of those, so it needs no valid flag. .bss +24 B.
+- **ovl_frac (13ad5e0):** bbox_dbl's sides x + int are exact doubles, so the box test runs on h + f / 2^32 values
+  (pfr's scaling); pcinst_of's float sides are those rounded to binary32 (ofx_round), precise_collision's x0 / x1 come
+  from the 2^-8 rounding of bl + 32768 and the rounding of 32768 - br (ofx_lo, ofx_hi). With every float of pc_rows
+  exact (values multiples of x's last place below 2^e <= x: ofi_of requires 2 (box offset + |xo| + 2) <= floor(x)),
+  column n + 0.5's sprite column is floor(lx) = n - X + xo at scale 1 (X = h + (f > 1/2)), X + xo - 1 - n at -1
+  (X = h + (f >= 1/2)), trunc = floor in the mask box (ml >= 0): precise_collision_int's integer instances (pci_span,
+  pci_scan). Other cases take the old path (overlap_float). On vampkill 288 overlap_at's own cost 23.2 -> 8.2 K,
+  ___addsf3 154 -> 82 calls, pin_bbox 13 -> 7 calls.
+- **pw_release (ce92555):** the batch moves to quieter steps (host: drain 276 -> 301, vampkill 293 -> past the route's
+  end, damselexpl 136 / 219 -> 142 / 236, firefrog -> 298); they cost 101.8 - 116.1 K in MAME after the move.
+
+**Proofs (after the restart):**
+- tests/softfp (SH-2 in MAME against libgcc's fp-bit, hashes against the host FPU; scripts/softfp_check.sh):
+  - edge sets: trunc_edge 196,608 cases (every sign x all 2,048 exponents x 6 kept-bit x 8 lost-bit patterns: 24,384
+    on the fast path, 3,048 ties, 8 rounding to inf from exponent 254, NaN payloads, inf, underflow, overflow);
+    piece_edge 6,684,672 (every sign and exponent of y x 4 fractions; v and yAcc at every exponent difference
+    -66 .. 66 and at the zero / subnormal, top finite and inf / NaN exponents, both signs, 6 fractions; each case
+    twice, the second a memo hit; 134,748 binary32 ties of the binary64 sum with an error under them, the double
+    rounding): 0 differ;
+  - random: truncdfsf2 and piece 1,000,000 each in the full run (all 32 operations, every hash equal to the FPU's;
+    the 103 mul / div differences from fp-bit are fp-bit's subnormal results, the same at main); bulk (OPMASK) truncdfsf2
+    1,000,000,000 and piece 1,000,000,000 on the SH-2 (two runs, 119,000 s emulated for the piece), the same on the host:
+    0 differ, hashes equal;
+  - piece_host: the 4,242 distinct (y, yVel, yAcc) of the 18,598 rubblepiece_step moves in the 184 hostident runs
+    (captured by an instrumented host build; tests/softfp/mktuples.py), first-seen order: 0 differ.
+- FPCHECK playsh2 (every call of the assembly against softfp.c's C, in the game): default set 9,701 / 9,701 records,
+  28 c_* routes 9,960 / 9,960; __truncdfsf2 42,248 calls, softfp_piece_y 6,124 (both results), the adds and
+  compares 1.6 M: 0 disagreements. (A host build cannot capture the implicit (float) conversions, so the game's
+  __truncdfsf2 operands are checked on the SH-2 routes.)
+- ovl_frac: PLAY_STATS compares every answer with the float path (hostident 184/184); test/host/ovlfrac 50,000,000
+  random pairs (every sprite; whole, random, half, near-half, 1/256 fractions; small and large positions; scales +-1,
+  some 2 or angle 90): 17,451,651 on ints, 6,173,358 pixel scans (5,209,448 hits), 0 differ.
+
+**jtcost** (modelled K / fa K / ins K):
+
+| Record | main 3297b29 | 13ad5e0 | ce92555 |
+|---|---|---|---|
+| drain 277 | 713.7 / 617.4 / 194.7 | 699.6 / 608.5 / 188.0 | 663.1 / 582.6 / 177.1 (-7.1 %; fa -5.6 %; ins -9.0 %) |
+| drain 279 | 707.5 / 621.9 / 183.2 | 695.7 / 613.2 / 176.9 | 683.3 / 615.9 / 176.9 (-3.4 %; fa -1.0 %; ins -3.5 %) |
+| damselexpl 194 | 741.8 / 716.4 / 179.5 | 745.6 / 718.9 / 178.3 | 748.2 / 722.5 / 178.7 (+0.9 %; ins -0.4 %) |
+| damselexpl 205 | 685.1 / 650.5 / 168.9 | 683.8 / 649.6 / 167.8 | 688.2 / 652.1 / 167.9 (+0.5 %; ins -0.6 %) |
+| vampkill 288 | 785.7 / 746.9 / 214.0 | 731.6 / 702.5 / 193.6 (-6.9 %) | |
+| vampkill 289 | 791.8 / 755.9 / 216.6 | 719.9 / 693.5 / 188.2 (-9.1 %) | 724.0 / 700.0 / 188.3 (-8.6 %; fa -7.4 %; ins -13.1 %) |
+
+drain 277 by object (main -> 13ad5e0): oDrip 126.2 -> 115.3 K; vampkill 289: oZombie 212.2 -> 143.3 K. ce92555 takes
+pw_release's batch off drain 277 (-36 K modelled); damselexpl's +0.5 to +0.9 % and vampkill 289's +0.6 % against
+13ad5e0 are layout (instructions +0.1 to +0.4 K: pw_debris's counts).
+
+**MAME** (SOFTFP playsh2, five routes, 1,827 / 1,827 checksums at each; main -> 13ad5e0 -> ce92555):
+
+| Route | mean (K) | max (K) | > 150 K | > 165 K | > 175 K |
+|---|---|---|---|---|---|
+| c_swamp_drain | 92.1 -> 91.6 -> 91.6 | 336.3 -> 334.3 -> 334.4 | 13 -> 10 -> 10 | 9 -> 7 -> 6 | 7 -> 6 -> 6 |
+| c_items_damselexpl | 95.7 -> 95.4 -> 95.5 | 185.6 -> 186.0 -> 186.0 | 8 -> 7 -> 7 | 2 -> 2 -> 2 | 1 -> 1 -> 1 |
+| c_swamp_grave | 102.3 -> 102.1 -> 102.1 | 238.2 -> 237.2 -> 237.3 | 13 -> 11 -> 11 | 8 -> 8 -> 8 | 6 -> 6 -> 6 |
+| c_jungle_firefrog | 81.2 -> 81.1 -> 81.1 | 327.3 -> 326.6 -> 326.8 | 8 -> 8 -> 8 | 6 -> 6 -> 6 | 6 -> 6 -> 6 |
+| c_swamp_vampkill | 108.7 -> 108.4 -> 108.4 | 193.7 -> 187.5 -> 187.4 | 14 -> 14 -> 14 | 11 -> 9 -> 9 | 7 -> 2 -> 3 |
+| five routes | 95.37 -> 95.12 -> 95.13 | | 56 -> 50 -> 50 | 36 -> 32 -> 31 | 27 -> 21 -> 22 |
+| default 27 routes (main -> ce92555) | 61.01 -> 60.96 | | 18 -> 17 | 6 -> 6 | 4 -> 4 |
+
+Drain 275-278: 168.8 / 178.1 / 164.5 / 165.5 -> 160.7 / 157.6 / 156.5 / 158.0 K (all four under 165 K). vampkill
+287-297: 190.8 / 193.7 / 173.3 / 185.8 / 172.3 / 170.3 / 164.2 / 171.8 / 180.1 / 185.4 / 175.0 -> 175.0 / 171.6 /
+159.6 / 171.9 / 172.3 / 170.3 / 158.2 / 164.7 / 172.3 / 179.0 / 168.5 K. damselexpl 191-205: -0.4 to -1.8 % (193:
+166.6 -> 166.0; 191, the explosion, 185.6 -> 186.0). Steps more than 1 % slower than main: none at 13ad5e0; at
+ce92555 the four that took the moved batches (above), and vampkill 287 crosses 175 K by 32 clocks (174.98 -> 175.01).
+Default 27 routes: 9,701 / 9,701 checksums; 7 of 9,598 steps more than 1 % slower, all under 100 K (the moved
+batches: p4_bomb_drop 225 79.3 -> 87.5, p5_reg_l2s10 / l3s10 206 91.4 -> 99.1, p1_walk 336 70.3 -> 77.7, ...).
+
+- **Gates:** hostident 184/184 after every commit (re-run after the restart at 13ad5e0 and ce92555); CTALL 59/59 and
+  EQUIV 88/88 at 13ad5e0 and ce92555; playsh2 9,701 / 9,701 in the SOFTFP and the default build, 1,827 / 1,827 on the five routes; game_check p4_exit559 0 px (records 30, 150, 300); the tests/game link with no
+  compiler warning at every commit; .bss +28 B (stack room 39,804 B).
+- **Measured, not kept:** none of the commits; the five-route survey of 6606031 before the restart (drain 275-278
+  161.2 / 170.6 / 157.0 / 158.5 K) agrees with the re-run at 13ad5e0 but is not counted.
+- **What is left (measured):**
+  - __addsf3's same-sign path: animate's image_index += image_speed is 50-59 calls a step at about 92 instructions
+    (play_step's ___addsf3 8.2 K modelled on damselexpl 205). A shorter path (sign test first, the exponent difference
+    in 4 instructions, significands by shll8 / or / shlr2, branch-free nearest even, the overflow test only after a
+    carry) runs about 71 instructions; drafted with a C model (the rounding identity over all 2^30 sums, 19.7 M random
+    same-sign pairs equal to the FPU) and an edge set (786,432 cases), not applied: it needs the same SH-2 proof depth.
+  - vampkill 290-297 stay 158-179 K: oBlood's detritus steps (159 K on 289), the rest of oZombie's pass (143 K),
+    oPlayer1 (104 K); distance_to_instance_p's Newton square root in doubles (27 ___divdf3 on 289).
+  - drain 270-274 (264-334 K): check_water and the bomb's pass (aftermath's list); damselexpl 191 (186 K: the
+    explosion's block destroys and creations) and 193 (166 K).
+  - c_swamp_grave and c_jungle_firefrog: unchanged by this branch (8 and 6 steps over 165 K).
