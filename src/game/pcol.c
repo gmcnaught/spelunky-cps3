@@ -1252,8 +1252,40 @@ static void cupdate_at(int e, float dx, float dy)
 }
 
 
+#ifndef PCOL_EXACT
+/* cupdate_at(e, 0, 0)'s grid part (play, e a member, rlock 0, not (dead and out of the tree)): ebbox_rect(e, 0, 0)
+   written into er / erw (its whole case: pin_ibox's ints, rset_i's form; else the same call), then pgrid_put */
+static void cupdate_grid(int e)
+{
+    int32_t ib[4];
+    if (fzero(PW.in[e].angle) && pin_ibox(e, ib) && (uint32_t)ib[0] + (WLIM - 1) < 2 * WLIM - 1 &&
+        (uint32_t)ib[1] + (WLIM - 1) < 2 * WLIM - 1 && (uint32_t)ib[2] + (WLIM - 1) < 2 * WLIM - 1 &&
+        (uint32_t)ib[3] + (WLIM - 1) < 2 * WLIM - 1) {
+        rk *r = er[e];
+        r[0] = ib[0]; r[1] = ib[1]; r[2] = ib[2]; r[3] = ib[3];
+        erw[e] = 1;
+    } else {
+        struct rbr b;
+        ebbox_rect(e, 0, 0, &b);
+        er_set(e, &b);
+    }
+    PCST(pcol_st.inserts++);
+    ef[e] |= EF_TREE;
+    pgrid_put(e);
+}
+#endif
+
 static void cupdate(int e)
 {
+#ifndef PCOL_EXACT
+    /* play: cupdate_at(e, 0, 0)'s tests in its order without the call (pm_e's keep first, as below) */
+    if (!gmode && e != pm_e) {
+        int f = ef[e];
+        if ((!(f & EF_TREE) && (f & EF_PEND)) || rlock || !emember(e)) return;
+        cupdate_grid(e);
+        return;
+    }
+#endif
     if (e == pm_e && PCOL_GRID_ON && (ef[e] & EF_TREE) && !rlock && emember(e)) {
         PCST(pcol_st.inserts++);
 #if defined(PLAY_STATS) && !defined(PCOL_EXACT)
