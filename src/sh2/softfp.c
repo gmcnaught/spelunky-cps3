@@ -18,8 +18,8 @@
  * divide unit (DIVU) in two 29-bit quotient steps; compares on the bit patterns. Other operands take a general
  * path (unpack, 64-bit significand with sticky bit, one rounding).
  *
- * SOFTFP_ASM: binary64 / binary32 add and subtract and the binary64 compares from softfp_sh2.S (its fast paths in
- * assembly; this file's adds for the rest).
+ * SOFTFP_ASM: binary64 / binary32 add and subtract, the binary64 compares and binary64 to binary32 from softfp_sh2.S
+ * (its fast paths in assembly; this file's adds and conversion for the rest).
  * SOFTFP_HOST: the functions are named sf_* and divide in C (the host test); SOFTFP_SFNAMES: named sf_* on the SH-2
  * (tests/softfp, beside libgcc's); otherwise __adddf3 ... (libgcc's names). */
 #include <stdint.h>
@@ -500,7 +500,13 @@ KEEP f64 SF(extendsfdf2)(f32 a)                     /* exact */
     return MK(s | ((uint32_t)(1023 - 126 - z) << 20) | ((m & 0x7fffff) >> 3), m << 29);
 }
 
-KEEP f32 SF(truncdfsf2)(f64 a)
+#ifdef SOFTFP_ASM                                   /* softfp_sh2.S's: its fast path comes here for the rest */
+#define TRUNC_C softfp_truncdfsf2_c
+f32 SF(truncdfsf2)(f64 a);
+#else
+#define TRUNC_C SF(truncdfsf2)
+#endif
+KEEP f32 TRUNC_C(f64 a)
 {
     uint32_t h = HI(a), l = LO(a), s = h & 0x80000000u;
     int ex = (h >> 20) & 0x7ff;
@@ -529,7 +535,7 @@ static f32 qnan_f(f32 a) { return a | 0x400000u; }
    gmlibm.c f_add_c / f_mul_c / f_div_c); everything else through binary64: the binary64 result of two floats
    rounded once more to binary32 is the correctly rounded binary32 result (53 >= 2 * 24 + 2), infinities and
    subnormals included */
-static f32 add_f_wide(f32 a, f32 b) { return SF(truncdfsf2)(SF(adddf3)(SF(extendsfdf2)(a), SF(extendsfdf2)(b))); }
+static f32 add_f_wide(f32 a, f32 b) { return TRUNC_C(SF(adddf3)(SF(extendsfdf2)(a), SF(extendsfdf2)(b))); }
 
 #ifdef SOFTFP_ASM                                   /* softfp_sh2.S's add comes here for what it leaves out */
 #define ADDF_C softfp_addsf3_c

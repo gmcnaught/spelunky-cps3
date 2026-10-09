@@ -29,6 +29,20 @@ static inline struct cs_case cs_case_for(int op)
         c.a = cs_f1();
         c.b = cs_f2((uint32_t)c.a);
         break;
+    case OP_TRUNC:                                   /* a third near the rounding: the 29 bits below a tie, 0, all
+                                                        ones; exponents at the float's normal ends */
+        if (cs_u32(3) == 0) {
+            static const uint32_t lo[] = { 0x10000000u, 0x0fffffffu, 0x10000001u, 0, 0x1fffffffu, 1 };
+            uint32_t k = cs_u32(4);
+            uint64_t ex = k == 0 ? 897 + cs_u32(3) : k == 1 ? 1148 + cs_u32(3) : k == 2 ? 896 - cs_u32(2) : 900 + cs_u32(240);
+            uint64_t m = cs_u32(4) ? cs_next() : 0xfffffffffffffull;
+            c.a = ((uint64_t)cs_u32(2) << 63) | (ex << 52) | (m & 0x000fffffe0000000ull) | lo[cs_u32(6)];
+            c.b = 0;
+            break;
+        }
+        c.a = cs_d1();
+        c.b = cs_d2(c.a);
+        break;
     case OP_I2D: case OP_U2D: case OP_I2F:
         c.a = (uint32_t)cs_i32();
         c.b = 0;

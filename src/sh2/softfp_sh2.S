@@ -1,5 +1,5 @@
 /* Soft-float entry points in SH-2 assembly (src/sh2/softfp.c has the rest and the general C paths): binary64 add
- * and subtract, binary32 add and subtract, the binary64 compares.
+ * and subtract, binary32 add and subtract, the binary64 compares, binary64 to binary32 (__truncdfsf2).
  *
  * binary64 add: a normal operand plus +-0 returns it; two normal operands (except opposite signs within one binade
  * when the larger exponent is below 55, where the result could be subnormal) take the fast path; zeros with zeros,
@@ -574,3 +574,56 @@ N(ledf2):
     .align 2
 .Lc7ff: .long 0x7ff00000
 .Lcfr:  .long 0x000fffff
+
+/* ---- binary64 to binary32 ----------------------------------------------------------------------------------- */
+/* a normal double whose float is normal (exponent field 897 .. 1150): the exponent rebiased in place (- 896 << 20:
+   1 .. 254 in bits 20..27), the 64-bit word shifted left 3 places (the sign falls out and is put back; the float's
+   exponent and 23 fraction bits in the high word, the 29 bits below them at the top of the low word), round to
+   nearest even on those (a carry out of the fraction raises the exponent, to +-inf from 254 at most); everything
+   else (zeros, subnormal results, overflow, infinities, NaNs) to softfp.c's C, softfp_truncdfsf2_c */
+#define TRUNC N(truncdfsf2)
+    .align 2
+    .global TRUNC
+TRUNC:
+    mov.l   .Ltk7ff, r1                 /* 0x7ff00000 */
+    mov     r4, r0
+    and     r1, r0
+    mov.l   .Ltklo, r1                  /* 897 << 20 */
+    sub     r1, r0
+    mov.l   .Ltkrg, r1                  /* (1150 - 897) << 20 */
+    cmp/hi  r1, r0
+    bt      .Ltslow
+    mov.l   .Ltkb, r1                   /* 896 << 20 */
+    mov     r4, r0
+    sub     r1, r0                      /* sign | (1 .. 254) << 20 | fraction */
+    mov.l   .Ltk8, r1                   /* 0x80000000 */
+    mov     r0, r2
+    and     r1, r2                      /* the sign */
+    shll    r5
+    rotcl   r0
+    shll    r5
+    rotcl   r0
+    shll    r5
+    rotcl   r0
+    or      r2, r0                      /* truncated */
+    cmp/hi  r1, r5                      /* more than half */
+    bt      1f
+    cmp/eq  r1, r5                      /* a tie: to even */
+    bf      2f
+    tst     #1, r0
+    bt      2f
+1:  add     #1, r0
+2:  rts
+    nop
+.Ltslow:
+    mov.l   .Ltc, r0
+    jmp     @r0
+    nop
+
+    .align 2
+.Ltk7ff: .long 0x7ff00000
+.Ltklo: .long 897 << 20
+.Ltkrg: .long (1150 - 897) << 20
+.Ltkb:  .long 896 << 20
+.Ltk8:  .long 0x80000000
+.Ltc:   .long _softfp_truncdfsf2_c
