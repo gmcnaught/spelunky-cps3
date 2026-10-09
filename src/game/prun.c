@@ -530,6 +530,17 @@ void play_level_start(int32_t next_id)
        entry that changes before the first query is marked again and re-put then. pw_rest_clock values move earlier;
        rest records compare only clocks taken after them */
     pw_grid_sync();
+    /* the instances the first step's animation pass would only take off its list (prun_anim_idle: the blocks, most
+       of the level's ~600 instances) are taken off here, after every Create: as at the transition room's load
+       (ptrans.c), nothing between here and that pass changes a sprite, image_index or image_speed without putting
+       the instance back (pin_setspr, the loaders' raw sprite write, is not used after a load) */
+    {
+        int nx;
+        for (k = pw_tahead; k >= 0; k = nx) {
+            nx = pw_tanext[k];
+            if (prun_anim_idle(k)) pw_ta_off(k);
+        }
+    }
 }
 
 /* scripts/startMusic for a level (global.music: snd_music_on; global.musicVol 15, scrInit's): the room is a level here,
