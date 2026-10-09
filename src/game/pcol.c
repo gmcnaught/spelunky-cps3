@@ -1929,8 +1929,10 @@ void pcol_handle(void)
     npairs = 0;
     flush();
     while (tchead >= 0) {
-        int s = tchead;
-        tlist_remove(s);
+        int s = tchead, sn = tn[s];
+        tchead = (int16_t)sn;                     /* tlist_remove(s) of the head (on the list: EF_ONT; tp[s] -1) */
+        if (sn >= 0) tp[sn] = -1;
+        ef[s] &= (uint8_t)~EF_ONT;
         if (edead(s) || !PW.in[s].alive) continue;
 #ifndef PLAY_STATS
         if (!can_pair(s)) goto searched;
