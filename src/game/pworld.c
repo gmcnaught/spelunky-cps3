@@ -6,6 +6,7 @@
 #ifdef PLAY_STATS
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #endif
 #include "pcol.h"
 #include "inst.h"                 /* GRID_W, GRID_H: the solid grid covers the generator's level grid */
@@ -545,15 +546,26 @@ static void ext_reset(void)
 typedef uint32_t __attribute__((may_alias)) u32a;
 typedef char pin_ext_words[sizeof(struct pin_ext) % 4 == 0 ? 1 : -1];
 typedef char pin_words[sizeof(struct pin) % 4 == 0 ? 1 : -1];
+/* ext_defaults by word stores: the zeros, alarm[0 .. 12) as six words of -1 (alarm is the record's first field), then
+   the two fields set as ext_defaults sets them. The same bytes (padding included: zero in both), with no loads (the
+   copy of a 200-byte template read 13 data lines a creation) */
+typedef char ext_alarm_first[offsetof(struct pin_ext, alarm) == 0 && sizeof(((struct pin_ext *)0)->alarm) == 24 ? 1 : -1];
 static void ext_defaults_fast(struct pin_ext *x)
 {
-    static struct pin_ext t;
-    static uint8_t made;
-    const u32a *a = (const u32a *)&t;
     u32a *b = (u32a *)x;
     unsigned k;
-    if (!made) { ext_defaults(&t); made = 1; }
-    for (k = 0; k < sizeof t / 4; k++) b[k] = a[k];
+    for (k = 0; k < 6; k++) b[k] = 0xffffffffu;
+    for (; k < sizeof *x / 4; k++) b[k] = 0;
+    x->trapID = x->enemyID = NOONE;
+    x->alpha = 1;
+#ifdef PLAY_STATS
+    {   /* the host builds: the record is ext_defaults' */
+        static struct pin_ext t;
+        static uint8_t made;
+        if (!made) { ext_defaults(&t); made = 1; }
+        if (memcmp(&t, x, sizeof t)) { fprintf(stderr, "ext_defaults_fast: not ext_defaults' record\n"); abort(); }
+    }
+#endif
 }
 
 static int ext_alloc(void)
