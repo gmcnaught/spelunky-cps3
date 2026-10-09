@@ -2060,29 +2060,27 @@ static __attribute__((noinline)) int ik_cells(int i, int n, int step, int nm)
 
 /* Command_CollisionPoint tests the object's instances in creation order (Collision_Point computes each stale box:
    pcol_touch) */
-int (collision_point_p)(double px, double py, int obj, int prec, int notme_self)
+/* collision_point_p's search after pq_init (pq_q: a query made of whole ints, nodbl, gives what pq_init gives for
+   those values as doubles) */
+static int point_q(const struct pq *q, int obj, int prec, int notme_self)
 {
     int k;
-    struct pq q;
     struct fam it;
-    PWST(point, 1);
-    if (fam_none(obj)) return NOONE;
-    pq_init(&q, px, py);
 #ifndef PCOL_EXACT
-    if (obj >= 0 && xf_of[obj] >= 0 && !pcol_quiet() && xpoint_none(xf_of[obj], &q)) {
+    if (obj >= 0 && xf_of[obj] >= 0 && !pcol_quiet() && xpoint_none(xf_of[obj], q)) {
 #ifdef PLAY_STATS
         fam_begin(&it, obj);
         while ((k = fam_get(&it)) != NOONE)
-            if (k != notme_self && point_hit(k, &q, prec)) {
-                fprintf(stderr, "collision_point_p: static-family index miss differs (%d %.17g %.17g)\n", obj, px, py);
+            if (k != notme_self && point_hit(k, q, prec)) {
+                fprintf(stderr, "collision_point_p: static-family index miss differs (%d %d %d)\n", obj, q->ix, q->iy);
                 abort();
             }
 #endif
         return NOONE;
     }
 #endif
-    if (q.iok && obj >= 0 && obj_is(obj, OBJ_oSolid) && !pcol_quiet()) {
-        k = grid_point(obj, notme_self, &q, prec);
+    if (q->iok && obj >= 0 && obj_is(obj, OBJ_oSolid) && !pcol_quiet()) {
+        k = grid_point(obj, notme_self, q, prec);
         pcol_touch_stale(obj, notme_self, k);
         return k;
     }
@@ -2090,10 +2088,19 @@ int (collision_point_p)(double px, double py, int obj, int prec, int notme_self)
     while ((k = fam_get(&it)) != NOONE) {
         if (k == notme_self) continue;
         pcol_touch(k);
-        if (point_hit(k, &q, prec))
+        if (point_hit(k, q, prec))
             return k;
     }
     return NOONE;
+}
+
+int (collision_point_p)(double px, double py, int obj, int prec, int notme_self)
+{
+    struct pq q;
+    PWST(point, 1);
+    if (fam_none(obj)) return NOONE;
+    pq_init(&q, px, py);
+    return point_q(&q, obj, prec, notme_self);
 }
 
 /* collision_point(px, py, obj, prec, notme) != noone. For oSolid in the grid build (PCOL_EXACT keeps collision_point_p),
@@ -2417,6 +2424,30 @@ int (collision_point_any_at)(int i, int32_t dx, int32_t dy, int obj)
         }
     }
 #endif
+    /* the other objects (and the branches above off their grid paths) at whole x, y (|.| < 29900): the point
+       PTOD(x) + dx, PTOD(y) + dy is whole, so collision_point_any is collision_point_p there (its static-family branch
+       needs pcol_quiet() 0 and obj's index, its oSolid branch gfar 0 as well, which return above at a near whole
+       x, y), and pq_init gives iok, these ints and their values (nodbl's meaning): point_q on them */
+    {
+        int32_t x, y;
+        if (xy_int_near(i, &x, &y)) {
+            struct pq q;
+            PWST(point, 1);
+            if (fam_none(obj)) return 0;
+            q.iok = 1; q.ix = x + dx; q.iy = y + dy; q.nodbl = 1;
+#ifdef PLAY_STATS
+            {
+                struct pq c;
+                pq_init(&c, PTOD(PW.in[i].x) + dx, PTOD(PW.in[i].y) + dy);
+                if (!c.iok || c.ix != q.ix || c.iy != q.iy || c.px != (double)q.ix || c.py != (double)q.iy) {
+                    fprintf(stderr, "collision_point_any_at: int query differs (%d %d %d)\n", i, (int)dx, (int)dy);
+                    abort();
+                }
+            }
+#endif
+            return point_q(&q, obj, 0, NOONE) != NOONE;
+        }
+    }
     return (collision_point_any)(PTOD(PW.in[i].x) + dx, PTOD(PW.in[i].y) + dy, obj, 0, NOONE);
 }
 
@@ -3362,12 +3393,39 @@ static int dfloor14(double v, int32_t *o);
    So no instance is hit, whatever the search order. The skipped walk's only other effects are the stale touches
    (pcol_touch), which the grid build's searches do not depend on (pobj.c PLAY_REST), and the tree search's caches
    (pcol_query, which runs before, did the flush). The host builds test every instance with rect_hit */
+static int rect_far_none_i(int32_t a, int32_t b, int32_t c, int32_t d, int obj, int prec, int notme_self);
 static int rect_far_none(double x1, double y1, double x2, double y2, int obj, int prec, int notme_self)
 {
-    int32_t a, b, c, d, X0, X1, Y0, Y1, ib[4];
+    int32_t a, b, c, d;
+    if (obj < 0 || olive[obj] > 4 || !dfloor14(x1, &a) || !dfloor14(x2, &c) || !dfloor14(y1, &b) || !dfloor14(y2, &d))
+        return 0;
+    if (!rect_far_none_i(a, b, c, d, obj, prec, notme_self)) return 0;
+#ifdef PLAY_STATS
+    {
+        struct rq rq;
+        struct fam it;
+        int k;
+        rq_init(&rq, x1, y1, x2, y2);
+        fam_begin(&it, obj);
+        while ((k = fam_get(&it)) != NOONE)
+            if (match(k, obj, notme_self) && rect_hit(k, &rq, prec)) {
+                fprintf(stderr, "collision_rect_p: far answer misses %d (%.17g %.17g %.17g %.17g)\n", k, x1, y1, x2, y2);
+                abort();
+            }
+    }
+#endif
+    return 1;
+}
+
+/* rect_far_none on the corners' floors a = floor(x1), b = floor(y1), c, d (|.| < 2^14: dfloor14's range; whole corners
+   are their own floors) */
+static int rect_far_none_i(int32_t a, int32_t b, int32_t c, int32_t d, int obj, int prec, int notme_self)
+{
+    int32_t X0, X1, Y0, Y1, ib[4];
     int k;
     struct fam it;
-    if (obj < 0 || olive[obj] > 4 || !dfloor14(x1, &a) || !dfloor14(x2, &c) || !dfloor14(y1, &b) || !dfloor14(y2, &d))
+    if (obj < 0 || olive[obj] > 4 || a <= -16384 || a >= 16384 || b <= -16384 || b >= 16384 || c <= -16384 ||
+        c >= 16384 || d <= -16384 || d >= 16384)
         return 0;
     X0 = a < c ? a : c; X1 = a < c ? c : a;
     Y0 = b < d ? b : d; Y1 = b < d ? d : b;
@@ -3375,13 +3433,13 @@ static int rect_far_none(double x1, double y1, double x2, double y2, int obj, in
     while ((k = fam_get(&it)) != NOONE)
         if (!pin_ibox(k, ib) || !(ib[2] < X0 || ib[0] > X1 + 1 || ib[3] < Y0 || ib[1] > Y1 + 1)) return 0;
 #ifdef PLAY_STATS
-    {
+    {   /* (the floors' query: the far answer holds for every rectangle with these floors) */
         struct rq rq;
-        rq_init(&rq, x1, y1, x2, y2);
+        rq_init(&rq, a, b, c, d);
         fam_begin(&it, obj);
         while ((k = fam_get(&it)) != NOONE)
             if (match(k, obj, notme_self) && rect_hit(k, &rq, prec)) {
-                fprintf(stderr, "collision_rect_p: far answer misses %d (%.17g %.17g %.17g %.17g)\n", k, x1, y1, x2, y2);
+                fprintf(stderr, "collision_rect_p: far answer misses %d (%d %d %d %d)\n", k, a, b, c, d);
                 abort();
             }
     }
@@ -3409,13 +3467,41 @@ int (collision_rect_p)(double x1, double y1, double x2, double y2, int obj, int 
     return rect_run(&rq, q, r, obj, prec, notme_self);
 }
 
+static int rect_q_i(int q, int32_t x1, int32_t y1, int32_t x2, int32_t y2, int obj, int prec, int notme_self);
+
 /* collision_rectangle with whole-number corners (|v| < 30000): floor(v + 0.5) is v */
 int collision_rect_i(int32_t x1, int32_t y1, int32_t x2, int32_t y2, int obj, int prec, int notme_self)
 {
     int q = pcol_query(obj);
-    struct rq rq;
     PWST(rect, 1);
     if (q < 0) return NOONE;
+    return rect_q_i(q, x1, y1, x2, y2, obj, prec, notme_self);
+}
+
+/* collision_rect_p(x + l, y + t, x + r, y + b, obj, 0, noone) at instance i's x, y (|l|, ... <= 16): at a whole x, y
+   (|.| < 29900: xy_int_near) the corners are whole doubles below 2^14 in magnitude or not, and collision_rect_p's
+   steps are taken on the ints: pcol_query, the far test (its dfloor14 of a whole corner is the corner; the range test
+   as dfloor14's), rq_init's whole path (collision_rect_i's query), the search */
+int collision_rect_at(int i, int32_t l, int32_t t, int32_t r, int32_t b, int obj)
+{
+    int32_t x, y;
+    int q;
+    if (pw_noinst_tree(obj)) return NOONE;
+    if (!xy_int_near(i, &x, &y))
+        return (collision_rect_p)(PTOD(PW.in[i].x) + l, PTOD(PW.in[i].y) + t, PTOD(PW.in[i].x) + r, PTOD(PW.in[i].y) + b,
+                                  obj, 0, NOONE);
+    q = pcol_query(obj);
+    PWST(rect, 1);
+    if (q < 0) return NOONE;
+#if !defined(PCOL_EXACT)
+    if (obj >= 0 && olive[obj] <= 4 && rect_far_none_i(x + l, y + t, x + r, y + b, obj, 0, NOONE)) return NOONE;
+#endif
+    return rect_q_i(q, x + l, y + t, x + r, y + b, obj, 0, NOONE);
+}
+
+static int rect_q_i(int q, int32_t x1, int32_t y1, int32_t x2, int32_t y2, int obj, int prec, int notme_self)
+{
+    struct rq rq;
     rq.iok = 1;
     rq.ilx = x1 < x2 ? x1 : x2; rq.ihx = x1 < x2 ? x2 : x1;
     rq.ily = y1 < y2 ? y1 : y2; rq.ihy = y1 < y2 ? y2 : y1;
@@ -3918,6 +4004,15 @@ int (instance_place_p)(int self, double px, double py, int obj)
 
 /* (float)v of a box side: fint15's bits below 2^15 in magnitude (no __floatsisf call) */
 #define PLACE_F(v) ((v) > -32768 && (v) < 32768 ? fint15(v) : (float)(v))
+
+/* instance_place_p(self, PTOD(x) + idx, PTOD(y) + idy, obj) at self's x, y: instance_place_ixy at a whole near x, y
+   (xy_int_near; |idx|, |idy| <= 16), else the doubles */
+int instance_place_at(int self, int32_t idx, int32_t idy, int obj)
+{
+    int32_t x, y;
+    if (xy_int_near(self, &x, &y)) return instance_place_ixy(self, x, y, idx, idy, obj);
+    return (instance_place_p)(self, PTOD(PW.in[self].x) + idx, PTOD(PW.in[self].y) + idy, obj);
+}
 
 /* instance_place_p(self, x + idx, y + idy, obj) for self at whole x, y (|.| < 29900) and |idx|, |idy| <= 16, without
    the doubles where self's box is cached whole (BB_INT / BB_INTS): px, py are whole, so dx, dy are idx, idy exactly,

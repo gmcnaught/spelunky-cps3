@@ -421,6 +421,7 @@ int ik_side(int i, int side, int d);   /* collision_rectangle(.., oSolid, 1, not
 int (collision_rect_any)(double x1, double y1, double x2, double y2, int obj, int prec, int notme_self);   /* collision_rect_p(..) != NOONE */
 int (collision_rect_any_at)(int i, int32_t l, int32_t t, int32_t r, int32_t b, int obj);   /* at i's x, y; prec 0 */
 int (collision_point_any_at)(int i, int32_t dx, int32_t dy, int obj);                     /* at i's x, y; prec 0 */
+int collision_rect_at(int i, int32_t l, int32_t t, int32_t r, int32_t b, int obj);   /* collision_rect_p at i's x, y; prec 0, noone */
 #define collision_rect_any_at(i, l, t, r, b, obj) \
     (pw_noinst_tree(obj) ? 0 : (collision_rect_any_at)((i), (l), (t), (r), (b), (obj)))
 #define collision_point_any_at(i, dx, dy, obj) \
@@ -523,6 +524,7 @@ void pw_watch(int i);
 uint32_t pw_watch_end(void);
 int instance_place_p(int self, double px, double py, int obj);
 int instance_place_ixy(int self, int32_t x, int32_t y, int32_t idx, int32_t idy, int obj);   /* at whole x, y + idx, idy */
+int instance_place_at(int self, int32_t idx, int32_t idy, int obj);   /* instance_place_p at self's x, y + idx, idy */
 #define place_meeting_p(self, px, py, obj) (instance_place_p((self), (px), (py), (obj)) != NOONE)
 #ifdef FCOL_STATS
 #define instance_place_p(self, px, py, obj) FCOL_Q(FK_PLACE, 2, (px), (py), 0, 0, NOONE, 0, \
