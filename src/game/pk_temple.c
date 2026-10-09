@@ -882,7 +882,7 @@ static void smashtrap_step(int i)
             if (isCollisionTop(i, 2) && PE(p)->colTop) { pin_sety(p, p->y + PI(2)); PE(p)->hit = 1; }
             if (PE(p)->colTop) { pin_sety(p, p->y + PI(1)); PE(p)->hit = 1; }
         }
-        if (collision_rect_p(X(i) - 1, Y(i) - 1, X(i) + 17, Y(i) + 17, OBJ_oTombLord, 0, NOONE) != NOONE) PE(p)->hit = 1;
+        if (collision_rect_at(i, -1, -1, 17, 17, OBJ_oTombLord) != NOONE) PE(p)->hit = 1;
         if (PE(p)->hit) PE(p)->xv = PE(p)->yv = PE(p)->xa = PE(p)->ya = 0;
         if (PE(p)->hit && !PE(p)->colRight && !PE(p)->colLeft && !PE(p)->colTop && !PE(p)->colBot) {
             PE(p)->status = 0;
@@ -1170,7 +1170,7 @@ static void ropeburn_step(int i)
     struct pin *p = &PX(i);
     pin_sety(p, PADDV(p->y, PE(p)->yVel));
     if (collision_point_any_at(i, 0, 0, OBJ_oSolid) ||
-        collision_rect_p(X(i) - 1, Y(i) - 8, X(i) + 1, Y(i) + 8, OBJ_oRope, 0, NOONE) == NOONE)
+        collision_rect_at(i, -1, -8, 1, 8, OBJ_oRope) == NOONE)
         pin_destroy(i);
     if (collision_point_any_at(i, 0, 0, OBJ_oRope)) {
         int r = instance_nearest_p(X(i), Y(i), OBJ_oRope);
@@ -1226,7 +1226,7 @@ static void olmec_step(int i)
     struct pin *p = &PX(i);
     int c = pl();
     if (PE(p)->carryPlayer ||
-        collision_rect_p(X(i) - 1, Y(i), X(i) + 66, Y(i) + 62, OBJ_oPlayer1, 0, NOONE) != NOONE) {
+        collision_rect_at(i, -1, 0, 66, 62, OBJ_oPlayer1) != NOONE) {
         struct pin *q = &PX(c);
         pin_setx(q, PADDV(q->x, PE(p)->xVel));
         pin_sety(q, PADDV(q->y, PE(p)->yVel));
@@ -1254,7 +1254,7 @@ static void olmec_step(int i)
         pin_destroy(i);
     }
     p = &PX(i);
-    if (collision_rect_p(X(i), Y(i) - 2, X(i) + 64, Y(i) + 64, OBJ_oPlayer1, 0, NOONE) != NOONE) PE(p)->carryPlayer = 1;
+    if (collision_rect_at(i, 0, -2, 64, 64, OBJ_oPlayer1) != NOONE) PE(p)->carryPlayer = 1;
     else PE(p)->carryPlayer = 0;
     switch (PE(p)->status) {
     case OL_START1:                                                        /* :50 */
@@ -1508,8 +1508,8 @@ static void yellowball_step(int i)
     struct pin *p = &PX(i);
     pin_setx(p, PADDV(p->x, PE(p)->xVel));
     pin_sety(p, PADDV(p->y, PE(p)->yVel));
-    if (collision_rect_any(X(i) - 8, Y(i) - 8, X(i) + 8, Y(i) + 8, OBJ_oSolid, 0, NOONE) &&
-        collision_rect_p(X(i) - 8, Y(i) - 8, X(i) + 8, Y(i) + 8, OBJ_oOlmec, 0, NOONE) == NOONE) {
+    if (collision_rect_any_at(i, -8, -8, 8, 8, OBJ_oSolid) &&
+        collision_rect_at(i, -8, -8, 8, 8, OBJ_oOlmec) == NOONE) {
         int n, obj = -1;
         pin_setx(p, PSUBV(p->x, PE(p)->xVel));
         pin_sety(p, PSUBV(p->y, PE(p)->yVel));

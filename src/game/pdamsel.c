@@ -131,7 +131,7 @@ static void damsel_step(int i)
             PE(p)->xVel = 0;
             PE(p)->yVel = N(0.2);
         }
-        if (collision_rect_p(X(i) - 3, Y(i) - 3, X(i) + 3, Y(i) + 3, OBJ_oSpearsLeft, 0, NOONE) != NOONE &&
+        if (collision_rect_at(i, -3, -3, 3, 3, OBJ_oSpearsLeft) != NOONE &&
             (PE(p)->status != D_THROWN || isCollisionBottom(i, 1)))
             PUNTR(6011);
     }
@@ -173,7 +173,7 @@ static void damsel_step(int i)
         else pin_set_sprite(i, NLT(PE(p)->xVel, N(0)) ? GSPR_sDamselDieLL : GSPR_sDamselDieLR);
         if (isCollisionBottom(i, 1) && !PEN(p)->bounced) PEN(p)->bounced = 1;
         if (isCollisionBottom(i, 2) ||
-            collision_rect_p(X(i) - 4, Y(i) - 6, X(i) + 4, Y(i) + 8, OBJ_oWeb, 0, NOONE) != NOONE) {
+            collision_rect_at(i, -4, -6, 4, 8, OBJ_oWeb) != NOONE) {
             if (!PEN(p)->edead) {
                 if (PE(p)->counter > 0) PE(p)->counter -= 1;
                 else PE(p)->status = D_RUN;

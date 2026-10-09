@@ -941,7 +941,7 @@ static void thinice_step(int i)                                    /* objects/oT
 {
     struct pin *p = &PX(i);
     int t;
-    if (collision_rect_p(X(i), Y(i) - 1, X(i) + 16, Y(i) + 1, OBJ_oPlayer1, 0, NOONE) != NOONE) {
+    if (collision_rect_at(i, 0, -1, 16, 1, OBJ_oPlayer1) != NOONE) {
         PE(p)->counter -= 2;
         if (RAND(1, 100) == 1) {
             int xr = RAND(0, 16);

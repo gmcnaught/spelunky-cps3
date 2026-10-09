@@ -667,10 +667,10 @@ static void jaws_step(int i)
     if (PE(p)->status == J_IDLE) {                             /* :36 */
         if (DEQ(DIR(p), 0)) {
             if (collision_point_any_at(i, 18, 16, OBJ_oWater) && !collision_point_any_at(i, 18, 16, OBJ_oSolid)) moveTo(i, N(2), 0, 0, 0);
-            else if (collision_rect_p(X(i) - 32, Y(i), X(i), Y(i) + 32, OBJ_oSolid, 0, NOONE) == NOONE) jaws_turn_left(i);
+            else if (collision_rect_at(i, -32, 0, 0, 32, OBJ_oSolid) == NOONE) jaws_turn_left(i);
         } else {
             if (collision_point_any_at(i, -2, 16, OBJ_oWater) && !collision_point_any_at(i, -2, 16, OBJ_oSolid)) moveTo(i, N(-2), 0, 0, 0);
-            else if (collision_rect_p(X(i) + 16, Y(i), X(i) + 48, Y(i) + 32, OBJ_oSolid, 0, NOONE) == NOONE)
+            else if (collision_rect_at(i, 16, 0, 48, 32, OBJ_oSolid) == NOONE)
                 jaws_turn_right(i);
         }
         p = &PX(i);
@@ -689,7 +689,7 @@ static void jaws_step(int i)
                 DIR(p) = point_direction_d(X(i) + 8, Y(i) + 16, X(pl), Y(pl) - 8);
             if (DLT(X(pl), X(i) + 8)) {
                 if (p->spr == GSPR_sJawsRight &&
-                    collision_rect_p(X(i) - 32, Y(i), X(i), Y(i) + 32, OBJ_oSolid, 0, NOONE) == NOONE) {
+                    collision_rect_at(i, -32, 0, 0, 32, OBJ_oSolid) == NOONE) {
                     jaws_turn_left(i);
                     turn = 1;
                 }

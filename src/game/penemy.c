@@ -358,7 +358,7 @@ void pen_parent_step(int i)
     }
     if (collision_point_any_at(i, sprw(i) >> 1, -1, OBJ_oLava)) ptemple_world(5012, i, 1);                   /* :63 */
     if (collision_point_any_at(i, sprw(i) >> 1, sprh(i) - 2, OBJ_oLava)) ptemple_world(5012, i, 2);   /* :65 */
-    if (collision_rect_p(X(i) + 2, Y(i) + 2, X(i) + 14, Y(i) + 14, OBJ_oSpearsLeft, 0, NOONE) != NOONE)
+    if (collision_rect_at(i, 2, 2, 14, 14, OBJ_oSpearsLeft) != NOONE)
         pcontent_enemy(5013, i, 0);                                                     /* P7 hook */
     if (collision_point_any_at(i, 8, 16, OBJ_oSpikes) && NGT(PE(p)->yVel, N(2))) {  /* :108 */
         int spikes = instance_place_p(i, X(i) + 8, Y(i) + 14, OBJ_oSpikes);

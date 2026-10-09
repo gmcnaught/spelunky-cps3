@@ -2247,10 +2247,16 @@ static int xy_int_near(int i, int32_t *x, int32_t *y)
     return pin_xy_int(i, x, y) && *x > -29900 && *x < 29900 && *y > -29900 && *y < 29900;
 }
 
+static int rect_any_i(int32_t l, int32_t t, int32_t r, int32_t b, int prec, int notme_self);
+
 int (collision_rect_any_at)(int i, int32_t l, int32_t t, int32_t r, int32_t b, int obj)
 {
     int32_t x, y;
-    if (xy_int_near(i, &x, &y)) return collision_rect_i(x + l, y + t, x + r, y + b, obj, 0, NOONE) != NOONE;
+    if (xy_int_near(i, &x, &y)) {
+        /* oSolid: collision_rect_any's whole-corner path (rect_any_i on the same ints; l <= r, t <= b as given) */
+        if (obj == OBJ_oSolid && l <= r && t <= b) return rect_any_i(x + l, y + t, x + r, y + b, 0, NOONE);
+        return collision_rect_i(x + l, y + t, x + r, y + b, obj, 0, NOONE) != NOONE;
+    }
     return (collision_rect_any)(PTOD(PW.in[i].x) + l, PTOD(PW.in[i].y) + t, PTOD(PW.in[i].x) + r, PTOD(PW.in[i].y) + b,
                                 obj, 0, NOONE);
 }

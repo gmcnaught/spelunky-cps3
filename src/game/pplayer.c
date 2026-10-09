@@ -187,8 +187,7 @@ static int pushblock_covered(double px, double py)
     int b = collision_point_p(px, py, OBJ_oMoveableSolid, 0, NOONE);
     if (b == NOONE) b = collision_point_p(px, py - 1, OBJ_oMoveableSolid, 0, NOONE);
     if (b == NOONE) return 0;
-    return collision_rect_any(PTOD(PX(b).x) + 1, PTOD(PX(b).y) - 3, PTOD(PX(b).x) + 14, PTOD(PX(b).y) - 1,
-                              OBJ_oSolid, 0, NOONE);
+    return collision_rect_any_at(b, 1, -3, 14, -1, OBJ_oSolid);
 }
 
 /* scripts/characterStepEvent */
