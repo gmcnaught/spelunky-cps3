@@ -2776,6 +2776,47 @@ static int piece_static(int i, int obj, struct pq *q)
     return r;
 }
 
+/* pw_piece_tests(i)'s answer (below) when the cells answer all three tests, else -1. Its query's ints as there (the
+   shadows of a whole near position, else the floors of a position with no +-0 coordinate: pfloor_int); out of the
+   grid, or not ints: -1 before anything is done. The liquids (piece_static: none alive gives 0; pcol_quiet takes
+   -1 here) by ik_xpt's first answer, its flush where ik_xpt makes it: no entry of the family reaching the cell, 0;
+   anything else -1. oSolid: none alive 0; gfar -1; else solid_point_sum's flush and its one cell's ik_cells (notme
+   NOONE, prec 0: a block is a hit, no block and no other entry a miss, else -1). After a -1 pw_piece_tests repeats
+   the flushes made (nothing left to do) and answers. Compact, for the debris that falls through empty cells (the
+   drips, the rubble: its tests' path with its calls is 2 KB of code a piece) */
+int pw_piece_fast(int i)
+{
+    const struct pin *p = &PW.in[i];
+    int32_t x = p->ix, y = p->iy, cx, cy, c;
+    int f, s = 0;
+    if (pcol_quiet()) return -1;
+    if (!(x > -29900 && x < 29900 && y > -29900 && y < 29900) &&
+        (fzero(p->x) || fzero(p->y) || !pfloor_int(p->x, &x) || !pfloor_int(p->y, &y)))
+        return -1;
+    if (x < 0 || y < 0 || (cx = x >> 4) >= GRID_W || (cy = y >> 4) >= GRID_H) return -1;
+    if (olive[OBJ_oWaterSwim]) {
+        f = xf_of[OBJ_oWaterSwim];
+        if (xdhead >= 0) xflush_run();
+        if (xfar[f] || xsat[f] || xcnt[f][cy][cx]) return -1;
+    }
+    if (olive[OBJ_oLava]) {
+        f = xf_of[OBJ_oLava];
+        if (xdhead >= 0) xflush_run();
+        if (xfar[f] || xsat[f] || xcnt[f][cy][cx]) return -1;
+    }
+    if (olive[OBJ_oSolid]) {
+        if (gfar) return -1;
+        grid_flush();
+        c = gfull[cy][cx];
+        if (c) s = 4;
+        else if (gother[cy][cx]) return -1;
+    }
+#ifdef PLAY_STATS
+    if (s != pw_piece_tests(i)) { fprintf(stderr, "pw_piece_fast: %d differs (instance %d)\n", s, i); abort(); }
+#endif
+    return s;
+}
+
 /* rubblepiece_step's point tests (pobj.c) at i's position, its query made once: 1 collision_point_any_at(i, 0, 0,
    oWaterSwim), 2 the same for oLava (asked only without 1), 4 for oSolid. collision_point_any_at's query of the
    position (dx = dy = 0) is q below: the ints of a whole near position (nodbl), else the floats and their floors.

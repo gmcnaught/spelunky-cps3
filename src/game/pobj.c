@@ -1070,7 +1070,8 @@ __attribute__((noinline)) void rubblepiece_step(int i, int nops)
         /* the three tests at once (pworld.c), the oSolid one before site 1041 / the lava's pin_destroy: these write
            no position and no oSolid-family entry (1041 sets yVel or destroys the drip), and the grid build's
            searches do not depend on when an entry is flushed */
-        int t = pw_piece_tests(i);
+        int t = pw_piece_fast(i);                                       /* (its cells' answer, else -1) */
+        if (t < 0) t = pw_piece_tests(i);
         if (t & 1) pswamp_world(1041, i, 0);
         else if (t & 2) pin_destroy(i);
         if (t & 4) pin_destroy(i);
