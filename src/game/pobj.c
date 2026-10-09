@@ -1312,15 +1312,9 @@ static void level_step(int i)
  * holds one level down for treasure (ptrans_step's switch, then obj_is(oTreasure)). -DPLAY_DCHECK (host check):
  * every Step tries the chain and aborts if the claimant differs from the kept one. */
 /* SK_PKG + k (k 1-5): ev_step's own path for the object is ptrans_step's 0, then the oTreasure / oItem tests, then
-   pcontent_ev's Step with claimant k (all decided by the object alone): ev_step calls package k's ev directly */
-enum { SK_NONE, SK_PEN, SK_PDAM, SK_PSHOP, SK_PITEM, SK_OWN, SK_TREASURE, SK_PKG };
-/* SK_RUBBLE: an SK_PKG object whose package Step is rubblepiece_step(i, 0) and nothing else (oDrip: pswamp_ev,
-   oRubbleDarkSmall: pice_ev, oLavaDrip: ptemple_ev; each switches on the object first), with no off-view test */
-#define SK_RUBBLE (SK_PKG + 6)
-/* SK_RUBBLE3: oRubble / oRubbleSmall once their Step is known to be ev_step's own (step_hooks SK_OWN): its switch
-   runs rubblepiece_step(i, 3) and nothing else. SK_RUBBLE and SK_RUBBLE3 are the largest kinds (ev_step_run) */
-#define SK_RUBBLE3 (SK_PKG + 7)
-static uint8_t stepk[OBJ_COUNT];
+   pcontent_ev's Step with claimant k (all decided by the object alone): ev_step calls package k's ev directly. The
+   kinds SK_* are in play.h (prun.c's Step loop reads stepk) */
+uint8_t stepk[OBJ_COUNT];
 
 static int step_hooks(int i)
 {
@@ -1361,7 +1355,7 @@ int ev_step_is_pkg(int o, int (*pkg_ev)(int ev, int i, int arg))
 
 /* prun.c's Step loop with front_on 0, at ord[0] (alive, play_cur_obj set; n >= 1 entries left): what ev_step(i);
    pcol_event_done(i) would do for the instances it can take, and how many it took (0: none, the caller runs
-   ev_step). A leaf for every other object (the two cases out of line):
+   ev_step), for ord[0]'s stepk k SK_TREASURE or at least SK_RUBBLE (the caller tests it inline):
    - a treasure out of view (stepk SK_TREASURE: treasure_step's first test, inview, reads the view and the instance
      only): pcol_event_done alone, 1;
    - a debris piece (stepk SK_RUBBLE: oDrip, oRubbleDarkSmall, oLavaDrip, ev_step's rubblepiece_step(i, 0);
@@ -1391,12 +1385,10 @@ static __attribute__((noinline)) int piece_run(const int16_t *ord, int n, int k)
     return j;
 }
 
-int ev_step_run(const int16_t *ord, int n)
+int ev_step_run(const int16_t *ord, int n, int k)
 {
-    int k = stepk[PX(ord[0]).obj];
     if (k >= SK_RUBBLE) return piece_run(ord, n, k);
-    if (k == SK_TREASURE) return treasure_idle(ord[0]);
-    return 0;
+    return treasure_idle(ord[0]);
 }
 
 /* a package ran the object's Step at the end of ev_step's own path (whose every test depends on the object only):

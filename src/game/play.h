@@ -637,7 +637,18 @@ void ev_create(int i);
 void ev_destroy(int i);
 void ev_step(int i);
 int ev_step_is_pkg(int o, int (*pkg_ev)(int ev, int i, int arg));   /* pobj.c: ev_step(i) of o is pkg_ev's Step */
-int ev_step_run(const int16_t *ord, int n);      /* pobj.c: prun.c's Step loop (front_on 0): instances whose Step it ran */
+/* pobj.c: the Step's claimant per object (docs/PERF2.md D: ev_step), kept from its first Step. SK_PKG + k (k 1-5):
+   content package k's Step, called directly. SK_RUBBLE: an SK_PKG object whose package Step is rubblepiece_step(i, 0)
+   and nothing else (oDrip: pswamp_ev, oRubbleDarkSmall: pice_ev, oLavaDrip: ptemple_ev; each switches on the object
+   first), with no off-view test. SK_RUBBLE3: oRubble / oRubbleSmall once their Step is known to be ev_step's own
+   (step_hooks SK_OWN): its switch runs rubblepiece_step(i, 3) and nothing else */
+enum { SK_NONE, SK_PEN, SK_PDAM, SK_PSHOP, SK_PITEM, SK_OWN, SK_TREASURE, SK_PKG };
+#define SK_RUBBLE (SK_PKG + 6)
+#define SK_RUBBLE3 (SK_PKG + 7)
+extern uint8_t stepk[];
+/* prun.c's Step loop (front_on 0) at an instance of stepk k SK_TREASURE or >= SK_RUBBLE: the instances whose Step it
+   ran (0: the loop runs ev_step) */
+int ev_step_run(const int16_t *ord, int n, int k);
 void ev_end_step(int i);
 void ev_alarm(int i, int a);
 void ev_animend(int i);

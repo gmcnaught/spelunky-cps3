@@ -773,7 +773,8 @@ int play_step(uint16_t keys, void (*record_cb)(int phase))
                stepk SK_OWN, ptrans_step, the oTreasure / oItem tests and pcontent_step's claimant 1: caches and tests
                only) */
             pcol_event_done(i);
-        } else if (!front_on && (a = ev_step_run(order + k, n - k)) > 0) {
+        } else if (!front_on && ((a = stepk[PX(i).obj]) == SK_TREASURE || a >= SK_RUBBLE) &&
+                   (a = ev_step_run(order + k, n - k, a)) > 0) {
             k += a - 1;                           /* a treasure out of view, or a run of debris pieces (pobj.c) */
         } else {
             ev_step(i);
