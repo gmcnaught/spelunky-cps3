@@ -1417,14 +1417,12 @@ static void mark_e(int e)
     if (oi & (OI_MEMBER | OI_DYN | OI_SOLID)) {
 #ifndef PCOL_EXACT
         if (!(oi & OI_ASKED) && !gmode) {         /* the deferred list (fhead), not the stale stack */
-            if (f & EF_OND) {
-                dlist_remove(e);
-                f &= ~EF_OND;
+            if (!(f & EF_OND)) {                  /* (on a list already: it stays where it is) */
+                dp[e] = -1;
+                dn[e] = fhead;
+                if (fhead >= 0) dp[fhead] = (int16_t)e;
+                fhead = (int16_t)e;
             }
-            dp[e] = -1;
-            dn[e] = fhead;
-            if (fhead >= 0) dp[fhead] = (int16_t)e;
-            fhead = (int16_t)e;
             ef[e] = (uint8_t)(f | EF_STALE | EF_OND);
             if (oi & OI_F08) tlist_front(e);
             return;
