@@ -784,6 +784,7 @@ void pcol_search(float l, float t, float r, float b, int (*cb)(int e, void *ctx)
 #define OI_F08 2
 #define OI_MEMBER 4
 #define OI_DYN 8
+#define OI_SOLID 16    /* objdefs[o].solid (obj_init): a member of the tree with OI_MEMBER / OI_DYN (emember) */
 static uint8_t oinfo[OBJ_COUNT];
 static int16_t ocnt[OBJ_COUNT];        /* instances of the object and its descendants (the runner's 0x78) */
 static uint8_t otarget[OBJ_COUNT];     /* the target of a collision event */
@@ -877,7 +878,8 @@ static void obj_init(void)
 #endif
     for (o = 0; o < OBJ_COUNT; o++)
         for (k = 0; k < pobj[o].ncol; k++) otarget[pcol[pobj[o].col0 + k]] = 1;
-    for (o = 0; o < OBJ_COUNT; o++) oinfo[o] = (uint8_t)(OI_DONE | (f08_of(o) ? OI_F08 : 0));
+    for (o = 0; o < OBJ_COUNT; o++)
+        oinfo[o] = (uint8_t)(OI_DONE | (f08_of(o) ? OI_F08 : 0) | (objdefs[o].solid ? OI_SOLID : 0));
     rv_build();
     for (o = 0; o < OBJ_COUNT; o++) {
         int a;
@@ -962,8 +964,7 @@ static uint8_t quiet_any;              /* some entry has EF_NOSNAP */
 static int eobj(int e) { return gmode ? W.in[e].obj : PW.in[e].obj; }
 /* creation order of entries: the index in the generator, the creation number in play (slots are reused) */
 static int32_t ekey(int e) { return gmode ? e : pw_seq[e]; }
-static int esolid(int e) { return objdefs[eobj(e)].solid; }
-static int emember(int e) { return (oinfo[eobj(e)] & (OI_MEMBER | OI_DYN)) || esolid(e); }
+static int emember(int e) { return (oinfo[eobj(e)] & (OI_MEMBER | OI_DYN | OI_SOLID)) != 0; }
 
 static void dlist_remove(int e)
 {
@@ -971,16 +972,6 @@ static void dlist_remove(int e)
     if (dp[e] >= 0) dn[dp[e]] = dn[e]; else dhead = dn[e];
     if (dn[e] >= 0) dp[dn[e]] = dp[e];
     ef[e] &= (uint8_t)~EF_OND;
-}
-
-static void dlist_front(int e)
-{
-    dlist_remove(e);
-    dp[e] = -1;
-    dn[e] = dhead;
-    if (dhead >= 0) dp[dhead] = (int16_t)e;
-    dhead = (int16_t)e;
-    ef[e] |= EF_OND;
 }
 
 static void tlist_remove(int e)
@@ -1343,12 +1334,14 @@ static void stk_clean(void)
     nstk = n;
 }
 
-/* CollisionMarkDirty (with the stale bounding box flag its callers set) */
+/* CollisionMarkDirty (with the stale bounding box flag its callers set). A member (emember) is pushed on the stale stack
+   when it was not stale and goes to the front of the dirty list (out of it first when on it); ef is read
+   once and written once (the stores to stk and the lists would make the compiler read it again) */
 static void mark_e(int e)
 {
-    int o = eobj(e);
-    if ((oinfo[o] & (OI_MEMBER | OI_DYN)) || esolid(e)) {
-        if (!(ef[e] & EF_STALE)) {
+    int oi = oinfo[eobj(e)], f = ef[e];
+    if (oi & (OI_MEMBER | OI_DYN | OI_SOLID)) {
+        if (!(f & EF_STALE)) {
             if (nstk == ENT_MAX) stk_compact();
             stk[nstk++] = (int16_t)e;
 #ifdef PLAY_STATS
@@ -1356,11 +1349,18 @@ static void mark_e(int e)
             ostk[onstk++] = (int16_t)e;
 #endif
         }
-        ef[e] |= EF_STALE;
-        dlist_front(e);
+        if (f & EF_OND) {                         /* (dlist_remove clears EF_OND) */
+            dlist_remove(e);
+            f &= ~EF_OND;
+        }
+        dp[e] = -1;
+        dn[e] = dhead;
+        if (dhead >= 0) dp[dhead] = (int16_t)e;
+        dhead = (int16_t)e;
+        ef[e] = (uint8_t)(f | EF_STALE | EF_OND);
     } else
-        ef[e] |= EF_STALE;
-    if (oinfo[o] & OI_F08) tlist_front(e);
+        ef[e] = (uint8_t)(f | EF_STALE);
+    if (oi & OI_F08) tlist_front(e);
 }
 
 /* ---- changes of play instances: the pin_set* setters (play.h) call pcol_changed on a real change of x, y,
