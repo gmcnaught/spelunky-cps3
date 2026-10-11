@@ -1,5 +1,13 @@
 # Handoff
 
+## 2026-10-11 18:20: v0.3.0 released (game source = 1a67e02, frame-dip batches 4-8)
+
+scripts/release.sh at 1a67e02 (REV 1a67e02c, DIRTY 0): spelunky.zip + "Spelunky Classic Arcade.mra"; spelunkydev.zip
+(tests/game PLAY=1 DEV=1) + "Spelunky Classic Arcade (Dev).mra". .81: both zips in /media/fat/games/mame/, MRAs in
+/media/fat/_Arcade/ (md5 match); the v0.2.0 files kept as *.bak-v0.2.0 in /media/fat/games/mame/. The release boots
+into the attract mode on .81. Gates as in the batch 8 entry below. Tag v0.3.0 pushed; GitHub Actions publishes the
+release.
+
 ## 2026-10-09 10:05: frame-dip batch 8 (branch softadd) merged and pushed; frame-dip work closed
 
 jtcps3 (.62, tests/gametime SMOOTH=1), pairs over 2 frames: c_swamp_drain 21 of 370, c_items_damselexpl 8 of 308
