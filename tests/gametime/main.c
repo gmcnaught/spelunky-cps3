@@ -9,6 +9,8 @@
  *   step  shell_frame() of a step frame minus its draw (the game step, input, credits)
  *   draw  game_draw() (src/draw: the display list)
  *   shl   shell_frame() of the other frame
+ *   irq   draw_vbl_irq() in the VBlank interrupt (smooth motion: the step's own list), also counted in the part it
+ *         interrupted; shown per step pair
  * A step pair is the frames from one game step to the next (two at 30 Hz): its busy clocks = vbl + snd + shell
  * of both frames. The frames before the first step (attract, and game_begin's level start: start_clk, the
  * largest of them) are left out of the frame figures. The route (tests/game's mkroute.py, build/route.h) plays from the cabinet's coin and Start.
@@ -103,14 +105,27 @@ static int t_shell_frame(uint32_t p0, uint32_t p1, uint32_t lines)
     return r;
 }
 
+static void t_draw_vbl_irq(void)
+{
+    uint32_t t = now(), c;
+    int sec = (int)M.sec;
+    draw_vbl_irq();
+    c = (now() - t) * 32;
+    if (M.state || sec >= NSEC || (sec > 0 && (!seen0[sec] || game_steps == 0))) return;   /* as t_shell_frame */
+    M.s[sec].irq_sum += c;
+    max_to(&M.s[sec].irq_max, c);
+}
+
 /* src/main/main.c with the calls above in place of the real ones (its headers are already included) */
 #define draw_vblank() t_draw_vblank()
+#define draw_vbl_irq() t_draw_vbl_irq()
 #define draw_list_send() t_draw_list_send()
 #define draw_list_sync() t_draw_list_sync()
 #define snd_frame() t_snd_frame()
 #define shell_frame(a, b, c) t_shell_frame(a, b, c)
 #include "../../src/main/main.c"
 #undef draw_vblank
+#undef draw_vbl_irq
 #undef draw_list_send
 #undef draw_list_sync
 #undef snd_frame

@@ -55,6 +55,7 @@ for s in range(3):
         (g('pair_sum_lo') + 2 ** 32 * g('pair_sum_hi')) / max(g('pairs'), 1), q(.5), q(.9), q(.99), g('pair_max'),
         g('pair_max_at'), g('over')))
     U = M.get((s, 'pair'), [])
+    print('  irq   per pair %6.0f  max %9d' % (g('irq_sum') / max(g('pairs'), 1), g('irq_max')))
     if U: print('  largest pairs (pair: clocks; pair k opens at the game\'s step k + 1): %s' % ', '.join(
         '%d: %d' % (k, U[k]) for k in sorted(range(len(U)), key=lambda k: -U[k])[:5]))
     if s: print('  game start (frames before the first step, the largest: game_begin) %d' % g('start_clk'))

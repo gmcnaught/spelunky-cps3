@@ -8,6 +8,7 @@ struct sec {                                      /* one section's frame figures
     uint32_t frames, steps, pairs;
     uint32_t vbl_sum, vbl_max, snd_sum, snd_max, step_sum, step_max, draw_sum, draw_max, shl_sum, shl_max;
     uint32_t pair_sum_lo, pair_sum_hi, pair_max, pair_max_at, start_clk, over;
+    uint32_t irq_sum, irq_max;                    /* draw_vbl_irq from the VBlank interrupt (in the part it interrupted too) */
     uint32_t pair[PAIRS];                         /* each step pair's busy clocks, in order */
 };
 struct marker {
