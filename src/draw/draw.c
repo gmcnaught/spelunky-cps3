@@ -1772,17 +1772,23 @@ void draw_list_sync(void)
     list_open = 0;
 #endif
 }
-void draw_list_send(void)
-{
 #ifndef DRAW_HOST
+static void list_start(void)
+{
     int k;
-    draw_list_sync();
-    draw_sprdma_sync();
     for (k = 0; k < 16; k++) PPU_REG(2 * k) = 0;
     for (k = 0; k < 4; k++) {
         PPU_REG(0x82) = 8;
         PPU_REG(0x82) = 9;
     }
+}
+#endif
+void draw_list_send(void)
+{
+#ifndef DRAW_HOST
+    draw_list_sync();
+    draw_sprdma_sync();
+    list_start();
     list_open = 1;
 #endif
 }
@@ -1888,8 +1894,9 @@ void draw_irq_off(void) { irq_due = 0; }
 
 /* the frame's own list at the VBlank after its midpoint list. The main list (sprite RAM 0) may be half built by the
    next draw (this runs from the VBlank interrupt): the records it overwrites are put back once the list DMA has
-   copied them (MAME: at the 8 / 9 writes; jtcps3: its busy bit may come up after cps3v_vblank's wait has looked, as
-   the character DMA's does (cps3-testgame docs/CPS3.md), so it is waited for, then for its end) */
+   copied them (MAME: at the 8 / 9 writes; jtcps3: the busy bit is up from the clock after the first 8, but it is
+   waited for in case it comes up late, as the character DMA's does (cps3-testgame docs/CPS3.md), then for its end).
+   list_start, not cps3v_vblank: its own wait for the end left the first loop below polling an idle bit 128 times */
 void draw_vbl_irq(void)
 {
 #ifndef DRAW_HOST
@@ -1908,9 +1915,10 @@ void draw_vbl_irq(void)
         }
     cps3v_tilemap(0, irq_vx, irq_vy + DRAW_CROP, UNIT(0), 1);
     for (k = 0; k < NMAPS; k++) cps3v_tilemap(1 + k, irq_vx, irq_vy + DRAW_CROP, UNIT(1 + k), k < irq_nmaps);
-    cps3v_vblank();
+    list_start();
     for (t = 0; t < 128 && !(PPU_STATUS & 1); t++) ;
     for (t = 0; t < 10000 && (PPU_STATUS & 1); t++) ;
+    PPU_REG(0x82) = 0;
     for (k = 0; k < n; k++)
         for (j = 0; j < 4; j++) s[4 * k + j] = save[k][j];
 #endif
